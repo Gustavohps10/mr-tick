@@ -14,8 +14,6 @@
     "@mr-tick/mr-tick-ai-for-tests",
     "@mr-tick/purple-theme",
     "@mr-tick/redmine-for-tests",
-    "@mr-tick/supabase-theme",
-    "@mr-tick/desktop",
-    "@mr-tick/landing-page"
+    "@mr-tick/supabase-theme"
   ]
 }

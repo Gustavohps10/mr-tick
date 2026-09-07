@@ -28,6 +28,7 @@
     "build:landing-page": "turbo run build --filter=@mr-tick/landing-page",
     "build:desktop": "turbo run build --filter=@mr-tick/desktop",
     "build": "turbo run build",
+    "version-packages": "changeset version",
     "release": "yarn build && changeset publish",
     "typecheck": "turbo run typecheck",
     "lint": "eslint .",

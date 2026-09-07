@@ -2,6 +2,7 @@ appId: com.electron.app
 productName: mr-tick
 directories:
   buildResources: build
+  output: .output
 files:
   - out/**/*
   - '!**/.vscode/*'
@@ -25,6 +26,14 @@ protocols:
     - mr-tick
 win:
   executableName: mr-tick
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-portable.${ext}
 nsis:
   artifactName: ${productName}-${version}-setup.${ext}
   shortcutName: ${productName}

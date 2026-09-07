@@ -16,8 +16,12 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      has_desktop: ${{ steps.check_desktop.outputs.has_desktop }}
+      desktop_tag: ${{ steps.check_desktop.outputs.desktop_tag }}
     steps:
-      - name: Checkout
+      - name: Checkout Repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -34,14 +38,86 @@ jobs:
       - name: Install Dependencies
         run: yarn install --immutable
 
-      - name: Publish to NPM / Version Packages
+      - name: Configure NPM Registry Auth
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
         with:
           publish: yarn release
           version: yarn changeset version
-          commit: 'chore(release): version packages [skip ci]'
-          title: 'chore(release): version packages'
+          title: 'chore: release packages'
+          commit: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Check if Desktop was published
+        id: check_desktop
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          DESKTOP_VERSION=$(node -e "
+            try {
+              const pkgs = JSON.parse(process.env.PUBLISHED_PACKAGES || '[]');
+              const d = pkgs.find(p => p.name === '@mr-tick/desktop');
+              console.log(d ? d.version : '');
+            } catch (e) {
+              console.log('');
+            }
+          ")
+          if [ -n "$DESKTOP_VERSION" ]; then
+            echo "has_desktop=true" >> $GITHUB_OUTPUT
+            echo "desktop_tag=@mr-tick/desktop@$DESKTOP_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "has_desktop=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+
+  build-desktop:
+    name: Build & Upload Desktop Assets
+    needs: release
+    if: needs.release.outputs.has_desktop == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Build Desktop (Vite & Turbo)
+        run: yarn turbo run build --filter=@mr-tick/desktop
+
+      - name: Package with Electron Builder
+        run: yarn --cwd src/apps/desktop electron-builder --win
+
+      - name: Upload Desktop Assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release.outputs.desktop_tag }}
+          files: |
+            src/apps/desktop/.output/*.exe
+            src/apps/desktop/.output/*.zip
+            src/apps/desktop/.output/*.blockmap
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

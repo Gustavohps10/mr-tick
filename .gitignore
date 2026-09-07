@@ -6,6 +6,7 @@ temp
 dist
 out
 build
+.output
 .next/
 .source/
 .DS_Store
