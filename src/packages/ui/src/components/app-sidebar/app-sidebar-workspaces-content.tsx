@@ -78,14 +78,14 @@ const personalItems: NavItem[] = [
     title: 'Minhas Tarefas',
     path: 'activities',
     icon: ListTodoIcon,
-    isBlocked: true,
+    isBlocked: false,
     blockedReason: 'Em breve',
   },
   {
     title: 'Calendário',
     path: 'calendar',
     icon: CalendarDays,
-    isBlocked: true,
+    isBlocked: false,
     blockedReason: 'Em breve',
   },
 ]

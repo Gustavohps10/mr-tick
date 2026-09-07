@@ -347,7 +347,7 @@ export function TimeEntries() {
   }, [])
 
   return (
-    <div className="flex h-full flex-col gap-6 p-6">
+    <div className="flex h-full flex-col gap-6 px-6">
       <TimeEntriesHeader
         range={range}
         onRangeChange={handleRangeChange}

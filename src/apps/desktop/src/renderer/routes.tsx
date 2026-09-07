@@ -1,8 +1,9 @@
-﻿import {
+import {
   ActivitiesLayout,
   AddonsLayout,
   AppLayout,
   HomeLayout,
+  TimeEntriesLayout,
   WidgetLayout,
   WorkspaceLayout,
 } from '@mr-tick/ui/layouts'
@@ -17,6 +18,8 @@ import {
   Notes,
   NotFound,
   TimeEntries,
+  TimeEntriesCalendar,
+  TimeEntriesTimesheet,
   TimerWidget,
   WorkspaceSettings,
 } from '@mr-tick/ui/pages'
@@ -75,7 +78,27 @@ export const router = createHashRouter([
                     element: <Navigate to="time-entries" replace />,
                   },
                   { path: 'notes', element: <Notes /> },
-                  { path: 'time-entries', element: <TimeEntries /> },
+                  {
+                    path: 'time-entries',
+                    element: <TimeEntriesLayout />,
+                    children: [
+                      {
+                        errorElement: <Error />,
+                        children: [
+                          { index: true, element: <TimeEntries /> },
+                          {
+                            path: 'calendar',
+                            element: <TimeEntriesCalendar />,
+                          },
+                          {
+                            path: 'timesheet',
+                            element: <TimeEntriesTimesheet />,
+                          },
+                          { path: '*', element: <NotFound /> },
+                        ],
+                      },
+                    ],
+                  },
                   { path: 'my-metric', element: <Metrics /> },
                   {
                     path: 'activities',
