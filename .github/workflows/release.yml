@@ -12,13 +12,52 @@ permissions:
   pull-requests: write
   id-token: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
+  validate:
+    name: Validate (Typecheck & Test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Cache Turbo & Yarn
+        uses: actions/cache@v4
+        with:
+          path: |
+            .turbo
+            .yarn/cache
+          key: ${{ runner.os }}-turbo-${{ hashFiles('**/yarn.lock') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ hashFiles('**/yarn.lock') }}-
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Run Tests
+        run: yarn test
+
   release:
-    name: Release
+    name: Release & Version
+    needs: validate
     runs-on: ubuntu-latest
     outputs:
-      published: ${{ steps.changesets.outputs.published }}
       has_desktop: ${{ steps.check_desktop.outputs.has_desktop }}
+      desktop_version: ${{ steps.check_desktop.outputs.desktop_version }}
       desktop_tag: ${{ steps.check_desktop.outputs.desktop_tag }}
     steps:
       - name: Checkout Repo
@@ -44,7 +83,7 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Create Release Pull Request or Publish
+      - name: Changesets Action (Create PR or Publish NPM)
         id: changesets
         uses: changesets/action@v1
         with:
@@ -57,27 +96,33 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Check if Desktop was published
-        id: check_desktop
-        if: steps.changesets.outputs.published == 'true'
+      - name: Tag Packages & Push Tags
         run: |
-          DESKTOP_VERSION=$(node -e "
-            try {
-              const pkgs = JSON.parse(process.env.PUBLISHED_PACKAGES || '[]');
-              const d = pkgs.find(p => p.name === '@mr-tick/desktop');
-              console.log(d ? d.version : '');
-            } catch (e) {
-              console.log('');
-            }
-          ")
-          if [ -n "$DESKTOP_VERSION" ]; then
+          yarn changeset tag
+          git push --tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if Desktop Release Needed
+        id: check_desktop
+        run: |
+          DESKTOP_VERSION=$(node -p "require('./src/apps/desktop/package.json').version")
+          DESKTOP_TAG="@mr-tick/desktop@$DESKTOP_VERSION"
+          
+          # Check if GitHub release already exists for this tag
+          EXISTS=$(gh release view "$DESKTOP_TAG" --json tagName -q .tagName 2>/dev/null || echo "")
+          
+          if [ -z "$EXISTS" ] && [ "$DESKTOP_VERSION" != "0.0.0" ]; then
             echo "has_desktop=true" >> $GITHUB_OUTPUT
-            echo "desktop_tag=@mr-tick/desktop@$DESKTOP_VERSION" >> $GITHUB_OUTPUT
+            echo "desktop_version=$DESKTOP_VERSION" >> $GITHUB_OUTPUT
+            echo "desktop_tag=$DESKTOP_TAG" >> $GITHUB_OUTPUT
+            echo "Desktop version $DESKTOP_VERSION needs release"
           else
             echo "has_desktop=false" >> $GITHUB_OUTPUT
+            echo "Desktop version $DESKTOP_VERSION already released or 0.0.0"
           fi
         env:
-          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-desktop:
     name: Build & Upload Desktop Assets
@@ -104,20 +149,39 @@ jobs:
       - name: Install Dependencies
         run: yarn install --immutable
 
-      - name: Build Desktop (Vite & Turbo)
+      - name: Build Desktop App
         run: yarn turbo run build --filter=@mr-tick/desktop
 
       - name: Package with Electron Builder
         run: yarn --cwd src/apps/desktop electron-builder --win
 
-      - name: Upload Desktop Assets to GitHub Release
+      - name: Extract Release Notes
+        id: extract_notes
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const changelog = fs.readFileSync('src/apps/desktop/CHANGELOG.md', 'utf8');
+            const version = '${{ needs.release.outputs.desktop_version }}';
+            const escaped = version.replace(/\./g, '\\\\.');
+            const regex = new RegExp('## ' + escaped + '[\\\\r\\\\n]+([\\\\s\\\\S]*?)(?=[\\\\r\\\\n]+## |$)');
+            const match = changelog.match(regex);
+            const notes = match ? match[1].trim() : 'Release ' + version;
+            fs.writeFileSync('RELEASE_NOTES.md', notes);
+          "
+
+      - name: Create GitHub Release & Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.release.outputs.desktop_tag }}
+          name: ${{ needs.release.outputs.desktop_tag }}
+          body_path: RELEASE_NOTES.md
           files: |
             src/apps/desktop/.output/*.exe
             src/apps/desktop/.output/*.zip
             src/apps/desktop/.output/*.blockmap
           generate_release_notes: false
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

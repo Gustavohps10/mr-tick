@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,7 +18,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: 'yarn' 
+          cache: 'yarn'
 
       - run: corepack enable
 
@@ -29,5 +32,9 @@ jobs:
             ${{ runner.os }}-turbo-${{ hashFiles('**/yarn.lock') }}-
 
       - run: yarn install --immutable
-      - run: yarn build
-      - run: yarn test
+      - name: Typecheck
+        run: yarn typecheck
+      - name: Run Tests
+        run: yarn test
+      - name: Build
+        run: yarn build

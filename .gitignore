@@ -19,3 +19,4 @@ build
 !.yarn/sdks
 !.yarn/versions
 .pnp.*
+logs/

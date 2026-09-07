@@ -7,7 +7,17 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
+  "privatePackages": {
+    "version": true,
+    "tag": true
+  },
   "ignore": [
+    "@mr-tick/landing-page",
+    "@mr-tick/adapters",
+    "@mr-tick/application",
+    "@mr-tick/domain",
+    "@mr-tick/shared",
+    "@mr-tick/ui",
     "@mr-tick/datasource-fake",
     "@mr-tick/discord-for-tests",
     "@mr-tick/fake-watcher-for-tests",
