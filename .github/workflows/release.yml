@@ -1,6 +1,7 @@
-name: Release
+name: CI/CD Pipeline
 
 on:
+  pull_request:
   push:
     branches:
       - main
@@ -16,8 +17,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  validate:
-    name: Validate (Typecheck & Test)
+  test:
+    name: Test & Typecheck
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
@@ -51,9 +52,13 @@ jobs:
       - name: Run Tests
         run: yarn test
 
+      - name: Build
+        run: yarn build
+
   release:
     name: Release & Version
-    needs: validate
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       has_desktop: ${{ steps.check_desktop.outputs.has_desktop }}
