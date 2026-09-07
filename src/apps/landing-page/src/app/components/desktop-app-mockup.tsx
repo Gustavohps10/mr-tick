@@ -611,7 +611,7 @@ function MockDesktopShell() {
 
   return (
     <div className="bg-background text-foreground flex h-full w-full flex-col overflow-hidden select-none">
-      <TitleBar>
+      <TitleBar title="Mr. Tick">
         <Header />
       </TitleBar>
 

@@ -45,6 +45,11 @@ export const formatSecondsToHMDisplay = (totalSeconds: number): string => {
   return `${h}h ${m.toString().padStart(2, '0')}m`
 }
 
+export const formatHours = (decimalHours: number): string => {
+  const totalSeconds = Math.round((decimalHours || 0) * 3600)
+  return formatSecondsToHMDisplay(totalSeconds)
+}
+
 export const activityIconMap: Record<string, ElementType> = {
   Palette,
   Code,
