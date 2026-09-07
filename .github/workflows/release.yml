@@ -107,21 +107,21 @@ jobs:
           DESKTOP_VERSION=$(node -p "require('./src/apps/desktop/package.json').version")
           DESKTOP_TAG="@mr-tick/desktop@$DESKTOP_VERSION"
           
-          # Check if GitHub release already exists for this tag
-          EXISTS=$(gh release view "$DESKTOP_TAG" --json tagName -q .tagName 2>/dev/null || echo "")
+          # Check if assets (.exe / .zip) already exist in the release for this tag
+          HAS_ASSETS=$(gh release view "$DESKTOP_TAG" --json assets -q '.assets | length' 2>/dev/null || echo "0")
           
-          if [ -z "$EXISTS" ] && [ "$DESKTOP_VERSION" != "0.0.0" ]; then
+          if [ "$HAS_ASSETS" = "0" ] && [ "$DESKTOP_VERSION" != "0.0.0" ]; then
             echo "has_desktop=true" >> $GITHUB_OUTPUT
             echo "desktop_version=$DESKTOP_VERSION" >> $GITHUB_OUTPUT
             echo "desktop_tag=$DESKTOP_TAG" >> $GITHUB_OUTPUT
-            echo "Desktop version $DESKTOP_VERSION needs release"
+            echo "Desktop version $DESKTOP_VERSION has no release assets, building release"
             
             # Push ONLY this specific desktop tag to origin
             git tag -f "$DESKTOP_TAG"
-            git push origin "$DESKTOP_TAG"
+            git push origin "$DESKTOP_TAG" || true
           else
             echo "has_desktop=false" >> $GITHUB_OUTPUT
-            echo "Desktop version $DESKTOP_VERSION already released or 0.0.0"
+            echo "Desktop version $DESKTOP_VERSION already has $HAS_ASSETS release assets"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

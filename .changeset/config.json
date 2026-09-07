@@ -7,10 +7,6 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "privatePackages": {
-    "version": true,
-    "tag": true
-  },
   "ignore": [
     "@mr-tick/landing-page",
     "@mr-tick/adapters",
