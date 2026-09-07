@@ -1,4 +1,4 @@
-﻿import { createMDX } from 'fumadocs-mdx/next'
+import { createMDX } from 'fumadocs-mdx/next'
 import type { NextConfig } from 'next'
 
 const withMDX = createMDX()
@@ -18,6 +18,14 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'cdn.jsdelivr.net',
         pathname: '/gh/homarr-labs/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'avatars.githubusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'github.com',
       },
     ],
   },
