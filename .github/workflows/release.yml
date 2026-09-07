@@ -101,14 +101,7 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Tag Packages & Push Tags
-        run: |
-          yarn changeset tag
-          git push --tags
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check if Desktop Release Needed
+      - name: Check if Desktop Release Needed & Push Desktop Tag
         id: check_desktop
         run: |
           DESKTOP_VERSION=$(node -p "require('./src/apps/desktop/package.json').version")
@@ -122,6 +115,10 @@ jobs:
             echo "desktop_version=$DESKTOP_VERSION" >> $GITHUB_OUTPUT
             echo "desktop_tag=$DESKTOP_TAG" >> $GITHUB_OUTPUT
             echo "Desktop version $DESKTOP_VERSION needs release"
+            
+            # Push ONLY this specific desktop tag to origin
+            git tag -f "$DESKTOP_TAG"
+            git push origin "$DESKTOP_TAG"
           else
             echo "has_desktop=false" >> $GITHUB_OUTPUT
             echo "Desktop version $DESKTOP_VERSION already released or 0.0.0"
