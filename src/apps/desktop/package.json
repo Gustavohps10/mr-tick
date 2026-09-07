@@ -2,7 +2,7 @@
   "private": true,
   "name": "@mr-tick/desktop",
   "productName": "mr-tick",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Mr-tick Desktop App.",
   "main": "./out/main/index.js",
   "type": "module",

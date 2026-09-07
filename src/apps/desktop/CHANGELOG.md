@@ -1,5 +1,11 @@
 ﻿# @mr-tick/desktop
 
+## 0.1.0
+
+### Minor Changes
+
+- a69bba3: Adiciona suporte às visualizações de apontamentos (time entries) em formato de calendário e timesheet.
+
 ## 1.0.1
 
 ### Patch Changes
