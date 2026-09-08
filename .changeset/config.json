@@ -13,13 +13,6 @@
     "@mr-tick/application",
     "@mr-tick/domain",
     "@mr-tick/shared",
-    "@mr-tick/ui",
-    "@mr-tick/datasource-fake",
-    "@mr-tick/discord-for-tests",
-    "@mr-tick/fake-watcher-for-tests",
-    "@mr-tick/mr-tick-ai-for-tests",
-    "@mr-tick/purple-theme",
-    "@mr-tick/redmine-for-tests",
-    "@mr-tick/supabase-theme"
+    "@mr-tick/ui"
   ]
 }

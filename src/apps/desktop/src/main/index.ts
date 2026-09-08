@@ -407,7 +407,6 @@ if (!gotTheLock) {
     const credentialsStorage = new KeytarTokenStorage()
     const addonLoader = new AddonLoader(credentialsStorage)
     globalAddonLoader = addonLoader
-    await addonLoader.initializeDevAddons()
 
     // Cold-start link
     const initialDeepLink = process.argv.find((arg) =>
@@ -529,6 +528,13 @@ if (!gotTheLock) {
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+
+    app.on('before-quit', () => {
+      if (tray) {
+        tray.destroy()
+        tray = null
+      }
     })
   })
 

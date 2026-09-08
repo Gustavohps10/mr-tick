@@ -13,8 +13,7 @@
   },
   "workspaces": [
     "src/apps/*",
-    "src/packages/*",
-    "src/tests/*"
+    "src/packages/*"
   ],
   "scripts": {
     "test": "vitest run",
@@ -38,7 +37,12 @@
     "prepare": "husky install",
     "postinstall": "husky install",
     "shadcn": "yarn --cwd src/packages/ui dlx shadcn@canary ",
-    "puml": "tsup puml.ts --format esm --out-dir dist --clean && node --enable-source-maps dist/puml.js"
+    "puml": "tsup puml.ts --format esm --out-dir dist --clean && node --enable-source-maps dist/puml.js",
+    "addon:list": "tsx scripts/dev-addons.ts list",
+    "addon:link": "tsx scripts/dev-addons.ts link",
+    "addon:unlink": "tsx scripts/dev-addons.ts unlink",
+    "addon:build": "tsx scripts/dev-addons.ts build",
+    "addon:watch": "tsx scripts/dev-addons.ts watch"
   },
   "dependencies": {
     "awilix": "^12.0.5"
@@ -81,6 +85,7 @@
     "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
     "tsup": "^8.5.0",
+    "tsx": "^4.23.13",
     "turbo": "^2.5.4",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.30.1",

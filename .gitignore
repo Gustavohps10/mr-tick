@@ -11,6 +11,7 @@ build
 .source/
 .DS_Store
 *.log*
+*.tsbuildinfo
 .turbo/
 .yarn/*
 !.yarn/patches
@@ -20,3 +21,7 @@ build
 !.yarn/versions
 .pnp.*
 logs/
+src/dev-addons/*
+!src/dev-addons/README.md
+!src/dev-addons/desenvolvimento-e-debug-de-addons.md
+/dev-addons

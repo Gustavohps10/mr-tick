@@ -7,7 +7,6 @@ import {
   IWorkspacesRepository,
   ResolvedConnection,
 } from '@mr-tick/application'
-import { FakeDataSource } from '@mr-tick/datasource-fake'
 import {
   AddonSettingsGroup,
   AppError,
@@ -19,9 +18,6 @@ import { resolve } from 'path'
 import { pathToFileURL } from 'url'
 
 import { AddonLoader } from '@/main/services/AddonLoader'
-
-export const FAKE_DATASOURCE_ADDON_ID = 'mr-tick-datasource-fake'
-export const REDMINE4TEST_ADDON_ID = '@timelapse/redmine-plugin'
 
 export interface DataSourceResolverOptions {
   addonsBasePath: string
@@ -52,7 +48,12 @@ export class DataSourceResolver implements IDataSourceResolver {
     )
 
     const config = connection?.config ?? {}
-    let context: DataSourceContext
+    let context: DataSourceContext = {
+      authenticatedMemberData: undefined,
+      config,
+      credentials: undefined,
+      httpClient: this.httpClient,
+    }
 
     if (contextOverride) {
       context = {
@@ -61,7 +62,9 @@ export class DataSourceResolver implements IDataSourceResolver {
         credentials: contextOverride.credentials,
         httpClient: contextOverride.httpClient ?? this.httpClient,
       }
-    } else {
+    }
+
+    if (!contextOverride) {
       const storageKey = `workspace-connection-${workspaceId}-${connectionInstanceId}`
       const credentialsSerialized = await this.credentialsStorage.getToken(
         'mr-tick',
@@ -133,10 +136,6 @@ export class DataSourceResolver implements IDataSourceResolver {
       return registeredDs
     }
 
-    if (pluginId === FAKE_DATASOURCE_ADDON_ID) {
-      return FakeDataSource as IDataSource
-    }
-
     const addonPath = resolve(this.options.addonsBasePath, pluginId, 'index.js')
 
     if (!existsSync(addonPath)) {
@@ -147,10 +146,23 @@ export class DataSourceResolver implements IDataSourceResolver {
     const datasourceModule = await import(addonURL)
     const defaultExport = datasourceModule?.default
 
-    if (!defaultExport || typeof defaultExport.getTaskQuery !== 'function') {
+    if (
+      !defaultExport ||
+      typeof defaultExport !== 'object' ||
+      !isDataSource(defaultExport)
+    ) {
       throw new Error(`Datasource inválido ou corrompido em ${addonPath}`)
     }
 
-    return defaultExport as IDataSource
+    return defaultExport
   }
+}
+
+function isDataSource(candidate: object): candidate is IDataSource {
+  return (
+    'getTaskQuery' in candidate &&
+    'getMemberQuery' in candidate &&
+    'getTimeEntryQuery' in candidate &&
+    'getMetadataQuery' in candidate
+  )
 }

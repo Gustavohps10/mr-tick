@@ -3713,16 +3713,6 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@mr-tick/datasource-fake@workspace:*, @mr-tick/datasource-fake@workspace:src/tests/datasource-fake":
-  version: 0.0.0-use.local
-  resolution: "@mr-tick/datasource-fake@workspace:src/tests/datasource-fake"
-  dependencies:
-    "@mr-tick/sdk": "workspace:*"
-    tsup: "npm:^8.5.0"
-    typescript: "npm:^5.8.3"
-  languageName: unknown
-  linkType: soft
-
 "@mr-tick/desktop@workspace:src/apps/desktop":
   version: 0.0.0-use.local
   resolution: "@mr-tick/desktop@workspace:src/apps/desktop"
@@ -3732,14 +3722,7 @@ __metadata:
     "@electron-toolkit/utils": "npm:^3.0.0"
     "@mr-tick/adapters": "workspace:*"
     "@mr-tick/application": "workspace:*"
-    "@mr-tick/datasource-fake": "workspace:*"
-    "@mr-tick/discord-for-tests": "workspace:*"
-    "@mr-tick/fake-watcher-for-tests": "workspace:*"
-    "@mr-tick/mr-tick-ai-for-tests": "workspace:*"
-    "@mr-tick/purple-theme": "workspace:*"
-    "@mr-tick/redmine-for-tests": "workspace:*"
     "@mr-tick/shared": "workspace:*"
-    "@mr-tick/supabase-theme": "workspace:*"
     "@mr-tick/ui": "workspace:*"
     "@rollup/plugin-image": "npm:^3.0.3"
     "@tailwindcss/postcss": "npm:^4.1.11"
@@ -3780,18 +3763,6 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@mr-tick/discord-for-tests@workspace:*, @mr-tick/discord-for-tests@workspace:src/tests/discord-for-tests":
-  version: 0.0.0-use.local
-  resolution: "@mr-tick/discord-for-tests@workspace:src/tests/discord-for-tests"
-  dependencies:
-    "@mr-tick/sdk": "workspace:*"
-    "@types/node": "npm:^24.3.0"
-    axios: "npm:^1.7.9"
-    tsup: "npm:^8.5.0"
-    typescript: "npm:^5.8.3"
-  languageName: unknown
-  linkType: soft
-
 "@mr-tick/domain@workspace:*, @mr-tick/domain@workspace:src/packages/domain":
   version: 0.0.0-use.local
   resolution: "@mr-tick/domain@workspace:src/packages/domain"
@@ -3800,17 +3771,6 @@ __metadata:
     tsup: "npm:^8.2.3"
     typescript: "npm:^5.8.3"
     zod: "npm:^3.24.2"
-  languageName: unknown
-  linkType: soft
-
-"@mr-tick/fake-watcher-for-tests@workspace:*, @mr-tick/fake-watcher-for-tests@workspace:src/tests/fake-watcher-for-tests":
-  version: 0.0.0-use.local
-  resolution: "@mr-tick/fake-watcher-for-tests@workspace:src/tests/fake-watcher-for-tests"
-  dependencies:
-    "@mr-tick/sdk": "workspace:*"
-    "@types/node": "npm:^24.3.0"
-    tsup: "npm:^8.5.0"
-    typescript: "npm:^5.8.3"
   languageName: unknown
   linkType: soft
 
@@ -3846,40 +3806,6 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@mr-tick/mr-tick-ai-for-tests@workspace:*, @mr-tick/mr-tick-ai-for-tests@workspace:src/tests/metric-ai-for-tests":
-  version: 0.0.0-use.local
-  resolution: "@mr-tick/mr-tick-ai-for-tests@workspace:src/tests/metric-ai-for-tests"
-  dependencies:
-    "@mr-tick/sdk": "workspace:*"
-    "@types/node": "npm:^24.3.0"
-    tsup: "npm:^8.5.0"
-    typescript: "npm:^5.8.3"
-  languageName: unknown
-  linkType: soft
-
-"@mr-tick/purple-theme@workspace:*, @mr-tick/purple-theme@workspace:src/tests/purple-theme":
-  version: 0.0.0-use.local
-  resolution: "@mr-tick/purple-theme@workspace:src/tests/purple-theme"
-  dependencies:
-    "@mr-tick/sdk": "workspace:*"
-    "@types/node": "npm:^24.3.0"
-    tsup: "npm:^8.5.0"
-    typescript: "npm:^5.8.3"
-  languageName: unknown
-  linkType: soft
-
-"@mr-tick/redmine-for-tests@workspace:*, @mr-tick/redmine-for-tests@workspace:src/tests/redmine-for-tests":
-  version: 0.0.0-use.local
-  resolution: "@mr-tick/redmine-for-tests@workspace:src/tests/redmine-for-tests"
-  dependencies:
-    "@mr-tick/sdk": "workspace:*"
-    "@types/node": "npm:^24.3.0"
-    axios: "npm:^1.7.9"
-    tsup: "npm:^8.5.0"
-    typescript: "npm:^5.8.3"
-  languageName: unknown
-  linkType: soft
-
 "@mr-tick/sdk@workspace:*, @mr-tick/sdk@workspace:src/apps/sdk":
   version: 0.0.0-use.local
   resolution: "@mr-tick/sdk@workspace:src/apps/sdk"
@@ -3908,17 +3834,6 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@mr-tick/shared@workspace:src/packages/shared"
   dependencies:
-    typescript: "npm:^5.8.3"
-  languageName: unknown
-  linkType: soft
-
-"@mr-tick/supabase-theme@workspace:*, @mr-tick/supabase-theme@workspace:src/tests/supabase-theme":
-  version: 0.0.0-use.local
-  resolution: "@mr-tick/supabase-theme@workspace:src/tests/supabase-theme"
-  dependencies:
-    "@mr-tick/sdk": "workspace:*"
-    "@types/node": "npm:^24.3.0"
-    tsup: "npm:^8.5.0"
     typescript: "npm:^5.8.3"
   languageName: unknown
   linkType: soft
@@ -7814,15 +7729,6 @@ __metadata:
   dependencies:
     undici-types: "npm:~6.21.0"
   checksum: 10c0/9bcec3b5295bdd77ff0b44a528a69f7e22028c347507ba2c69be47ec84e30299f45043b222e9c86c510e138c9c53b2419dd5cd34920602a4a5a381c288075318
-  languageName: node
-  linkType: hard
-
-"@types/node@npm:^24.3.0":
-  version: 24.13.3
-  resolution: "@types/node@npm:24.13.3"
-  dependencies:
-    undici-types: "npm:~7.18.0"
-  checksum: 10c0/a5bc08f49b9581dcdca90e02cd77197a3c799840807664942e5cd5161a553d4d2ae8064f7e3294410d748d7d098b5c1848be7fa50c06f29c4193ab16be4e59eb
   languageName: node
   linkType: hard
 
@@ -12191,7 +12097,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"esbuild@npm:^0.28.2":
+"esbuild@npm:^0.28.2, esbuild@npm:~0.28.0":
   version: 0.28.2
   resolution: "esbuild@npm:0.28.2"
   dependencies:
@@ -17582,6 +17488,7 @@ __metadata:
     rimraf: "npm:^6.0.1"
     ts-node: "npm:^10.9.2"
     tsup: "npm:^8.5.0"
+    tsx: "npm:^4.23.13"
     turbo: "npm:^2.5.4"
     typescript: "npm:^5.8.3"
     typescript-eslint: "npm:^8.30.1"
@@ -21974,6 +21881,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"tsx@npm:^4.23.13":
+  version: 4.23.13
+  resolution: "tsx@npm:4.23.13"
+  dependencies:
+    esbuild: "npm:~0.28.0"
+    fsevents: "npm:~2.3.3"
+  dependenciesMeta:
+    fsevents:
+      optional: true
+  bin:
+    tsx: dist/cli.mjs
+  checksum: 10c0/dc99c8988b42ec2443963a0b9051f42d068bc7e2a44e82f3b94b40539a991c5c01ea3ee049cf317d1040b2245711dd4c64ace9ac875f3b07edee29f610702e3c
+  languageName: node
+  linkType: hard
+
 "tunnel-agent@npm:^0.6.0":
   version: 0.6.0
   resolution: "tunnel-agent@npm:0.6.0"
@@ -22199,13 +22121,6 @@ __metadata:
   version: 6.21.0
   resolution: "undici-types@npm:6.21.0"
   checksum: 10c0/c01ed51829b10aa72fc3ce64b747f8e74ae9b60eafa19a7b46ef624403508a54c526ffab06a14a26b3120d055e1104d7abe7c9017e83ced038ea5cf52f8d5e04
-  languageName: node
-  linkType: hard
-
-"undici-types@npm:~7.18.0":
-  version: 7.18.2
-  resolution: "undici-types@npm:7.18.2"
-  checksum: 10c0/85a79189113a238959d7a647368e4f7c5559c3a404ebdb8fc4488145ce9426fcd82252a844a302798dfc0e37e6fb178ff481ed03bc4caf634c5757d9ef43521d
   languageName: node
   linkType: hard
 
