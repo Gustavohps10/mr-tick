@@ -2,7 +2,13 @@
 
 import { cva } from 'class-variance-authority'
 import { motion } from 'framer-motion'
-import { Compass, HomeIcon, LayoutGridIcon, PlusIcon } from 'lucide-react'
+import {
+  Compass,
+  HomeIcon,
+  LayoutGridIcon,
+  PlusIcon,
+  Settings,
+} from 'lucide-react'
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 
@@ -67,8 +73,10 @@ function RailIndicators({ isActive, isHovered }: IndicatorProps) {
 
 export function AppRail({
   onNewWorkspaceClick,
+  onSettingsClick,
 }: {
   onNewWorkspaceClick: () => void
+  onSettingsClick: () => void
 }) {
   const { workspaces } = useWorkspace()
   const openAPI = useOpenAPI()
@@ -171,6 +179,17 @@ export function AppRail({
             isHovered={hoveredId === 'explore'}
           />
           <Compass className="size-5" />
+        </button>
+        <button
+          onClick={onSettingsClick}
+          onMouseEnter={() => setHoveredId('settings')}
+          className={cn(sidebarButtonVariants(), 'mt-auto mb-2 shrink-0')}
+        >
+          <RailIndicators
+            isActive={false}
+            isHovered={hoveredId === 'settings'}
+          />
+          <Settings className="size-5" />
         </button>
       </div>
     </nav>

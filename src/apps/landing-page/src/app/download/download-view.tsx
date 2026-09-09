@@ -26,10 +26,11 @@ import { Footer } from '../components/footer'
 import { Navbar } from '../components/navbar'
 
 interface DownloadViewProps {
-  release: DesktopReleaseInfo | null
+  stable: DesktopReleaseInfo | null
+  beta: DesktopReleaseInfo | null
 }
 
-export function DownloadView({ release }: DownloadViewProps) {
+export function DownloadView({ stable: release, beta }: DownloadViewProps) {
   const [copiedId, setCopiedId] = React.useState<string | null>(null)
 
   const copyToClipboard = (text: string, id: string) => {
@@ -307,6 +308,29 @@ export function DownloadView({ release }: DownloadViewProps) {
                         </div>
                       </div>
                       <Download className="text-muted-foreground group-hover:text-foreground size-4 transition-colors" />
+                    </a>
+                  )}
+
+                  {beta?.installer && (
+                    <a
+                      href={beta.installer.downloadUrl}
+                      download
+                      className="border-border text-foreground group flex items-center justify-between rounded-lg border bg-amber-500/10 p-2.5 shadow-xs transition-all hover:border-amber-500/50 hover:bg-amber-500/15"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-amber-500 text-[10px] font-bold text-black">
+                          beta
+                        </span>
+                        <div className="flex flex-col text-left">
+                          <span className="text-xs font-semibold">
+                            Download Beta ({beta.version})
+                          </span>
+                          <span className="text-muted-foreground text-[10px]">
+                            {beta.installer.sizeFormatted}
+                          </span>
+                        </div>
+                      </div>
+                      <Download className="size-4 text-amber-500 transition-colors group-hover:text-amber-400" />
                     </a>
                   )}
 

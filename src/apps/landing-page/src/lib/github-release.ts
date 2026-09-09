@@ -89,6 +89,7 @@ interface GitHubRelease {
   target_commitish?: string
   author?: GitHubUser
   assets?: GitHubReleaseAsset[]
+  prerelease?: boolean
 }
 
 interface GitHubCommit {
@@ -131,7 +132,10 @@ async function fetchGithubJson<T>(
   }
 }
 
-export async function fetchLatestDesktopRelease(): Promise<DesktopReleaseInfo | null> {
+export async function fetchLatestDesktopReleases(): Promise<{
+  stable: DesktopReleaseInfo | null
+  beta: DesktopReleaseInfo | null
+}> {
   try {
     const headers: HeadersInit = {
       Accept: 'application/vnd.github.v3+json',
@@ -146,138 +150,147 @@ export async function fetchLatestDesktopRelease(): Promise<DesktopReleaseInfo | 
       headers,
     )
 
-    if (!releases || !Array.isArray(releases)) return null
+    if (!releases || !Array.isArray(releases))
+      return { stable: null, beta: null }
 
-    // Locate latest release matching @mr-tick/desktop@*
-    const desktopRelease = releases.find((r: GitHubRelease) =>
+    const desktopReleases = releases.filter((r: GitHubRelease) =>
       r.tag_name?.startsWith('@mr-tick/desktop@'),
     )
 
-    if (!desktopRelease) return null
-
-    const rawVersion = desktopRelease.tag_name.replace('@mr-tick/desktop@', '')
-    const version = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`
-
-    // Parse installer (.exe) & portable (.zip)
-    const installerAsset = desktopRelease.assets?.find(
-      (a: GitHubReleaseAsset) => a.name.endsWith('.exe'),
+    const stableRelease = desktopReleases.find(
+      (r) => !r.prerelease && !r.tag_name.includes('-beta'),
     )
-    const portableAsset = desktopRelease.assets?.find((a: GitHubReleaseAsset) =>
-      a.name.endsWith('.zip'),
+    const betaRelease = desktopReleases.find(
+      (r) => r.prerelease || r.tag_name.includes('-beta'),
     )
 
-    const installerSha256 = installerAsset?.digest || null
-    const portableSha256 = portableAsset?.digest || null
+    const parseRelease = async (
+      release?: GitHubRelease,
+    ): Promise<DesktopReleaseInfo | null> => {
+      if (!release) return null
 
-    const installer = installerAsset
-      ? {
-          name: installerAsset.name,
-          downloadUrl: installerAsset.browser_download_url,
-          sizeFormatted: formatBytes(installerAsset.size),
-          bytes: installerAsset.size,
-          sha256: installerSha256,
-        }
-      : null
+      const rawVersion = release.tag_name.replace('@mr-tick/desktop@', '')
+      const version = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`
 
-    const portable = portableAsset
-      ? {
-          name: portableAsset.name,
-          downloadUrl: portableAsset.browser_download_url,
-          sizeFormatted: formatBytes(portableAsset.size),
-          bytes: portableAsset.size,
-          sha256: portableSha256,
-        }
-      : null
+      const installerAsset = release.assets?.find((a: GitHubReleaseAsset) =>
+        a.name.endsWith('.exe'),
+      )
+      const portableAsset = release.assets?.find((a: GitHubReleaseAsset) =>
+        a.name.endsWith('.zip'),
+      )
 
-    // Resolve release commit information
-    let commitInfo: DesktopReleaseInfo['commit'] = null
+      const installerSha256 = installerAsset?.digest || null
+      const portableSha256 = portableAsset?.digest || null
 
-    const extractReleaseCommit = (text?: string | null): string | null => {
-      if (!text) {
+      const installer = installerAsset
+        ? {
+            name: installerAsset.name,
+            downloadUrl: installerAsset.browser_download_url,
+            sizeFormatted: formatBytes(installerAsset.size),
+            bytes: installerAsset.size,
+            sha256: installerSha256,
+          }
+        : null
+
+      const portable = portableAsset
+        ? {
+            name: portableAsset.name,
+            downloadUrl: portableAsset.browser_download_url,
+            sizeFormatted: formatBytes(portableAsset.size),
+            bytes: portableAsset.size,
+            sha256: portableSha256,
+          }
+        : null
+
+      let commitInfo: DesktopReleaseInfo['commit'] = null
+
+      const extractReleaseCommit = (text?: string | null): string | null => {
+        if (!text) return null
+        const urlMatch = text.match(/commit\/([a-f0-9]{7,40})/)
+        if (urlMatch) return urlMatch[1]
+        const listMatch = text.match(/(?:^|\n)-\s*([a-f0-9]{7,40}):/)
+        if (listMatch) return listMatch[1]
         return null
       }
-      const urlMatch = text.match(/commit\/([a-f0-9]{7,40})/)
-      if (urlMatch) {
-        return urlMatch[1]
-      }
-      const listMatch = text.match(/(?:^|\n)-\s*([a-f0-9]{7,40}):/)
-      if (listMatch) {
-        return listMatch[1]
-      }
-      return null
-    }
 
-    const commitSha = extractReleaseCommit(desktopRelease.body)
+      const commitSha = extractReleaseCommit(release.body)
 
-    if (commitSha) {
-      try {
-        const commitData = await fetchGithubJson<GitHubCommit>(
-          `https://api.github.com/repos/Gustavohps10/mr-tick/commits/${commitSha}`,
-          headers,
-        )
+      if (commitSha) {
+        try {
+          const commitData = await fetchGithubJson<GitHubCommit>(
+            `https://api.github.com/repos/Gustavohps10/mr-tick/commits/${commitSha}`,
+            headers,
+          )
 
-        if (commitData && commitData.author) {
-          commitInfo = {
-            sha: commitData.sha,
-            shortSha: commitData.sha.substring(0, 7),
-            url: commitData.html_url,
-            author: {
-              login: commitData.author.login,
-              name: commitData.author.name || commitData.author.login,
-              avatarUrl: commitData.author.avatar_url,
-              profileUrl: commitData.author.html_url,
-            },
+          if (commitData && commitData.author) {
+            commitInfo = {
+              sha: commitData.sha,
+              shortSha: commitData.sha.substring(0, 7),
+              url: commitData.html_url,
+              author: {
+                login: commitData.author.login,
+                name: commitData.author.name || commitData.author.login,
+                avatarUrl: commitData.author.avatar_url,
+                profileUrl: commitData.author.html_url,
+              },
+            }
           }
+        } catch (e) {
+          console.warn('Could not resolve commit details for release:', e)
         }
-      } catch (e) {
-        console.warn('Could not resolve commit details for release:', e)
+      }
+
+      let resolvedPrNumber: string | null = null
+
+      if (release.body) {
+        const bodyPrMatch = release.body.match(/(?:pull\/|#)(\d+)/)
+        if (bodyPrMatch) {
+          resolvedPrNumber = bodyPrMatch[1]
+        }
+      }
+
+      if (!resolvedPrNumber && commitSha) {
+        try {
+          const pulls = await fetchGithubJson<GitHubPullRequest[]>(
+            `https://api.github.com/repos/Gustavohps10/mr-tick/commits/${commitSha}/pulls`,
+            headers,
+          )
+          if (pulls && Array.isArray(pulls) && pulls.length > 0) {
+            resolvedPrNumber = String(pulls[0].number)
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      const pr = resolvedPrNumber
+        ? {
+            number: resolvedPrNumber,
+            url: `https://github.com/Gustavohps10/mr-tick/pull/${resolvedPrNumber}`,
+          }
+        : null
+
+      return {
+        version,
+        rawVersion,
+        publishedAt: release.published_at,
+        formattedDate: formatReleaseDate(release.published_at),
+        releaseUrl: release.html_url,
+        pr,
+        installer,
+        portable,
+        commit: commitInfo,
       }
     }
 
-    // Resolve release PR
-    let resolvedPrNumber: string | null = null
+    const [stable, beta] = await Promise.all([
+      parseRelease(stableRelease),
+      parseRelease(betaRelease),
+    ])
 
-    if (desktopRelease.body) {
-      const bodyPrMatch = desktopRelease.body.match(/(?:pull\/|#)(\d+)/)
-      if (bodyPrMatch) {
-        resolvedPrNumber = bodyPrMatch[1]
-      }
-    }
-
-    if (!resolvedPrNumber && commitSha) {
-      try {
-        const pulls = await fetchGithubJson<GitHubPullRequest[]>(
-          `https://api.github.com/repos/Gustavohps10/mr-tick/commits/${commitSha}/pulls`,
-          headers,
-        )
-        if (pulls && Array.isArray(pulls) && pulls.length > 0) {
-          resolvedPrNumber = String(pulls[0].number)
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    const pr = resolvedPrNumber
-      ? {
-          number: resolvedPrNumber,
-          url: `https://github.com/Gustavohps10/mr-tick/pull/${resolvedPrNumber}`,
-        }
-      : null
-
-    return {
-      version,
-      rawVersion,
-      publishedAt: desktopRelease.published_at,
-      formattedDate: formatReleaseDate(desktopRelease.published_at),
-      releaseUrl: desktopRelease.html_url,
-      pr,
-      installer,
-      portable,
-      commit: commitInfo,
-    }
+    return { stable, beta }
   } catch (error) {
-    console.error('Error fetching latest desktop release:', error)
-    return null
+    console.error('Error fetching desktop releases:', error)
+    return { stable: null, beta: null }
   }
 }

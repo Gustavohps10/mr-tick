@@ -1,4 +1,4 @@
-﻿import { electronAPI } from '@electron-toolkit/preload'
+import { electronAPI } from '@electron-toolkit/preload'
 import { IOpenAPI } from '@mr-tick/application'
 import { contextBridge, ipcRenderer } from 'electron'
 
@@ -11,6 +11,7 @@ import {
   tasksInvoker,
   timeEntriesInvoker,
   tokenStorageInvoker,
+  updaterInvoker,
   workspacesInvoker,
 } from '@/main/invokers'
 
@@ -26,6 +27,7 @@ const api: IOpenAPI = {
     headers: headersInvoker,
     tokenStorage: tokenStorageInvoker,
     system: systemInvoker,
+    updater: updaterInvoker,
   },
   integrations: {
     addons: addonsInvoker,

@@ -617,7 +617,7 @@ function MockDesktopShell() {
 
       <main className="bg-background relative mt-1.5 flex min-h-0 w-full flex-1 overflow-hidden">
         {/* 1. AppRail Oficial na Extrema Esquerda */}
-        <AppRail onNewWorkspaceClick={() => {}} />
+        <AppRail onNewWorkspaceClick={() => {}} onSettingsClick={() => {}} />
 
         {/* 2. Seção Interna do Workspace com Borda Superior/Esquerda Arredondada */}
         <section className="border-border bg-background relative flex h-full min-h-0 flex-1 overflow-hidden rounded-tl-md border-t border-l">
