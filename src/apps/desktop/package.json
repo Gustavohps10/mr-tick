@@ -4,6 +4,11 @@
   "productName": "mr-tick",
   "version": "0.2.0",
   "description": "Mr-tick Desktop App.",
+  "author": "Gustavo Henrique",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Gustavohps10/mr-tick.git"
+  },
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
