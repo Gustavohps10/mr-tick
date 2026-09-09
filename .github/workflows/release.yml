@@ -64,6 +64,7 @@ jobs:
       has_desktop: ${{ steps.check_desktop.outputs.has_desktop }}
       desktop_version: ${{ steps.check_desktop.outputs.desktop_version }}
       desktop_tag: ${{ steps.check_desktop.outputs.desktop_tag }}
+      is_prerelease: ${{ steps.check_desktop.outputs.is_prerelease }}
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -107,6 +108,12 @@ jobs:
         run: |
           DESKTOP_VERSION=$(node -p "require('./src/apps/desktop/package.json').version")
           DESKTOP_TAG="@mr-tick/desktop@$DESKTOP_VERSION"
+          
+          if [[ "$DESKTOP_VERSION" == *"-"* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
           
           # Check if assets (.exe / .zip) already exist in the release for this tag
           HAS_ASSETS=$(gh release view "$DESKTOP_TAG" --json assets -q '.assets | length' 2>/dev/null || echo "0")
@@ -185,6 +192,6 @@ jobs:
             src/apps/desktop/.output/*.blockmap
           generate_release_notes: false
           draft: false
-          prerelease: false
+          prerelease: ${{ needs.release.outputs.is_prerelease == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
