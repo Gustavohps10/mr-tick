@@ -11,5 +11,7 @@
     "@mr-tick/shared": "1.0.0",
     "@mr-tick/ui": "1.0.3"
   },
-  "changesets": []
+  "changesets": [
+    "quiet-houses-carry"
+  ]
 }
