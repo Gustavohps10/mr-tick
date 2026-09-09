@@ -165,7 +165,10 @@ jobs:
         run: yarn turbo run build --filter=@mr-tick/desktop
 
       - name: Package with Electron Builder
-        run: yarn --cwd src/apps/desktop electron-builder --win
+        run: yarn --cwd src/apps/desktop electron-builder --win --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract Release Notes
         id: extract_notes
