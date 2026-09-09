@@ -103,6 +103,7 @@ jobs:
 
       - name: Check if Desktop Release Needed & Push Desktop Tag
         id: check_desktop
+        if: steps.changesets.outputs.hasChangesets == 'false'
         run: |
           DESKTOP_VERSION=$(node -p "require('./src/apps/desktop/package.json').version")
           DESKTOP_TAG="@mr-tick/desktop@$DESKTOP_VERSION"
