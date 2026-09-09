@@ -73,6 +73,10 @@ export const IpcChannels = {
   ADDONS_SET_ACTIVE_WORKSPACE: 'addons:set-active-workspace',
   ADDONS_GET_ACTIVE_THEME: 'addons:get-active-theme',
   ADDONS_SET_ACTIVE_THEME: 'addons:set-active-theme',
+
+  UPDATER_CHECK: 'updater:check',
+  UPDATER_DOWNLOAD: 'updater:download',
+  UPDATER_INSTALL: 'updater:install',
 } as const
 
 export type IpcChannelType = keyof typeof IpcChannels

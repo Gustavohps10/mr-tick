@@ -411,6 +411,7 @@ export interface MoveToDisplayInput {
 export interface AppSettings {
   startMinimized?: boolean
   activeThemeId?: string | null
+  allowBeta?: boolean
 }
 
 export interface RawKeyInputEvent {
@@ -468,6 +469,24 @@ export interface IEventAPI {
   emit?<T = unknown>(channel: string, data?: T): void
 }
 
+export interface UpdaterInfo {
+  version: string
+  releaseDate: string
+}
+
+export interface UpdaterProgress {
+  percent: number
+  transferred: number
+  total: number
+  bytesPerSecond: number
+}
+
+export interface IUpdaterAPI {
+  checkForUpdates(): Promise<void>
+  downloadUpdate(): Promise<void>
+  quitAndInstall(): Promise<void>
+}
+
 export interface IOpenAPI {
   timer: ITimerAPI
   services: {
@@ -481,6 +500,7 @@ export interface IOpenAPI {
     headers: IHeadersAPI
     tokenStorage: ITokenStorageAPI
     system: ISystemAPI
+    updater: IUpdaterAPI
   }
   integrations: {
     addons: IAddonsAPI

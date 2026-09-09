@@ -1,11 +1,11 @@
-import { fetchLatestDesktopRelease } from '@/lib/github-release'
+import { fetchLatestDesktopReleases } from '@/lib/github-release'
 
 import { DownloadView } from './download-view'
 
 export const revalidate = 60
 
 export default async function DownloadPage() {
-  const release = await fetchLatestDesktopRelease()
+  const { stable, beta } = await fetchLatestDesktopReleases()
 
-  return <DownloadView release={release} />
+  return <DownloadView stable={stable} beta={beta} />
 }

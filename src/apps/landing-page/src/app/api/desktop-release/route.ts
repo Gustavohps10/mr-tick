@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server'
 
-import { fetchLatestDesktopRelease } from '@/lib/github-release'
+import { fetchLatestDesktopReleases } from '@/lib/github-release'
 
 export const revalidate = 60
 
 export async function GET() {
-  const release = await fetchLatestDesktopRelease()
-  if (!release) {
+  const { stable } = await fetchLatestDesktopReleases()
+  if (!stable) {
     return NextResponse.json({ error: 'No release found' }, { status: 404 })
   }
-  return NextResponse.json(release)
+  return NextResponse.json(stable)
 }

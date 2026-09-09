@@ -39,6 +39,7 @@ import {
   TasksHandler,
   TimeEntriesHandler,
   TokenHandler,
+  UpdaterHandler,
 } from '@/main/handlers'
 import { AddonsHandler } from '@/main/handlers/AddonsHandler'
 import { MetadataHandler } from '@/main/handlers/MetadataHandler'
@@ -46,6 +47,7 @@ import { WorkspacesHandler } from '@/main/handlers/WorkspacesHandler'
 import { DataSourceResolver } from '@/main/resolvers/data-source-resolver'
 import { openIpcRoutes } from '@/main/routes'
 import { AddonLoader } from '@/main/services/AddonLoader'
+import { UpdaterService } from '@/main/services/UpdaterService'
 import { getSettings } from '@/main/settings'
 import { createTray } from '@/main/tray'
 
@@ -70,6 +72,7 @@ export type IHandlersScope = {
   workspacesHandler: typeof WorkspacesHandler
   addonsHandler: typeof AddonsHandler
   metadataHandler: typeof MetadataHandler
+  updaterHandler: typeof UpdaterHandler
 }
 
 // --------------------------------------------------
@@ -442,6 +445,9 @@ if (!gotTheLock) {
       )
     }
 
+    const updaterService = new UpdaterService()
+    updaterService.init()
+
     const localDataSourceResolver = new DataSourceResolver(
       workspacesRepository,
       credentialsStorage,
@@ -476,10 +482,11 @@ if (!gotTheLock) {
         workspacesHandler: WorkspacesHandler,
         addonsHandler: AddonsHandler,
         metadataHandler: MetadataHandler,
+        updaterHandler: UpdaterHandler,
       })
       .build()
 
-    serviceProvider.include({ addonLoader })
+    serviceProvider.include({ addonLoader, updaterService })
 
     openIpcRoutes(serviceProvider, nativeOverlay)
 

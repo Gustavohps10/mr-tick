@@ -13,6 +13,7 @@ import {
   TasksHandler,
   TimeEntriesHandler,
   TokenHandler,
+  UpdaterHandler,
 } from '@/main/handlers'
 import { AddonsHandler } from '@/main/handlers/AddonsHandler'
 import { MetadataHandler } from '@/main/handlers/MetadataHandler'
@@ -52,8 +53,18 @@ export function openIpcRoutes(
   const addonsHandler = serviceProvider.resolve<AddonsHandler>('addonsHandler')
   const dataSourceResolver =
     serviceProvider.resolve<IDataSourceResolver>('dataSourceResolver')
+  const updaterHandler =
+    serviceProvider.resolve<UpdaterHandler>('updaterHandler')
 
   // --- SYSTEM ---
+  IpcHandler.register('UPDATER_CHECK', (e) => updaterHandler.checkForUpdates(e))
+  IpcHandler.register('UPDATER_DOWNLOAD', (e) =>
+    updaterHandler.downloadUpdate(e),
+  )
+  IpcHandler.register('UPDATER_INSTALL', (e) =>
+    updaterHandler.quitAndInstall(e),
+  )
+
   IpcHandler.register('SYSTEM_VERSION', () => Promise.resolve(app.getVersion()))
   IpcHandler.register('SYSTEM_GET_ENVIRONMENT', () =>
     Promise.resolve({

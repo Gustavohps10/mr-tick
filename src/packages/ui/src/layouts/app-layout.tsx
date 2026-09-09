@@ -7,6 +7,7 @@ import { AppRail } from '@/components/app-rail'
 import { DraftWorkspacesPanel } from '@/components/draft-workspace-panel'
 import { Header } from '@/components/header'
 import { NewWorkspaceDialog } from '@/components/new-workspace-dialog'
+import { GlobalSettingsDialog } from '@/components/settings/global-settings-dialog'
 import { TitleBar } from '@/components/title-bar'
 import { Toaster } from '@/components/ui/sonner'
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext'
@@ -16,6 +17,7 @@ import { SyncProvider } from '@/stores/syncStore'
 
 export function AppLayout() {
   const [workspaceDialogIsOpen, setWorkspaceDialogIsOpen] = useState(false)
+  const [settingsDialogIsOpen, setSettingsDialogIsOpen] = useState(false)
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<
     string | undefined
   >()
@@ -67,12 +69,17 @@ export function AppLayout() {
                 setIsOpen={setWorkspaceDialogIsOpen}
                 setWorkspaceId={setActiveWorkspaceId}
               />
+              <GlobalSettingsDialog
+                isOpen={settingsDialogIsOpen}
+                setIsOpen={setSettingsDialogIsOpen}
+              />
               {/* Sidebar */}
               <AppRail
                 onNewWorkspaceClick={() => {
                   setActiveWorkspaceId(undefined)
                   setWorkspaceDialogIsOpen(true)
                 }}
+                onSettingsClick={() => setSettingsDialogIsOpen(true)}
               />
 
               {/* Painel de drafts */}

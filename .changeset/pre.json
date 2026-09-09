@@ -1,0 +1,15 @@
+{
+  "mode": "pre",
+  "tag": "beta",
+  "initialVersions": {
+    "@mr-tick/desktop": "0.2.0",
+    "@mr-tick/landing-page": "0.1.1",
+    "@mr-tick/sdk": "0.3.0",
+    "@mr-tick/adapters": "1.0.0",
+    "@mr-tick/application": "1.0.0",
+    "@mr-tick/domain": "1.0.0",
+    "@mr-tick/shared": "1.0.0",
+    "@mr-tick/ui": "1.0.3"
+  },
+  "changesets": []
+}
