@@ -457,14 +457,26 @@ export class AddonsFacade implements IAddonsFacade {
       const entries = await fs.readdir(dir, { withFileTypes: true })
       for (const entry of entries) {
         const fullPath = join(dir, entry.name)
-        if (entry.isDirectory()) {
+        let isDirectory = entry.isDirectory()
+
+        if (entry.isSymbolicLink()) {
+          try {
+            const stats = await fs.stat(fullPath)
+            isDirectory = stats.isDirectory()
+          } catch {
+            isDirectory = false
+          }
+        }
+
+        if (isDirectory) {
           const nested = await this.findManifestFiles(fullPath)
           manifestPaths.push(...nested)
         }
-        if (
-          entry.isFile() &&
-          (entry.name === 'manifest.yaml' || entry.name === 'manifest.yml')
-        ) {
+
+        const isManifestFile =
+          entry.name === 'manifest.yaml' || entry.name === 'manifest.yml'
+
+        if (isManifestFile) {
           manifestPaths.push(fullPath)
         }
       }

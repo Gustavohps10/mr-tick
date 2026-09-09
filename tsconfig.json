@@ -27,5 +27,10 @@
     "src/**/*.tsx",
     "vitest.setup.ts",
     "mocks/**/*.ts"
+  ],
+  "exclude": [
+    "src/dev-addons",
+    "node_modules",
+    "dist"
   ]
 }

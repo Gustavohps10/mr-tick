@@ -4,7 +4,12 @@ import {
   IAddonsFacade,
   IImportAddonUseCase,
 } from '@mr-tick/application'
-import { AddonSettingsSchema } from '@mr-tick/sdk'
+import {
+  AddonActionResponse,
+  AddonSettingsSchema,
+  type SidebarMenuItem,
+  type TimerbarMenuItem,
+} from '@mr-tick/sdk'
 import { createResponseViewModel } from '@mr-tick/shared/helpers'
 import {
   IEventEmitter,
@@ -19,137 +24,10 @@ import {
   PaginatedViewModel,
   ViewModel,
 } from '@mr-tick/shared/view-models'
-import { app, type IpcMainInvokeEvent } from 'electron'
+import { type IpcMainInvokeEvent } from 'electron'
 
 import { HandlerBase } from '@/main/handlers/HandlerBase'
-import {
-  FAKE_DATASOURCE_ADDON_ID,
-  REDMINE4TEST_ADDON_ID,
-} from '@/main/resolvers/data-source-resolver'
-
-const DEV_FAKE_MANIFEST: AddonManifest = {
-  id: FAKE_DATASOURCE_ADDON_ID,
-  name: 'DataSource Fake (Testes)',
-  creator: 'Mr-tick',
-  description:
-    'Datasource mock com 1000 tarefas e 1000 apontamentos locais para testes e validação de envio de dados.',
-  path: '',
-  logo: '',
-  downloads: 0,
-  version: '1.0.0',
-  stars: 0,
-  installed: true,
-  category: 'DataSources',
-  tags: ['teste', 'mock', 'desenvolvimento'],
-}
-
-const DEV_REDMINE_MANIFEST: AddonManifest = {
-  id: REDMINE4TEST_ADDON_ID,
-  name: 'Redmine (Oficial)',
-  creator: 'Mr-tick',
-  description: 'Conector Redmine para testes.',
-  path: '',
-  logo: 'https://raw.githubusercontent.com/Gustavohps10/redmine-plugin/main/src/icon.png',
-  downloads: 0,
-  version: '1.0.4',
-  stars: 0,
-  installed: true,
-  category: 'DataSources',
-  tags: ['redmine', 'datasource', 'theme', 'tema', 'teste'],
-}
-
-const DEV_MRTICK_AI_MANIFEST: AddonManifest = {
-  id: '@mr-tick/mr-tick-ai-for-tests',
-  name: 'Mr-tick AI (Testes)',
-  creator: 'Mr-tick',
-  description: 'Addon de IA para testes de OCR e análise de atividade visual.',
-  path: '',
-  logo: 'Sparkles',
-  downloads: 0,
-  version: '1.0.0',
-  stars: 0,
-  installed: true,
-  category: 'Watchers',
-  tags: ['ai', 'ocr', 'teste'],
-}
-
-const DEV_DISCORD_MANIFEST: AddonManifest = {
-  id: '@mr-tick/discord-for-tests',
-  name: 'Discord Presence',
-  creator: 'Mr-tick',
-  description: 'Sincroniza status do timer no Discord',
-  path: '',
-  logo: 'https://cdn.prod.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png',
-  downloads: 0,
-  version: '1.0.0',
-  stars: 0,
-  installed: true,
-  category: 'Watchers',
-  tags: ['discord', 'watcher', 'teste'],
-}
-
-const DEV_FAKE_WATCHER_MANIFEST: AddonManifest = {
-  id: '@mr-tick/fake-watcher-for-tests',
-  name: 'Fake Watcher',
-  creator: 'Mr-tick',
-  description: 'Watcher falso para testes',
-  path: '',
-  logo: '',
-  downloads: 0,
-  version: '1.0.0',
-  stars: 0,
-  installed: true,
-  category: 'Watchers',
-  tags: ['watcher', 'teste'],
-}
-
-const DEV_SUPABASE_THEME_MANIFEST: AddonManifest = {
-  id: '@mr-tick/supabase-theme',
-  name: 'Supabase Emerald',
-  creator: 'Mr-tick',
-  description: 'Tema verde esmeralda inspirado no Supabase.',
-  path: '',
-  logo: 'Palette',
-  downloads: 0,
-  version: '1.0.0',
-  stars: 0,
-  installed: true,
-  category: 'Themes',
-  tags: ['theme', 'tema', 'supabase', 'dark'],
-}
-
-const DEV_PURPLE_THEME_MANIFEST: AddonManifest = {
-  id: '@mr-tick/purple-theme',
-  name: 'Purple Neon',
-  creator: 'Mr-tick',
-  description: 'Tema roxo vibrante neon.',
-  path: '',
-  logo: 'Palette',
-  downloads: 0,
-  version: '1.0.0',
-  stars: 0,
-  installed: true,
-  category: 'Themes',
-  tags: ['theme', 'tema', 'purple', 'neon'],
-}
-
-const DEV_ADDONS: AddonManifest[] = [
-  DEV_FAKE_MANIFEST,
-  DEV_REDMINE_MANIFEST,
-  DEV_MRTICK_AI_MANIFEST,
-  DEV_DISCORD_MANIFEST,
-  DEV_FAKE_WATCHER_MANIFEST,
-  DEV_SUPABASE_THEME_MANIFEST,
-  DEV_PURPLE_THEME_MANIFEST,
-]
-
-import { SidebarMenuItem, TimerbarMenuItem } from '@mr-tick/sdk'
-
 import { AddonLoader } from '@/main/services/AddonLoader'
-
-function isDevelopment(): boolean {
-  return !app.isPackaged
-}
 
 export class AddonsHandler implements HandlerBase<AddonsHandler> {
   constructor(
@@ -177,10 +55,15 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     }
   }
 
-  public async executeCommand(
+  public async executeCommand<T = void>(
     _event: IpcMainInvokeEvent,
-    { body }: IRequest<{ commandId: string; args?: any[] }>,
-  ): Promise<ViewModel<any>> {
+    {
+      body,
+    }: IRequest<{
+      commandId: string
+      args?: Array<string | number | boolean | Record<string, string>>
+    }>,
+  ): Promise<ViewModel<T>> {
     if (!body?.commandId) {
       return {
         isSuccess: false,
@@ -189,7 +72,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       }
     }
     try {
-      const result = await this.addonLoader?.executeCommand(
+      const result = await this.addonLoader?.executeCommand<T>(
         body.commandId,
         ...(body.args ?? []),
       )
@@ -198,11 +81,13 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         statusCode: 200,
         data: result,
       }
-    } catch (err: any) {
+    } catch (err) {
+      const error =
+        err instanceof Error ? err.message : 'COMMAND_EXECUTION_FAILED'
       return {
         isSuccess: false,
         statusCode: 500,
-        error: err?.message ?? 'COMMAND_EXECUTION_FAILED',
+        error,
       }
     }
   }
@@ -218,7 +103,14 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       toastId?: string
     }>,
   ): Promise<ViewModel<string>> {
-    const id = this.addonLoader?.showToast(
+    if (!this.addonLoader) {
+      return {
+        isSuccess: false,
+        statusCode: 404,
+        error: 'LOADER_NOT_FOUND',
+      }
+    }
+    const id = this.addonLoader.showToast(
       body.type ?? 'info',
       body.message,
       body.title,
@@ -227,7 +119,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     return {
       isSuccess: true,
       statusCode: 200,
-      data: id ?? '',
+      data: id,
     }
   }
 
@@ -246,7 +138,9 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     _event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string }>,
   ): Promise<ViewModel<AddonSettingsSchema>> {
-    if (!this.addonLoader) return { isSuccess: true, data: [] }
+    if (!this.addonLoader) {
+      return { isSuccess: true, statusCode: 200, data: [] }
+    }
     try {
       if (body?.addonId && !this.addonLoader.hasActiveAddon(body.addonId)) {
         const installedResult = await this.addonsFacade.getInstalledById(
@@ -261,36 +155,47 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       }
 
       const schema = await this.addonLoader.getSettingsSchema(body.addonId)
-      return { isSuccess: true, data: schema }
-    } catch (e: unknown) {
-      return { isSuccess: false, error: (e as Error).message }
+      return { isSuccess: true, statusCode: 200, data: schema }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : 'FAILED_TO_GET_SCHEMA'
+      return { isSuccess: false, statusCode: 500, error }
     }
   }
 
   public async getSettings(
     _event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string }>,
-  ): Promise<ViewModel<Record<string, unknown>>> {
-    if (!this.addonLoader) return { isSuccess: true, data: {} }
+  ): Promise<ViewModel<Record<string, string | number | boolean | null>>> {
+    if (!this.addonLoader) {
+      return { isSuccess: true, statusCode: 200, data: {} }
+    }
     try {
       const data = await this.addonLoader.getAddonSettings(body.addonId)
-      return { isSuccess: true, data }
-    } catch (e: unknown) {
-      return { isSuccess: false, error: (e as Error).message }
+      return { isSuccess: true, statusCode: 200, data }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : 'FAILED_TO_GET_SETTINGS'
+      return { isSuccess: false, statusCode: 500, error }
     }
   }
 
   public async saveSettings(
     _event: IpcMainInvokeEvent,
-    { body }: IRequest<{ addonId: string; settings: Record<string, unknown> }>,
+    {
+      body,
+    }: IRequest<{
+      addonId: string
+      settings: Record<string, string | number | boolean | null>
+    }>,
   ): Promise<ViewModel<void>> {
-    if (!this.addonLoader)
-      return { isSuccess: false, error: 'LOADER_NOT_FOUND' }
+    if (!this.addonLoader) {
+      return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
+    }
     try {
       await this.addonLoader.saveAddonSettings(body.addonId, body.settings)
-      return { isSuccess: true }
-    } catch (e: unknown) {
-      return { isSuccess: false, error: (e as Error).message }
+      return { isSuccess: true, statusCode: 200 }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : 'FAILED_TO_SAVE_SETTINGS'
+      return { isSuccess: false, statusCode: 500, error }
     }
   }
 
@@ -298,10 +203,15 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     _event: IpcMainInvokeEvent,
     {
       body,
-    }: IRequest<{ addonId: string; actionId: string; payload?: unknown }>,
-  ): Promise<ViewModel<unknown>> {
-    if (!this.addonLoader)
-      return { isSuccess: false, error: 'LOADER_NOT_FOUND' }
+    }: IRequest<{
+      addonId: string
+      actionId: string
+      payload?: Record<string, string | number | boolean>
+    }>,
+  ): Promise<ViewModel<AddonActionResponse>> {
+    if (!this.addonLoader) {
+      return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
+    }
     try {
       if (body?.addonId && !this.addonLoader.hasActiveAddon(body.addonId)) {
         const installedResult = await this.addonsFacade.getInstalledById(
@@ -320,9 +230,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         body.actionId,
         body.payload,
       )
-      return { isSuccess: true, data }
-    } catch (e: unknown) {
-      return { isSuccess: false, error: (e as Error).message }
+      return { isSuccess: true, statusCode: 200, data }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : 'FAILED_TO_EXECUTE_ACTION'
+      return { isSuccess: false, statusCode: 500, error }
     }
   }
 
@@ -333,7 +244,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     if (this.addonLoader && body?.workspaceId) {
       this.addonLoader.setActiveWorkspace(body.workspaceId)
     }
-    return { isSuccess: true }
+    return { isSuccess: true, statusCode: 200 }
   }
 
   public async getActiveTheme(): Promise<
@@ -389,16 +300,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       return createResponseViewModel(result.forwardFailure())
     }
 
-    let installedItems = result.success
-
-    // Em modo de desenvolvimento, mescla os DEV_ADDONS caso ainda não existam no disco
-    if (isDevelopment()) {
-      const existingIds = new Set(installedItems.map((item) => item.id))
-      const extraDevAddons = DEV_ADDONS.filter(
-        (dev) => !existingIds.has(dev.id),
-      )
-      installedItems = [...installedItems, ...extraDevAddons]
-    }
+    const installedItems = result.success
 
     const viewModels = installedItems.map((item) => ({
       ...item,
@@ -438,12 +340,6 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     _event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string }>,
   ): Promise<ViewModel<AddonManifestViewModel>> {
-    if (isDevelopment()) {
-      const dev = DEV_ADDONS.find((a) => a.id === body.addonId)
-      if (dev) {
-        return { isSuccess: true, statusCode: 200, data: dev }
-      }
-    }
     const result = await this.addonsFacade.getInstalledById(body.addonId)
 
     return createResponseViewModel(result)
@@ -584,7 +480,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
 
       this.jobEmitter.emit(jobId, { status: 'progress', value: 100 })
       this.jobEmitter.emit(jobId, { status: 'done' })
-    } catch (err) {
+    } catch {
       this.jobEmitter.emit(jobId, {
         status: 'error',
         error: 'INSTALL_FAILED',

@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url'
 
 import { ICredentialsStorage } from '@mr-tick/application'
 import {
+  AddonActionResponse,
   AddonContext,
   AddonSettingsField,
   AddonSettingsSchema,
@@ -63,7 +64,10 @@ export class CommandRegistry implements ICommandRegistry {
     this.handlers.delete(id)
   }
 
-  async execute(id: string, ...args: any[]): Promise<any> {
+  async execute<T = void>(
+    id: string,
+    ...args: Array<string | number | boolean | Record<string, string>>
+  ): Promise<T> {
     const handler = this.handlers.get(id)
     if (!handler) {
       throw new Error(`Comando '${id}' não encontrado.`)
@@ -205,7 +209,35 @@ export class AddonLoader {
     }
   >()
 
-  constructor(private credentialsStorage: ICredentialsStorage) {}
+  constructor(private credentialsStorage: ICredentialsStorage) {
+    this.registerThemeCommands()
+    this.restoreActiveTheme()
+  }
+
+  private registerThemeCommands(): void {
+    this.commandRegistry.register('theme:set', async (themeId) => {
+      const targetThemeId = typeof themeId === 'string' ? themeId : null
+      this.setActiveTheme(targetThemeId)
+      return { status: 'success', themeId: targetThemeId }
+    })
+  }
+
+  private restoreActiveTheme(): void {
+    try {
+      const savedSettings = getSettings()
+      if (savedSettings?.activeThemeId) {
+        this.activeThemeId = savedSettings.activeThemeId
+        console.log(
+          `🎨 [AddonLoader] Tema ativo restaurado das configurações: ${this.activeThemeId}`,
+        )
+      }
+    } catch (err) {
+      console.error(
+        '❌ [AddonLoader] Erro ao restaurar tema das configurações:',
+        err,
+      )
+    }
+  }
 
   public showToast(
     type: 'info' | 'success' | 'warning' | 'error' | 'loading',
@@ -804,19 +836,26 @@ export class AddonLoader {
         const addonInstance: IAddon = new AddonClass()
         await this.activateAddon(addonId, addonInstance)
         return true
-      } else if (typeof AddonClass === 'object' && AddonClass !== null) {
-        await this.activateAddon(addonId, AddonClass as IAddon)
-        return true
-      } else {
-        console.warn(
-          `⚠️ [AddonLoader] Exportação padrão inválida para o addon "${addonId}" em: ${targetEntry}`,
-        )
-        return false
       }
-    } catch (err: any) {
+
+      if (
+        typeof AddonClass === 'object' &&
+        AddonClass !== null &&
+        isAddonInstance(AddonClass)
+      ) {
+        await this.activateAddon(addonId, AddonClass)
+        return true
+      }
+
+      console.warn(
+        `⚠️ [AddonLoader] Exportação padrão inválida para o addon "${addonId}" em: ${targetEntry}`,
+      )
+      return false
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
       console.error(
         `❌ [AddonLoader] Erro ao carregar addon "${addonId}" do disco (${addonFolderPath}):`,
-        err?.message || err,
+        message,
       )
       return false
     }
@@ -897,34 +936,26 @@ export class AddonLoader {
 
   public async getAddonSettings(
     addonId: string,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<Record<string, string | number | boolean | null>> {
     if (!this.activeWorkspaceId) return {}
     const workspaceId = this.activeWorkspaceId
     const masterKey = `ws_${workspaceId}_config`
     const raw = await this.credentialsStorage.getToken(addonId, masterKey)
     if (!raw) return {}
-    try {
-      return (JSON.parse(raw) as Record<string, unknown>) ?? {}
-    } catch {
-      return {}
-    }
+    return parseSettingsRecord(raw)
   }
 
   public async saveAddonSettings(
     addonId: string,
-    settings: Record<string, unknown>,
+    settings: Record<string, string | number | boolean | null>,
   ): Promise<void> {
     if (!this.activeWorkspaceId) return
     const workspaceId = this.activeWorkspaceId
     const masterKey = `ws_${workspaceId}_config`
-    let data: Record<string, unknown> = {}
+    let data: Record<string, string | number | boolean | null> = {}
     const raw = await this.credentialsStorage.getToken(addonId, masterKey)
     if (raw) {
-      try {
-        data = (JSON.parse(raw) as Record<string, unknown>) ?? {}
-      } catch {
-        data = {}
-      }
+      data = parseSettingsRecord(raw)
     }
     Object.assign(data, settings)
     await this.credentialsStorage.saveToken(
@@ -937,139 +968,19 @@ export class AddonLoader {
   public async executeAction(
     addonId: string,
     actionId: string,
-    payload?: unknown,
-  ): Promise<unknown> {
+    payload?: Record<string, string | number | boolean>,
+  ): Promise<AddonActionResponse> {
     const item = this.activeAddons.get(addonId)
-    if (!item?.instance?.executeAction) return null
+    if (!item?.instance?.executeAction) {
+      return { isSuccess: false, error: 'ADDON_NOT_ACTIVE' }
+    }
     if (payload && typeof payload === 'object' && 'workspaceId' in payload) {
-      const wsId = (payload as { workspaceId?: string }).workspaceId
-      if (wsId) {
+      const wsId = payload.workspaceId
+      if (typeof wsId === 'string') {
         this.setActiveWorkspace(wsId)
       }
     }
     return await item.instance.executeAction(actionId, payload)
-  }
-
-  public async initializeDevAddons(): Promise<void> {
-    try {
-      const redmineModule = await import('@mr-tick/redmine-for-tests')
-      const Redmine4Test = redmineModule.default
-      if (Redmine4Test && typeof Redmine4Test === 'function') {
-        const addonInstance = new (Redmine4Test as new () => IAddon)()
-        await this.activateAddon('@timelapse/redmine-plugin', addonInstance)
-      }
-    } catch (err) {
-      console.error(
-        '❌ [AddonLoader] Erro ao carregar addon Redmine4Test:',
-        err,
-      )
-    }
-
-    try {
-      const aiModule = await import('@mr-tick/mr-tick-ai-for-tests')
-      const MrTickAI4Test = aiModule.default
-      if (MrTickAI4Test && typeof MrTickAI4Test === 'function') {
-        const addonInstance = new (MrTickAI4Test as new () => IAddon)()
-        await this.activateAddon('@mr-tick/mr-tick-ai-for-tests', addonInstance)
-      }
-    } catch (err) {
-      console.error(
-        '❌ [AddonLoader] Erro ao carregar addon Mr-tickAI4Test:',
-        err,
-      )
-    }
-
-    try {
-      const watcherModule = await import('@mr-tick/fake-watcher-for-tests')
-      const FakeWatcherAddon = watcherModule.default
-      if (FakeWatcherAddon && typeof FakeWatcherAddon === 'function') {
-        const addonInstance = new (FakeWatcherAddon as new () => IAddon)()
-        await this.activateAddon(
-          '@mr-tick/fake-watcher-for-tests',
-          addonInstance,
-        )
-      }
-    } catch (err) {
-      console.error(
-        '❌ [AddonLoader] Erro ao carregar addon FakeWatcherForTests:',
-        err,
-      )
-    }
-
-    try {
-      const discordModule = await import('@mr-tick/discord-for-tests')
-      const DiscordAddon = discordModule.default
-      if (DiscordAddon && typeof DiscordAddon === 'function') {
-        const addonInstance = new (DiscordAddon as new () => IAddon)()
-        await this.activateAddon('@mr-tick/discord-for-tests', addonInstance)
-      }
-    } catch (err) {
-      console.error(
-        '❌ [AddonLoader] Erro ao carregar addon DiscordForTests:',
-        err,
-      )
-    }
-
-    this.commandRegistry.register('theme:set', async (themeId: unknown) => {
-      const targetThemeId = typeof themeId === 'string' ? themeId : null
-      this.setActiveTheme(targetThemeId)
-      return { status: 'success', themeId: targetThemeId }
-    })
-
-    try {
-      const fakeDsModule = await import('@mr-tick/datasource-fake')
-      const FakeDataSourceAddon = fakeDsModule.default
-      if (FakeDataSourceAddon && typeof FakeDataSourceAddon === 'function') {
-        const addonInstance = new (FakeDataSourceAddon as new () => IAddon)()
-        await this.activateAddon('mr-tick-datasource-fake', addonInstance)
-      }
-    } catch (err) {
-      console.error(
-        '❌ [AddonLoader] Erro ao carregar addon FakeDataSource:',
-        err,
-      )
-    }
-
-    try {
-      const supabaseModule = await import('@mr-tick/supabase-theme')
-      const SupabaseThemeAddon = supabaseModule.default
-      if (SupabaseThemeAddon && typeof SupabaseThemeAddon === 'function') {
-        const addonInstance = new (SupabaseThemeAddon as new () => IAddon)()
-        await this.activateAddon('@mr-tick/supabase-theme', addonInstance)
-      }
-    } catch (err) {
-      console.error(
-        '❌ [AddonLoader] Erro ao carregar addon SupabaseTheme:',
-        err,
-      )
-    }
-
-    try {
-      const purpleModule = await import('@mr-tick/purple-theme')
-      const PurpleThemeAddon = purpleModule.default
-      if (PurpleThemeAddon && typeof PurpleThemeAddon === 'function') {
-        const addonInstance = new (PurpleThemeAddon as new () => IAddon)()
-        await this.activateAddon('@mr-tick/purple-theme', addonInstance)
-      }
-    } catch (err) {
-      console.error('❌ [AddonLoader] Erro ao carregar addon PurpleTheme:', err)
-    }
-
-    // Restaura o tema ativo persistido nas configurações do app
-    try {
-      const savedSettings = getSettings()
-      if (savedSettings?.activeThemeId) {
-        this.activeThemeId = savedSettings.activeThemeId
-        console.log(
-          `🎨 [AddonLoader] Tema ativo restaurado das configurações: ${this.activeThemeId}`,
-        )
-      }
-    } catch (err) {
-      console.error(
-        '❌ [AddonLoader] Erro ao restaurar tema das configurações:',
-        err,
-      )
-    }
   }
 
   public getSidebarMenus(): SidebarMenuItem[] {
@@ -1127,8 +1038,11 @@ export class AddonLoader {
     }
   }
 
-  public async executeCommand(commandId: string, ...args: any[]): Promise<any> {
-    return await this.commandRegistry.execute(commandId, ...args)
+  public async executeCommand<T = void>(
+    commandId: string,
+    ...args: Array<string | number | boolean | Record<string, string>>
+  ): Promise<T> {
+    return await this.commandRegistry.execute<T>(commandId, ...args)
   }
 
   private getAddonSourceInfo(addonId: string): {
@@ -1147,5 +1061,27 @@ export class AddonLoader {
       name,
       imageUrl,
     }
+  }
+}
+
+function isAddonInstance(candidate: object): candidate is IAddon {
+  return 'activate' in candidate
+}
+
+function parseSettingsRecord(
+  raw: string,
+): Record<string, string | number | boolean | null> {
+  try {
+    const parsed = JSON.parse(raw)
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      !Array.isArray(parsed)
+    ) {
+      return parsed
+    }
+    return {}
+  } catch {
+    return {}
   }
 }
