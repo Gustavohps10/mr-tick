@@ -4,6 +4,8 @@ export interface DesktopReleaseInfo {
   publishedAt: string
   formattedDate: string
   releaseUrl: string
+  isBeta: boolean
+  isLatest: boolean
   pr: {
     number: string
     url: string
@@ -135,6 +137,8 @@ async function fetchGithubJson<T>(
 export async function fetchLatestDesktopReleases(): Promise<{
   stable: DesktopReleaseInfo | null
   beta: DesktopReleaseInfo | null
+  releases: DesktopReleaseInfo[]
+  defaultVersion: string
 }> {
   try {
     const headers: HeadersInit = {
@@ -150,25 +154,26 @@ export async function fetchLatestDesktopReleases(): Promise<{
       headers,
     )
 
-    if (!releases || !Array.isArray(releases))
-      return { stable: null, beta: null }
+    if (!releases || !Array.isArray(releases)) {
+      return { stable: null, beta: null, releases: [], defaultVersion: '' }
+    }
 
     const desktopReleases = releases.filter((r: GitHubRelease) =>
       r.tag_name?.startsWith('@mr-tick/desktop@'),
     )
 
-    const stableRelease = desktopReleases.find(
-      (r) => !r.prerelease && !r.tag_name.includes('-beta'),
-    )
-    const betaRelease = desktopReleases.find(
+    const rawBetaReleases = desktopReleases.filter(
       (r) => r.prerelease || r.tag_name.includes('-beta'),
+    )
+    const rawStableReleases = desktopReleases.filter(
+      (r) => !r.prerelease && !r.tag_name.includes('-beta'),
     )
 
     const parseRelease = async (
-      release?: GitHubRelease,
+      release: GitHubRelease,
+      isBeta: boolean,
+      isLatest: boolean,
     ): Promise<DesktopReleaseInfo | null> => {
-      if (!release) return null
-
       const rawVersion = release.tag_name.replace('@mr-tick/desktop@', '')
       const version = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`
 
@@ -276,6 +281,8 @@ export async function fetchLatestDesktopReleases(): Promise<{
         publishedAt: release.published_at,
         formattedDate: formatReleaseDate(release.published_at),
         releaseUrl: release.html_url,
+        isBeta,
+        isLatest,
         pr,
         installer,
         portable,
@@ -283,14 +290,37 @@ export async function fetchLatestDesktopReleases(): Promise<{
       }
     }
 
-    const [stable, beta] = await Promise.all([
-      parseRelease(stableRelease),
-      parseRelease(betaRelease),
+    const [parsedBetas, parsedStables] = await Promise.all([
+      Promise.all(rawBetaReleases.map((r) => parseRelease(r, true, false))),
+      Promise.all(
+        rawStableReleases.map((r, index) =>
+          parseRelease(r, false, index === 0),
+        ),
+      ),
     ])
 
-    return { stable, beta }
+    const validBetas = parsedBetas.filter(
+      (r): r is DesktopReleaseInfo => r !== null,
+    )
+    const validStables = parsedStables.filter(
+      (r): r is DesktopReleaseInfo => r !== null,
+    )
+
+    // Betas are listed ACIMA da latest (on top)
+    const allReleases = [...validBetas, ...validStables]
+
+    const latestStable = validStables[0] ?? null
+    const latestBeta = validBetas[0] ?? null
+    const defaultVersion = latestStable?.version ?? validBetas[0]?.version ?? ''
+
+    return {
+      stable: latestStable,
+      beta: latestBeta,
+      releases: allReleases,
+      defaultVersion,
+    }
   } catch (error) {
     console.error('Error fetching desktop releases:', error)
-    return { stable: null, beta: null }
+    return { stable: null, beta: null, releases: [], defaultVersion: '' }
   }
 }

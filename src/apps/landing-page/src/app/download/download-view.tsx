@@ -1,8 +1,21 @@
 'use client'
 
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@mr-tick/ui/components'
+import { cn } from '@mr-tick/ui/lib'
+import {
+  AlertTriangle,
   ArrowUpRight,
   Check,
+  ChevronsUpDown,
   Clock,
   Copy,
   Download,
@@ -26,12 +39,38 @@ import { Footer } from '../components/footer'
 import { Navbar } from '../components/navbar'
 
 interface DownloadViewProps {
-  stable: DesktopReleaseInfo | null
-  beta: DesktopReleaseInfo | null
+  releases: DesktopReleaseInfo[]
+  defaultVersion?: string
 }
 
-export function DownloadView({ stable: release, beta }: DownloadViewProps) {
+export function DownloadView({ releases, defaultVersion }: DownloadViewProps) {
+  const [selectedVersion, setSelectedVersion] = React.useState<string>(() => {
+    if (defaultVersion && releases.some((r) => r.version === defaultVersion)) {
+      return defaultVersion
+    }
+    const latest = releases.find((r) => r.isLatest)
+    return latest?.version ?? releases[0]?.version ?? ''
+  })
+
+  const release = React.useMemo(() => {
+    return (
+      releases.find((r) => r.version === selectedVersion) ?? releases[0] ?? null
+    )
+  }, [releases, selectedVersion])
+
+  const betaReleases = React.useMemo(
+    () => releases.filter((r) => r.isBeta),
+    [releases],
+  )
+  const stableReleases = React.useMemo(
+    () => releases.filter((r) => !r.isBeta),
+    [releases],
+  )
+
   const [copiedId, setCopiedId] = React.useState<string | null>(null)
+  const [open, setOpen] = React.useState(false)
+  const [confirmInstallerOpen, setConfirmInstallerOpen] = React.useState(false)
+  const [confirmPortableOpen, setConfirmPortableOpen] = React.useState(false)
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
@@ -50,10 +89,12 @@ export function DownloadView({ stable: release, beta }: DownloadViewProps) {
         {/* Header Hero Area */}
         <div className="container mx-auto px-6 text-center lg:px-8">
           <div className="border-border/80 bg-muted/50 text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-2 rounded-full border px-3.5 py-1 text-xs font-medium shadow-xs backdrop-blur-md transition-colors">
-            <Sparkles className="size-3 text-emerald-500" />
+            <Sparkles
+              className={`size-3 ${release?.isBeta ? 'text-amber-400' : 'text-emerald-500'}`}
+            />
             <span>
               {release?.version
-                ? `Latest Release · ${release.version}`
+                ? `${release.isBeta ? 'Beta Release' : 'Latest Release'} · ${release.version}`
                 : 'Latest Desktop Release'}
             </span>
           </div>
@@ -96,11 +137,115 @@ export function DownloadView({ stable: release, beta }: DownloadViewProps) {
                 <div>
                   <div className="flex flex-wrap items-center gap-2.5">
                     <h3 className="text-foreground text-lg font-semibold sm:text-xl">
-                      {release?.version ? `Build ${release.version}` : 'Build'}
+                      Build
                     </h3>
-                    <span className="inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-                      Production Ready
-                    </span>
+
+                    {releases.length > 0 ? (
+                      <Popover open={open} onOpenChange={setOpen} modal={false}>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            role="combobox"
+                            aria-expanded={open}
+                            className="border-border/80 bg-muted/40 hover:bg-muted/70 focus-visible:ring-ring flex h-7.5 w-auto min-w-[150px] cursor-pointer items-center justify-between gap-2.5 rounded-md border px-2.5 py-1 font-mono text-xs font-medium shadow-xs transition-colors outline-none focus-visible:ring-2"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>
+                                {release?.version ?? 'Select version'}
+                              </span>
+                              {release?.isBeta && (
+                                <span className="py-0.2 rounded border border-amber-500/30 bg-amber-500/15 px-1.5 text-[9px] font-semibold text-amber-400">
+                                  Beta
+                                </span>
+                              )}
+                              {release?.isLatest && (
+                                <span className="py-0.2 rounded border border-emerald-500/30 bg-emerald-500/15 px-1.5 text-[9px] font-semibold text-emerald-400">
+                                  Latest
+                                </span>
+                              )}
+                            </div>
+                            <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="w-[210px] p-0 font-mono"
+                        >
+                          <Command>
+                            <CommandList>
+                              <CommandEmpty>No version found.</CommandEmpty>
+                              {betaReleases.length > 0 && (
+                                <CommandGroup heading="Pre-releases / Beta">
+                                  {betaReleases.map((r) => (
+                                    <CommandItem
+                                      key={r.version}
+                                      value={r.version}
+                                      onSelect={() => {
+                                        setSelectedVersion(r.version)
+                                        setOpen(false)
+                                      }}
+                                      className="flex cursor-pointer items-center justify-between text-xs"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <Check
+                                          className={cn(
+                                            'size-3.5',
+                                            selectedVersion === r.version
+                                              ? 'opacity-100'
+                                              : 'opacity-0',
+                                          )}
+                                        />
+                                        <span>{r.version}</span>
+                                      </div>
+                                      <span className="py-0.2 rounded border border-amber-500/30 bg-amber-500/15 px-1.5 text-[9px] font-semibold text-amber-400">
+                                        Beta
+                                      </span>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )}
+
+                              {stableReleases.length > 0 && (
+                                <CommandGroup heading="Stable">
+                                  {stableReleases.map((r) => (
+                                    <CommandItem
+                                      key={r.version}
+                                      value={r.version}
+                                      onSelect={() => {
+                                        setSelectedVersion(r.version)
+                                        setOpen(false)
+                                      }}
+                                      className="flex cursor-pointer items-center justify-between text-xs"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <Check
+                                          className={cn(
+                                            'size-3.5',
+                                            selectedVersion === r.version
+                                              ? 'opacity-100'
+                                              : 'opacity-0',
+                                          )}
+                                        />
+                                        <span>{r.version}</span>
+                                      </div>
+                                      {r.isLatest && (
+                                        <span className="py-0.2 rounded border border-emerald-500/30 bg-emerald-500/15 px-1.5 text-[9px] font-semibold text-emerald-400">
+                                          Latest
+                                        </span>
+                                      )}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    ) : (
+                      <span className="text-foreground text-lg font-semibold sm:text-xl">
+                        {release?.version ?? ''}
+                      </span>
+                    )}
                   </div>
                   {release?.formattedDate && (
                     <p className="text-muted-foreground mt-1 text-xs">
@@ -239,7 +384,7 @@ export function DownloadView({ stable: release, beta }: DownloadViewProps) {
                             onClick={() =>
                               copyToClipboard(installerSha, 'win-setup')
                             }
-                            className="border-border/70 bg-muted/40 hover:bg-muted/70 hover:border-border text-muted-foreground hover:text-foreground group flex min-w-0 flex-1 items-center justify-between rounded-md border px-2.5 py-1 text-left font-mono text-[10px] transition-colors"
+                            className="border-border/70 bg-muted/40 hover:bg-muted/70 hover:border-border text-muted-foreground hover:text-foreground group flex min-w-0 flex-1 cursor-pointer items-center justify-between rounded-md border px-2.5 py-1 text-left font-mono text-[10px] transition-colors"
                             title="Click to copy SHA-256"
                           >
                             <span className="truncate">{installerSha}</span>
@@ -263,7 +408,7 @@ export function DownloadView({ stable: release, beta }: DownloadViewProps) {
                             onClick={() =>
                               copyToClipboard(portableSha, 'win-zip')
                             }
-                            className="border-border/70 bg-muted/40 hover:bg-muted/70 hover:border-border text-muted-foreground hover:text-foreground group flex min-w-0 flex-1 items-center justify-between rounded-md border px-2.5 py-1 text-left font-mono text-[10px] transition-colors"
+                            className="border-border/70 bg-muted/40 hover:bg-muted/70 hover:border-border text-muted-foreground hover:text-foreground group flex min-w-0 flex-1 cursor-pointer items-center justify-between rounded-md border px-2.5 py-1 text-left font-mono text-[10px] transition-colors"
                             title="Click to copy SHA-256"
                           >
                             <span className="truncate">{portableSha}</span>
@@ -288,75 +433,200 @@ export function DownloadView({ stable: release, beta }: DownloadViewProps) {
 
                 <div className="flex flex-col gap-2">
                   {/* Button 1: Download for x64 */}
-                  {release?.installer && (
-                    <a
-                      href={release.installer.downloadUrl}
-                      download
-                      className="border-border hover:border-primary/50 bg-primary/10 hover:bg-primary/15 text-foreground group flex items-center justify-between rounded-lg border p-2.5 shadow-xs transition-all"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className="bg-primary text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-md text-[10px] font-bold">
-                          x64
-                        </span>
-                        <div className="flex flex-col text-left">
-                          <span className="text-xs font-semibold">
-                            Download for x64
+                  {release?.installer &&
+                    (release.isBeta ? (
+                      <Popover
+                        open={confirmInstallerOpen}
+                        onOpenChange={setConfirmInstallerOpen}
+                        modal={false}
+                      >
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="border-border text-foreground group flex w-full cursor-pointer items-center justify-between rounded-lg border bg-amber-500/10 p-2.5 shadow-xs transition-all hover:border-amber-500/50 hover:bg-amber-500/15"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-amber-500 text-[10px] font-bold text-black">
+                                x64
+                              </span>
+                              <div className="flex flex-col text-left">
+                                <span className="text-xs font-semibold">
+                                  Download for x64 ({release.version})
+                                </span>
+                                <span className="text-muted-foreground text-[10px]">
+                                  {release.installer.sizeFormatted}
+                                </span>
+                              </div>
+                            </div>
+                            <Download className="size-4 text-amber-500 transition-colors group-hover:text-amber-400" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="center"
+                          className="w-[320px] p-4 font-mono"
+                        >
+                          <div className="flex flex-col gap-3">
+                            <div className="flex items-start gap-2.5">
+                              <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-amber-500/30 bg-amber-500/15 text-amber-500">
+                                <AlertTriangle className="size-4" />
+                              </div>
+                              <div>
+                                <h5 className="text-foreground text-xs font-semibold">
+                                  Versão Beta Experimental
+                                </h5>
+                                <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+                                  Você está realizando o download de uma versão
+                                  Beta (
+                                  <span className="font-semibold text-amber-400">
+                                    {release.version}
+                                  </span>
+                                  ). Por se tratar de um pré-lançamento em teste
+                                  ativo, ela pode conter instabilidades ou
+                                  comportamentos inesperados.
+                                </p>
+                              </div>
+                            </div>
+                            <div className="border-border/60 flex items-center justify-end gap-2 border-t pt-2">
+                              <button
+                                type="button"
+                                onClick={() => setConfirmInstallerOpen(false)}
+                                className="border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground cursor-pointer rounded border px-2.5 py-1 text-[11px] font-medium transition-colors"
+                              >
+                                Cancelar
+                              </button>
+                              <a
+                                href={release.installer.downloadUrl}
+                                download
+                                onClick={() => setConfirmInstallerOpen(false)}
+                                className="inline-flex cursor-pointer items-center gap-1.5 rounded bg-amber-500 px-3 py-1 text-[11px] font-semibold text-black shadow-xs transition-colors hover:bg-amber-400"
+                              >
+                                <Download className="size-3" />
+                                <span>Prosseguir</span>
+                              </a>
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    ) : (
+                      <a
+                        href={release.installer.downloadUrl}
+                        download
+                        className="border-border hover:border-primary/50 bg-primary/10 hover:bg-primary/15 text-foreground group flex cursor-pointer items-center justify-between rounded-lg border p-2.5 shadow-xs transition-all"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="bg-primary text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-md text-[10px] font-bold">
+                            x64
                           </span>
-                          <span className="text-muted-foreground text-[10px]">
-                            {release.installer.sizeFormatted}
-                          </span>
+                          <div className="flex flex-col text-left">
+                            <span className="text-xs font-semibold">
+                              Download for x64 ({release.version})
+                            </span>
+                            <span className="text-muted-foreground text-[10px]">
+                              {release.installer.sizeFormatted}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      <Download className="text-muted-foreground group-hover:text-foreground size-4 transition-colors" />
-                    </a>
-                  )}
-
-                  {beta?.installer && (
-                    <a
-                      href={beta.installer.downloadUrl}
-                      download
-                      className="border-border text-foreground group flex items-center justify-between rounded-lg border bg-amber-500/10 p-2.5 shadow-xs transition-all hover:border-amber-500/50 hover:bg-amber-500/15"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-amber-500 text-[10px] font-bold text-black">
-                          beta
-                        </span>
-                        <div className="flex flex-col text-left">
-                          <span className="text-xs font-semibold">
-                            Download Beta ({beta.version})
-                          </span>
-                          <span className="text-muted-foreground text-[10px]">
-                            {beta.installer.sizeFormatted}
-                          </span>
-                        </div>
-                      </div>
-                      <Download className="size-4 text-amber-500 transition-colors group-hover:text-amber-400" />
-                    </a>
-                  )}
+                        <Download className="text-muted-foreground group-hover:text-foreground size-4 transition-colors" />
+                      </a>
+                    ))}
 
                   {/* Button 2: Download Portable .zip */}
-                  {release?.portable && (
-                    <a
-                      href={release.portable.downloadUrl}
-                      download
-                      className="border-border hover:border-border/80 bg-muted/30 hover:bg-muted/60 text-foreground group flex items-center justify-between rounded-lg border p-2.5 shadow-xs transition-all"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className="border-border bg-muted text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-md border text-[10px] font-bold">
-                          zip
-                        </span>
-                        <div className="flex flex-col text-left">
-                          <span className="text-xs font-semibold">
-                            Download Portable
+                  {release?.portable &&
+                    (release.isBeta ? (
+                      <Popover
+                        open={confirmPortableOpen}
+                        onOpenChange={setConfirmPortableOpen}
+                        modal={false}
+                      >
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="border-border/80 bg-muted/30 hover:bg-muted/60 text-foreground group flex w-full cursor-pointer items-center justify-between rounded-lg border p-2.5 shadow-xs transition-all hover:border-amber-500/40"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <span className="border-border bg-muted text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-md border text-[10px] font-bold">
+                                zip
+                              </span>
+                              <div className="flex flex-col text-left">
+                                <span className="text-xs font-semibold">
+                                  Download Portable ({release.version})
+                                </span>
+                                <span className="text-muted-foreground text-[10px]">
+                                  {release.portable.sizeFormatted}
+                                </span>
+                              </div>
+                            </div>
+                            <FolderArchive className="text-muted-foreground group-hover:text-foreground size-4 transition-colors" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="center"
+                          className="w-[320px] p-4 font-mono"
+                        >
+                          <div className="flex flex-col gap-3">
+                            <div className="flex items-start gap-2.5">
+                              <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-amber-500/30 bg-amber-500/15 text-amber-500">
+                                <AlertTriangle className="size-4" />
+                              </div>
+                              <div>
+                                <h5 className="text-foreground text-xs font-semibold">
+                                  Versão Beta Experimental
+                                </h5>
+                                <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+                                  Você está realizando o download de uma versão
+                                  Beta (
+                                  <span className="font-semibold text-amber-400">
+                                    {release.version}
+                                  </span>
+                                  ). Por se tratar de um pré-lançamento em teste
+                                  ativo, ela pode conter instabilidades ou
+                                  comportamentos inesperados.
+                                </p>
+                              </div>
+                            </div>
+                            <div className="border-border/60 flex items-center justify-end gap-2 border-t pt-2">
+                              <button
+                                type="button"
+                                onClick={() => setConfirmPortableOpen(false)}
+                                className="border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground cursor-pointer rounded border px-2.5 py-1 text-[11px] font-medium transition-colors"
+                              >
+                                Cancelar
+                              </button>
+                              <a
+                                href={release.portable.downloadUrl}
+                                download
+                                onClick={() => setConfirmPortableOpen(false)}
+                                className="inline-flex cursor-pointer items-center gap-1.5 rounded bg-amber-500 px-3 py-1 text-[11px] font-semibold text-black shadow-xs transition-colors hover:bg-amber-400"
+                              >
+                                <FolderArchive className="size-3" />
+                                <span>Prosseguir</span>
+                              </a>
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    ) : (
+                      <a
+                        href={release.portable.downloadUrl}
+                        download
+                        className="border-border hover:border-border/80 bg-muted/30 hover:bg-muted/60 text-foreground group flex cursor-pointer items-center justify-between rounded-lg border p-2.5 shadow-xs transition-all"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="border-border bg-muted text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-md border text-[10px] font-bold">
+                            zip
                           </span>
-                          <span className="text-muted-foreground text-[10px]">
-                            {release.portable.sizeFormatted}
-                          </span>
+                          <div className="flex flex-col text-left">
+                            <span className="text-xs font-semibold">
+                              Download Portable ({release.version})
+                            </span>
+                            <span className="text-muted-foreground text-[10px]">
+                              {release.portable.sizeFormatted}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      <FolderArchive className="text-muted-foreground group-hover:text-foreground size-4 transition-colors" />
-                    </a>
-                  )}
+                        <FolderArchive className="text-muted-foreground group-hover:text-foreground size-4 transition-colors" />
+                      </a>
+                    ))}
                 </div>
               </div>
             </div>
