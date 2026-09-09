@@ -1,5 +1,11 @@
 ﻿# @mr-tick/desktop
 
+## 0.2.0
+
+### Minor Changes
+
+- 5075727: Adiciona suporte ao desacoplamento de addons em ambiente de desenvolvimento via symlink e CLI dedicada
+
 ## 0.1.0
 
 ### Minor Changes
