@@ -1,5 +1,11 @@
 ﻿# @mr-tick/desktop
 
+## 0.3.0-beta.1
+
+### Patch Changes
+
+- 2a73915: fix: upload update manifest yml files and handle updater errors gracefully
+
 ## 0.3.0-beta.0
 
 ### Minor Changes

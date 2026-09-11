@@ -12,6 +12,7 @@
     "@mr-tick/ui": "1.0.3"
   },
   "changesets": [
-    "quiet-houses-carry"
+    "quiet-houses-carry",
+    "updater-manifest-fix"
   ]
 }
