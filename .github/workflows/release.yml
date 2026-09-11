@@ -195,6 +195,7 @@ jobs:
             src/apps/desktop/.output/*.exe
             src/apps/desktop/.output/*.zip
             src/apps/desktop/.output/*.blockmap
+            src/apps/desktop/.output/*.yml
           generate_release_notes: false
           draft: false
           prerelease: ${{ needs.release.outputs.is_prerelease == 'true' }}

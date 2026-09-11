@@ -1,3 +1,4 @@
-provider: generic
-url: https://example.com/auto-updates
+provider: github
+owner: Gustavohps10
+repo: mr-tick
 updaterCacheDirName: mr-tick-updater

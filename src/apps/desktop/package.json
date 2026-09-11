@@ -16,6 +16,7 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
     "build:win": "yarn build && electron-builder --win",
+    "test:win": "yarn build && electron-builder --win --dir -c.publish.provider=github && node -e \"const fs=require('fs'); const p='.output/win-unpacked/resources/app-update.yml'; if(!fs.existsSync(p)) fs.copyFileSync('dev-app-update.yml', p);\"",
     "build:mac": "yarn build && electron-builder --mac",
     "build:linux": "yarn build && electron-builder --linux",
     "native:rebuild": "node-gyp rebuild"

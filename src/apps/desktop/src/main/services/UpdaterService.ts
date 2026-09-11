@@ -35,7 +35,34 @@ export class UpdaterService {
 
     autoUpdater.on('error', (err) => {
       console.error('[UpdaterService] error event fired:', err)
-      this.broadcast('updater:error', err.message || err.toString())
+      const rawMsg = err?.message || err?.toString() || ''
+
+      // "No published versions on GitHub" is actually normal when there are no releases newer than current
+      if (rawMsg.includes('No published versions on GitHub')) {
+        console.log(
+          '[UpdaterService] No published versions found. Treating as update-not-available.',
+        )
+        this.broadcast('updater:update-not-available', {
+          version: app.getVersion(),
+          releaseDate: new Date().toISOString(),
+        })
+        return
+      }
+
+      // Format technical HttpError 404 for missing manifest files (latest.yml / beta.yml) into user-friendly message
+      if (
+        rawMsg.includes('Cannot find latest.yml') ||
+        rawMsg.includes('Cannot find beta.yml') ||
+        rawMsg.includes('HttpError: 404')
+      ) {
+        this.broadcast(
+          'updater:error',
+          'Manifesto da versão não encontrado no repositório. Verifique se o arquivo latest.yml ou beta.yml foi publicado com a release.',
+        )
+        return
+      }
+
+      this.broadcast('updater:error', rawMsg)
     })
 
     autoUpdater.on('download-progress', (progressObj) => {
@@ -91,8 +118,22 @@ export class UpdaterService {
     try {
       await autoUpdater.checkForUpdates()
       console.log('[UpdaterService] checkForUpdates finished')
-    } catch (err) {
+    } catch (err: any) {
       console.error('[UpdaterService] checkForUpdates threw an error:', err)
+      const rawMsg = err?.message || err?.toString() || ''
+
+      if (rawMsg.includes('No published versions on GitHub')) {
+        console.log(
+          '[UpdaterService] Caught No published versions in checkForUpdates, treating as update-not-available.',
+        )
+        this.broadcast('updater:update-not-available', {
+          version: app.getVersion(),
+          releaseDate: new Date().toISOString(),
+        })
+        return
+      }
+
+      // Re-throw so UpdaterHandler returns the failure or let the event handle it
       throw err
     }
   }

@@ -26,6 +26,8 @@
     "dev": "turbo run dev --parallel",
     "build:landing-page": "turbo run build --filter=@mr-tick/landing-page",
     "build:desktop": "turbo run build --filter=@mr-tick/desktop",
+    "build:desktop:dir": "yarn --cwd src/apps/desktop test:win",
+    "test:win": "yarn --cwd src/apps/desktop test:win",
     "build": "turbo run build",
     "version-packages": "changeset version",
     "release": "yarn build && changeset publish",
