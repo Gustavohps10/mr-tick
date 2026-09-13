@@ -1,5 +1,11 @@
 ﻿# @mr-tick/desktop
 
+## 0.3.0-beta.3
+
+### Patch Changes
+
+- 6cc4402: Fix prerelease update discovery by aligning updater channels and ensuring manifest availability.
+
 ## 0.3.0-beta.2
 
 ### Minor Changes
