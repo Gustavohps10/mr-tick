@@ -2,7 +2,7 @@
   "private": true,
   "name": "@mr-tick/desktop",
   "productName": "mr-tick",
-  "version": "0.3.0-beta.4",
+  "version": "0.3.0-beta.5",
   "description": "Mr-tick Desktop App.",
   "author": "Gustavo Henrique",
   "repository": {

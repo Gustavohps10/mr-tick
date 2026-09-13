@@ -1,5 +1,11 @@
 ﻿# @mr-tick/desktop
 
+## 0.3.0-beta.5
+
+### Patch Changes
+
+- 6fb6b43: fix(desktop): do not treat older stable releases as updates when on beta channel
+
 ## 0.3.0-beta.4
 
 ### Patch Changes
