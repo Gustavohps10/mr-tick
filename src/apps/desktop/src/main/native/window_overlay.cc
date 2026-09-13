@@ -76,7 +76,7 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(g_KeyboardHook, nCode, wParam, lParam);
 }
 
-LRESULT CALLBACK Mr-tickCustomWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+LRESULT CALLBACK MrTickCustomWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
         case WM_MOUSEACTIVATE:
             return MA_NOACTIVATE;
@@ -114,7 +114,7 @@ Napi::Value ApplyOverlayStyles(const Napi::CallbackInfo& info) {
 
     if (!ElectronOriginalWndProc) {
         ElectronOriginalWndProc = reinterpret_cast<WNDPROC>(
-            SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(Mr-tickCustomWndProc))
+            SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(MrTickCustomWndProc))
         );
     }
 

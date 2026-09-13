@@ -1,4 +1,13 @@
-import { BrowserWindow, Menu, nativeImage, screen, Tray } from 'electron'
+import { join } from 'node:path'
+
+import { app, BrowserWindow, Menu, nativeImage, screen, Tray } from 'electron'
+
+function getDefaultAppIcon() {
+  const iconPath = app.isPackaged
+    ? join(process.resourcesPath, 'favicon.ico')
+    : join(__dirname, '../../resources/favicon.ico')
+  return nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 })
+}
 
 let tray: Tray | null = null
 let trayCanvasWindow: BrowserWindow | null = null
@@ -140,7 +149,7 @@ export async function updateTrayTimer(info: TrayTimerInfo) {
   if (!tray || tray.isDestroyed()) return
 
   if (info.status === 'idle') {
-    tray.setImage(nativeImage.createEmpty())
+    tray.setImage(getDefaultAppIcon())
     tray.setToolTip('Mr-tick')
     updateTooltipContent(info)
     return
@@ -429,7 +438,7 @@ export const createTray = (
   getSecondaryWindow: () => BrowserWindow | null,
   createSecondaryWindow: () => void,
 ) => {
-  const defaultIcon = nativeImage.createEmpty()
+  const defaultIcon = getDefaultAppIcon()
 
   tray = new Tray(defaultIcon)
 

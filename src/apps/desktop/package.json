@@ -19,7 +19,7 @@
     "test:win": "yarn build && electron-builder --win --dir -c.publish.provider=github && node -e \"const fs=require('fs'); const p='.output/win-unpacked/resources/app-update.yml'; if(!fs.existsSync(p)) fs.copyFileSync('dev-app-update.yml', p);\"",
     "build:mac": "yarn build && electron-builder --mac",
     "build:linux": "yarn build && electron-builder --linux",
-    "native:rebuild": "node-gyp rebuild"
+    "native:rebuild": "node-gyp rebuild && node -e \"require('fs').cpSync('build/Release/window_overlay.node', 'native-prebuilds/window_overlay.node'); require('fs').cpSync('build/Release/updater.exe', 'native-prebuilds/updater.exe')\""
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
