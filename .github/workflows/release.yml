@@ -165,7 +165,12 @@ jobs:
         run: yarn turbo run build --filter=@mr-tick/desktop
 
       - name: Package with Electron Builder
-        run: yarn --cwd src/apps/desktop electron-builder --win --publish never
+        run: |
+          yarn --cwd src/apps/desktop electron-builder --win --publish never
+          if (Test-Path "src/apps/desktop/.output/latest.yml") {
+            Copy-Item "src/apps/desktop/.output/latest.yml" "src/apps/desktop/.output/beta.yml" -Force
+          }
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
