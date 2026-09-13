@@ -44,10 +44,8 @@ export class UpdaterService {
     autoUpdater.logger = console
 
     const settings = getSettings()
-    const isPrereleaseCurrent = !!semver.prerelease(app.getVersion())
     autoUpdater.allowPrerelease = !!settings.allowBeta
-    // Allow downgrade to stable if currently on a beta and user turns off beta channel
-    autoUpdater.allowDowngrade = !settings.allowBeta && isPrereleaseCurrent
+    autoUpdater.allowDowngrade = false
 
     autoUpdater.on('checking-for-update', () => {
       console.log('[UpdaterService] checking-for-update event fired')
@@ -140,17 +138,11 @@ export class UpdaterService {
     console.log('[UpdaterService] checkForUpdates called')
     const settings = getSettings()
     const currentVer = app.getVersion()
-    const isPrereleaseCurrent = !!semver.prerelease(currentVer)
     const isBeta = !!settings.allowBeta
 
     autoUpdater.allowPrerelease = isBeta
-    autoUpdater.allowDowngrade = !isBeta && isPrereleaseCurrent
-    console.log(
-      '[UpdaterService] allowBeta =',
-      autoUpdater.allowPrerelease,
-      'allowDowngrade =',
-      autoUpdater.allowDowngrade,
-    )
+    autoUpdater.allowDowngrade = false
+    console.log('[UpdaterService] allowBeta =', autoUpdater.allowPrerelease)
 
     if (!app.isPackaged) {
       console.log(
