@@ -12,6 +12,7 @@
     "@mr-tick/ui": "1.0.3"
   },
   "changesets": [
+    "cyan-parks-draw",
     "quiet-houses-carry",
     "updater-manifest-fix"
   ]
