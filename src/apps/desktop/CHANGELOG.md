@@ -1,5 +1,11 @@
 ﻿# @mr-tick/desktop
 
+## 0.3.0-beta.2
+
+### Minor Changes
+
+- 662e2f9: Adiciona atualizador nativo em C++, assistente interativo de instalação NSIS com arte personalizada, novo ícone e melhorias no modal de atualização.
+
 ## 0.3.0-beta.1
 
 ### Patch Changes
