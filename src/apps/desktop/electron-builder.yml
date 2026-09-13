@@ -1,7 +1,7 @@
 appId: com.electron.app
 productName: mr-tick
 directories:
-  buildResources: build
+  buildResources: resources
   output: .output
 files:
   - out/**/*
@@ -27,7 +27,7 @@ protocols:
   schemes:
     - mr-tick
 win:
-  icon: build/favicon.ico
+  icon: resources/favicon.ico
   executableName: mr-tick
   target:
     - target: nsis
@@ -42,8 +42,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   allowElevation: true
   perMachine: false
-  installerIcon: build/favicon.ico
-  uninstallerIcon: build/favicon.ico
+  installerIcon: resources/favicon.ico
+  uninstallerIcon: resources/favicon.ico
   installerSidebar: resources/install-sidebar.bmp
   uninstallerSidebar: resources/install-sidebar.bmp
   artifactName: ${productName}-${version}-setup.${ext}
