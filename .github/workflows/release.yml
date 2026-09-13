@@ -170,6 +170,9 @@ jobs:
           if (Test-Path "src/apps/desktop/.output/latest.yml") {
             Copy-Item "src/apps/desktop/.output/latest.yml" "src/apps/desktop/.output/beta.yml" -Force
           }
+          if (Test-Path "src/apps/desktop/.output/beta.yml") {
+            Copy-Item "src/apps/desktop/.output/beta.yml" "src/apps/desktop/.output/latest.yml" -Force
+          }
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
