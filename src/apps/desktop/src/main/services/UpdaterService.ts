@@ -32,6 +32,7 @@ export class UpdaterService {
 
     const settings = getSettings()
     autoUpdater.allowPrerelease = !!settings.allowBeta
+    autoUpdater.channel = 'latest'
 
     autoUpdater.on('checking-for-update', () => {
       console.log('[UpdaterService] checking-for-update event fired')
@@ -124,6 +125,7 @@ export class UpdaterService {
     console.log('[UpdaterService] checkForUpdates called')
     const settings = getSettings()
     autoUpdater.allowPrerelease = !!settings.allowBeta
+    autoUpdater.channel = 'latest'
     console.log('[UpdaterService] allowBeta =', autoUpdater.allowPrerelease)
 
     if (!app.isPackaged) {
