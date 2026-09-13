@@ -15,6 +15,7 @@
     "busy-wings-obey",
     "cyan-parks-draw",
     "quiet-houses-carry",
-    "updater-manifest-fix"
+    "updater-manifest-fix",
+    "updater-monorepo-tags"
   ]
 }
