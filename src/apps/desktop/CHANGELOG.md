@@ -1,5 +1,11 @@
 ﻿# @mr-tick/desktop
 
+## 0.3.0-beta.4
+
+### Patch Changes
+
+- 01bd6eb: fix(desktop): support monorepo release tags and dynamic dev updater mock
+
 ## 0.3.0-beta.3
 
 ### Patch Changes
