@@ -118,6 +118,10 @@ if (!gotTheLock) {
   let globalAddonLoader: AddonLoader | null = null
   let nativeOverlay: NativeOverlay | null = null
 
+  const appIconPath = app.isPackaged
+    ? join(process.resourcesPath, 'favicon.ico')
+    : join(__dirname, '../../resources/favicon.ico')
+
   // FUNÇÃO CENTRALIZADA DE TRATAMENTO DE DEEP LINK
   function handleIncomingDeepLink(rawUrl: string) {
     const cleanUrl = rawUrl.replace(/\/$/, '').trim()
@@ -238,6 +242,7 @@ if (!gotTheLock) {
       height: 720,
       show: false,
       frame: false,
+      icon: appIconPath,
       titleBarStyle: process.platform === 'darwin' ? 'hidden' : 'hidden',
       autoHideMenuBar: true,
       webPreferences: {
@@ -288,6 +293,21 @@ if (!gotTheLock) {
     mainWindow.webContents.setWindowOpenHandler((d) => {
       shell.openExternal(d.url)
       return { action: 'deny' }
+    })
+
+    mainWindow.webContents.on('will-navigate', (event, url) => {
+      // Se for navegação para URL externa (http/https), abre no navegador padrão do SO
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        const isDevServer =
+          is.dev &&
+          process.env['ELECTRON_RENDERER_URL'] &&
+          url.startsWith(process.env['ELECTRON_RENDERER_URL'])
+
+        if (!isDevServer) {
+          event.preventDefault()
+          shell.openExternal(url)
+        }
+      }
     })
 
     mainWindow.on('closed', () => {
@@ -494,6 +514,30 @@ if (!gotTheLock) {
 
     app.on('browser-window-created', (_, browserWindow) => {
       optimizer.watchWindowShortcuts(browserWindow)
+
+      browserWindow.webContents.setWindowOpenHandler((details) => {
+        if (
+          details.url.startsWith('http://') ||
+          details.url.startsWith('https://')
+        ) {
+          shell.openExternal(details.url)
+        }
+        return { action: 'deny' }
+      })
+
+      browserWindow.webContents.on('will-navigate', (event, url) => {
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+          const isDevServer =
+            is.dev &&
+            process.env['ELECTRON_RENDERER_URL'] &&
+            url.startsWith(process.env['ELECTRON_RENDERER_URL'])
+
+          if (!isDevServer) {
+            event.preventDefault()
+            shell.openExternal(url)
+          }
+        }
+      })
 
       browserWindow.webContents.on('before-input-event', (_, input) => {
         const f12 = input.key === 'F12'

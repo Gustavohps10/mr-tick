@@ -66,12 +66,27 @@ export function openIpcRoutes(
   )
 
   IpcHandler.register('SYSTEM_VERSION', () => Promise.resolve(app.getVersion()))
-  IpcHandler.register('SYSTEM_GET_ENVIRONMENT', () =>
-    Promise.resolve({
+  IpcHandler.register('SYSTEM_GET_ENVIRONMENT', () => {
+    let isPortable = false
+    let installPath = ''
+    if (app.isPackaged) {
+      const { dirname, join } = require('node:path')
+      const { existsSync } = require('node:fs')
+      installPath = dirname(process.execPath)
+      isPortable =
+        !existsSync(join(installPath, 'Uninstall mr-tick.exe')) &&
+        process.platform === 'win32'
+    } else {
+      installPath = process.cwd()
+    }
+
+    return Promise.resolve({
       isDevelopment: !app.isPackaged,
       platform: process.platform,
-    }),
-  )
+      isPortable,
+      installPath,
+    })
+  })
 
   // --- TOKEN STORAGE ---
   IpcHandler.register('SAVE_TOKEN', (e, req) => tokenHandler.saveToken(e, req))

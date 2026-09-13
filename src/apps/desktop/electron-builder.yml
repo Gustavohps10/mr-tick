@@ -18,6 +18,8 @@ extraResources:
       - '**/*'
   - from: native-prebuilds/window_overlay.node
     to: native-prebuilds/window_overlay.node
+  - from: native-prebuilds/updater.exe
+    to: native-prebuilds/updater.exe
 asarUnpack:
   - resources/**
 protocols:
@@ -25,6 +27,7 @@ protocols:
   schemes:
     - mr-tick
 win:
+  icon: build/favicon.ico
   executableName: mr-tick
   target:
     - target: nsis
@@ -35,10 +38,20 @@ win:
         - x64
   artifactName: ${productName}-${version}-portable.${ext}
 nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  perMachine: false
+  installerIcon: build/favicon.ico
+  uninstallerIcon: build/favicon.ico
+  installerSidebar: resources/install-sidebar.bmp
+  uninstallerSidebar: resources/install-sidebar.bmp
   artifactName: ${productName}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
