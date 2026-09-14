@@ -8,10 +8,12 @@ import { DraftWorkspacesPanel } from '@/components/draft-workspace-panel'
 import { Header } from '@/components/header'
 import { NewWorkspaceDialog } from '@/components/new-workspace-dialog'
 import { GlobalSettingsDialog } from '@/components/settings/global-settings-dialog'
+import { UpdateModal } from '@/components/settings/update-modal'
 import { TitleBar } from '@/components/title-bar'
 import { Toaster } from '@/components/ui/sonner'
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext'
 import { useOpenAPI } from '@/hooks'
+import { useAutoUpdater } from '@/hooks/use-auto-updater'
 import { DataSourceConnectionsProvider } from '@/providers'
 import { SyncProvider } from '@/stores/syncStore'
 
@@ -24,6 +26,8 @@ export function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const openAPI = useOpenAPI()
+
+  useAutoUpdater()
 
   useEffect(() => {
     if (!openAPI?.events?.on) return
@@ -73,6 +77,7 @@ export function AppLayout() {
                 isOpen={settingsDialogIsOpen}
                 setIsOpen={setSettingsDialogIsOpen}
               />
+              <UpdateModal />
               {/* Sidebar */}
               <AppRail
                 onNewWorkspaceClick={() => {
