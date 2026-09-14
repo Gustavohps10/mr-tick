@@ -1,5 +1,25 @@
 ﻿# @mr-tick/desktop
 
+## 0.3.0
+
+### Minor Changes
+
+- 662e2f9: Adiciona atualizador nativo em C++, assistente interativo de instalação NSIS com arte personalizada, novo ícone e melhorias no modal de atualização.
+- d60f883: feat: implement in-app auto-updater and beta release channel support
+- 36986ac: feat: release 0.3.0 stable
+
+### Patch Changes
+
+- 6cc4402: Fix prerelease update discovery by aligning updater channels and ensuring manifest availability.
+- 6fb6b43: fix(desktop): do not treat older stable releases as updates when on beta channel
+- 2a73915: fix: upload update manifest yml files and handle updater errors gracefully
+- 01bd6eb: fix(desktop): support monorepo release tags and dynamic dev updater mock
+- 0496e88: feat(updater): background updater notifications, auto-popup, refreshed ui, and native win32 portable updater with progress bar
+  - @mr-tick/adapters@1.0.1
+  - @mr-tick/application@1.0.1
+  - @mr-tick/shared@1.0.1
+  - @mr-tick/ui@1.0.4
+
 ## 0.3.0-beta.6
 
 ### Patch Changes
