@@ -1,5 +1,4 @@
 ---
-'@mr-tick/ui': patch
 '@mr-tick/desktop': patch
 ---
 
