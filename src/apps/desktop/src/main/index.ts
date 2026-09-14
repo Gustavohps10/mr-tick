@@ -582,6 +582,7 @@ if (!gotTheLock) {
     })
 
     app.on('before-quit', () => {
+      updaterService.stopAutoCheck()
       if (tray) {
         tray.destroy()
         tray = null

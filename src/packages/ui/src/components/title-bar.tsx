@@ -3,6 +3,7 @@
 import { HelpCircle, Minus, Square, X } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 
+import { NotificationsPopover } from '@/components/notifications/notifications-popover'
 import {
   Tooltip,
   TooltipContent,
@@ -129,7 +130,10 @@ export function TitleBar({ title, children }: TitleBarProps) {
 
       {/* 3. SEÇÃO DIREITA (Ajuda & Controles do Sistema) */}
       <div className={`flex h-full items-center ${isMac ? 'pr-3' : ''}`}>
-        <div style={noDragStyle} className="flex h-full items-center">
+        <div style={noDragStyle} className="flex h-full items-center gap-1">
+          {/* Botão de Notificações */}
+          <NotificationsPopover />
+
           {/* Botão de Ajuda (Estilo Discord) */}
           <TooltipProvider delayDuration={300}>
             <Tooltip>

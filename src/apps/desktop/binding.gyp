@@ -11,10 +11,22 @@
     {
       "target_name": "updater",
       "type": "executable",
-      "sources": [ "src/main/native/updater.cpp" ],
+      "sources": [
+        "src/main/native/updater.cpp",
+        "src/main/native/updater.rc"
+      ],
+      "libraries": [
+        "-lcomctl32.lib",
+        "-luser32.lib",
+        "-lgdi32.lib",
+        "-lshell32.lib"
+      ],
       "msvs_settings": {
         "VCCLCompilerTool": {
           "AdditionalOptions": ["/std:c++17", "/EHsc"]
+        },
+        "VCLinkerTool": {
+          "SubSystem": "2"
         }
       }
     }

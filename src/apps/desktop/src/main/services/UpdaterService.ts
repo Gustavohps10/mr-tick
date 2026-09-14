@@ -15,6 +15,8 @@ export class UpdaterService {
   private isPortable: boolean = false
   private latestUpdateInfo: UpdateInfo | null = null
   private portableZipPath: string | null = null
+  private checkStartupTimer: NodeJS.Timeout | null = null
+  private checkPeriodicInterval: NodeJS.Timeout | null = null
 
   public init(): void {
     // Detect if we are running from a Setup installation or Portable using the NSIS uninstaller
@@ -100,15 +102,17 @@ export class UpdaterService {
       this.broadcast('updater:error', rawMsg)
     })
 
+    let lastAutoUpdaterPercent = 0
     autoUpdater.on('download-progress', (progressObj) => {
       if (this.isPortable) return // Prevent double broadcast if somehow triggered
 
-      console.log(
-        '[UpdaterService] download-progress event fired:',
-        progressObj.percent,
-      )
+      const rawPercent = Math.round(progressObj.percent || 0)
+      if (rawPercent < lastAutoUpdaterPercent && rawPercent !== 0) return
+      lastAutoUpdaterPercent = rawPercent
+
+      console.log('[UpdaterService] download-progress event fired:', rawPercent)
       this.broadcast('updater:download-progress', {
-        percent: progressObj.percent,
+        percent: rawPercent,
         transferred: progressObj.transferred,
         total: progressObj.total,
         bytesPerSecond: progressObj.bytesPerSecond,
@@ -123,6 +127,43 @@ export class UpdaterService {
         releaseDate: info.releaseDate,
       })
     })
+
+    // Start background updater scheduling in the main process
+    this.startAutoCheck()
+  }
+
+  public startAutoCheck(): void {
+    this.stopAutoCheck()
+
+    // Initial check 5s after startup (allowing renderer window to finish mounting)
+    this.checkStartupTimer = setTimeout(() => {
+      console.log(
+        '[UpdaterService] Running automatic background check on startup',
+      )
+      this.checkForUpdates().catch((err: unknown) => {
+        console.warn('[UpdaterService] Background startup check failed:', err)
+      })
+    }, 5000)
+
+    // Periodic check every 4 hours
+    const FOUR_HOURS = 4 * 60 * 60 * 1000
+    this.checkPeriodicInterval = setInterval(() => {
+      console.log('[UpdaterService] Running periodic background update check')
+      this.checkForUpdates().catch((err: unknown) => {
+        console.warn('[UpdaterService] Periodic background check failed:', err)
+      })
+    }, FOUR_HOURS)
+  }
+
+  public stopAutoCheck(): void {
+    if (this.checkStartupTimer) {
+      clearTimeout(this.checkStartupTimer)
+      this.checkStartupTimer = null
+    }
+    if (this.checkPeriodicInterval) {
+      clearInterval(this.checkPeriodicInterval)
+      this.checkPeriodicInterval = null
+    }
   }
 
   private broadcast(channel: string, data?: unknown) {
@@ -212,6 +253,33 @@ export class UpdaterService {
   }
 
   public async downloadUpdate(): Promise<void> {
+    if (!app.isPackaged) {
+      console.log(
+        '[UpdaterService] Dev mode: Simulating smooth download progress',
+      )
+      let simPercent = 0
+      const timer = setInterval(() => {
+        simPercent += 4
+        if (simPercent > 100) simPercent = 100
+        this.broadcast('updater:download-progress', {
+          percent: simPercent,
+          transferred: simPercent * 1024 * 1024,
+          total: 100 * 1024 * 1024,
+          bytesPerSecond: 2 * 1024 * 1024,
+        })
+        if (simPercent >= 100) {
+          clearInterval(timer)
+          setTimeout(() => {
+            this.broadcast('updater:update-downloaded', {
+              version: this.latestUpdateInfo?.version,
+              releaseDate: this.latestUpdateInfo?.releaseDate,
+            })
+          }, 300)
+        }
+      }, 70)
+      return
+    }
+
     if (!this.isPortable) {
       await autoUpdater.downloadUpdate()
       return
@@ -243,6 +311,8 @@ export class UpdaterService {
 
       const total = Number(response.headers.get('content-length') || 0)
       let transferred = 0
+      let lastBroadcastTime = 0
+      let lastPercent = 0
 
       const dest = fs.createWriteStream(this.portableZipPath)
       const reader = response.body?.getReader()
@@ -256,15 +326,34 @@ export class UpdaterService {
         dest.write(value)
         transferred += value.length
 
-        this.broadcast('updater:download-progress', {
-          percent: total ? (transferred / total) * 100 : 0,
-          transferred,
-          total,
-          bytesPerSecond: 0,
-        })
+        const rawPercent =
+          total > 0 ? Math.min(100, Math.round((transferred / total) * 100)) : 0
+        const percent = Math.max(lastPercent, rawPercent)
+        const now = Date.now()
+
+        if (
+          percent > lastPercent &&
+          (now - lastBroadcastTime >= 60 || percent === 100)
+        ) {
+          lastPercent = percent
+          lastBroadcastTime = now
+          this.broadcast('updater:download-progress', {
+            percent,
+            transferred,
+            total,
+            bytesPerSecond: 0,
+          })
+        }
       }
 
       dest.end()
+
+      this.broadcast('updater:download-progress', {
+        percent: 100,
+        transferred,
+        total: total || transferred,
+        bytesPerSecond: 0,
+      })
 
       this.broadcast('updater:update-downloaded', {
         version,
