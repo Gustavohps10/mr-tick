@@ -1,6 +1,6 @@
 {
   "name": "@mr-tick/adapters",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Pacote de infraestrutura consolidado para o Mr-tick, contendo implementações concretas de recursos externos",
   "type": "module",

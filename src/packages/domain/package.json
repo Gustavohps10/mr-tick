@@ -1,6 +1,6 @@
 {
   "name": "@mr-tick/domain",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Contém as entidades, interfaces e regras de negócio principais do ecossistema Mr-tick.",
   "type": "module",
