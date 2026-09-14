@@ -1,3 +1,18 @@
+import semver from 'semver'
+
+export function toSemver(ver: string): string | null {
+  return (
+    semver.clean(ver) ||
+    semver.valid(ver) ||
+    semver.coerce(ver)?.version ||
+    null
+  )
+}
+
+export function getTagSemver(tagName: string): string | null {
+  return toSemver(tagName.replace('@mr-tick/desktop@', ''))
+}
+
 export interface DesktopReleaseInfo {
   version: string
   rawVersion: string
@@ -208,63 +223,111 @@ export async function fetchLatestDesktopReleases(): Promise<{
         : null
 
       let commitInfo: DesktopReleaseInfo['commit'] = null
+      let resolvedPrNumber: string | null = null
 
-      const extractReleaseCommit = (text?: string | null): string | null => {
-        if (!text) return null
-        const urlMatch = text.match(/commit\/([a-f0-9]{7,40})/)
-        if (urlMatch) return urlMatch[1]
-        const listMatch = text.match(/(?:^|\n)-\s*([a-f0-9]{7,40}):/)
-        if (listMatch) return listMatch[1]
-        return null
-      }
+      try {
+        // Resolve commit details directly from the release tag
+        const commitData = await fetchGithubJson<GitHubCommit>(
+          `https://api.github.com/repos/Gustavohps10/mr-tick/commits/${encodeURIComponent(release.tag_name)}`,
+          headers,
+        )
 
-      const commitSha = extractReleaseCommit(release.body)
-
-      if (commitSha) {
-        try {
-          const commitData = await fetchGithubJson<GitHubCommit>(
-            `https://api.github.com/repos/Gustavohps10/mr-tick/commits/${commitSha}`,
-            headers,
-          )
-
-          if (commitData && commitData.author) {
+        if (commitData) {
+          const author =
+            commitData.author || commitData.committer || release.author
+          if (commitData.sha) {
             commitInfo = {
               sha: commitData.sha,
               shortSha: commitData.sha.substring(0, 7),
-              url: commitData.html_url,
-              author: {
-                login: commitData.author.login,
-                name: commitData.author.name || commitData.author.login,
-                avatarUrl: commitData.author.avatar_url,
-                profileUrl: commitData.author.html_url,
-              },
+              url:
+                commitData.html_url ||
+                `https://github.com/Gustavohps10/mr-tick/commit/${commitData.sha}`,
+              author: author
+                ? {
+                    login: author.login,
+                    name: author.name || author.login,
+                    avatarUrl: author.avatar_url,
+                    profileUrl: author.html_url,
+                  }
+                : {
+                    login: 'github-actions[bot]',
+                    name: 'github-actions[bot]',
+                    avatarUrl: 'https://avatars.githubusercontent.com/in/15368',
+                    profileUrl: 'https://github.com/apps/github-actions',
+                  },
             }
           }
-        } catch (e) {
-          console.warn('Could not resolve commit details for release:', e)
+
+          // 1. Detect PR from the bot merge commit message (e.g. "Merge pull request #38 from ...")
+          const mergeMatch = commitData.commit?.message?.match(
+            /Merge pull request #(\d+)/i,
+          )
+          if (mergeMatch) {
+            resolvedPrNumber = mergeMatch[1]
+          } else if (commitData.sha) {
+            // 2. Query GitHub pulls associated with the release commit
+            const pulls = await fetchGithubJson<GitHubPullRequest[]>(
+              `https://api.github.com/repos/Gustavohps10/mr-tick/commits/${commitData.sha}/pulls`,
+              headers,
+            )
+            if (pulls && Array.isArray(pulls) && pulls.length > 0) {
+              resolvedPrNumber = String(pulls[0].number)
+            }
+          }
         }
+      } catch (e) {
+        console.warn('Could not resolve release tag commit details:', e)
       }
 
-      let resolvedPrNumber: string | null = null
-
-      if (release.body) {
+      // Fallback 1: Check release body for direct PR reference (e.g. #38 or pull/38)
+      if (!resolvedPrNumber && release.body) {
         const bodyPrMatch = release.body.match(/(?:pull\/|#)(\d+)/)
         if (bodyPrMatch) {
           resolvedPrNumber = bodyPrMatch[1]
         }
       }
 
-      if (!resolvedPrNumber && commitSha) {
-        try {
-          const pulls = await fetchGithubJson<GitHubPullRequest[]>(
-            `https://api.github.com/repos/Gustavohps10/mr-tick/commits/${commitSha}/pulls`,
-            headers,
-          )
-          if (pulls && Array.isArray(pulls) && pulls.length > 0) {
-            resolvedPrNumber = String(pulls[0].number)
+      // Fallback 2: Check release body for commit SHA if tag commit failed
+      if (!commitInfo && release.body) {
+        const urlMatch = release.body.match(/commit\/([a-f0-9]{7,40})/)
+        const listMatch = release.body.match(/(?:^|\n)-\s*([a-f0-9]{7,40}):/)
+        const fallbackSha = urlMatch
+          ? urlMatch[1]
+          : listMatch
+            ? listMatch[1]
+            : null
+        if (fallbackSha) {
+          try {
+            const commitData = await fetchGithubJson<GitHubCommit>(
+              `https://api.github.com/repos/Gustavohps10/mr-tick/commits/${fallbackSha}`,
+              headers,
+            )
+            if (commitData) {
+              const author =
+                commitData.author || commitData.committer || release.author
+              commitInfo = {
+                sha: commitData.sha,
+                shortSha: commitData.sha.substring(0, 7),
+                url: commitData.html_url,
+                author: author
+                  ? {
+                      login: author.login,
+                      name: author.name || author.login,
+                      avatarUrl: author.avatar_url,
+                      profileUrl: author.html_url,
+                    }
+                  : {
+                      login: 'github-actions[bot]',
+                      name: 'github-actions[bot]',
+                      avatarUrl:
+                        'https://avatars.githubusercontent.com/in/15368',
+                      profileUrl: 'https://github.com/apps/github-actions',
+                    },
+              }
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
         }
       }
 
@@ -290,28 +353,70 @@ export async function fetchLatestDesktopReleases(): Promise<{
       }
     }
 
-    const [parsedBetas, parsedStables] = await Promise.all([
-      Promise.all(rawBetaReleases.map((r) => parseRelease(r, true, false))),
+    // Sort stables descending by semver
+    const sortedRawStables = [...rawStableReleases].sort((a, b) => {
+      const vA = getTagSemver(a.tag_name)
+      const vB = getTagSemver(b.tag_name)
+      if (vA && vB) return semver.rcompare(vA, vB)
+      return 0
+    })
+
+    // Sort betas descending by semver
+    const sortedRawBetas = [...rawBetaReleases].sort((a, b) => {
+      const vA = getTagSemver(a.tag_name)
+      const vB = getTagSemver(b.tag_name)
+      if (vA && vB) return semver.rcompare(vA, vB)
+      return 0
+    })
+
+    // Determine if an active beta should be shown:
+    // 1. Only the single latest beta is considered (intermediate betas are hidden).
+    // 2. If the stable version has already been released (beta <= latest stable),
+    //    the beta is obsolete and must NOT be listed.
+    // 3. Betas from multiple major/minor cycles are never mixed.
+    let candidateBetaToParse: GitHubRelease | null = null
+    const topRawBeta = sortedRawBetas[0] ?? null
+    const topRawStable = sortedRawStables[0] ?? null
+
+    if (topRawBeta) {
+      if (topRawStable) {
+        const betaVer = getTagSemver(topRawBeta.tag_name)
+        const stableVer = getTagSemver(topRawStable.tag_name)
+        if (betaVer && stableVer) {
+          if (semver.gt(betaVer, stableVer)) {
+            candidateBetaToParse = topRawBeta
+          }
+        } else {
+          candidateBetaToParse = topRawBeta
+        }
+      } else {
+        candidateBetaToParse = topRawBeta
+      }
+    }
+
+    const [parsedBeta, parsedStables] = await Promise.all([
+      candidateBetaToParse
+        ? parseRelease(candidateBetaToParse, true, false)
+        : Promise.resolve(null),
       Promise.all(
-        rawStableReleases.map((r, index) =>
-          parseRelease(r, false, index === 0),
-        ),
+        sortedRawStables.map((r, index) => parseRelease(r, false, index === 0)),
       ),
     ])
 
-    const validBetas = parsedBetas.filter(
-      (r): r is DesktopReleaseInfo => r !== null,
-    )
     const validStables = parsedStables.filter(
       (r): r is DesktopReleaseInfo => r !== null,
     )
 
-    // Betas are listed ACIMA da latest (on top)
-    const allReleases = [...validBetas, ...validStables]
-
     const latestStable = validStables[0] ?? null
-    const latestBeta = validBetas[0] ?? null
-    const defaultVersion = latestStable?.version ?? validBetas[0]?.version ?? ''
+    const latestBeta = parsedBeta ?? null
+
+    // If an active beta exists (strictly newer than latest stable), list it on top.
+    // Intermediate and obsolete betas are completely omitted from the site.
+    const allReleases = latestBeta
+      ? [latestBeta, ...validStables]
+      : [...validStables]
+
+    const defaultVersion = latestStable?.version ?? latestBeta?.version ?? ''
 
     return {
       stable: latestStable,
