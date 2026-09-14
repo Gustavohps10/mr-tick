@@ -101,6 +101,78 @@ Assim que um PR com changeset entra na `main`:
 
 ---
 
+## 🧪 Canal de Testes (Canal Beta) e Promoção para Versão Estável (Stable)
+
+O projeto conta com um ciclo de pré-lançamentos (*prereleases*) para validação de novas funcionalidades no canal Beta antes do lançamento oficial de produção.
+
+### 1. Como funciona o Modo Prerelease (Beta)
+Quando o monorepo está em modo prerelease, o arquivo `.changeset/pre.json` fica ativo com a tag `beta`:
+```json
+{
+  "mode": "pre",
+  "tag": "beta",
+  "initialVersions": {
+    "@mr-tick/desktop": "0.2.0"
+  }
+}
+```
+Nesse estado:
+- Cada PR com changeset mergeado na `main` instrui o robô do Changesets a criar uma versão incremental de teste (ex.: `0.3.0-beta.0` ➔ `0.3.0-beta.1` ➔ ... ➔ `0.3.0-beta.6`).
+- A pipeline compila os instaladores e publica releases marcadas como **Pre-release** no GitHub Releases, ficando disponíveis para quem ativou o switch "Beta Channel" nas configurações do app.
+
+> ⚠️ **Regra de Ouro (No Mixed Changesets)**:
+> Pacotes internos listados na chave `"ignore"` do `.changeset/config.json` (como `@mr-tick/ui`, `@mr-tick/domain`, etc.) **nunca devem ser misturados com pacotes publicáveis** (como `@mr-tick/desktop`) dentro do mesmo arquivo `.changeset/*.md`. Caso contrário, a action do Changesets falhará com o erro `Mixed changesets that contain both ignored and not ignored packages are not allowed`. Para o desktop, aponte sempre o changeset diretamente para `'@mr-tick/desktop'`.
+
+---
+
+### 2. Como Encerrar a Fase Beta e Lançar a Versão Estável (Stable)
+
+Quando todos os testes no canal Beta forem concluídos com 100% de sucesso e for hora de lançar a versão estável (ex.: `0.3.0` definitiva):
+
+1. **Crie uma branch de release**:
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b chore/prepare-0.3.0-release
+   ```
+
+2. **Avise o Changesets para sair do modo pré-lançamento**:
+   ```bash
+   yarn changeset pre exit
+   ```
+   *(Isso altera o `.changeset/pre.json` para `"mode": "exit"`)*.
+
+3. **Crie o changeset para a versão estável**:
+   Crie um arquivo `.changeset/release-0.3.0.md` indicando o tipo de bump (ex: `minor` para passar de `0.2.0` para `0.3.0`):
+   ```markdown
+   ---
+   '@mr-tick/desktop': minor
+   ---
+
+   feat: release 0.3.0 stable
+   ```
+
+4. **Comite e abra o Pull Request para a `main`**:
+   ```bash
+   git add .changeset/pre.json .changeset/release-0.3.0.md
+   git commit -m "chore(release): exit beta mode for 0.3.0 stable release"
+   git push origin chore/prepare-0.3.0-release
+   ```
+   Abra o PR e faça o **Merge** na `main`.
+
+5. **Ação do Robô no GitHub**:
+   - Assim que o PR entra na `main`, a GitHub Action de release executa o comando `changeset version`.
+   - O robô **apaga** o arquivo `pre.json`.
+   - O robô atualiza o `package.json` para a versão limpa **`0.3.0`** (sem sufixo `-beta.X`).
+   - O robô gera o `CHANGELOG.md` oficial consolidado.
+   - O robô abre o PR oficial: **`chore: release packages`**.
+
+6. **Merge do PR Oficial do Robô**:
+   - O mantenedor revisa e dá **Merge** no PR do robô no GitHub.
+   - A pipeline do Windows compila os instaladores `.exe` e `.zip` finais, cria a tag oficial `@mr-tick/desktop@0.3.0`, atualiza o manifesto `latest.yml` e publica a **Release Oficial Estável** no GitHub!
+
+---
+
 ## ❓ Perguntas Frequentes (FAQ)
 
 ### E se vários devs abrirem PRs com `minor` ao mesmo tempo?
