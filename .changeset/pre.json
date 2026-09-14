@@ -17,6 +17,7 @@
     "quiet-houses-carry",
     "updater-disallow-downgrade",
     "updater-manifest-fix",
-    "updater-monorepo-tags"
+    "updater-monorepo-tags",
+    "updater-notifications-and-ui"
   ]
 }

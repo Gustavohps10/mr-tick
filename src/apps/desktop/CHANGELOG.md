@@ -1,5 +1,11 @@
 ﻿# @mr-tick/desktop
 
+## 0.3.0-beta.6
+
+### Patch Changes
+
+- 0496e88: feat(updater): background updater notifications, auto-popup, refreshed ui, and native win32 portable updater with progress bar
+
 ## 0.3.0-beta.5
 
 ### Patch Changes
