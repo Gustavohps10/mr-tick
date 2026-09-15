@@ -41,97 +41,114 @@ Configure o arquivo `tsconfig.json`:
 
 ## 2. Estrutura do Addon
 
-Todo addon do Mr-tick exporta como `default` uma classe que implementa o contrato **`IAddon`**.
+Todo addon do Mr-tick possui um arquivo de metadados `manifest.yaml` e exporta como `default` uma classe que implementa o contrato **`IAddon`**.
+
+### 2.1 Manifest (`manifest.yaml`)
+
+Crie o arquivo `manifest.yaml` na raiz do seu addon:
+
+```yaml
+id: meu-primeiro-addon
+name: Meu Primeiro Addon
+version: 1.0.0
+description: Exemplo prático de extensão para o Mr-tick
+author: Seu Nome ou Empresa
+```
+
+### 2.2 Código Principal (`src/index.ts`)
 
 Crie o arquivo `src/index.ts`:
 
 ```typescript
-import type { IAddon, AddonContext, AddonSettingsField } from '@mr-tick/sdk'
+import type { IAddon, AddonContext } from '@mr-tick/sdk'
 
 export default class MeuPrimeiroAddon implements IAddon {
-  // Metadados obrigatórios do Addon
-  public id = 'meu-primeiro-addon'
-  public name = 'Meu Primeiro Addon'
-  public version = '1.0.0'
-  public description = 'Exemplo prático de extensão para o Mr-tick'
-  public author = 'Seu Nome ou Empresa'
-
-  private context?: AddonContext
-
-  // Formulário de preferências renderizado automaticamente na interface do Mr-tick
-  public settingsFields: AddonSettingsField[] = [
-    {
-      key: 'servidorUrl',
-      label: 'URL do Servidor',
-      type: 'text',
-      required: true,
-      description: 'Endereço da API ou instância corporativa.',
-    },
-    {
-      key: 'apiKey',
-      label: 'Chave de Acesso / Token',
-      type: 'password',
-      required: true,
-      description:
-        'Token de autenticação gerado nas preferências da sua conta.',
-    },
-    {
-      key: 'notificarEventos',
-      label: 'Exibir Notificações Nativas',
-      type: 'boolean',
-      defaultValue: true,
-    },
-  ]
-
   // Ciclo de Vida: Executado quando o plugin é ativado no Mr-tick
-  public async onActivate(context: AddonContext): Promise<void> {
-    this.context = context
-    console.log(`[${this.name}] Addon ativado com sucesso!`)
+  public async activate(context: AddonContext): Promise<void> {
+    console.log('[MeuPrimeiroAddon] Addon ativado com sucesso!')
+
+    // Registrando formulário de configurações dinamicamente com abas e grupos
+    context.settings.register([
+      {
+        id: 'geral',
+        label: 'Geral',
+        groups: [
+          {
+            id: 'conexao',
+            label: 'Parâmetros de Conexão',
+            fields: [
+              {
+                id: 'servidorUrl',
+                label: 'URL do Servidor',
+                type: 'text',
+                scope: 'configuration',
+                required: true,
+                description: 'Endereço da API ou instância corporativa.',
+              },
+              {
+                id: 'apiKey',
+                label: 'Chave de Acesso / Token',
+                type: 'password',
+                scope: 'credential',
+                required: true,
+                description: 'Token de autenticação gerado nas preferências da sua conta.',
+              },
+              {
+                id: 'notificarEventos',
+                label: 'Exibir Notificações',
+                type: 'boolean',
+                defaultValue: true,
+              },
+            ],
+          },
+        ],
+      },
+    ])
+
+    // Registrando comandos e ações disponíveis
+    context.commands.register('testar-conexao', async () => {
+      await context.notifications.success('Conexão testada com sucesso!', 'Mr-tick Addon')
+      return { isSuccess: true }
+    })
 
     // Lendo valores salvos com segurança no storage do Workspace
-    const servidorUrl = await context.storage.get('servidorUrl')
     const notificar = (await context.storage.get('notificarEventos')) === 'true'
 
     if (notificar) {
-      await context.notifications.show({
-        title: 'Addon Ativado',
-        body: `Conectado ao Mr-tick com sucesso!`,
-      })
+      await context.notifications.info('Conectado ao Mr-tick com sucesso!', 'Addon Ativado')
     }
 
     // Escutando eventos do cronômetro em tempo real
     context.events.onTimerStart((data) => {
-      console.log(`[${this.name}] Timer iniciado para a tarefa:`, data.taskId)
+      console.log('Timer iniciado para a tarefa:', data.taskId)
     })
 
     context.events.onTimerStop((data) => {
-      console.log(
-        `[${this.name}] Timer finalizado. Tempo registrado:`,
-        data.durationSeconds,
-      )
+      console.log('Timer finalizado. Duração:', data.durationSeconds)
     })
   }
 
   // Ciclo de Vida: Executado ao desativar o plugin ou trocar de Workspace
-  public async onDeactivate(): Promise<void> {
-    console.log(`[${this.name}] Addon desativado. Limpando recursos...`)
-    this.context = undefined
+  public async deactivate(): Promise<void> {
+    console.log('[MeuPrimeiroAddon] Addon desativado. Limpando recursos...')
   }
 }
 ```
 
 ---
 
-## 3. Configurações Dinâmicas (`settingsFields`)
+## 3. Configurações Dinâmicas (`context.settings.register`)
 
-A propriedade `settingsFields` permite que seu plugin defina formulários de configuração sem escrever uma única linha de interface gráfica (UI). O Mr-tick gera e valida os campos nativamente.
+Ao chamar `context.settings.register(schema)` no método `activate`, seu plugin define formulários de preferências sem precisar escrever uma única linha de interface gráfica (UI). O Mr-tick gera e valida os campos nativamente.
 
 ### Tipos de Campos Suportados:
 
 - **`text`**: Entrada de texto comum.
-- **`password`**: Campo com máscara de segurança para tokens, senhas e API keys.
+- **`password`**: Campo com máscara de segurança para tokens, senhas e chaves.
+- **`number`**: Entrada numérica.
 - **`boolean`**: Interruptor (Toggle) de verdadeiro/falso.
-- **`select`**: Lista suspensa de opções personalizadas com pares `{ label, value }`.
+- **`select`**: Lista suspensa com pares `{ label, value }`.
+- **`button`**: Botão de ação disparável.
 
 ---
 
@@ -141,9 +158,13 @@ Ao ser ativado, o Mr-tick injeta o objeto `AddonContext` contendo todas as APIs 
 
 | Propriedade             | Descrição                                                                         |
 | :---------------------- | :-------------------------------------------------------------------------------- |
-| `context.storage`       | Armazenamento chave-valor criptografado e isolado por Workspace.                  |
+| `context.settings`      | Registro declarativo do schema de formulários e configurações do addon.           |
+| `context.menus`         | Registro de itens no menu lateral (sidebar) ou barra de tempo (timerbar).        |
+| `context.dataSources`   | Registro de fontes de dados externas (Tarefas, Horas, Membros, Metadados).        |
+| `context.commands`      | Registro e execução de comandos universais do Mr-tick.                            |
+| `context.storage`       | Armazenamento chave-valor seguro e isolado por Workspace.                        |
 | `context.events`        | Eventos em tempo real do sistema (início/fim de timer, idle, troca de workspace). |
-| `context.notifications` | Emissão de notificações nativas no sistema operacional.                           |
+| `context.notifications` | Emissão de toasts e notificações no sistema.                                      |
 | `context.timer`         | Leitura e controle do cronômetro ativo.                                           |
 | `context.oauth`         | Fluxo de autenticação OAuth 2.0 PKCE seguro sem necessidade de secrets.           |
 

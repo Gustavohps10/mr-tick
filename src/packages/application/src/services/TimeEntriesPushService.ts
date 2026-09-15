@@ -1,9 +1,9 @@
-﻿import { TimeEntry } from '@mr-tick/domain'
+import { TimeEntry } from '@mr-tick/domain'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import {
   IDataSourceResolver,
-  ITimeEntryRepository,
+  ITimeEntryProvider,
   IWorkspacesRepository,
 } from '@/contracts'
 import {
@@ -35,11 +35,11 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
         input.connectionInstanceId,
       )
 
-      const timeEntryRepository = adapter.timeEntryRepository
+      const timeEntriesProvider = adapter.timeEntriesProvider
       const results: SyncTimeEntryDTO[] = []
 
       for (const entry of input.entries) {
-        results.push(await this.processEntry(entry, timeEntryRepository))
+        results.push(await this.processEntry(entry, timeEntriesProvider))
       }
 
       return Either.success(results)
@@ -50,7 +50,7 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
 
   private async processEntry(
     entry: SyncTimeEntryDTO,
-    timeEntryRepository: ITimeEntryRepository,
+    timeEntriesProvider: ITimeEntryProvider,
   ): Promise<SyncTimeEntryDTO> {
     const { id, _deleted } = entry
 
@@ -58,14 +58,14 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
     if (validationError) return { ...entry, validationError: validationError }
 
     try {
-      if (_deleted) return this.handleDeleted(entry, timeEntryRepository)
+      if (_deleted) return this.handleDeleted(entry, timeEntriesProvider)
 
-      const existing = await timeEntryRepository.findById(id!)
+      const existing = await timeEntriesProvider.findById(id!)
 
       if (existing)
-        return this.handleExisting(entry, existing, timeEntryRepository)
+        return this.handleExisting(entry, existing, timeEntriesProvider)
 
-      return this.handleNew(entry, timeEntryRepository)
+      return this.handleNew(entry, timeEntriesProvider)
     } catch {
       return {
         ...entry,
@@ -86,16 +86,16 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
 
   private async handleDeleted(
     entry: SyncTimeEntryDTO,
-    timeEntryRepository: ITimeEntryRepository,
+    timeEntriesProvider: ITimeEntryProvider,
   ): Promise<SyncTimeEntryDTO> {
-    await timeEntryRepository.delete(entry.id!)
+    await timeEntriesProvider.delete(entry.id!)
     return { ...entry, syncedAt: new Date() }
   }
 
   private async handleExisting(
     entry: SyncTimeEntryDTO,
     existing: TimeEntry,
-    timeEntryRepository: ITimeEntryRepository,
+    timeEntriesProvider: ITimeEntryProvider,
   ): Promise<SyncTimeEntryDTO> {
     const { assumedMasterState } = entry
 
@@ -124,14 +124,14 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
     }
 
     existing.updateComments(entry.comments)
-    await timeEntryRepository.update(existing)
+    await timeEntriesProvider.update(existing)
 
     return { ...entry, syncedAt: new Date() }
   }
 
   private async handleNew(
     entry: SyncTimeEntryDTO,
-    timeEntryRepository: ITimeEntryRepository,
+    timeEntriesProvider: ITimeEntryProvider,
   ): Promise<SyncTimeEntryDTO> {
     const result = TimeEntry.create({
       task: { id: entry.task.id },
@@ -149,7 +149,7 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
         validationError: AppError.ValidationError('TIME_ENTRY_INVALID'),
       }
 
-    await timeEntryRepository.create(result.success)
+    await timeEntriesProvider.create(result.success)
     return { ...entry, syncedAt: new Date() }
   }
 }

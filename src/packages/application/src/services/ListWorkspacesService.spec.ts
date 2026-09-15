@@ -1,40 +1,44 @@
-﻿import { AppError } from '@mr-tick/shared/helpers'
+import { Workspace } from '@mr-tick/domain'
+import { AppError } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { IWorkspacesQuery } from '@/contracts/data/queries'
-import type { WorkspaceDTO } from '@/dtos'
+import type { IWorkspacesRepository } from '@/contracts/data/repositories'
 import type { PagedResultDTO } from '@/dtos/pagination'
 
 import { ListWorkspacesService } from './ListWorkspacesService'
 
 describe('ListWorkspacesService', () => {
   let sut: ListWorkspacesService
-  let workspacesQueryMock: Mocked<IWorkspacesQuery>
+  let workspacesRepositoryMock: Mocked<IWorkspacesRepository>
 
   const fakeDate = new Date('2026-04-18T00:00:00.000Z')
 
-  const fakeWorkspacesPage: PagedResultDTO<WorkspaceDTO> = {
-    items: [
-      {
-        id: 'workspace-1',
-        name: 'Mr-tick Development',
-        status: 'configured',
-        description: 'Dev env',
-        dataSourceConnections: [],
-        createdAt: fakeDate,
-        updatedAt: fakeDate,
-      },
-      {
-        id: 'workspace-2',
-        name: 'Mr-tick Production',
-        status: 'configured',
-        description: 'Prod env',
-        dataSourceConnections: [],
-        createdAt: fakeDate,
-        updatedAt: fakeDate,
-      },
-    ],
+  const fakeWorkspaces = [
+    Workspace.hydrate({
+      id: 'workspace-1',
+      name: 'Mr-tick Development',
+      status: 'configured',
+      description: 'Dev env',
+      avatarUrl: undefined,
+      dataSourceConnections: [],
+      createdAt: fakeDate,
+      updatedAt: fakeDate,
+    }),
+    Workspace.hydrate({
+      id: 'workspace-2',
+      name: 'Mr-tick Production',
+      status: 'configured',
+      description: 'Prod env',
+      avatarUrl: undefined,
+      dataSourceConnections: [],
+      createdAt: fakeDate,
+      updatedAt: fakeDate,
+    }),
+  ]
+
+  const fakeWorkspacesPage: PagedResultDTO<Workspace> = {
+    items: fakeWorkspaces,
     total: 2,
     page: 1,
     pageSize: 10,
@@ -43,30 +47,31 @@ describe('ListWorkspacesService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    workspacesQueryMock = {
+    workspacesRepositoryMock = {
       findAll: vi.fn(),
-    } as unknown as Mocked<IWorkspacesQuery>
+    } as unknown as Mocked<IWorkspacesRepository>
 
-    sut = new ListWorkspacesService(workspacesQueryMock)
+    sut = new ListWorkspacesService(workspacesRepositoryMock)
   })
 
   it('should fetch all workspaces and return a paginated result successfully', async () => {
     // Arrange
-    workspacesQueryMock.findAll.mockResolvedValue(fakeWorkspacesPage)
+    workspacesRepositoryMock.findAll.mockResolvedValue(fakeWorkspacesPage)
 
     // Act
     const result = await sut.execute()
 
     // Assert
     expect(result.isSuccess()).toBe(true)
-    expect(result.success).toEqual(fakeWorkspacesPage)
-    expect(workspacesQueryMock.findAll).toHaveBeenCalledTimes(1)
+    expect(result.success.total).toBe(2)
+    expect(result.success.items[0].id).toBe('workspace-1')
+    expect(workspacesRepositoryMock.findAll).toHaveBeenCalledTimes(1)
   })
 
-  it('should return Internal error when the query throws an exception', async () => {
+  it('should return Internal error when the repository throws an exception', async () => {
     // Arrange
     const error = new Error('Database connection timeout')
-    workspacesQueryMock.findAll.mockRejectedValue(error)
+    workspacesRepositoryMock.findAll.mockRejectedValue(error)
 
     // Act
     const result = await sut.execute()
@@ -75,6 +80,6 @@ describe('ListWorkspacesService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBeInstanceOf(AppError)
     expect(result.failure.messageKey).toBe('ERRO_INESPERADO')
-    expect(workspacesQueryMock.findAll).toHaveBeenCalledTimes(1)
+    expect(workspacesRepositoryMock.findAll).toHaveBeenCalledTimes(1)
   })
 })

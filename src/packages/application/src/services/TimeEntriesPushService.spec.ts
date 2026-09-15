@@ -1,11 +1,11 @@
-﻿import { TimeEntry } from '@mr-tick/domain'
+import { TimeEntry } from '@mr-tick/domain'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   IDataSourceResolver,
-  ITimeEntryRepository,
+  ITimeEntryProvider,
   IWorkspacesRepository,
 } from '@/contracts'
 import type { IDataSourceAdapter } from '@/contracts/resolvers/IDataSourceAdapter'
@@ -19,7 +19,7 @@ describe('TimeEntriesPushService', () => {
   let workspacesRepositoryMock: Mocked<IWorkspacesRepository>
   let dataSourceResolverMock: Mocked<IDataSourceResolver>
   let adapterMock: Mocked<IDataSourceAdapter>
-  let timeEntryRepositoryMock: Mocked<ITimeEntryRepository>
+  let timeEntriesProviderMock: Mocked<ITimeEntryProvider>
 
   const fakeCurrentTime = new Date('2026-04-18T12:00:00.000Z')
   const fakeOldTime = new Date('2026-04-17T10:00:00.000Z')
@@ -35,20 +35,24 @@ describe('TimeEntriesPushService', () => {
 
     workspacesRepositoryMock = {
       findById: vi.fn(),
+      findAll: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
     } as unknown as Mocked<IWorkspacesRepository>
 
-    timeEntryRepositoryMock = {
+    timeEntriesProviderMock = {
       findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
-    } as unknown as Mocked<ITimeEntryRepository>
+      pull: vi.fn(),
+      findByMemberId: vi.fn(),
+      findAll: vi.fn(),
+    } as unknown as Mocked<ITimeEntryProvider>
 
     adapterMock = {
-      timeEntryRepository: timeEntryRepositoryMock,
+      timeEntriesProvider: timeEntriesProviderMock,
     } as unknown as Mocked<IDataSourceAdapter>
 
     dataSourceResolverMock = {
@@ -150,7 +154,7 @@ describe('TimeEntriesPushService', () => {
         entries: [entry],
       })
 
-      expect(timeEntryRepositoryMock.delete).toHaveBeenCalledWith('del-1')
+      expect(timeEntriesProviderMock.delete).toHaveBeenCalledWith('del-1')
       expect(result.success?.[0].syncedAt).toEqual(fakeCurrentTime)
     })
 
@@ -163,7 +167,7 @@ describe('TimeEntriesPushService', () => {
         comments: 'New comment',
       } as SyncTimeEntryDTO
 
-      timeEntryRepositoryMock.findById.mockResolvedValue(fakeDomainTimeEntry)
+      timeEntriesProviderMock.findById.mockResolvedValue(fakeDomainTimeEntry)
 
       const result = await sut.execute({
         workspaceId: 'w-1',
@@ -173,7 +177,7 @@ describe('TimeEntriesPushService', () => {
       })
 
       expect(fakeDomainTimeEntry.updateHours).toHaveBeenCalled()
-      expect(timeEntryRepositoryMock.update).toHaveBeenCalledWith(
+      expect(timeEntriesProviderMock.update).toHaveBeenCalledWith(
         fakeDomainTimeEntry,
       )
       expect(result.success?.[0].syncedAt).toBeDefined()
@@ -187,7 +191,7 @@ describe('TimeEntriesPushService', () => {
         assumedMasterState: { updatedAt: fakeOldTime }, // Conflito!
       } as SyncTimeEntryDTO
 
-      timeEntryRepositoryMock.findById.mockResolvedValue(fakeDomainTimeEntry)
+      timeEntriesProviderMock.findById.mockResolvedValue(fakeDomainTimeEntry)
 
       const result = await sut.execute({
         workspaceId: 'w-1',
@@ -199,7 +203,7 @@ describe('TimeEntriesPushService', () => {
       const processed = result.success?.[0]
       expect(processed?.conflicted).toBe(true)
       expect(processed?.conflictData?.server).toBe(fakeDomainTimeEntry)
-      expect(timeEntryRepositoryMock.update).not.toHaveBeenCalled()
+      expect(timeEntriesProviderMock.update).not.toHaveBeenCalled()
     })
 
     it('should forward domain validation errors during update', async () => {
@@ -213,7 +217,7 @@ describe('TimeEntriesPushService', () => {
       fakeDomainTimeEntry.updateHours.mockReturnValue(
         Either.failure(domainError),
       )
-      timeEntryRepositoryMock.findById.mockResolvedValue(fakeDomainTimeEntry)
+      timeEntriesProviderMock.findById.mockResolvedValue(fakeDomainTimeEntry)
 
       const result = await sut.execute({
         workspaceId: 'w-1',
@@ -235,7 +239,7 @@ describe('TimeEntriesPushService', () => {
         user: { id: 'u1' },
       } as SyncTimeEntryDTO
 
-      timeEntryRepositoryMock.findById.mockResolvedValue(null as any)
+      timeEntriesProviderMock.findById.mockResolvedValue(null as any)
       vi.spyOn(TimeEntry, 'create').mockReturnValue(
         Either.success(fakeDomainTimeEntry),
       )
@@ -247,7 +251,7 @@ describe('TimeEntriesPushService', () => {
         entries: [entry],
       })
 
-      expect(timeEntryRepositoryMock.create).toHaveBeenCalled()
+      expect(timeEntriesProviderMock.create).toHaveBeenCalled()
       expect(result.success?.[0].syncedAt).toEqual(fakeCurrentTime)
     })
 
@@ -257,7 +261,7 @@ describe('TimeEntriesPushService', () => {
         _deleted: false,
         updatedAt: fakeCurrentTime,
       } as SyncTimeEntryDTO
-      timeEntryRepositoryMock.findById.mockRejectedValue(new Error('DB Down'))
+      timeEntriesProviderMock.findById.mockRejectedValue(new Error('DB Down'))
 
       const result = await sut.execute({
         workspaceId: 'w-1',

@@ -1,1 +1,1 @@
-export * from './JSONWorkspacesQuery'
+export {}

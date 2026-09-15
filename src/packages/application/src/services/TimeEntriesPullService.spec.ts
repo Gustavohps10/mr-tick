@@ -2,7 +2,7 @@ import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ITimeEntryQuery } from '@/contracts/data/queries'
+import type { ITimeEntryProvider } from '@/contracts/data/providers'
 import type { IDataSourceResolver } from '@/contracts/resolvers'
 import type { IDataSourceAdapter } from '@/contracts/resolvers/IDataSourceAdapter'
 import type { PullTimeEntriesInput } from '@/contracts/use-cases'
@@ -15,7 +15,7 @@ describe('TimeEntriesPullService', () => {
 
   let dataSourceResolverMock: Mocked<IDataSourceResolver>
   let adapterMock: Mocked<IDataSourceAdapter>
-  let timeEntryQueryMock: Mocked<ITimeEntryQuery>
+  let timeEntriesProviderMock: Mocked<ITimeEntryProvider>
 
   const fakeDate = new Date('2026-04-18T00:00:00.000Z')
 
@@ -51,12 +51,18 @@ describe('TimeEntriesPullService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    timeEntryQueryMock = {
+    timeEntriesProviderMock = {
       pull: vi.fn(),
-    } as unknown as Mocked<ITimeEntryQuery>
+      findByMemberId: vi.fn(),
+      findAll: vi.fn(),
+      findById: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    } as unknown as Mocked<ITimeEntryProvider>
 
     adapterMock = {
-      timeEntryQuery: timeEntryQueryMock,
+      timeEntriesProvider: timeEntriesProviderMock,
       getAuthenticatedMemberData: vi.fn(),
     } as unknown as Mocked<IDataSourceAdapter>
 
@@ -75,7 +81,7 @@ describe('TimeEntriesPullService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    timeEntryQueryMock.pull.mockResolvedValue(fakeTimeEntries)
+    timeEntriesProviderMock.pull.mockResolvedValue(fakeTimeEntries)
 
     // Act
     const result = await sut.execute(input)
@@ -85,7 +91,7 @@ describe('TimeEntriesPullService', () => {
     expect(result.success).toEqual(fakeTimeEntries)
 
     expect(adapterMock.getAuthenticatedMemberData).toHaveBeenCalled()
-    expect(timeEntryQueryMock.pull).toHaveBeenCalledWith(
+    expect(timeEntriesProviderMock.pull).toHaveBeenCalledWith(
       fakeMember.id,
       input.checkpoint,
       input.batch,
@@ -109,7 +115,7 @@ describe('TimeEntriesPullService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBe(authError)
 
-    expect(timeEntryQueryMock.pull).not.toHaveBeenCalled()
+    expect(timeEntriesProviderMock.pull).not.toHaveBeenCalled()
   })
 
   it('should return unexpected error when the data source resolver throws an exception', async () => {
@@ -135,7 +141,7 @@ describe('TimeEntriesPullService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    timeEntryQueryMock.pull.mockRejectedValue(new Error('Timeout'))
+    timeEntriesProviderMock.pull.mockRejectedValue(new Error('Timeout'))
 
     // Act
     const result = await sut.execute(input)

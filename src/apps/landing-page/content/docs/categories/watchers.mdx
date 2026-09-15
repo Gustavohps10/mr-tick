@@ -21,53 +21,77 @@ O objetivo de um Watcher é emitir **Sugestões Inteligentes de Apontamento** pa
 
 ## 💻 Exemplo Prático de um Watcher
 
+### 1. `manifest.yaml`
+```yaml
+id: reunioes-watcher
+name: Watcher de Reuniões
+version: 1.0.0
+description: Detecta chamadas e sugere apontamentos de reuniões
+author: Sua Empresa <contato@empresa.com>
+main: dist/index.js
+```
+
+### 2. `src/index.ts`
 ```typescript
-import type { IAddon, AddonContext, AddonSettingsField } from '@mr-tick/sdk'
+import type { IAddon, AddonContext } from '@mr-tick/sdk'
 
-export default class ReuniõesWatcherAddon implements IAddon {
-  public id = 'reunioes-watcher'
-  public name = 'Watcher de Reuniões'
-  public version = '1.0.0'
-  public description = 'Detecta chamadas e sugere apontamentos de reuniões'
+export default class ReunioesWatcherAddon implements IAddon {
+  private context: AddonContext | null = null
 
-  private context?: AddonContext
-
-  public settingsFields: AddonSettingsField[] = [
-    {
-      key: 'atividadePadrao',
-      label: 'ID da Atividade de Reunião',
-      type: 'text',
-      description:
-        'Código da atividade padrão para reuniões no seu DataSource.',
-    },
-  ]
-
-  public async onActivate(context: AddonContext): Promise<void> {
+  public activate(context: AddonContext): void {
     this.context = context
 
-    // 1. Escutando eventos do sistema nativo
+    // Registra as preferências de configuração no formato de abas/grupos
+    context.settings.register([
+      {
+        id: 'general',
+        label: 'Geral',
+        groups: [
+          {
+            id: 'preferences',
+            label: 'Preferências do Observador',
+            fields: [
+              {
+                id: 'atividadePadrao',
+                label: 'ID da Atividade de Reunião',
+                type: 'text',
+                description:
+                  'Código da atividade padrão para reuniões no seu DataSource.',
+              },
+            ],
+          },
+        ],
+      },
+    ])
+
+    // Escutando eventos do sistema nativo
     context.events.onSystemIdle?.((idleTimeSeconds) => {
       console.log(`[Watcher] Usuário inativo por ${idleTimeSeconds} segundos.`)
     })
   }
 
-  public async onDeactivate(): Promise<void> {
-    this.context = undefined
+  public deactivate(): void {
+    this.context = null
   }
 
-  // Emite a sugestão para a interface do Mr-tick
+  // Emite uma sugestão diretamente para a timeline de Time Entries
   public async emitirSugestaoDeApontamento(
     titulo: string,
     duracaoSegundos: number,
   ): Promise<void> {
     if (!this.context) return
 
-    await this.context.notifications.show({
-      title: 'Sugestão de Apontamento',
-      body: `Deseja registrar ${Math.round(duracaoSegundos / 60)} min em "${titulo}"?`,
+    await this.context.timeEntries.createSuggestion({
+      taskId: '',
+      comments: `Reunião: ${titulo}`,
+      timeSpentSeconds: duracaoSegundos,
+      source: 'addon',
     })
 
-    console.log(`[Sugestão Gerada] ${titulo} - ${duracaoSegundos}s`)
+    await this.context.notifications.success(
+      `Sugestão gerada: ${Math.round(duracaoSegundos / 60)} min em "${titulo}"`,
+      'Reuniões Watcher',
+    )
   }
 }
 ```

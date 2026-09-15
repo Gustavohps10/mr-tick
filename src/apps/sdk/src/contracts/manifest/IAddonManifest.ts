@@ -1,10 +1,12 @@
-export type AddonCategory = 'dataSource' | 'watcher' | 'calendar' | 'punch'
+export type AddonCategory =
+  'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme'
 
 export const VALID_ADDON_CATEGORIES: AddonCategory[] = [
   'dataSource',
   'watcher',
   'calendar',
   'punch',
+  'theme',
 ]
 
 export interface AddonScreenshot {

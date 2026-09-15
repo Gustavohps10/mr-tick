@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "cacheMaxSize": "5GB",
   "tasks": {
     "typecheck": {
       "dependsOn": ["^build"],

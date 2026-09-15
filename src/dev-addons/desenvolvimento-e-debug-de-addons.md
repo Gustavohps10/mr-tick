@@ -111,24 +111,27 @@ npm run addon:watch purple-theme
 Cada pasta dentro de `src/dev-addons/<nome-do-addon>` deve conter minimamente:
 
 ### A. `manifest.yaml`
-Metadados essenciais para o Mr-tick identificar a categoria, versão e recursos do plugin:
+Metadados essenciais para o Mr-tick identificar categorias, versão e recursos do plugin:
 ```yaml
-AddonId: '@mr-tick/meu-addon'
-Version: 1.0.0
-Category: Themes # Opções: Themes | DataSources | Watchers | Punch
-Name: Meu Addon
-Author: Mr-tick
-ShortDescription: Descrição curta para listagem na interface.
-Description: Descrição completa detalhando o funcionamento do addon.
-Tags:
+id: '@mr-tick/meu-addon'
+name: Meu Addon
+version: 1.0.0
+categories:
+  - theme # Opções: dataSource | watcher | calendar | punch | theme
+author: Mr-tick
+shortDescription: Descrição curta para listagem na interface.
+description: Descrição completa detalhando o funcionamento do addon.
+tags:
   - teste
   - desenvolvimento
 ```
 
+> **Nota**: Não declare propriedades como `id`, `name`, `version`, `displayName` ou `category` no corpo da classe TypeScript. Toda a identificação de metadados agora vive exclusivamente no `manifest.yaml`.
+
 ### B. `src/index.ts`
-Implementação da interface `IAddon` do `@mr-tick/sdk`:
+Implementação limpa da interface `IAddon` do `@mr-tick/sdk`:
 ```typescript
-import type { AddonContext, AddonSettingsSchema, IAddon } from '@mr-tick/sdk'
+import type { AddonContext, IAddon } from '@mr-tick/sdk'
 
 export default class MeuAddon implements IAddon {
   private context: AddonContext | null = null
@@ -136,22 +139,106 @@ export default class MeuAddon implements IAddon {
   activate(context: AddonContext): void {
     this.context = context
     console.log(`[MeuAddon] Ativado com ID: ${context.addonId}`)
+
+    // 1. Registre configurações via context.settings:
+    context.settings.register([
+      {
+        id: 'general',
+        label: 'Geral',
+        groups: [
+          {
+            id: 'settings_group',
+            label: 'Preferências',
+            fields: [
+              {
+                id: 'apiKey',
+                type: 'password',
+                label: 'Chave de API',
+              },
+            ],
+          },
+        ],
+      },
+    ])
+
+    // 2. Registre ações ou botões de tela via context.commands:
+    context.commands.register('minha-acao', async (): Promise<AddonActionResponse> => {
+      console.log('[MeuAddon] Executando minha-acao')
+      return {
+        isSuccess: true,
+        display: {
+          title: 'Ação executada!',
+          message: 'Operação realizada com sucesso.',
+        },
+      }
+    })
   }
 
   deactivate(): void {
+    this.context = null
     console.log('[MeuAddon] Desativado')
-  }
-
-  async getSettingsSchema(): Promise<AddonSettingsSchema> {
-    return []
-  }
-
-  async executeAction(actionId: string): Promise<unknown> {
-    console.log(`[MeuAddon] Executando ação: ${actionId}`)
-    return { isSuccess: true }
   }
 }
 ```
+
+> **Regra Arquitetural Estrita**: Os únicos métodos públicos permitidos na classe do addon são `activate` e `deactivate`. Qualquer funcionalidade, menu, schema ou ação deve ser registrada internamente através do `context`.
+
+### C. Para Addons de Dados (`categories: ['dataSource']`)
+Se o plugin fornecer dados externos (tarefas, horas, membros, metadados), implemente o contrato moderno `IDataSource`:
+
+```typescript
+import type {
+  AddonContext,
+  AddonSettingsSchema,
+  DataSourceContext,
+  IDataSource,
+  IDataSourceInstance,
+} from '@mr-tick/sdk'
+
+export class MeuDataSource implements IDataSource {
+  getConnectionSchema(): AddonSettingsSchema {
+    return [
+      {
+        id: 'credentials',
+        label: 'Credenciais & Conexão',
+        groups: [
+          {
+            id: 'auth',
+            label: 'Autenticação',
+            fields: [
+              {
+                id: 'apiUrl',
+                label: 'URL da Instância',
+                type: 'text',
+                scope: 'configuration',
+                required: true,
+              },
+              {
+                id: 'apiKey',
+                label: 'Chave de Acesso (API Key)',
+                type: 'password',
+                scope: 'credential',
+                required: true,
+              },
+            ],
+          },
+        ],
+      },
+    ]
+  }
+
+  createInstance(context: DataSourceContext): IDataSourceInstance {
+    return {
+      authStrategy: new MinhaAuthStrategy(context),
+      tasksProvider: new MinhasTarefasProvider(context),
+      timeEntriesProvider: new MeusApontamentosProvider(context),
+      membersProvider: new MeusMembrosProvider(context),
+      metadataProvider: new MeusMetadadosProvider(context),
+    }
+  }
+}
+```
+> Registre o DataSource durante a ativação com `context.dataSources.register(new MeuDataSource())`. O formulário de nova conexão no wizard do Mr-tick usará `getConnectionSchema()` com os escopos declarativos (`scope: 'credential' | 'configuration'`).
 
 ---
 

@@ -1,4 +1,4 @@
-﻿import { AddonSettingsField, AddonSettingsTab } from '@mr-tick/application'
+import { AddonSettingsField, AddonSettingsTab } from '@mr-tick/application'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Folder, Loader2 } from 'lucide-react'
 import { Plus } from 'lucide-react'
@@ -57,7 +57,9 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
     },
   })
 
-  const [formValues, setFormValues] = useState<Record<string, unknown>>({})
+  const [formValues, setFormValues] = useState<
+    Record<string, string | number | boolean | null>
+  >({})
 
   useEffect(() => {
     if (savedSettings) {
@@ -66,7 +68,9 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
   }, [savedSettings])
 
   const saveMutation = useMutation({
-    mutationFn: async (values: Record<string, unknown>) => {
+    mutationFn: async (
+      values: Record<string, string | number | boolean | null>,
+    ) => {
       const res = await openAPI.integrations.addons.saveSettings({
         body: { addonId, settings: values },
       })
@@ -82,7 +86,10 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
     },
   })
 
-  const handleFieldChange = (fieldId: string, value: unknown) => {
+  const handleFieldChange = (
+    fieldId: string,
+    value: string | number | boolean | null,
+  ) => {
     setFormValues((prev) => ({
       ...prev,
       [fieldId]: value,
@@ -358,8 +365,8 @@ function FieldRenderer({
 }: {
   field: AddonSettingsField
   addonId: string
-  value: unknown
-  onChange: (fieldId: string, value: unknown) => void
+  value: string | number | boolean | null | undefined
+  onChange: (fieldId: string, value: string | number | boolean | null) => void
 }) {
   const openAPI = useOpenAPI()
   const fieldValue = value !== undefined ? value : field.defaultValue

@@ -1,38 +1,25 @@
 import type {
   DataSourceContext,
   IAuthenticationStrategy,
-  IMemberQuery,
-  IMetadataQuery,
-  ITaskQuery,
-  ITaskRepository,
-  ITimeEntryQuery,
-  ITimeEntryRepository,
+  IMemberProvider,
+  IMetadataProvider,
+  ITaskProvider,
+  ITimeEntryProvider,
 } from '@mr-tick/application'
-
-import { AddonSettingsGroup } from './contracts/IAddon'
 
 export type { DataSourceContext }
 
-export interface IDataSource {
-  readonly id: string
-  readonly dataSourceType: string
-  readonly displayName: string
-  readonly configFields: {
-    credentials: AddonSettingsGroup[]
-    configuration: AddonSettingsGroup[]
-  }
-
-  getAuthenticationStrategy(context: DataSourceContext): IAuthenticationStrategy
-  getTaskQuery(context: DataSourceContext): ITaskQuery
-  getTimeEntryQuery(context: DataSourceContext): ITimeEntryQuery
-  getTimeEntryRepository(context: DataSourceContext): ITimeEntryRepository
-  getMemberQuery(context: DataSourceContext): IMemberQuery
-  getTaskRepository(context: DataSourceContext): ITaskRepository
-  getMetadataQuery(context: DataSourceContext): IMetadataQuery
+export interface IDataSourceInstance {
+  readonly authStrategy: IAuthenticationStrategy
+  readonly tasksProvider: ITaskProvider
+  readonly timeEntriesProvider: ITimeEntryProvider
+  readonly membersProvider: IMemberProvider
+  readonly metadataProvider: IMetadataProvider
 }
 
-/** @deprecated Use DataSourceContext and IDataSource instead */
-export type Context = DataSourceContext
+import type { AddonSettingsSchema } from './contracts/settings'
 
-/** @deprecated Use IDataSource instead */
-export type IConnector = IDataSource
+export interface IDataSource {
+  getConnectionSchema(): AddonSettingsSchema
+  createInstance(context: DataSourceContext): IDataSourceInstance
+}

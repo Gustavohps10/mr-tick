@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import {
   ConnectDataSourceInput,
@@ -17,8 +17,8 @@ export class ConnectDataSourceService implements IConnectDataSourceUseCase {
   ) {}
 
   public async execute<
-    Credentials,
-    Configuration extends Record<string, unknown>,
+    Credentials extends Record<string, string | number | boolean>,
+    Configuration extends Record<string, string | number | boolean>,
   >(
     input: ConnectDataSourceInput<Credentials, Configuration>,
   ): Promise<Either<AppError, ConnectionResultDTO>> {
@@ -38,7 +38,7 @@ export class ConnectDataSourceService implements IConnectDataSourceUseCase {
         input.connectionInstanceId,
         {
           config: input.configuration,
-          credentials: input.credentials as Record<string, unknown>,
+          credentials: input.credentials,
         },
       )
 
@@ -70,7 +70,7 @@ export class ConnectDataSourceService implements IConnectDataSourceUseCase {
           login: member.login,
           avatarUrl: member.avatarUrl,
         },
-        input.configuration as Record<string, unknown>,
+        input.configuration,
       )
 
       if (connectResult.isFailure()) {

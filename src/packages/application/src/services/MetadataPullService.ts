@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import { IDataSourceResolver } from '@/contracts/resolvers'
 import {
@@ -25,7 +25,7 @@ export class MetadataPullService implements IMetadataPullUseCase {
 
       const member = result.success
 
-      const metadata = await adapter.metadataQuery.getMetadata(
+      const metadata = await adapter.metadataProvider.getMetadata(
         member.id.toString(),
         input.checkpoint,
         input.batch,

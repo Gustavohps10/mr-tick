@@ -47,8 +47,8 @@ export interface ConnectDataSourceRequest {
   workspaceId: string
   pluginId: string
   connectionInstanceId: string
-  credentials: Record<string, unknown>
-  configuration: Record<string, unknown>
+  credentials: Record<string, string | number | boolean>
+  configuration: Record<string, string | number | boolean>
 }
 
 export interface DisconnectDataSourceRequest {

@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import { IDataSourceResolver } from '@/contracts/resolvers'
 import { ITaskPullUseCase, PullTasksInput } from '@/contracts/use-cases'
@@ -23,7 +23,7 @@ export class TaskPullService implements ITaskPullUseCase {
 
       const member = result.success
 
-      const tasks = await adapter.taskQuery.pull(
+      const tasks = await adapter.tasksProvider.pull(
         member.id.toString(),
         input.checkpoint,
         input.batch,

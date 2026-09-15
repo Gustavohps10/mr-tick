@@ -5,7 +5,7 @@ description: Conheça as APIs nativas disponíveis no AddonContext (Storage crip
 
 # Storage, Eventos & APIs do Contexto
 
-Quando um Addon é ativado através do método `onActivate(context: AddonContext)`, ele recebe acesso a um conjunto poderoso de ferramentas para interagir com o Core do Mr-tick.
+Quando um Addon é ativado através do método `activate(context: AddonContext)`, ele recebe acesso a um conjunto poderoso de ferramentas para interagir com o Core do Mr-tick.
 
 ---
 
@@ -62,13 +62,21 @@ context.events.onWorkspaceChanged?.((newWorkspaceId) => {
 
 ## 🔔 3. Notificações Nativas (`context.notifications`)
 
-Permite disparar alertas e notificações nativas do sistema operacional:
+Permite disparar toasts e alertas contextuais integrados ao sistema:
 
 ```typescript
-await context.notifications.show({
-  title: 'Meta Diária Concluída!',
-  body: 'Você atingiu 8 horas de apontamentos registradas hoje.',
-})
+// Notificação de sucesso
+await context.notifications.success(
+  'Você atingiu 8 horas de apontamentos registradas hoje.',
+  'Meta Diária Concluída!',
+)
+
+// Outros níveis disponíveis:
+await context.notifications.info('Mensagem informativa', 'Título')
+await context.notifications.warning('Aviso importante', 'Título')
+await context.notifications.error('Mensagem de erro', 'Falha')
+const toastId = await context.notifications.loading('Processando dados...')
+await context.notifications.dismiss(toastId)
 ```
 
 ---

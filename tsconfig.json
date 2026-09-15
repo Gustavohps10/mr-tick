@@ -19,7 +19,15 @@
       "@mr-tick/sdk/*": ["src/apps/sdk/src/*"],
 
       "@mr-tick/ui": ["src/packages/ui/src"],
-      "@mr-tick/ui/*": ["src/packages/ui/src/*"]
+      "@mr-tick/ui/*": ["src/packages/ui/src/*"],
+
+      "@/*": [
+        "src/packages/ui/src/*",
+        "src/packages/application/src/*",
+        "src/packages/domain/src/*",
+        "src/packages/adapters/src/*",
+        "src/packages/shared/src/*"
+      ]
     }
   },
   "include": [
@@ -29,7 +37,6 @@
     "mocks/**/*.ts"
   ],
   "exclude": [
-    "src/dev-addons",
     "node_modules",
     "dist"
   ]

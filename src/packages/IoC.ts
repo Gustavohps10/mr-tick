@@ -1,4 +1,4 @@
-﻿import { JwtService } from '@mr-tick/adapters/auth'
+import { JwtService } from '@mr-tick/adapters/auth'
 import { IHttpClient } from '@mr-tick/adapters/contracts'
 import { AddonsFacade } from '@mr-tick/adapters/facades'
 import { FileManager } from '@mr-tick/adapters/tools'
@@ -14,7 +14,6 @@ import {
   IFileStorage,
   ImportAddonService,
   IServiceProvider,
-  IWorkspacesQuery,
   IWorkspacesRepository,
   LinkDataSourceService,
   ListTaskService,
@@ -81,7 +80,6 @@ export interface PlatformDependencies {
   jobEmitter: IEventEmitter<IJobEvents>
   credentialsStorage: ICredentialsStorage
   workspacesRepository: IWorkspacesRepository
-  workspacesQuery: IWorkspacesQuery
   dataSourceResolver: IDataSourceResolver
   fileStorage: IFileStorage
   httpClient: IHttpClient
@@ -109,7 +107,6 @@ export class ContainerBuilder {
       jobEmitter: asValue(deps.jobEmitter),
       credentialsStorage: asValue(deps.credentialsStorage),
       workspacesRepository: asValue(deps.workspacesRepository),
-      workspacesQuery: asValue(deps.workspacesQuery),
       dataSourceResolver: asValue(deps.dataSourceResolver),
       fileStorage: asValue(deps.fileStorage),
       httpClient: asValue(deps.httpClient),

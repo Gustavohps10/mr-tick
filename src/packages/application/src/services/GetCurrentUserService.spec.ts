@@ -1,4 +1,4 @@
-﻿import { Workspace } from '@mr-tick/domain'
+import { Workspace } from '@mr-tick/domain'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -55,7 +55,7 @@ describe('GetCurrentUserService', () => {
 
     adapterMock = {
       getAuthenticatedMemberData: vi.fn(),
-      memberQuery: {
+      membersProvider: {
         findById: vi.fn(),
       },
     } as unknown as Mocked<IDataSourceAdapter>
@@ -88,7 +88,9 @@ describe('GetCurrentUserService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeAuthMember as any),
     )
-    ;(adapterMock.memberQuery.findById as any).mockResolvedValue(fakeMemberDTO)
+    ;(adapterMock.membersProvider.findById as any).mockResolvedValue(
+      fakeMemberDTO,
+    )
 
     // Act
     const result = await sut.execute(input)
@@ -105,7 +107,7 @@ describe('GetCurrentUserService', () => {
       input.connectionInstanceId,
     )
     expect(adapterMock.getAuthenticatedMemberData).toHaveBeenCalled()
-    expect(adapterMock.memberQuery.findById).toHaveBeenCalledWith(
+    expect(adapterMock.membersProvider.findById).toHaveBeenCalledWith(
       fakeAuthMember.id.toString(),
     )
   })
@@ -168,7 +170,7 @@ describe('GetCurrentUserService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBe(authError)
 
-    expect(adapterMock.memberQuery.findById).not.toHaveBeenCalled()
+    expect(adapterMock.membersProvider.findById).not.toHaveBeenCalled()
   })
 
   it('should return NotFoundError when user is not found in the external data source (adapter)', async () => {
@@ -180,7 +182,7 @@ describe('GetCurrentUserService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeAuthMember as any),
     )
-    ;(adapterMock.memberQuery.findById as any).mockResolvedValue(undefined)
+    ;(adapterMock.membersProvider.findById as any).mockResolvedValue(undefined)
 
     // Act
     const result = await sut.execute(input)

@@ -1,8 +1,8 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ITimeEntryQuery } from '@/contracts/data'
+import type { ITimeEntryProvider } from '@/contracts/data/providers'
 import type { IDataSourceResolver } from '@/contracts/resolvers'
 import type { IDataSourceAdapter } from '@/contracts/resolvers/IDataSourceAdapter'
 import type { ListTimeEntriesInput } from '@/contracts/use-cases/IListTimeEntriesUseCase'
@@ -15,7 +15,7 @@ describe('ListTimeEntriesService', () => {
 
   let dataSourceResolverMock: Mocked<IDataSourceResolver>
   let adapterMock: Mocked<IDataSourceAdapter>
-  let timeEntryQueryMock: Mocked<ITimeEntryQuery>
+  let timeEntriesProviderMock: Mocked<ITimeEntryProvider>
 
   const makeInput = (): ListTimeEntriesInput =>
     ({
@@ -43,12 +43,18 @@ describe('ListTimeEntriesService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    timeEntryQueryMock = {
+    timeEntriesProviderMock = {
       findByMemberId: vi.fn(),
-    } as unknown as Mocked<ITimeEntryQuery>
+      pull: vi.fn(),
+      findAll: vi.fn(),
+      findById: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    } as unknown as Mocked<ITimeEntryProvider>
 
     adapterMock = {
-      timeEntryQuery: timeEntryQueryMock,
+      timeEntriesProvider: timeEntriesProviderMock,
       getAuthenticatedMemberData: vi.fn(),
     } as unknown as Mocked<IDataSourceAdapter>
 
@@ -68,7 +74,7 @@ describe('ListTimeEntriesService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    timeEntryQueryMock.findByMemberId.mockResolvedValue(fakeResult)
+    timeEntriesProviderMock.findByMemberId.mockResolvedValue(fakeResult)
 
     // Act
     const result = await sut.execute(input)
@@ -82,7 +88,7 @@ describe('ListTimeEntriesService', () => {
       input.connectionInstanceId,
     )
     expect(adapterMock.getAuthenticatedMemberData).toHaveBeenCalled()
-    expect(timeEntryQueryMock.findByMemberId).toHaveBeenCalledWith(
+    expect(timeEntriesProviderMock.findByMemberId).toHaveBeenCalledWith(
       fakeMember.id,
       input.startDate,
       input.endDate,
@@ -106,7 +112,7 @@ describe('ListTimeEntriesService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBe(authError)
 
-    expect(timeEntryQueryMock.findByMemberId).not.toHaveBeenCalled()
+    expect(timeEntriesProviderMock.findByMemberId).not.toHaveBeenCalled()
   })
 
   it('should return unexpected error when the data source resolver throws an exception', async () => {
@@ -125,7 +131,7 @@ describe('ListTimeEntriesService', () => {
     expect(result.failure.messageKey).toBe('ERRO_INESPERADO')
     expect(result.failure.statusCode).toBe(404)
 
-    expect(timeEntryQueryMock.findByMemberId).not.toHaveBeenCalled()
+    expect(timeEntriesProviderMock.findByMemberId).not.toHaveBeenCalled()
   })
 
   it('should return unexpected error when the adapter query throws an exception', async () => {
@@ -136,7 +142,7 @@ describe('ListTimeEntriesService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    timeEntryQueryMock.findByMemberId.mockRejectedValue(
+    timeEntriesProviderMock.findByMemberId.mockRejectedValue(
       new Error('query error'),
     )
 
@@ -150,6 +156,6 @@ describe('ListTimeEntriesService', () => {
     expect(result.failure.statusCode).toBe(404)
 
     expect(dataSourceResolverMock.getDataSource).toHaveBeenCalledOnce()
-    expect(timeEntryQueryMock.findByMemberId).toHaveBeenCalledOnce()
+    expect(timeEntriesProviderMock.findByMemberId).toHaveBeenCalledOnce()
   })
 })

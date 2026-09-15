@@ -50,8 +50,6 @@ export const IpcChannels = {
   WORKSPACES_UPDATE_IDENTITY: 'workspaces:update-identity',
   WORKSPACES_DELETE: 'workspaces:delete',
 
-  DATA_SOURCE_GET_FIELDS: 'datasource:get-fields',
-
   ADDONS_LIST_AVAILABLE: 'addons:list-available',
   ADDONS_LIST_INSTALLED: 'addons:list-installed',
   ADDONS_GETINSTALLED_BY_ID: 'addons:getinstalled-by-id',
@@ -67,6 +65,7 @@ export const IpcChannels = {
   ADDONS_SHOW_TOAST: 'addons:show-toast',
   ADDONS_DISMISS_TOAST: 'addons:dismiss-toast',
   ADDON_GET_SCHEMA: 'addon:get-schema',
+  ADDON_GET_CONNECTION_SCHEMA: 'addon:get-connection-schema',
   ADDON_GET_SETTINGS: 'addon:get-settings',
   ADDON_SAVE_SETTINGS: 'addon:save-settings',
   ADDON_EXECUTE_ACTION: 'addon:execute-action',

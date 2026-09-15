@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import { IDataSourceResolver } from '@/contracts/resolvers'
 import {
@@ -25,7 +25,7 @@ export class ListTaskService implements IListTasksUseCase {
 
       const member = result.success
 
-      const tasks = await adapter.taskQuery.findAll()
+      const tasks = await adapter.tasksProvider.findAll()
 
       return Either.success(tasks)
     } catch (error: unknown) {

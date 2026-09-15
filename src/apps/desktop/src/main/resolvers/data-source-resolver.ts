@@ -7,12 +7,7 @@ import {
   IWorkspacesRepository,
   ResolvedConnection,
 } from '@mr-tick/application'
-import {
-  AddonSettingsGroup,
-  AppError,
-  Either,
-  type IDataSource,
-} from '@mr-tick/sdk'
+import { AppError, Either, type IDataSource } from '@mr-tick/sdk'
 import { existsSync } from 'fs'
 import { resolve } from 'path'
 import { pathToFileURL } from 'url'
@@ -86,6 +81,7 @@ export class DataSourceResolver implements IDataSourceResolver {
     if (!connection) throw new Error(`Conexao invalida`)
 
     const datasource = await this.loadModule(connection.dataSourceId)
+    const instance = datasource.createInstance(context)
 
     return {
       getAuthenticatedMemberData: () => {
@@ -99,13 +95,11 @@ export class DataSourceResolver implements IDataSourceResolver {
         return Either.success(context.authenticatedMemberData)
       },
       id: connectionInstanceId,
-      authenticationStrategy: datasource.getAuthenticationStrategy(context),
-      memberQuery: datasource.getMemberQuery(context),
-      taskQuery: datasource.getTaskQuery(context),
-      taskRepository: datasource.getTaskRepository(context),
-      timeEntryQuery: datasource.getTimeEntryQuery(context),
-      timeEntryRepository: datasource.getTimeEntryRepository(context),
-      metadataQuery: datasource.getMetadataQuery(context),
+      authenticationStrategy: instance.authStrategy,
+      tasksProvider: instance.tasksProvider,
+      timeEntriesProvider: instance.timeEntriesProvider,
+      membersProvider: instance.membersProvider,
+      metadataProvider: instance.metadataProvider,
     }
   }
 
@@ -120,14 +114,6 @@ export class DataSourceResolver implements IDataSourceResolver {
       dataSourceId: c.dataSourceId,
       config: c.config,
     }))
-  }
-
-  async getConfigFields(pluginId: string): Promise<{
-    credentials: AddonSettingsGroup[]
-    configuration: AddonSettingsGroup[]
-  }> {
-    const mod = await this.loadModule(pluginId)
-    return mod.configFields
   }
 
   private async loadModule(pluginId: string): Promise<IDataSource> {
@@ -159,10 +145,5 @@ export class DataSourceResolver implements IDataSourceResolver {
 }
 
 function isDataSource(candidate: object): candidate is IDataSource {
-  return (
-    'getTaskQuery' in candidate &&
-    'getMemberQuery' in candidate &&
-    'getTimeEntryQuery' in candidate &&
-    'getMetadataQuery' in candidate
-  )
+  return 'createInstance' in candidate
 }

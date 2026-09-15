@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import {
   AddonManifestViewModel,
@@ -53,8 +53,8 @@ export interface DataSourceConnectionsContextType {
   connect: (params: {
     connectionInstanceId: ConnectionInstanceId
     pluginId: string
-    credentials: Record<string, unknown>
-    configuration: Record<string, unknown>
+    credentials: Record<string, string | number | boolean>
+    configuration: Record<string, string | number | boolean>
   }) => Promise<ViewModel<ConnectionResultViewModel> | undefined>
 
   disconnect: (
@@ -218,8 +218,8 @@ export function DataSourceConnectionsProvider({
     }: {
       connectionInstanceId: ConnectionInstanceId
       pluginId: string
-      credentials: Record<string, unknown>
-      configuration: Record<string, unknown>
+      credentials: Record<string, string | number | boolean>
+      configuration: Record<string, string | number | boolean>
     }) => {
       if (!workspaceId) return
 

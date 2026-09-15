@@ -32,8 +32,19 @@ export interface CalendarEventDTO {
 
 ## 💻 Exemplo de Implementação de Calendário
 
+### 1. `manifest.yaml`
+```yaml
+id: google-calendar-addon
+name: Google Calendar Integration
+version: 1.0.0
+description: Sincroniza reuniões do Google Calendar com o Mr-tick
+author: Sua Empresa <contato@empresa.com>
+main: dist/index.js
+```
+
+### 2. `src/index.ts`
 ```typescript
-import type { IAddon, AddonContext, AddonSettingsField } from '@mr-tick/sdk'
+import type { IAddon, AddonContext } from '@mr-tick/sdk'
 
 export interface CalendarEventDTO {
   id: string
@@ -43,32 +54,52 @@ export interface CalendarEventDTO {
   meetLink?: string
 }
 
+interface GoogleCalendarApiItem {
+  id: string
+  summary?: string
+  start: { dateTime?: string; date?: string }
+  end: { dateTime?: string; date?: string }
+  hangoutLink?: string
+}
+
+interface GoogleCalendarApiResponse {
+  items?: GoogleCalendarApiItem[]
+}
+
 export default class GoogleCalendarAddon implements IAddon {
-  public id = 'google-calendar-addon'
-  public name = 'Google Calendar Integration'
-  public version = '1.0.0'
-  public description = 'Sincroniza reuniões do Google Calendar com o Mr-tick'
+  private context: AddonContext | null = null
 
-  private context?: AddonContext
-
-  public settingsFields: AddonSettingsField[] = [
-    {
-      key: 'calendarId',
-      label: 'ID do Calendário',
-      type: 'text',
-      defaultValue: 'primary',
-      description:
-        'Identificador do calendário (use "primary" para o principal).',
-    },
-  ]
-
-  public async onActivate(context: AddonContext): Promise<void> {
+  public activate(context: AddonContext): void {
     this.context = context
+
+    context.settings.register([
+      {
+        id: 'general',
+        label: 'Geral',
+        groups: [
+          {
+            id: 'calendar_config',
+            label: 'Configurações do Calendário',
+            fields: [
+              {
+                id: 'calendarId',
+                label: 'ID do Calendário',
+                type: 'text',
+                defaultValue: 'primary',
+                description:
+                  'Identificador do calendário (use "primary" para o principal).',
+              },
+            ],
+          },
+        ],
+      },
+    ])
+
     console.log('[GoogleCalendar] Addon ativado com sucesso!')
   }
 
-  public async onDeactivate(): Promise<void> {
-    this.context = undefined
+  public deactivate(): void {
+    this.context = null
   }
 
   // Busca os eventos do dia especificado
@@ -96,13 +127,13 @@ export default class GoogleCalendarAddon implements IAddon {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
 
-    const data = await response.json()
+    const data: GoogleCalendarApiResponse = await response.json()
 
-    return (data.items || []).map((item: any): CalendarEventDTO => ({
+    return (data.items || []).map((item: GoogleCalendarApiItem): CalendarEventDTO => ({
       id: item.id,
       title: item.summary || 'Sem título',
-      startDate: new Date(item.start.dateTime || item.start.date),
-      endDate: new Date(item.end.dateTime || item.end.date),
+      startDate: new Date(item.start.dateTime || item.start.date || targetDate),
+      endDate: new Date(item.end.dateTime || item.end.date || targetDate),
       meetLink: item.hangoutLink,
     }))
   }

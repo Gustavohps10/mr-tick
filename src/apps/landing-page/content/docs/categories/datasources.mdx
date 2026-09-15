@@ -11,159 +11,172 @@ Ele atua como a ponte de comunicação que o [Motor de Sincronização](/docs/sy
 
 ---
 
-## 🏗️ Responsabilidades de um DataSource
+## 🏗️ Arquitetura de um DataSource
 
-Para fornecer uma integração completa, o DataSource deve suportar três operações fundamentais:
+Um DataSource moderno no Mr-tick é registrado dentro do método `activate` do seu Addon e implementa o método `createInstance(context)`, retornando uma instância com seus **Providers**:
 
-1. **Autenticação e Identificação**: Retornar os dados do membro conectado (`id`, `name`, `login`, `avatarUrl`).
-2. **Consulta de Tarefas e Metadados (Pull)**:
-   - Fornecer as tarefas atribuídas ao usuário utilizando `checkpoint` e `batch`.
-   - Listar as atividades/categorias permitidas (ex: "Desenvolvimento", "Bugfix", "Reunião").
-3. **Persistência de Apontamentos (Push)**:
-   - Criar, atualizar ou excluir lançamentos de horas no sistema remoto.
+1. **`authStrategy` (`IAuthenticationStrategy`)**: Estratégia de autenticação e validação de credenciais.
+2. **`tasksProvider` (`ITaskProvider`)**: Responsável por listar tarefas e executar o **Pull** com checkpoints.
+3. **`timeEntriesProvider` (`ITimeEntryProvider`)**: Responsável por listar, criar, atualizar e excluir apontamentos de horas (**Push**).
+4. **`membersProvider` (`IMemberProvider`)**: Responsável por retornar os dados do membro conectado e usuários.
+5. **`metadataProvider` (`IMetadataProvider`)**: Responsável por obter status, prioridades e atividades disponíveis.
 
 ---
 
 ## 💻 Exemplo Prático de Implementação
 
-Abaixo está um exemplo completo de um DataSource de integração com uma API REST:
+Abaixo está um exemplo completo e desacoplado de um DataSource:
 
 ```typescript
 import type {
   IAddon,
   AddonContext,
-  AddonSettingsField,
+  IDataSource,
+  DataSourceContext,
+  IDataSourceInstance,
+  ITaskProvider,
+  ITimeEntryProvider,
+  IMemberProvider,
+  IMetadataProvider,
+  IAuthenticationStrategy,
   TaskDTO,
   TimeEntryDTO,
-  SyncTimeEntryDTO,
+  MemberDTO,
+  MetadataDTO,
+  PagedResultDTO,
+  TimeEntry,
 } from '@mr-tick/sdk'
 
-export default class ExemploDataSourceAddon implements IAddon {
-  public id = 'exemplo-datasource'
-  public name = 'Exemplo DataSource'
-  public version = '1.0.0'
-  public description = 'Integração de tarefas e apontamentos com API Exemplo'
+// 1. Providers Especializados
+class MinhaApiTaskProvider implements ITaskProvider {
+  constructor(private context: DataSourceContext) {}
 
-  private context?: AddonContext
-
-  public settingsFields: AddonSettingsField[] = [
-    {
-      key: 'apiUrl',
-      label: 'URL da API',
-      type: 'text',
-      required: true,
-      description: 'Endereço base da API externa (ex: https://api.empresa.com)',
-    },
-    {
-      key: 'apiToken',
-      label: 'Token de Autenticação',
-      type: 'password',
-      required: true,
-    },
-  ]
-
-  public async onActivate(context: AddonContext): Promise<void> {
-    this.context = context
-    console.log('[DataSource] Ativado com sucesso!')
-  }
-
-  public async onDeactivate(): Promise<void> {
-    this.context = undefined
-  }
-
-  // 1. Identificação do Usuário Conectado
-  public async getAuthenticatedMember(): Promise<{
-    id: string
-    name: string
-    login: string
-  }> {
-    const apiUrl = await this.context?.storage.get('apiUrl')
-    const token = await this.context?.storage.get('apiToken')
-
-    const response = await fetch(`${apiUrl}/user/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-
-    if (!response.ok) throw new Error('Falha ao autenticar no servidor.')
-    const data = await response.json()
-
-    return {
-      id: String(data.id),
-      name: data.full_name,
-      login: data.username,
-    }
-  }
-
-  // 2. Fase de Pull: Buscar Tarefas com Checkpoint
-  public async pullTasks(
+  async pull(
     memberId: string,
-    checkpoint?: string,
-    batch: number = 50,
+    checkpoint: { updatedAt: Date; id: string },
+    batch: number,
   ): Promise<TaskDTO[]> {
-    const apiUrl = await this.context?.storage.get('apiUrl')
-    const token = await this.context?.storage.get('apiToken')
-
-    const url = new URL(`${apiUrl}/tasks`)
-    url.searchParams.set('assigned_to', memberId)
-    url.searchParams.set('limit', String(batch))
-    if (checkpoint) url.searchParams.set('updated_since', checkpoint)
-
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-
-    const items = await response.json()
-    return items.map((task: any): TaskDTO => ({
-      id: String(task.id),
-      title: task.title,
-      description: task.description || '',
-      externalId: String(task.id),
-      externalType: 'exemplo-task',
-      updatedAt: new Date(task.updated_at),
-    }))
+    // Busca tarefas na API remota respeitando o checkpoint e batch
+    return []
   }
 
-  // 3. Fase de Push: Enviar Lançamentos de Tempo
-  public async pushTimeEntry(entry: SyncTimeEntryDTO): Promise<void> {
-    const apiUrl = await this.context?.storage.get('apiUrl')
-    const token = await this.context?.storage.get('apiToken')
+  async findAll(): Promise<PagedResultDTO<TaskDTO>> {
+    return { items: [], total: 0, page: 1, pageSize: 50 }
+  }
 
-    // Trata exclusão
-    if (entry._deleted) {
-      await fetch(`${apiUrl}/time_entries/${entry.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      return
-    }
+  async findById(id: string): Promise<TaskDTO | undefined> {
+    return undefined
+  }
 
-    const payload = {
-      task_id: entry.task.id,
-      activity_id: entry.activity.id,
-      spent_seconds: entry.timeSpent,
-      start_date: entry.startDate?.toISOString(),
-      end_date: entry.endDate?.toISOString(),
-      comments: entry.comments,
-    }
+  async create(): Promise<void> {
+    throw new Error('Criação de tarefas não suportada')
+  }
 
-    // Se já existe, atualiza; caso contrário, cria
-    const method = entry.id ? 'PUT' : 'POST'
-    const endpoint = entry.id
-      ? `${apiUrl}/time_entries/${entry.id}`
-      : `${apiUrl}/time_entries`
+  async update(): Promise<void> {
+    throw new Error('Edição de tarefas não suportada')
+  }
 
-    const response = await fetch(endpoint, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+  async delete(): Promise<void> {
+    throw new Error('Exclusão de tarefas não suportada')
+  }
+}
+
+class MinhaApiTimeEntryProvider implements ITimeEntryProvider {
+  constructor(private context: DataSourceContext) {}
+
+  async pull(
+    memberId: string,
+    checkpoint: { updatedAt: Date; id: string },
+    batch: number,
+  ): Promise<TimeEntryDTO[]> {
+    return []
+  }
+
+  async findByMemberId(
+    memberId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<PagedResultDTO<TimeEntryDTO>> {
+    return { items: [], total: 0, page: 1, pageSize: 50 }
+  }
+
+  async create(entry: TimeEntry): Promise<void> {
+    // Envia novo apontamento de horas para a API
+  }
+
+  async update(entry: TimeEntry): Promise<void> {
+    // Atualiza apontamento existente na API
+  }
+
+  async delete(id: string): Promise<void> {
+    // Remove o apontamento na API
+  }
+
+  async findById(id: string): Promise<TimeEntry | undefined> {
+    return undefined
+  }
+
+  async findAll(): Promise<PagedResultDTO<TimeEntryDTO>> {
+    return { items: [], total: 0, page: 1, pageSize: 50 }
+  }
+}
+
+// 2. Definição do DataSource (Metadata-Driven)
+export const MeuDataSource: IDataSource = {
+  getConnectionSchema(): AddonSettingsSchema {
+    return [
+      {
+        id: 'credentials',
+        label: 'Credenciais & Conexão',
+        groups: [
+          {
+            id: 'auth',
+            label: 'Autenticação',
+            fields: [
+              {
+                id: 'serverUrl',
+                label: 'URL do Servidor',
+                type: 'text',
+                scope: 'configuration',
+                required: true,
+              },
+              {
+                id: 'apiToken',
+                label: 'Token de Acesso',
+                type: 'password',
+                scope: 'credential',
+                required: true,
+              },
+            ],
+          },
+        ],
       },
-      body: JSON.stringify(payload),
-    })
+    ]
+  },
 
-    if (!response.ok) {
-      throw new Error(`Erro ao enviar apontamento: HTTP ${response.status}`)
+  createInstance(context: DataSourceContext): IDataSourceInstance {
+    return {
+      authStrategy: new MinhaAuthStrategy(context),
+      tasksProvider: new MinhaApiTaskProvider(context),
+      timeEntriesProvider: new MinhaApiTimeEntryProvider(context),
+      membersProvider: new MinhaApiMemberProvider(context),
+      metadataProvider: new MinhaApiMetadataProvider(context),
     }
+  },
+}
+
+// 3. Addon Principal (Microkernel: apenas activate e deactivate)
+export default class MeuDataSourceAddon implements IAddon {
+  public async activate(context: AddonContext): Promise<void> {
+    // Registra as preferências dinamicamente ou reaproveita o schema
+    context.settings.register(MeuDataSource.getConnectionSchema())
+
+    // Registra o DataSource no sistema
+    context.dataSources.register(MeuDataSource)
+  }
+
+  public async deactivate(): Promise<void> {
+    console.log('[MeuDataSourceAddon] Desativado.')
   }
 }
 ```
@@ -172,6 +185,7 @@ export default class ExemploDataSourceAddon implements IAddon {
 
 ## 💡 Melhores Práticas para DataSources
 
-- **Respeito a Checkpoints**: Sempre utilize filtros de data de modificação (`updated_since` ou equivalente) para minimizar o tráfego de dados.
-- **Tratamento de Exclusões**: Sempre verifique o campo `entry._deleted` para propagar a deleção ao servidor remoto.
-- **Segurança**: Nunca guarde credenciais em arquivos locais desprotegidos — utilize sempre o `context.storage` que persiste dados com criptografia nativa.
+- **Desacoplamento por Providers**: Separe cada responsabilidade (Tarefas, Horas, Membros e Metadados) em classes especializadas que implementam suas respectivas interfaces.
+- **Respeito a Checkpoints**: Sempre utilize filtros de data de modificação (`checkpoint.updatedAt`) para minimizar o tráfego de dados no `pull`.
+- **Validação de Credenciais**: A autenticação deve ser realizada na `authStrategy`, garantindo que conexões inválidas sejam rejeitadas antes de qualquer sincronização.
+- **Configurações via Settings**: Utilize `context.settings.register(...)` para declarar campos de credenciais e configuração sem misturá-los com a lógica de rede.

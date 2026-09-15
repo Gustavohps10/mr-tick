@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -84,7 +84,7 @@ describe('ListTasksService', () => {
     adapterMock = {
       // ADICIONADO: mock para a função de autenticação
       getAuthenticatedMemberData: vi.fn(),
-      taskQuery: {
+      tasksProvider: {
         findAll: vi.fn(),
       },
     } as unknown as Mocked<IDataSourceAdapter>
@@ -102,7 +102,7 @@ describe('ListTasksService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    ;(adapterMock.taskQuery.findAll as any).mockResolvedValue(fakeTasksPage)
+    ;(adapterMock.tasksProvider.findAll as any).mockResolvedValue(fakeTasksPage)
 
     // Act
     const result = await sut.execute(input)
@@ -116,7 +116,7 @@ describe('ListTasksService', () => {
       input.connectionInstanceId,
     )
     expect(adapterMock.getAuthenticatedMemberData).toHaveBeenCalled()
-    expect(adapterMock.taskQuery.findAll).toHaveBeenCalledTimes(1)
+    expect(adapterMock.tasksProvider.findAll).toHaveBeenCalledTimes(1)
   })
 
   it('should forward the failure if getAuthenticatedMemberData returns a failure', async () => {
@@ -137,7 +137,7 @@ describe('ListTasksService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBe(authError)
 
-    expect(adapterMock.taskQuery.findAll).not.toHaveBeenCalled()
+    expect(adapterMock.tasksProvider.findAll).not.toHaveBeenCalled()
   })
 
   it('should return InternalServerError (ERRO_INESPERADO) when the data source resolver throws an exception', async () => {
@@ -155,7 +155,7 @@ describe('ListTasksService', () => {
     expect(result.failure).toBeInstanceOf(AppError)
     expect(result.failure.messageKey).toBe('ERRO_INESPERADO')
 
-    expect(adapterMock.taskQuery.findAll).not.toHaveBeenCalled()
+    expect(adapterMock.tasksProvider.findAll).not.toHaveBeenCalled()
   })
 
   it('should return InternalServerError (ERRO_INESPERADO) when the adapter fails to fetch tasks', async () => {
@@ -167,7 +167,7 @@ describe('ListTasksService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    ;(adapterMock.taskQuery.findAll as any).mockRejectedValue(error)
+    ;(adapterMock.tasksProvider.findAll as any).mockRejectedValue(error)
 
     // Act
     const result = await sut.execute(input)
