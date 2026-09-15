@@ -23,6 +23,8 @@ interface ManifestData {
   Name?: string
   version?: string
   Version?: string
+  categories?: string[]
+  Categories?: string[]
   category?: string
   Category?: string
   description?: string
@@ -129,7 +131,16 @@ export function scanDevAddons(): DevAddonInfo[] {
     const id = manifest.id || manifest.AddonId || entry.name
     const name = manifest.name || manifest.Name || entry.name
     const version = manifest.version || manifest.Version || '1.0.0'
-    const category = manifest.category || manifest.Category || 'General'
+    const rawCategories =
+      manifest.categories ||
+      manifest.Categories ||
+      (manifest.category || manifest.Category
+        ? [manifest.category || manifest.Category]
+        : [])
+    const category =
+      Array.isArray(rawCategories) && rawCategories.length > 0
+        ? rawCategories.join(', ')
+        : 'General'
 
     // O Mr-tick usa o id sanitizado ou nome da pasta como diretório destino
     const sanitizedFolderName = id.replace(/[/\\?%*:|"<>]/g, '_')
@@ -280,6 +291,9 @@ export async function runBuild(
 
     console.log(`🔨 Compilando [${addon.name}] programaticamente...`)
 
+    const addonTsConfig = join(addon.sourcePath, 'tsconfig.json')
+    const hasAddonTsConfig = existsSync(addonTsConfig)
+
     try {
       await buildWithTsup({
         entry: [entryFile],
@@ -288,6 +302,10 @@ export async function runBuild(
         sourcemap: true,
         watch,
         clean: false,
+        platform: 'node',
+        shims: true,
+        external: ['@mr-tick/sdk', 'electron', 'axios'],
+        ...(hasAddonTsConfig ? { tsconfig: addonTsConfig } : {}),
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

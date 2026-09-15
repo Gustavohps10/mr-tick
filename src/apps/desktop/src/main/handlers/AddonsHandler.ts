@@ -7,6 +7,8 @@ import {
 import {
   AddonActionResponse,
   AddonSettingsSchema,
+  CommandArgument,
+  CommandResult,
   type SidebarMenuItem,
   type TimerbarMenuItem,
 } from '@mr-tick/sdk'
@@ -55,15 +57,15 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     }
   }
 
-  public async executeCommand<T = void>(
-    _event: IpcMainInvokeEvent,
+  public async executeCommand(
+    event: IpcMainInvokeEvent,
     {
       body,
     }: IRequest<{
       commandId: string
-      args?: Array<string | number | boolean | Record<string, string>>
+      args?: CommandArgument[]
     }>,
-  ): Promise<ViewModel<T>> {
+  ): Promise<ViewModel<CommandResult>> {
     if (!body?.commandId) {
       return {
         isSuccess: false,
@@ -72,7 +74,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       }
     }
     try {
-      const result = await this.addonLoader?.executeCommand<T>(
+      const result = await this.addonLoader?.executeCommand(
         body.commandId,
         ...(body.args ?? []),
       )
@@ -81,14 +83,9 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         statusCode: 200,
         data: result,
       }
-    } catch (err) {
-      const error =
-        err instanceof Error ? err.message : 'COMMAND_EXECUTION_FAILED'
-      return {
-        isSuccess: false,
-        statusCode: 500,
-        error,
-      }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : 'FAILED_TO_EXECUTE_COMMAND'
+      return { isSuccess: false, statusCode: 500, error }
     }
   }
 
@@ -162,6 +159,42 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     }
   }
 
+  public async getConnectionSchema(
+    event: IpcMainInvokeEvent,
+    { body }: IRequest<{ addonId: string }>,
+  ): Promise<ViewModel<AddonSettingsSchema>> {
+    if (!this.addonLoader) {
+      return { isSuccess: true, statusCode: 200, data: [] }
+    }
+    try {
+      if (body?.addonId && !this.addonLoader.hasActiveAddon(body.addonId)) {
+        const installedResult = await this.addonsFacade.getInstalledById(
+          body.addonId,
+        )
+        if (installedResult.isSuccess() && installedResult.success.path) {
+          await this.addonLoader.loadAndActivateFromDisk(
+            body.addonId,
+            installedResult.success.path,
+          )
+        }
+      }
+
+      const ds = this.addonLoader.getDataSource(body.addonId)
+      if (ds && ds.getConnectionSchema) {
+        return {
+          isSuccess: true,
+          statusCode: 200,
+          data: ds.getConnectionSchema(),
+        }
+      }
+      return { isSuccess: true, statusCode: 200, data: [] }
+    } catch (e) {
+      const error =
+        e instanceof Error ? e.message : 'FAILED_TO_GET_CONNECTION_SCHEMA'
+      return { isSuccess: false, statusCode: 500, error }
+    }
+  }
+
   public async getSettings(
     _event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string }>,
@@ -200,7 +233,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   }
 
   public async executeAction(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     {
       body,
     }: IRequest<{
@@ -238,7 +271,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   }
 
   public async setActiveWorkspace(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<{ workspaceId: string }>,
   ): Promise<ViewModel<void>> {
     if (this.addonLoader && body?.workspaceId) {

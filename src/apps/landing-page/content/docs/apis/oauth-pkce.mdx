@@ -24,7 +24,7 @@ Esse fluxo elimina totalmente a necessidade de embutir `CLIENT_SECRET` nos addon
    ▼
 3. Redirecionamento Web
    │ Provedor redireciona para a Landing Page:
-   │ https://mr-tickapp.com.br/oauth/callback?code=AUTH_CODE&state=STATE
+   │ https://mistertick.com/oauth/callback?code=AUTH_CODE&state=STATE
    ▼
 4. Deep Link do Sistema Operacional
    │ A Landing Page executa o protocolo seguro:
@@ -49,12 +49,25 @@ Esse fluxo elimina totalmente a necessidade de embutir `CLIENT_SECRET` nos addon
 ## 💻 Exemplo Completo de Implementação
 
 ```typescript
-import type { IAddon, AddonContext } from '@mr-tick/sdk'
+import type { AddonActionResponse, AddonContext, IAddon } from '@mr-tick/sdk'
 
 export default class DiscordOAuthAddon implements IAddon {
-  public id = 'discord-oauth'
-  public name = 'Discord OAuth Integration'
-  public version = '1.0.0'
+  public async activate(context: AddonContext): Promise<void> {
+    context.commands.register('login', async (): Promise<AddonActionResponse> => {
+      await this.handleLogin(context)
+      return {
+        isSuccess: true,
+        display: {
+          title: 'Conectado ao Discord',
+          message: 'Autenticação OAuth realizada com sucesso.',
+        },
+      }
+    })
+  }
+
+  public async deactivate(): Promise<void> {
+    console.log('[DiscordOAuthAddon] Desativado.')
+  }
 
   public async handleLogin(context: AddonContext): Promise<void> {
     // 1. Gera par PKCE (RFC 7636) e state criptográfico
@@ -62,9 +75,12 @@ export default class DiscordOAuthAddon implements IAddon {
     const state = context.oauth.generateState('discord')
 
     const CLIENT_ID = '1372352088457220126' // Client ID Público
+    const defaultRedirectUri =
+      process.env.NODE_ENV === 'development'
+        ? 'http://localhost:3000/oauth/callback'
+        : 'https://mistertick.com/oauth/callback'
     const REDIRECT_URI =
-      process.env.MR - TICK_OAUTH_REDIRECT_URI ||
-      'http://localhost:3000/oauth/callback' // Em produção: https://mr-tickapp.com.br/oauth/callback
+      process.env.MR_TICK_OAUTH_REDIRECT_URI || defaultRedirectUri
 
     const authUrl =
       `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}` +

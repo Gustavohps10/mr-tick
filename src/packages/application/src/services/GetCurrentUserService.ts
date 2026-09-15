@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import {
   GetCurrentUserInput,
@@ -46,7 +46,7 @@ export class GetCurrentUserService implements IGetCurrentUserUseCase {
 
       const member = result.success
 
-      const user = await adapter.memberQuery.findById(member.id.toString())
+      const user = await adapter.membersProvider.findById(member.id.toString())
 
       if (!user) {
         return Either.failure(AppError.NotFound('USUARIO_NAO_ENCONTRADO'))

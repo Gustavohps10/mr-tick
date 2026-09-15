@@ -16,6 +16,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             tree={source.pageTree}
             nav={{ enabled: false }}
             sidebar={{
+              defaultOpenLevel: 2,
               collapsible: false,
               footer: null,
             }}

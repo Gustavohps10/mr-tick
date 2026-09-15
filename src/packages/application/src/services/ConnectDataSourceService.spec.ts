@@ -1,4 +1,4 @@
-﻿import { Workspace } from '@mr-tick/domain'
+import { Workspace } from '@mr-tick/domain'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -38,8 +38,8 @@ describe('ConnectDataSourceService', () => {
   }
 
   const makeInput = (): ConnectDataSourceInput<
-    unknown,
-    Record<string, unknown>
+    Record<string, string>,
+    Record<string, string>
   > => ({
     workspaceId: 'workspace-1',
     pluginId: 'plugin-1',

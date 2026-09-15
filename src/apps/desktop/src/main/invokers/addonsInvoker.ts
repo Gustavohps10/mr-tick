@@ -38,6 +38,9 @@ export const addonsInvoker: IAddonsAPI = {
     IpcInvoker.invoke('ADDONS_DISMISS_TOAST', payload),
   getSchema: (payload: Parameters<IAddonsAPI['getSchema']>[0]) =>
     IpcInvoker.invoke('ADDON_GET_SCHEMA', payload),
+  getConnectionSchema: (
+    payload: Parameters<IAddonsAPI['getConnectionSchema']>[0],
+  ) => IpcInvoker.invoke('ADDON_GET_CONNECTION_SCHEMA', payload),
   getSettings: (payload: Parameters<IAddonsAPI['getSettings']>[0]) =>
     IpcInvoker.invoke('ADDON_GET_SETTINGS', payload),
   saveSettings: (payload: Parameters<IAddonsAPI['saveSettings']>[0]) =>

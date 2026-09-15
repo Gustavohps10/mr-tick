@@ -10,10 +10,7 @@ import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import {
-  JSONWorkspacesQuery,
-  JSONWorkspacesRepository,
-} from '@mr-tick/adapters/data'
+import { JSONWorkspacesRepository } from '@mr-tick/adapters/data'
 import { AddonsFacade } from '@mr-tick/adapters/facades'
 import { HardDiskStorage, KeytarTokenStorage } from '@mr-tick/adapters/tools'
 import { ContainerBuilder, PlatformDependencies } from '@mr-tick/IoC'
@@ -443,7 +440,6 @@ if (!gotTheLock) {
     timerRuntime.init(addonLoader)
 
     const workspacesRepository = new JSONWorkspacesRepository(userDataPath)
-    const workspacesQuery = new JSONWorkspacesQuery(userDataPath)
     const eventEmitter = new ElectronJobEventEmitter(() => mainWindow)
     const nodeFileStorage = new HardDiskStorage(userDataPath, 'mr-tick-app://')
     const electronHttpClient = new ElectronHttpClient()
@@ -483,7 +479,6 @@ if (!gotTheLock) {
       jobEmitter: eventEmitter,
       credentialsStorage,
       workspacesRepository,
-      workspacesQuery,
       fileStorage: nodeFileStorage,
       dataSourceResolver: localDataSourceResolver,
       httpClient: electronHttpClient,

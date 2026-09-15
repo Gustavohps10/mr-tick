@@ -1,11 +1,10 @@
-﻿export * from './AddonConfig'
+export * from './AddonConfig'
 export * from './contracts'
 export type { IHttpClient, IHttpClientConfig } from './contracts/IHttpClient'
 export {
-  Context,
   DataSourceContext,
-  IConnector,
   IDataSource,
+  IDataSourceInstance,
 } from './data-source'
 export * from './utils/MarkupConverter'
 export * from './utils/pkce'
@@ -18,11 +17,15 @@ export type {
   AuthenticationDTO,
   AuthenticationResult,
   IAuthenticationStrategy,
+  IMemberProvider,
   IMemberQuery,
+  IMetadataProvider,
   IMetadataQuery,
   IOpenAPI,
+  ITaskProvider,
   ITaskQuery,
   ITaskRepository,
+  ITimeEntryProvider,
   ITimeEntryQuery,
   ITimeEntryRepository,
   MemberDTO,

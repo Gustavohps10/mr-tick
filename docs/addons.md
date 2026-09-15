@@ -1,4 +1,4 @@
-﻿# MR-TICK — Arquitetura de Extensibilidade e Plugins (Addons)
+# MR-TICK — Arquitetura de Extensibilidade e Plugins (Addons)
 
 Este documento consolida a arquitetura oficial de extensibilidade do **MR-TICK**, definindo os **4 Pilares Principais de Addons**, o ciclo de vida e a integração nativa com o **`@mr-tick/sdk`**.
 
@@ -80,45 +80,54 @@ O MR-TICK opera com uma arquitetura **Local-First** desacoplada. Os plugins são
 
 ---
 
-## 3. Manifesto e Configurações Dinâmicas (`settingsFields`)
+## 3. Manifesto e Configurações Dinâmicas (`context.settings.register`)
 
-Cada Addon declara suas opções de preferência no atributo `settingsFields`. O Mr-tick renderiza automaticamente o formulário de configurações do addon na interface do aplicativo Desktop:
+Os metadados do Addon (`id`, `name`, `version`, `categories`) residem exclusivamente no `manifest.yaml`. As opções e abas de configuração são registradas dinamicamente dentro de `activate` através de `context.settings.register`:
 
 ```typescript
-import type { IAddon, AddonContext, AddonSettingsField } from '@mr-tick/sdk'
+import type { IAddon, AddonContext } from '@mr-tick/sdk'
 
 export default class MeuAddon implements IAddon {
-  public id = 'meu-addon'
-  public name = 'Meu Addon'
-  public version = '1.0.0'
+  public async activate(context: AddonContext): Promise<void> {
+    // 1. Registra abas e campos de configuração de forma declarativa
+    context.settings.register([
+      {
+        id: 'geral',
+        label: 'Geral',
+        groups: [
+          {
+            id: 'preferencias',
+            label: 'Preferências',
+            fields: [
+              {
+                id: 'apiKey',
+                label: 'Chave de API',
+                type: 'password',
+                required: true,
+              },
+              {
+                id: 'autoSync',
+                label: 'Sincronização Automática',
+                type: 'boolean',
+                defaultValue: true,
+              },
+            ],
+          },
+        ],
+      },
+    ])
 
-  public settingsFields: AddonSettingsField[] = [
-    {
-      key: 'apiKey',
-      label: 'Chave de API',
-      type: 'text',
-      required: true,
-    },
-    {
-      key: 'autoSync',
-      label: 'Sincronização Automática',
-      type: 'boolean',
-      defaultValue: true,
-    },
-  ]
-
-  public async onActivate(context: AddonContext): Promise<void> {
-    // Acesso ao banco do workspace
+    // 2. Acesso ao storage seguro isolado por workspace
     const apiKey = await context.storage.get('apiKey')
 
-    // Escutando eventos nativos do timer
+    // 3. Escutando eventos nativos do timer
     context.events.onTimerStart((payload) => {
       console.log('Timer iniciado para a tarefa:', payload.taskId)
     })
   }
 
-  public async onDeactivate(): Promise<void> {
-    // Limpeza de timers ou sockets
+  public async deactivate(): Promise<void> {
+    // Limpeza de timers, listeners ou conexões
   }
 }
 ```

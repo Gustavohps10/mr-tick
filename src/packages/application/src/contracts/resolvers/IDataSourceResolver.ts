@@ -2,7 +2,6 @@ import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import { MemberDTO } from '@/dtos'
 
-import type { AddonSettingsGroup } from '../../open-api/IOpenAPI'
 import { IDataSourceAdapter } from './IDataSourceAdapter'
 
 export interface IHttpClientConfig {
@@ -36,14 +35,14 @@ export interface IHttpClient {
 export interface DataSourceContext {
   httpClient: IHttpClient
   authenticatedMemberData?: MemberDTO
-  config?: Record<string, unknown>
-  credentials?: Record<string, unknown>
+  config?: Record<string, string | number | boolean>
+  credentials?: Record<string, string | number | boolean>
 }
 
 export interface ResolvedConnection {
   id: string
   dataSourceId: string
-  config?: Record<string, unknown>
+  config?: Record<string, string | number | boolean>
 }
 
 export interface IDataSourceResolver {
@@ -54,9 +53,4 @@ export interface IDataSourceResolver {
   ): Promise<IDataSourceAdapter>
 
   getDataSourcesForWorkspace(workspaceId: string): Promise<ResolvedConnection[]>
-
-  getConfigFields(pluginId: string): Promise<{
-    credentials: AddonSettingsGroup[]
-    configuration: AddonSettingsGroup[]
-  }>
 }

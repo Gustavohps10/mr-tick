@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import { IDataSourceResolver } from '@/contracts/resolvers'
 import {
@@ -27,7 +27,7 @@ export class TimeEntriesPullService implements ITimeEntriesPullUseCase {
 
       const member = result.success
 
-      const timeEntries = await adapter.timeEntryQuery.pull(
+      const timeEntries = await adapter.timeEntriesProvider.pull(
         member.id.toString(),
         input.checkpoint,
         input.batch,

@@ -1,4 +1,4 @@
-﻿import { IEventEmitter, ISystemEvents } from '@mr-tick/shared/transport'
+import { IEventEmitter, ISystemEvents } from '@mr-tick/shared/transport'
 
 import { IAddonThemesRegistry } from './AddonTheme'
 import { ICommandRegistry } from './commands/ICommandRegistry'
@@ -6,6 +6,7 @@ import { IDataSourceRegistry } from './datasource/IDataSourceRegistry'
 import { IMenusRegistry } from './menus/IMenusRegistry'
 import { INotificationService } from './notifications/INotificationService'
 import { IOAuthAPI } from './oauth/IOAuthAPI'
+import { ISettingsRegistry } from './settings/ISettingsRegistry'
 import { ITimeEntriesAPI } from './timer/ITimeEntriesAPI'
 import { ITimerAPI } from './timer/ITimerAPI'
 
@@ -57,6 +58,7 @@ export interface AddonContext {
   readonly addonId: string
   readonly commands: ICommandRegistry
   readonly menus: IMenusRegistry
+  readonly settings: ISettingsRegistry
   readonly dataSources: IDataSourceRegistry
   readonly themes: IAddonThemesRegistry
   readonly events: IAddonEventsAPI

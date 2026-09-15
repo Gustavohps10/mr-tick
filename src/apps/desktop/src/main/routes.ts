@@ -130,18 +130,6 @@ export function openIpcRoutes(
     sessionHandler.getCurrentUser(e, req),
   )
 
-  IpcHandler.register(
-    'DATA_SOURCE_GET_FIELDS',
-    (_e, req: IRequest<{ pluginId: string }>) => {
-      const pluginId = req?.body?.pluginId
-      if (!pluginId)
-        return Promise.reject(
-          new Error('getDataSourceFields requer body.pluginId'),
-        )
-      return dataSourceResolver.getConfigFields(pluginId)
-    },
-  )
-
   // --- SYNC / DATA PULL (Authenticated) ---
   IpcHandler.register('METADATA_PULL', (e, req) => metadataHandler.pull(e, req))
   IpcHandler.register('TASKS_PULL', (e, req) => tasksHandler.pull(e, req))
@@ -200,6 +188,9 @@ export function openIpcRoutes(
   )
   IpcHandler.register('ADDON_GET_SCHEMA', (e, req) =>
     addonsHandler.getSchema(e, req),
+  )
+  IpcHandler.register('ADDON_GET_CONNECTION_SCHEMA', (e, req) =>
+    addonsHandler.getConnectionSchema(e, req),
   )
   IpcHandler.register('ADDON_GET_SETTINGS', (e, req) =>
     addonsHandler.getSettings(e, req),
@@ -320,7 +311,7 @@ export function openIpcRoutes(
 
   IpcHandler.register(
     'SYSTEM_SAVE_SETTINGS',
-    (_e, req: IRequest<AppSettings>) => {
+    (event, req: IRequest<AppSettings>) => {
       saveSettings(req?.body ?? {})
       return Promise.resolve({ success: true })
     },
@@ -428,7 +419,7 @@ export function openIpcRoutes(
 
   IpcHandler.register(
     'SYSTEM_TOGGLE_THEME',
-    (_event, req: IRequest<{ theme: 'light' | 'dark' | 'system' }>) => {
+    (event, req: IRequest<{ theme: 'light' | 'dark' | 'system' }>) => {
       const nextTheme = req?.body?.theme
       if (!nextTheme) return Promise.resolve({ success: false })
 

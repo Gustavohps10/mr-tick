@@ -19,8 +19,8 @@ export interface ConnectDataSourceRequest {
   workspaceId: string
   pluginId: string
   connectionInstanceId: string
-  credentials: Record<string, unknown>
-  configuration: Record<string, unknown>
+  credentials: Record<string, string | number | boolean>
+  configuration: Record<string, string | number | boolean>
 }
 
 export interface DisconnectDataSourceRequest {
@@ -41,7 +41,7 @@ export class ConnectionHandler implements HandlerBase<ConnectionHandler> {
   ) {}
 
   public async connectDataSource(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<ConnectDataSourceRequest>,
   ): Promise<ViewModel<ConnectionResultViewModel>> {
     const result = await this.connectDataSourceService.execute({
@@ -56,7 +56,7 @@ export class ConnectionHandler implements HandlerBase<ConnectionHandler> {
   }
 
   public async disconnectDataSource(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<DisconnectDataSourceRequest>,
   ): Promise<ViewModel<void>> {
     const result = await this.disconnectDataSourceService.execute({
@@ -69,7 +69,7 @@ export class ConnectionHandler implements HandlerBase<ConnectionHandler> {
 
   // DELETAR DEPOIS
   public async getConnectionMember(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<GetConnectionMemberRequest>,
   ): Promise<ViewModel<MemberViewModel | null>> {
     // Usamos o connectionInstanceId para garantir a chave única por conta

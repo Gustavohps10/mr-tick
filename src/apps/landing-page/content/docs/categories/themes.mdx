@@ -13,19 +13,14 @@ O Mr-tick adota o padrão de design system baseado em **Tokens CSS** (compatíve
 
 ## 🎨 Estrutura de um Tema
 
-Um tema exporta as variáveis de cores correspondentes aos papéis de interface:
+Um tema exporta a definição `AddonTheme` contendo o CSS completo (compatível com variáveis Tailwind CSS / shadcn/ui):
 
 ```typescript
-export interface ThemeDefinition {
+export interface AddonTheme {
   id: string
   name: string
-  version: string
   description?: string
-  author?: string
-  colors: {
-    light: Record<string, string>
-    dark: Record<string, string>
-  }
+  css: string
 }
 ```
 
@@ -33,46 +28,111 @@ export interface ThemeDefinition {
 
 ## 💻 Exemplo de Implementação de Tema
 
+### 1. `manifest.yaml`
+```yaml
+id: cyberpunk-theme
+name: Cyberpunk Neon Theme
+version: 1.0.0
+description: Tema com estética cyberpunk e cores neon vibrantes
+categories:
+  - theme
+author: Sua Empresa <contato@empresa.com>
+```
+
+### 2. `src/index.ts`
 ```typescript
-import type { IAddon, AddonContext } from '@mr-tick/sdk'
+import type {
+  AddonActionResponse,
+  AddonContext,
+  AddonTheme,
+  IAddon,
+} from '@mr-tick/sdk'
+
+export const CYBERPUNK_THEME: AddonTheme = {
+  id: 'cyberpunk-theme',
+  name: 'Cyberpunk Neon',
+  description: 'Paleta neon com tons rosa e ciano vibrantes.',
+  css: `
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 240 10% 3.9%;
+      --primary: 326 100% 50%;
+    }
+    .dark {
+      --background: 260 25% 8%;
+      --foreground: 180 100% 95%;
+      --primary: 180 100% 50%;
+    }
+  `,
+}
 
 export default class CyberpunkThemeAddon implements IAddon {
-  public id = 'cyberpunk-theme'
-  public name = 'Cyberpunk Neon Theme'
-  public version = '1.0.0'
-  public description = 'Tema com estética cyberpunk e cores neon vibrantes'
+  private activeContext: AddonContext | null = null
 
-  public theme = {
-    id: 'cyberpunk',
-    name: 'Cyberpunk Neon',
-    colors: {
-      light: {
-        '--background': '0 0% 100%',
-        '--foreground': '240 10% 3.9%',
-        '--primary': '326 100% 50%', // Pink Neon
-        '--primary-foreground': '0 0% 98%',
-        '--card': '0 0% 100%',
-        '--card-foreground': '240 10% 3.9%',
-        '--border': '240 5.9% 90%',
+  public activate(context: AddonContext): void {
+    this.activeContext = context
+
+    // 1. Registra o tema no sistema
+    context.themes.register(CYBERPUNK_THEME)
+
+    // 2. Registra a tela de configuração com botões de ação
+    context.settings.register([
+      {
+        id: 'general',
+        label: 'Geral',
+        groups: [
+          {
+            id: 'theme_controls',
+            label: 'Controles do Tema',
+            fields: [
+              {
+                id: 'apply-theme',
+                type: 'button',
+                label: 'Ativar Tema Cyberpunk',
+                actionId: 'apply-theme',
+              },
+              {
+                id: 'reset-theme',
+                type: 'button',
+                label: 'Restaurar Tema Padrão',
+                variant: 'destructive',
+                actionId: 'reset-theme',
+              },
+            ],
+          },
+        ],
       },
-      dark: {
-        '--background': '260 25% 8%', // Roxo Escuro Profundo
-        '--foreground': '180 100% 95%', // Ciano Claro
-        '--primary': '180 100% 50%', // Ciano Neon
-        '--primary-foreground': '260 25% 8%',
-        '--card': '260 20% 12%',
-        '--card-foreground': '180 100% 95%',
-        '--border': '260 20% 20%',
-      },
-    },
+    ])
+
+    // 3. Registra os comandos das ações
+    context.commands.register('apply-theme', async (): Promise<AddonActionResponse> => {
+      await context.commands.execute('theme:set', CYBERPUNK_THEME.id)
+      return {
+        isSuccess: true,
+        display: {
+          title: 'Tema Cyberpunk Ativado!',
+          message: 'Estilo visual aplicado com sucesso.',
+        },
+      }
+    })
+
+    context.commands.register('reset-theme', async (): Promise<AddonActionResponse> => {
+      await context.commands.execute('theme:set', '')
+      return {
+        isSuccess: true,
+        display: {
+          title: 'Tema Padrão Restaurado!',
+          message: 'Interface retornou ao padrão do Mr-tick.',
+        },
+      }
+    })
   }
 
-  public async onActivate(context: AddonContext): Promise<void> {
-    console.log('[Theme] Tema Cyberpunk carregado com sucesso!')
-  }
-
-  public async onDeactivate(): Promise<void> {
-    console.log('[Theme] Tema Cyberpunk desativado.')
+  public deactivate(): void {
+    if (this.activeContext) {
+      this.activeContext.themes.unregister(CYBERPUNK_THEME.id)
+      this.activeContext = null
+    }
   }
 }
 ```

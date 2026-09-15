@@ -8,9 +8,12 @@ import {
   AddonContext,
   AddonSettingsField,
   AddonSettingsSchema,
+  AddonSettingsSchemaProvider,
   AddonSettingsTab,
   AddonTheme,
+  CommandArgument,
   CommandHandler,
+  CommandResult,
   generateOAuthState,
   generatePKCE,
   IAddon,
@@ -23,6 +26,7 @@ import {
   INotificationService,
   IOAuthAPI,
   IRegistry,
+  ISettingsRegistry,
   ITimeEntriesAPI,
   ITimerAPI,
   OAuthAuthorizeOptions,
@@ -35,7 +39,7 @@ import { BrowserWindow, shell } from 'electron'
 
 import { getSettings, saveSettings } from '@/main/settings'
 
-export class MemoryRegistry<T extends { id: string }> implements IRegistry<T> {
+export class MemoryRegistry<T extends { id?: string }> implements IRegistry<T> {
   private items = new Map<string, T>()
 
   register(item: T): void {
@@ -64,10 +68,10 @@ export class CommandRegistry implements ICommandRegistry {
     this.handlers.delete(id)
   }
 
-  async execute<T = void>(
+  async execute(
     id: string,
-    ...args: Array<string | number | boolean | Record<string, string>>
-  ): Promise<T> {
+    ...args: CommandArgument[]
+  ): Promise<CommandResult> {
     const handler = this.handlers.get(id)
     if (!handler) {
       throw new Error(`Comando '${id}' não encontrado.`)
@@ -77,6 +81,10 @@ export class CommandRegistry implements ICommandRegistry {
 
   getItems(): Array<{ id: string }> {
     return Array.from(this.handlers.keys()).map((id) => ({ id }))
+  }
+
+  has(id: string): boolean {
+    return this.handlers.has(id)
   }
 }
 
@@ -193,8 +201,10 @@ export class AddonLoader {
 
   public readonly sidebarRegistry = new MemoryRegistry<SidebarMenuItem>()
   private addonTimerbarItems = new Map<string, TimerbarMenuItem>()
-  public readonly dataSourceRegistry: IDataSourceRegistry =
-    new MemoryRegistry<IDataSource>()
+  private addonSettingsSchemas = new Map<string, AddonSettingsSchemaProvider>()
+  public readonly dataSourceRegistry = new MemoryRegistry<
+    IDataSource & { id?: string }
+  >()
   public readonly themesRegistry = new MemoryRegistry<AddonTheme>()
   private activeThemeId: string | null = null
   public readonly commandRegistry = new CommandRegistry()
@@ -216,7 +226,8 @@ export class AddonLoader {
 
   private registerThemeCommands(): void {
     this.commandRegistry.register('theme:set', async (themeId) => {
-      const targetThemeId = typeof themeId === 'string' ? themeId : null
+      const targetThemeId =
+        typeof themeId === 'string' && themeId.length > 0 ? themeId : null
       this.setActiveTheme(targetThemeId)
       return { status: 'success', themeId: targetThemeId }
     })
@@ -383,10 +394,10 @@ export class AddonLoader {
     const addonTimerbarRegistry: IRegistry<TimerbarMenuItem> = {
       register: (item: TimerbarMenuItem) => {
         // Restrição Estrutural: Cada addon possui no máximo 1 item na Timerbar
-        const itemWithAddon = { ...item, addonId }
+        const itemWithAddon = Object.assign(item, { addonId })
         this.addonTimerbarItems.set(addonId, itemWithAddon)
       },
-      unregister: (_id: string) => {
+      unregister: (id: string) => {
         this.addonTimerbarItems.delete(addonId)
       },
       getItems: () => {
@@ -678,11 +689,51 @@ export class AddonLoader {
       },
     }
 
+    const settingsRegistry: ISettingsRegistry = {
+      register: (schema: AddonSettingsSchemaProvider) => {
+        this.addonSettingsSchemas.set(addonId, schema)
+      },
+      getSchema: () => {
+        const item = this.addonSettingsSchemas.get(addonId)
+        if (typeof item === 'function') {
+          return item()
+        }
+        return item
+      },
+    }
+
+    const dataSourceRegistryProxy: IDataSourceRegistry = {
+      register: (item: IDataSource) => {
+        const itemWithId = Object.assign(item, { id: addonId })
+        this.dataSourceRegistry.register(itemWithId)
+      },
+      unregister: (id: string) => {
+        this.dataSourceRegistry.unregister(id)
+      },
+      getItems: () => this.dataSourceRegistry.getItems(),
+    }
+
+    const scopedCommands: ICommandRegistry = {
+      register: (id: string, handler: CommandHandler) => {
+        this.commandRegistry.register(id, handler)
+        this.commandRegistry.register(`${addonId}:${id}`, handler)
+      },
+      unregister: (id: string) => {
+        this.commandRegistry.unregister(id)
+        this.commandRegistry.unregister(`${addonId}:${id}`)
+      },
+      execute: (id: string, ...args: CommandArgument[]) => {
+        return this.commandRegistry.execute(id, ...args)
+      },
+      has: (id: string) => this.commandRegistry.has(id),
+    }
+
     return {
       addonId,
-      commands: this.commandRegistry,
+      commands: scopedCommands,
       menus: menusRegistry,
-      dataSources: this.dataSourceRegistry,
+      settings: settingsRegistry,
+      dataSources: dataSourceRegistryProxy,
       themes: this.themesRegistry,
       events: this.systemEventEmitter,
       notifications,
@@ -788,10 +839,11 @@ export class AddonLoader {
       }
     }
     const item = this.activeAddons.get(addonId)
-    if (item && item.instance.deactivate) {
+    if (item) {
       await item.instance.deactivate()
     }
     this.activeAddons.delete(addonId)
+    this.addonSettingsSchemas.delete(addonId)
   }
 
   public hasActiveAddon(addonId: string): boolean {
@@ -885,8 +937,11 @@ export class AddonLoader {
 
     let schema: AddonSettingsSchema = []
 
-    if (item.instance.getSettingsSchema) {
-      schema = await item.instance.getSettingsSchema()
+    const provider = this.addonSettingsSchemas.get(addonId)
+    if (typeof provider === 'function') {
+      schema = await provider()
+    } else if (provider) {
+      schema = provider
     }
 
     const dataSources = this.dataSourceRegistry.getItems()
@@ -971,7 +1026,7 @@ export class AddonLoader {
     payload?: Record<string, string | number | boolean>,
   ): Promise<AddonActionResponse> {
     const item = this.activeAddons.get(addonId)
-    if (!item?.instance?.executeAction) {
+    if (!item) {
       return { isSuccess: false, error: 'ADDON_NOT_ACTIVE' }
     }
     if (payload && typeof payload === 'object' && 'workspaceId' in payload) {
@@ -980,7 +1035,65 @@ export class AddonLoader {
         this.setActiveWorkspace(wsId)
       }
     }
-    return await item.instance.executeAction(actionId, payload)
+
+    const scopedCommandId = `${addonId}:${actionId}`
+    const targetCommandId = this.commandRegistry.has(scopedCommandId)
+      ? scopedCommandId
+      : actionId
+
+    if (this.commandRegistry.has(targetCommandId)) {
+      const result = await this.commandRegistry.execute(
+        targetCommandId,
+        payload ?? {},
+      )
+      if (
+        typeof result === 'object' &&
+        result !== null &&
+        'isSuccess' in result &&
+        typeof result.isSuccess === 'boolean'
+      ) {
+        const response: AddonActionResponse = {
+          isSuccess: result.isSuccess,
+          error:
+            'error' in result && typeof result.error === 'string'
+              ? result.error
+              : undefined,
+          display:
+            'display' in result &&
+            typeof result.display === 'object' &&
+            result.display !== null
+              ? {
+                  title:
+                    'title' in result.display &&
+                    typeof result.display.title === 'string'
+                      ? result.display.title
+                      : undefined,
+                  message:
+                    'message' in result.display &&
+                    typeof result.display.message === 'string'
+                      ? result.display.message
+                      : undefined,
+                  avatarUrl:
+                    'avatarUrl' in result.display &&
+                    typeof result.display.avatarUrl === 'string'
+                      ? result.display.avatarUrl
+                      : undefined,
+                  data:
+                    'data' in result.display &&
+                    typeof result.display.data === 'object' &&
+                    result.display.data !== null &&
+                    !Array.isArray(result.display.data)
+                      ? extractStringMap(result.display.data)
+                      : undefined,
+                }
+              : undefined,
+        }
+        return response
+      }
+      return { isSuccess: true }
+    }
+
+    return { isSuccess: false, error: 'ACTION_NOT_FOUND' }
   }
 
   public getSidebarMenus(): SidebarMenuItem[] {
@@ -1038,11 +1151,11 @@ export class AddonLoader {
     }
   }
 
-  public async executeCommand<T = void>(
+  public async executeCommand(
     commandId: string,
-    ...args: Array<string | number | boolean | Record<string, string>>
-  ): Promise<T> {
-    return await this.commandRegistry.execute<T>(commandId, ...args)
+    ...args: CommandArgument[]
+  ): Promise<CommandResult> {
+    return await this.commandRegistry.execute(commandId, ...args)
   }
 
   private getAddonSourceInfo(addonId: string): {
@@ -1065,7 +1178,7 @@ export class AddonLoader {
 }
 
 function isAddonInstance(candidate: object): candidate is IAddon {
-  return 'activate' in candidate
+  return 'onActivate' in candidate || 'activate' in candidate
 }
 
 function parseSettingsRecord(
@@ -1084,4 +1197,14 @@ function parseSettingsRecord(
   } catch {
     return {}
   }
+}
+
+function extractStringMap(data: object): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'string') {
+      result[key] = value
+    }
+  }
+  return result
 }

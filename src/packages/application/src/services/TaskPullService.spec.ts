@@ -2,7 +2,7 @@ import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ITaskQuery } from '@/contracts/data/queries'
+import type { ITaskProvider } from '@/contracts/data/providers'
 import type { IDataSourceResolver } from '@/contracts/resolvers'
 import type { IDataSourceAdapter } from '@/contracts/resolvers/IDataSourceAdapter'
 import type { PullTasksInput } from '@/contracts/use-cases'
@@ -15,7 +15,7 @@ describe('TaskPullService', () => {
 
   let dataSourceResolverMock: Mocked<IDataSourceResolver>
   let adapterMock: Mocked<IDataSourceAdapter>
-  let taskQueryMock: Mocked<ITaskQuery>
+  let tasksProviderMock: Mocked<ITaskProvider>
 
   const fakeDate = new Date('2026-04-18T00:00:00.000Z')
 
@@ -55,12 +55,17 @@ describe('TaskPullService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    taskQueryMock = {
+    tasksProviderMock = {
       pull: vi.fn(),
-    } as unknown as Mocked<ITaskQuery>
+      findAll: vi.fn(),
+      findById: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    } as unknown as Mocked<ITaskProvider>
 
     adapterMock = {
-      taskQuery: taskQueryMock,
+      tasksProvider: tasksProviderMock,
       getAuthenticatedMemberData: vi.fn(),
     } as unknown as Mocked<IDataSourceAdapter>
 
@@ -79,7 +84,7 @@ describe('TaskPullService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    taskQueryMock.pull.mockResolvedValue(fakeTasks)
+    tasksProviderMock.pull.mockResolvedValue(fakeTasks)
 
     // Act
     const result = await sut.execute(input)
@@ -89,7 +94,7 @@ describe('TaskPullService', () => {
     expect(result.success).toEqual(fakeTasks)
 
     expect(adapterMock.getAuthenticatedMemberData).toHaveBeenCalled()
-    expect(taskQueryMock.pull).toHaveBeenCalledWith(
+    expect(tasksProviderMock.pull).toHaveBeenCalledWith(
       fakeMember.id,
       input.checkpoint,
       input.batch,
@@ -113,7 +118,7 @@ describe('TaskPullService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBe(authError)
 
-    expect(taskQueryMock.pull).not.toHaveBeenCalled()
+    expect(tasksProviderMock.pull).not.toHaveBeenCalled()
   })
 
   it('should return unexpected error when the data source resolver throws an exception', async () => {
@@ -140,7 +145,9 @@ describe('TaskPullService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    taskQueryMock.pull.mockRejectedValue(new Error('API Rate Limit Exceeded'))
+    tasksProviderMock.pull.mockRejectedValue(
+      new Error('API Rate Limit Exceeded'),
+    )
 
     // Act
     const result = await sut.execute(input)

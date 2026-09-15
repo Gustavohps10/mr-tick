@@ -1,5 +1,6 @@
 {
   "title": "Categorias de Addons",
+  "defaultOpen": true,
   "pages": [
     "index",
     "datasources",

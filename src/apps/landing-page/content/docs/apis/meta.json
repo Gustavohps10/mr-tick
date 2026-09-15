@@ -1,5 +1,6 @@
 {
   "title": "Recursos & APIs",
+  "defaultOpen": true,
   "pages": [
     "oauth-pkce",
     "storage-and-events"

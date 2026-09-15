@@ -1,8 +1,8 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { IMetadataQuery } from '@/contracts/data/queries'
+import type { IMetadataProvider } from '@/contracts/data/providers'
 import type { IDataSourceResolver } from '@/contracts/resolvers'
 import type { IDataSourceAdapter } from '@/contracts/resolvers/IDataSourceAdapter'
 import type { PullMetadataInput } from '@/contracts/use-cases/IMetadataPullUseCase'
@@ -15,7 +15,7 @@ describe('MetadataPullService', () => {
 
   let dataSourceResolverMock: Mocked<IDataSourceResolver>
   let adapterMock: Mocked<IDataSourceAdapter>
-  let metadataQueryMock: Mocked<IMetadataQuery>
+  let metadataProviderMock: Mocked<IMetadataProvider>
 
   const fakeDate = new Date('2026-04-18T00:00:00.000Z')
 
@@ -61,12 +61,12 @@ describe('MetadataPullService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    metadataQueryMock = {
+    metadataProviderMock = {
       getMetadata: vi.fn(),
-    } as unknown as Mocked<IMetadataQuery>
+    } as unknown as Mocked<IMetadataProvider>
 
     adapterMock = {
-      metadataQuery: metadataQueryMock,
+      metadataProvider: metadataProviderMock,
       getAuthenticatedMemberData: vi.fn(),
     } as unknown as Mocked<IDataSourceAdapter>
 
@@ -85,7 +85,7 @@ describe('MetadataPullService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    metadataQueryMock.getMetadata.mockResolvedValue(fakeMetadata)
+    metadataProviderMock.getMetadata.mockResolvedValue(fakeMetadata)
 
     // Act
     const result = await sut.execute(input)
@@ -99,7 +99,7 @@ describe('MetadataPullService', () => {
       input.connectionInstanceId,
     )
     expect(adapterMock.getAuthenticatedMemberData).toHaveBeenCalled()
-    expect(metadataQueryMock.getMetadata).toHaveBeenCalledWith(
+    expect(metadataProviderMock.getMetadata).toHaveBeenCalledWith(
       fakeMember.id,
       input.checkpoint,
       input.batch,
@@ -123,7 +123,7 @@ describe('MetadataPullService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBe(authError)
 
-    expect(metadataQueryMock.getMetadata).not.toHaveBeenCalled()
+    expect(metadataProviderMock.getMetadata).not.toHaveBeenCalled()
   })
 
   it('should return unexpected error when the data source resolver throws an exception', async () => {
@@ -148,7 +148,7 @@ describe('MetadataPullService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    metadataQueryMock.getMetadata.mockRejectedValue(new Error('API Error'))
+    metadataProviderMock.getMetadata.mockRejectedValue(new Error('API Error'))
 
     // Act
     const result = await sut.execute(input)

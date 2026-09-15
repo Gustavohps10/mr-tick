@@ -38,11 +38,6 @@ export interface IWorkspacesAPI {
 
   listAll(): Promise<PaginatedViewModel<WorkspaceViewModel[]>>
 
-  getDataSourceFields(input: IRequest<{ pluginId: string }>): Promise<{
-    credentials: AddonSettingsGroup[]
-    configuration: AddonSettingsGroup[]
-  }>
-
   linkDataSource(
     input: IRequest<{
       workspaceId: string
@@ -63,8 +58,8 @@ export interface IWorkspacesAPI {
       workspaceId: string
       pluginId: string
       connectionInstanceId: string
-      credentials: Record<string, unknown>
-      configuration: Record<string, unknown>
+      credentials: Record<string, string | number | boolean>
+      configuration: Record<string, string | number | boolean>
     }>,
   ): Promise<ViewModel<ConnectionResultViewModel>>
 
@@ -268,12 +263,15 @@ export interface AddonSettingsOption {
   value: string | number | boolean
 }
 
+export type AddonSettingsFieldScope = 'credential' | 'configuration'
+
 export interface AddonSettingsField {
   id: string
   type: AddonSettingsFieldType
   label: string
+  scope?: AddonSettingsFieldScope
   required?: boolean
-  defaultValue?: any
+  defaultValue?: string | number | boolean
   description?: string
   placeholder?: string
   options?: AddonSettingsOption[] // For select
@@ -374,14 +372,24 @@ export interface IAddonsAPI {
   getSchema(
     payload: IRequest<{ addonId: string }>,
   ): Promise<ViewModel<AddonSettingsSchema>>
+  getConnectionSchema(
+    payload: IRequest<{ addonId: string }>,
+  ): Promise<ViewModel<AddonSettingsSchema>>
   getSettings(
     payload: IRequest<{ addonId: string }>,
-  ): Promise<ViewModel<Record<string, unknown>>>
+  ): Promise<ViewModel<Record<string, string | number | boolean | null>>>
   saveSettings(
-    payload: IRequest<{ addonId: string; settings: Record<string, unknown> }>,
+    payload: IRequest<{
+      addonId: string
+      settings: Record<string, string | number | boolean | null>
+    }>,
   ): Promise<ViewModel<void>>
   executeAction(
-    payload: IRequest<{ addonId: string; actionId: string; payload?: unknown }>,
+    payload: IRequest<{
+      addonId: string
+      actionId: string
+      payload?: Record<string, string | number | boolean>
+    }>,
   ): Promise<ViewModel<AddonActionResponse>>
   setActiveWorkspace(
     payload: IRequest<{ workspaceId: string }>,

@@ -1,4 +1,4 @@
-﻿import { AppError, Either, FieldErrors } from '@mr-tick/shared/helpers'
+import { AppError, Either, FieldErrors } from '@mr-tick/shared/helpers'
 import z from 'zod'
 
 import { Entity } from '@/entities/Entity'
@@ -15,7 +15,7 @@ type InternalConnection = {
   dataSourceId: string
   status: 'connected' | 'disabled' | 'disconnected'
   member?: ConnectionMember
-  config?: Record<string, unknown>
+  config?: Record<string, string | number | boolean>
 }
 
 export type DataSourceConnection = Readonly<InternalConnection>
@@ -281,7 +281,7 @@ export class Workspace extends Entity {
   connectDataSource(
     id: string,
     member: ConnectionMember,
-    config: Record<string, unknown>,
+    config: Record<string, string | number | boolean>,
   ): Either<AppError, void> {
     const connection = this._dataSourceConnections.find((c) => c.id === id)
 

@@ -21,8 +21,19 @@ A finalidade do Punch é permitir que o usuário bata o ponto diretamente pelo M
 
 ## 💻 Exemplo de Implementação de Punch
 
+### 1. `manifest.yaml`
+```yaml
+id: ponto-corporativo
+name: Ponto Corporativo Integration
+version: 1.0.0
+description: Bate-ponto integrado com conferência de jornada
+author: Sua Empresa <contato@empresa.com>
+main: dist/index.js
+```
+
+### 2. `src/index.ts`
 ```typescript
-import type { IAddon, AddonContext, AddonSettingsField } from '@mr-tick/sdk'
+import type { IAddon, AddonContext } from '@mr-tick/sdk'
 
 export interface PunchRecordDTO {
   id: string
@@ -32,36 +43,46 @@ export interface PunchRecordDTO {
 }
 
 export default class PontoCorporativoAddon implements IAddon {
-  public id = 'ponto-corporativo'
-  public name = 'Ponto Corporativo Integration'
-  public version = '1.0.0'
-  public description = 'Bate-ponto integrado com conferência de jornada'
+  private context: AddonContext | null = null
 
-  private context?: AddonContext
-
-  public settingsFields: AddonSettingsField[] = [
-    {
-      key: 'pontoApiUrl',
-      label: 'URL da API de Ponto',
-      type: 'text',
-      required: true,
-      description: 'Endereço da API do sistema de ponto da empresa.',
-    },
-    {
-      key: 'pontoToken',
-      label: 'Token de Acesso / Chave do Colaborador',
-      type: 'password',
-      required: true,
-    },
-  ]
-
-  public async onActivate(context: AddonContext): Promise<void> {
+  public activate(context: AddonContext): void {
     this.context = context
+
+    context.settings.register([
+      {
+        id: 'general',
+        label: 'Geral',
+        groups: [
+          {
+            id: 'ponto_auth',
+            label: 'Configurações de Acesso',
+            fields: [
+              {
+                id: 'pontoApiUrl',
+                label: 'URL da API de Ponto',
+                type: 'text',
+                scope: 'configuration',
+                required: true,
+                description: 'Endereço da API do sistema de ponto da empresa.',
+              },
+              {
+                id: 'pontoToken',
+                label: 'Token de Acesso / Chave do Colaborador',
+                type: 'password',
+                scope: 'credential',
+                required: true,
+              },
+            ],
+          },
+        ],
+      },
+    ])
+
     console.log('[Punch] Addon de Ponto ativado!')
   }
 
-  public async onDeactivate(): Promise<void> {
-    this.context = undefined
+  public deactivate(): void {
+    this.context = null
   }
 
   // Executa uma nova batida de ponto
@@ -89,12 +110,12 @@ export default class PontoCorporativoAddon implements IAddon {
       )
     }
 
-    const data = await response.json()
+    const data: { id: string; timestamp: string } = await response.json()
 
-    await this.context?.notifications.show({
-      title: 'Ponto Registrado',
-      body: `Batida de ponto (${type}) realizada com sucesso!`,
-    })
+    await this.context?.notifications.success(
+      `Batida de ponto (${type}) realizada com sucesso!`,
+      'Ponto Registrado',
+    )
 
     return {
       id: data.id,

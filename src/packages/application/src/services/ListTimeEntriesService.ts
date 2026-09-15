@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import { IDataSourceResolver } from '@/contracts/resolvers'
 import {
@@ -27,7 +27,7 @@ export class ListTimeEntriesService implements IListTimeEntriesUseCase {
 
       const member = result.success
 
-      const timeEntries = await adapter.timeEntryQuery.findByMemberId(
+      const timeEntries = await adapter.timeEntriesProvider.findByMemberId(
         member.id.toString(),
         input.startDate,
         input.endDate,
