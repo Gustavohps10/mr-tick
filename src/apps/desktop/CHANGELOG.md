@@ -1,5 +1,12 @@
 ﻿# @mr-tick/desktop
 
+## 0.3.1
+
+### Patch Changes
+
+- 394905d: Standardize addon lifecycle contracts, add dynamic settings schema provider, declarative field scopes, and command auto-scoping
+  - @mr-tick/ui@1.0.4
+
 ## 0.3.0
 
 ### Minor Changes
