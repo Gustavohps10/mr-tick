@@ -34,6 +34,7 @@ export type {
   PagedResultDTO,
   PaginationOptionsDTO,
   Participants,
+  SyncTimeEntryDTO,
   TaskDTO,
   TimeEntryDTO,
   WorkspaceDTO,
