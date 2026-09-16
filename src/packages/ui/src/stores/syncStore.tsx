@@ -1,6 +1,6 @@
-﻿'use client'
+'use client'
 
-import { IOpenAPI } from '@mr-tick/application'
+import { IOpenAPI } from '@mr-tick/sdk'
 import { TaskViewModel, TimeEntryViewModel } from '@mr-tick/shared/view-models'
 import {
   createContext,
@@ -71,39 +71,41 @@ const shouldForceRxDBDebug = (): boolean => {
 }
 
 // --- PLUGINS INIT (Executado apenas 1x globalmente) ---
-let pluginsLoaded = false
-const ensurePlugins = async (isDevelopment: boolean) => {
-  console.log('[SYNC][plugins] ensurePlugins chamado', {
-    isDevelopment,
-    pluginsLoaded,
-  })
+let devModePluginPromise: Promise<void> | null = null
+let queryBuilderPluginPromise: Promise<void> | null = null
 
-  if (pluginsLoaded) {
-    console.log('[SYNC][plugins] já carregados anteriormente, pulando')
-    return
-  }
-  pluginsLoaded = true
-
+const ensurePlugins = async (isDevelopment: boolean): Promise<void> => {
   const forceDebug = shouldForceRxDBDebug()
 
-  if (isDevelopment || forceDebug) {
-    console.log('[SYNC][plugins] carregando RxDBDevModePlugin', {
-      motivo: isDevelopment
-        ? 'isDevelopment=true'
-        : 'forceDebug=true (?rxdbDebug=1 ou localStorage.RXDB_DEBUG=1)',
-    })
-    const { RxDBDevModePlugin } = await import('rxdb/plugins/dev-mode')
-    addRxPlugin(RxDBDevModePlugin)
-    console.log('[SYNC][plugins] RxDBDevModePlugin carregado com sucesso')
-  } else {
-    console.log(
-      '[SYNC][plugins] RxDBDevModePlugin NÃO carregado (produção sem debug flag) — mensagens de erro do RxDB virão só com código, sem texto',
-    )
+  if (!queryBuilderPluginPromise) {
+    queryBuilderPluginPromise = (async () => {
+      console.log('[SYNC][plugins] carregando RxDBQueryBuilderPlugin')
+      const { RxDBQueryBuilderPlugin } =
+        await import('rxdb/plugins/query-builder')
+      addRxPlugin(RxDBQueryBuilderPlugin)
+      console.log(
+        '[SYNC][plugins] RxDBQueryBuilderPlugin carregado com sucesso',
+      )
+    })()
   }
 
-  const { RxDBQueryBuilderPlugin } = await import('rxdb/plugins/query-builder')
-  addRxPlugin(RxDBQueryBuilderPlugin)
-  console.log('[SYNC][plugins] RxDBQueryBuilderPlugin carregado com sucesso')
+  if ((isDevelopment || forceDebug) && !devModePluginPromise) {
+    devModePluginPromise = (async () => {
+      console.log('[SYNC][plugins] carregando RxDBDevModePlugin', {
+        motivo: isDevelopment
+          ? 'isDevelopment=true'
+          : 'forceDebug=true (?rxdbDebug=1 ou localStorage.RXDB_DEBUG=1)',
+      })
+      const { RxDBDevModePlugin } = await import('rxdb/plugins/dev-mode')
+      addRxPlugin(RxDBDevModePlugin)
+      console.log('[SYNC][plugins] RxDBDevModePlugin carregado com sucesso')
+    })()
+  }
+
+  await queryBuilderPluginPromise
+  if (devModePluginPromise) {
+    await devModePluginPromise
+  }
 }
 
 // --- TYPES ---
@@ -546,9 +548,18 @@ const getOrCreateDatabase = async (
     chavesNoCache: Array.from(dbPromiseCache.keys()),
   })
 
-  if (dbPromiseCache.has(dbName)) {
-    console.log('[SYNC][db] retornando promise já existente do cache', dbName)
-    return dbPromiseCache.get(dbName)!
+  const cachedPromise = dbPromiseCache.get(dbName)
+  if (cachedPromise) {
+    try {
+      const cachedDb = await cachedPromise
+      if (!cachedDb.closed) {
+        console.log('[SYNC][db] retornando database ativa do cache', dbName)
+        return cachedDb
+      }
+    } catch {
+      // Se a promise falhou, expurga do cache e recria
+    }
+    dbPromiseCache.delete(dbName)
   }
 
   const promise = (async () => {
@@ -570,11 +581,6 @@ const getOrCreateDatabase = async (
     const rxDatabaseConfig = {
       name: dbName,
       storage: createAppStorage(),
-      // DB9 pode significar coisas diferentes dependendo da versão do RxDB
-      // instalada (o código é reciclado entre versões). Uma das causas mais
-      // comuns é "ignoreDuplicate is only allowed in dev-mode and must never
-      // be used in production" — por isso o valor abaixo é condicional.
-      ignoreDuplicate: isDevelopment,
       closeDuplicates: true,
       multiInstance: true,
       eventReduce: true,
@@ -595,18 +601,23 @@ const getOrCreateDatabase = async (
         colecoesExistentes: Object.keys(db.collections ?? {}),
       })
     } catch (err) {
-      const rxErr = err as RxError & {
-        code?: string
-        parameters?: unknown
+      if (err instanceof RxError) {
+        console.error('[SYNC][db] ERRO em createRxDatabase', {
+          dbName,
+          isDevelopment,
+          code: err.code,
+          message: err.message,
+          parameters: err.parameters,
+          errorCompleto: err,
+        })
+      } else if (err instanceof Error) {
+        console.error('[SYNC][db] ERRO em createRxDatabase', {
+          dbName,
+          isDevelopment,
+          message: err.message,
+          errorCompleto: err,
+        })
       }
-      console.error('[SYNC][db] ERRO em createRxDatabase', {
-        dbName,
-        isDevelopment,
-        code: rxErr?.code,
-        message: rxErr?.message,
-        parameters: rxErr?.parameters,
-        errorCompleto: rxErr,
-      })
       throw err
     }
 
@@ -638,13 +649,19 @@ const getOrCreateDatabase = async (
           Object.keys(collectionsToCreate),
         )
       } catch (err) {
-        const rxErr = err as RxError & { code?: string; parameters?: unknown }
-        console.error('[SYNC][db] ERRO em addCollections', {
-          code: rxErr?.code,
-          message: rxErr?.message,
-          parameters: rxErr?.parameters,
-          errorCompleto: rxErr,
-        })
+        if (err instanceof RxError) {
+          console.error('[SYNC][db] ERRO em addCollections', {
+            code: err.code,
+            message: err.message,
+            parameters: err.parameters,
+            errorCompleto: err,
+          })
+        } else if (err instanceof Error) {
+          console.error('[SYNC][db] ERRO em addCollections', {
+            message: err.message,
+            errorCompleto: err,
+          })
+        }
         throw err
       }
     }
@@ -860,21 +877,29 @@ export const createSyncStore = (
         console.log('[SYNC][init] concluído com sucesso', { workspaceId })
         set({ db, isInitialized: true })
       } catch (err) {
-        const rxErr = err as RxError & { code?: string; parameters?: unknown }
-        console.error('[SYNC][init] Erro FATAL ao inicializar', {
-          workspaceId,
-          isDevelopment,
-          code: rxErr?.code,
-          message: rxErr?.message,
-          parameters: rxErr?.parameters,
-          errorCompleto: rxErr,
-        })
-        if (rxErr?.code === 'DB9' && !isDevelopment) {
-          console.error(
-            '[SYNC][init] DICA: para ver a mensagem completa deste erro em produção, ' +
-              'acesse a página com ?rxdbDebug=1 na URL (ou rode localStorage.setItem("RXDB_DEBUG","1") ' +
-              'e recarregue) e reproduza o erro de novo. Isso carrega o dev-mode plugin do RxDB só para diagnóstico.',
-          )
+        if (err instanceof RxError) {
+          console.error('[SYNC][init] Erro FATAL ao inicializar', {
+            workspaceId,
+            isDevelopment,
+            code: err.code,
+            message: err.message,
+            parameters: err.parameters,
+            errorCompleto: err,
+          })
+          if (err.code === 'DB9' && !isDevelopment) {
+            console.error(
+              '[SYNC][init] DICA: para ver a mensagem completa deste erro em produção, ' +
+                'acesse a página com ?rxdbDebug=1 na URL (ou rode localStorage.setItem("RXDB_DEBUG","1") ' +
+                'e recarregue) e reproduza o erro de novo. Isso carrega o dev-mode plugin do RxDB só para diagnóstico.',
+            )
+          }
+        } else if (err instanceof Error) {
+          console.error('[SYNC][init] Erro FATAL ao inicializar', {
+            workspaceId,
+            isDevelopment,
+            message: err.message,
+            errorCompleto: err,
+          })
         }
         // Limpa cache se falhar
         dbPromiseCache.delete(`db-${workspaceId}`)
@@ -970,10 +995,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({
         )
         await newStore.getState().init()
 
-        if (isCancelled) {
+        if (currentWorkspaceId.current !== nextWorkspaceId) {
           console.log(
-            '[SYNC][provider] cancelado durante init, destruindo store recém-criada',
-            { runId },
+            '[SYNC][provider] workspace mudou durante init, destruindo store obsoleta',
+            { runId, nextWorkspaceId, current: currentWorkspaceId.current },
           )
           await newStore.getState().destroy()
           return

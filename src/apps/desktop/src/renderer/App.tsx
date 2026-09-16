@@ -23,7 +23,7 @@ import { ipcClient } from '@/renderer/ipcClient'
 import { router } from '@/renderer/routes'
 
 const defaultEnvironment: EnvironmentInfo = {
-  isDevelopment: false,
+  isDevelopment: Boolean(import.meta.env.DEV),
   platform:
     typeof window !== 'undefined' && window.electron?.process?.platform
       ? window.electron.process.platform
