@@ -57,22 +57,12 @@ export function useTimeEntriesQuery({
 
     const query = db.timeEntries.find({
       selector: {
-        $or: [
-          {
-            startDate: {
-              $gte: fromIso,
-              $lte: toIso,
-            },
-          },
-          {
-            createdAt: {
-              $gte: fromIso,
-              $lte: toIso,
-            },
-          },
-        ],
+        startDate: {
+          $gte: fromIso,
+          $lte: toIso,
+        },
       },
-      sort: [{ createdAt: 'desc' }],
+      sort: [{ startDate: 'desc' }],
     })
 
     const subscription = query.$.subscribe((docs) => {
@@ -92,22 +82,12 @@ export function useTimeEntriesQuery({
       const results = await db.timeEntries
         .find({
           selector: {
-            $or: [
-              {
-                startDate: {
-                  $gte: fromIso,
-                  $lte: toIso,
-                },
-              },
-              {
-                createdAt: {
-                  $gte: fromIso,
-                  $lte: toIso,
-                },
-              },
-            ],
+            startDate: {
+              $gte: fromIso,
+              $lte: toIso,
+            },
           },
-          sort: [{ createdAt: 'desc' }],
+          sort: [{ startDate: 'desc' }],
         })
         .exec()
       return results.map((doc) => doc.toMutableJSON())

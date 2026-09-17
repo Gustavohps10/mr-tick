@@ -159,7 +159,7 @@ const MemoizedCommentInput = React.memo(
 )
 MemoizedCommentInput.displayName = 'MemoizedCommentInput'
 
-const getRowKey = (row: SuggestionRow): string => row._id || row.id
+const getRowKey = (row: SuggestionRow): string => row.id
 
 export function createTimeEntriesColumns(
   options: CreateColumnsOptions,
@@ -319,16 +319,9 @@ export function createTimeEntriesColumns(
         const isEditing =
           !isGroupMaster &&
           (Boolean(original.isSuggestion) ||
-            Boolean(
-              editingRows[rowKey] ||
-              editingRows[original.id] ||
-              (original._id && editingRows[original._id]),
-            ))
+            Boolean(editingRows[rowKey] || editingRows[original.id]))
 
-        const data =
-          getRowData(rowKey) ||
-          getRowData(original.id) ||
-          (original._id ? getRowData(original._id) : undefined)
+        const data = getRowData(rowKey) || getRowData(original.id)
 
         const rawTaskId = data?.task?.id ?? original.task?.id ?? ''
         const currentTaskId =
@@ -621,7 +614,11 @@ export function createTimeEntriesColumns(
           )
         }
 
-        if (original.syncedAt) {
+        if (
+          original.syncStatus === 'synced' ||
+          original.lastPushedAt ||
+          original.lastPulledAt
+        ) {
           return (
             <div className="flex justify-center text-emerald-500">
               <CheckCircle2 className="h-4 w-4" />
@@ -651,11 +648,7 @@ export function createTimeEntriesColumns(
         const isEditing =
           !isGroupMaster &&
           (Boolean(original.isSuggestion) ||
-            Boolean(
-              editingRows[rowKey] ||
-              editingRows[original.id] ||
-              (original._id && editingRows[original._id]),
-            ))
+            Boolean(editingRows[rowKey] || editingRows[original.id]))
 
         const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
           if (onDirectUpdateRow) {
@@ -676,10 +669,7 @@ export function createTimeEntriesColumns(
         }
 
         if (isEditing) {
-          const rowData =
-            getRowData(rowKey) ||
-            getRowData(original.id) ||
-            (original._id ? getRowData(original._id) : undefined)
+          const rowData = getRowData(rowKey) || getRowData(original.id)
           const currentTaskId = rowData?.task?.id ?? original.task?.id
           const currentConnectionId =
             rowData?.connectionInstanceId ?? original.connectionInstanceId
@@ -790,11 +780,7 @@ export function createTimeEntriesColumns(
         const isEditing =
           !isGroupMaster &&
           (Boolean(original.isSuggestion) ||
-            Boolean(
-              editingRows[rowKey] ||
-              editingRows[original.id] ||
-              (original._id && editingRows[original._id]),
-            ))
+            Boolean(editingRows[rowKey] || editingRows[original.id]))
 
         const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
           if (onDirectUpdateRow) {
@@ -818,7 +804,6 @@ export function createTimeEntriesColumns(
           const currentVal =
             getRowData(rowKey)?.comments ??
             getRowData(original.id)?.comments ??
-            (original._id ? getRowData(original._id)?.comments : undefined) ??
             original.comments ??
             ''
           return (
@@ -848,11 +833,7 @@ export function createTimeEntriesColumns(
         const rowKey = getRowKey(original)
         const isGroupMaster =
           (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
-        const rowData =
-          getRowData(rowKey) ||
-          getRowData(original.id) ||
-          (original._id ? getRowData(original._id) : undefined) ||
-          {}
+        const rowData = getRowData(rowKey) || getRowData(original.id) || {}
 
         if (isGroupMaster) {
           return <MasterGroupTotalTimeCell subRows={original.subRows} />
@@ -943,11 +924,7 @@ export function createTimeEntriesColumns(
         const isEditing =
           !isGroupMaster &&
           (Boolean(original.isSuggestion) ||
-            Boolean(
-              editingRows[rowKey] ||
-              editingRows[original.id] ||
-              (original._id && editingRows[original._id]),
-            ))
+            Boolean(editingRows[rowKey] || editingRows[original.id]))
 
         return (
           <TimeEntryRowActions
@@ -962,12 +939,8 @@ export function createTimeEntriesColumns(
                 } else {
                   delete next[rowKey]
                   delete next[original.id]
-                  if (original._id) delete next[original._id]
                   Object.keys(next).forEach((k) => {
-                    if (
-                      k.endsWith(original.id) ||
-                      (original._id && k.endsWith(original._id))
-                    ) {
+                    if (k.endsWith(original.id)) {
                       delete next[k]
                     }
                   })

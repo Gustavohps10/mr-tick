@@ -176,7 +176,6 @@ export function groupByIssue(data: SuggestionRow[]): SuggestionRow[] {
       if (!groups[key]) {
         groups[key] = {
           ...item,
-          _id: key,
           id: key,
           startDate: dateIso,
           isSuggestion: false,

@@ -1,22 +1,19 @@
-﻿// stores/timeEntryStore.tsx
+// stores/timeEntryStore.tsx
 'use client'
 
-import { IOpenAPI } from '@mr-tick/application'
+import { IOpenAPI } from '@mr-tick/sdk'
 import { differenceInSeconds, parseISO, subSeconds } from 'date-fns'
 import { createContext, ReactNode, useContext, useEffect, useRef } from 'react'
 import { createStore, StoreApi, useStore } from 'zustand'
 
 import { useOpenAPI } from '@/hooks'
-import { queryClient } from '@/lib'
-import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
+import {
+  SyncTimeEntryRxDBDTO,
+  TimerJournalEntry,
+} from '@/local-db/schemas/time-entries-sync-schema'
 import { AppDatabase, useSyncStore } from '@/stores/syncStore'
 
-export interface JournalEntry {
-  event: 'started' | 'adjusted' | 'paused' | 'resumed' | 'stopped'
-  at: string
-  secondsAtEvent: number
-  note?: string
-}
+export type JournalEntry = TimerJournalEntry
 
 export interface TimerConfig {
   mode: 'countup' | 'countdown'
@@ -82,11 +79,16 @@ export const createTimeEntryStore = (
       if (data.type === 'manual') {
         const startDate = subSeconds(now, initialSeconds).toISOString()
         const finalTimeSpentHours = Number((initialSeconds / 3600).toFixed(4))
+        const sourceId = `local-${id}`
 
         const newEntry: SyncTimeEntryRxDBDTO = {
-          _id: `${data.dataSourceId}::local-${id}`,
-          id,
+          id: `${data.connectionInstanceId}::${sourceId}`,
+          sourceId,
           _deleted: false,
+          syncStatus: 'pending_push',
+          lastPulledAt: null,
+          lastPushedAt: null,
+          lastReconciledAt: null,
           connectionInstanceId: data.connectionInstanceId,
           dataSourceId: data.dataSourceId,
           task: { id: data.taskId },
@@ -113,7 +115,11 @@ export const createTimeEntryStore = (
       const startDate = now.toISOString()
       const eventType = 'started'
 
-      const initialJournal: JournalEntry = {
+      const initialJournal: TimerJournalEntry = {
+        id: crypto.randomUUID(),
+        action: 'start',
+        timestamp: now.toISOString(),
+        secondsAtMoment: initialElapsed,
         event: eventType,
         at: now.toISOString(),
         secondsAtEvent: initialElapsed,
@@ -122,10 +128,15 @@ export const createTimeEntryStore = (
         }),
       }
 
+      const sourceId = `local-${id}`
       const newEntry: SyncTimeEntryRxDBDTO = {
-        _id: `${data.dataSourceId}::local-${id}`,
-        id,
+        id: `${data.connectionInstanceId}::${sourceId}`,
+        sourceId,
         _deleted: false,
+        syncStatus: 'pending_push',
+        lastPulledAt: null,
+        lastPushedAt: null,
+        lastReconciledAt: null,
         connectionInstanceId: data.connectionInstanceId,
         dataSourceId: data.dataSourceId,
         task: { id: data.taskId },
@@ -162,16 +173,7 @@ export const createTimeEntryStore = (
       const { active } = get()
       if (!active || !active.startDate) return
 
-      let doc = await db.timeEntries.findOne(active._id).exec()
-      if (!doc) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              $or: [{ _id: active._id }, { id: active.id }],
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries.findOne(active.id).exec()
       if (!doc) return
 
       const now = new Date()
@@ -189,6 +191,10 @@ export const createTimeEntryStore = (
 
       const updatedJournal = [...(active.journal || [])]
       updatedJournal.push({
+        id: crypto.randomUUID(),
+        action: 'pause',
+        timestamp: now.toISOString(),
+        secondsAtMoment: currentSeconds,
         event: 'paused',
         at: now.toISOString(),
         secondsAtEvent: currentSeconds,
@@ -212,29 +218,25 @@ export const createTimeEntryStore = (
       const { active } = get()
       if (!active) return
 
-      let doc = await db.timeEntries.findOne(active._id).exec()
-      if (!doc) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              $or: [{ _id: active._id }, { id: active.id }],
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries.findOne(active.id).exec()
       if (!doc) return
 
       const now = new Date()
       const lastPauseEvent = active.journal
         ?.slice()
         .reverse()
-        .find((j: JournalEntry) => j.event === 'paused')
-      const secondsAtLastPause = lastPauseEvent?.secondsAtEvent ?? 0
+        .find((j: JournalEntry) => j.event === 'paused' || j.action === 'pause')
+      const secondsAtLastPause =
+        lastPauseEvent?.secondsAtMoment ?? lastPauseEvent?.secondsAtEvent ?? 0
 
       const newStartDate = subSeconds(now, secondsAtLastPause).toISOString()
       const updatedJournal = [...(active.journal || [])]
 
       updatedJournal.push({
+        id: crypto.randomUUID(),
+        action: 'resume',
+        timestamp: now.toISOString(),
+        secondsAtMoment: secondsAtLastPause,
         event: 'resumed',
         at: now.toISOString(),
         secondsAtEvent: secondsAtLastPause,
@@ -261,16 +263,7 @@ export const createTimeEntryStore = (
       const { active } = get()
       if (!active || !active.startDate) return
 
-      let doc = await db.timeEntries.findOne(active._id).exec()
-      if (!doc) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              $or: [{ _id: active._id }, { id: active.id }],
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries.findOne(active.id).exec()
       if (!doc) return
 
       const now = new Date()
@@ -282,12 +275,21 @@ export const createTimeEntryStore = (
         const lastPause = updatedJournal
           .slice()
           .reverse()
-          .find((j: JournalEntry) => j.event === 'paused')
+          .find(
+            (j: JournalEntry) => j.event === 'paused' || j.action === 'pause',
+          )
         if (lastPause) {
-          currentSeconds = lastPause.secondsAtEvent
+          currentSeconds =
+            lastPause.secondsAtMoment ??
+            lastPause.secondsAtEvent ??
+            currentSeconds
         }
       } else {
         updatedJournal.push({
+          id: crypto.randomUUID(),
+          action: 'stop',
+          timestamp: now.toISOString(),
+          secondsAtMoment: currentSeconds,
           event: 'stopped',
           at: now.toISOString(),
           secondsAtEvent: currentSeconds,
@@ -298,19 +300,24 @@ export const createTimeEntryStore = (
         active.timerConfig?.mode === 'countup'
           ? (active.timerConfig?.manualInitialSeconds ?? 0)
           : 0
-      const totalSecondsToLog = currentSeconds + base
-      const finalTimeSpentHours = Number((totalSecondsToLog / 3600).toFixed(4))
+      const totalSeconds = currentSeconds + base
+      const finalTimeSpentHours = Number((totalSeconds / 3600).toFixed(4))
 
       await doc.patch({
         timeStatus: 'finished',
-        endDate: now.toISOString(),
         timeSpent: finalTimeSpentHours,
+        endDate: now.toISOString(),
         updatedAt: now.toISOString(),
         journal: updatedJournal,
       })
 
       client.timer.stop()
-      client.events?.emit?.('time-entry:sync', null)
+
+      client.events?.emit?.('time-entry:sync', {
+        ...active,
+        timeStatus: 'finished',
+        endDate: now.toISOString(),
+      })
       set({ active: null })
     },
 
@@ -343,7 +350,10 @@ export const createTimeEntryStore = (
 // ---------------------------------------------------------
 // Contexto Absurdamente Simplificado
 // ---------------------------------------------------------
-const TimeEntryContext = createContext<StoreApi<TimeEntryStore> | null>(null)
+
+export const TimeEntryContext = createContext<
+  StoreApi<TimeEntryStore> | undefined
+>(undefined)
 
 export function TimeEntryProvider({ children }: { children: ReactNode }) {
   const client: IOpenAPI = useOpenAPI()
@@ -361,67 +371,51 @@ export function TimeEntryProvider({ children }: { children: ReactNode }) {
     }
   }, [db])
 
-  // Multi-window synchronization via IPC events
+  // Sincronização e listeners de IPC (Main Timer Events)
   useEffect(() => {
     if (!client?.events?.on) return
 
-    const unsubs: Array<() => void> = []
-
-    unsubs.push(
-      client.events.on('timer:paused', () => {
-        const current = storeRef.current?.getState().active
-        if (current && current.timeStatus !== 'paused') {
-          storeRef.current?.setState({
-            active: { ...current, timeStatus: 'paused' },
-          })
-        }
+    const unsubs = [
+      'play',
+      'pause',
+      'resume',
+      'stop',
+      'reset',
+      'mode-changed',
+    ].map((event) =>
+      client.events.on(`timer:${event}`, (payload: any) => {
+        console.log(`[TimeTracker] Evento recebido: timer:${event}`, payload)
       }),
     )
 
     unsubs.push(
-      client.events.on('timer:stopped', () => {
-        const current = storeRef.current?.getState().active
-        if (current) {
-          storeRef.current?.getState().clear()
-        }
-      }),
-    )
-
-    unsubs.push(
-      client.events.on<SyncTimeEntryRxDBDTO | null>(
+      client.events.on(
         'time-entry:sync',
-        (entry) => {
+        (entry: Partial<SyncTimeEntryRxDBDTO>) => {
+          if (!entry) return
           const current = storeRef.current?.getState().active
-          if (!entry) {
-            if (current) {
-              storeRef.current?.getState().clear()
-            }
-            return
-          }
 
           if (entry.timeStatus === 'finished') {
-            const isCurrent =
-              current &&
-              ((current._id && current._id === entry._id) ||
-                (current.id && current.id === entry.id))
+            const isCurrent = current && current.id === entry.id
             if (isCurrent) {
               storeRef.current?.getState().clear()
             }
             return
           }
 
-          const isCurrentActive =
-            current &&
-            ((current._id && current._id === entry._id) ||
-              (current.id && current.id === entry.id))
+          const isCurrentActive = current && current.id === entry.id
 
           if (isCurrentActive) {
-            storeRef.current?.getState().setActive(entry)
+            storeRef.current
+              ?.getState()
+              .setActive(entry as SyncTimeEntryRxDBDTO)
             return
           }
 
           if (entry.timeStatus === 'running' || entry.timeStatus === 'paused') {
-            storeRef.current?.getState().setActive(entry)
+            storeRef.current
+              ?.getState()
+              .setActive(entry as SyncTimeEntryRxDBDTO)
           }
         },
       ),
@@ -446,26 +440,35 @@ export function TimeEntryProvider({ children }: { children: ReactNode }) {
           ((item.timeSpentSeconds || 0) / 3600).toFixed(4),
         )
         const nowIso = new Date().toISOString()
-        const docId = `addon::local-${item.id}`
+        const sourceId = `local-${item.id}`
+        const docId = `addon::${sourceId}`
 
         const suggestionDoc: SyncTimeEntryRxDBDTO = {
-          _id: docId,
-          id: item.id,
+          id: docId,
+          sourceId,
           _deleted: false,
+          syncStatus: 'local_only',
+          lastPulledAt: null,
+          lastPushedAt: null,
+          lastReconciledAt: null,
           dataSourceId: 'addon',
           connectionInstanceId: 'addon',
-          task: { id: item.taskId || '' },
+          task: { id: item.taskId ? item.taskId : '' },
           activity: { id: 'default', name: 'Sugestão' },
           user: { id: 'local-user', name: 'Watcher Simulado' },
-          startDate: item.startDate || item.createdAt || nowIso,
-          endDate: item.endDate || nowIso,
+          startDate: item.startDate
+            ? item.startDate
+            : item.createdAt
+              ? item.createdAt
+              : nowIso,
+          endDate: item.endDate ? item.endDate : nowIso,
           timeSpent: timeSpentHours,
           timeStatus: 'suggestion',
-          source: item.source || 'ai_suggestion',
+          source: item.source ? item.source : 'ai_suggestion',
           addonSource: item.addonSource,
           type: 'manual',
-          comments: item.comments,
-          createdAt: item.createdAt || nowIso,
+          comments: item.comments ? item.comments : '',
+          createdAt: item.createdAt ? item.createdAt : nowIso,
           updatedAt: nowIso,
           journal: [],
         }
@@ -476,19 +479,11 @@ export function TimeEntryProvider({ children }: { children: ReactNode }) {
             '✅ [TimeEntryStore] Sugestão salva com sucesso no RxDB:',
             suggestionDoc,
           )
-          queryClient.invalidateQueries({ queryKey: ['time-entries-range'] })
-        } catch (err: any) {
-          if (err?.status === 409 || err?.code === 'CONFLICT') {
-            console.log(
-              'ℹ️ [TimeEntryStore] Conflito ignorado ao salvar sugestão (upsert mantido):',
-              docId,
-            )
-            queryClient.invalidateQueries({ queryKey: ['time-entries-range'] })
-            return
-          }
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err)
           console.error(
             '❌ [TimeEntryStore] Erro ao salvar sugestão no RxDB:',
-            err?.message || err,
+            errorMessage,
           )
         }
       },

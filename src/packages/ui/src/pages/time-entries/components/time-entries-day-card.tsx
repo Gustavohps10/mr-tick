@@ -25,6 +25,7 @@ interface TimeEntriesDayCardProps {
   expandedRows: ExpandedState
   onExpandedChange: React.Dispatch<React.SetStateAction<ExpandedState>>
   isGrouped?: boolean
+  isPulling?: boolean
   onAcceptAllSuggestions?: (rows: SuggestionRow[]) => void
   onDismissAllSuggestions?: (rows: SuggestionRow[]) => void
   onAddNewEntry?: (day: Date) => void
@@ -39,6 +40,7 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
   expandedRows,
   onExpandedChange,
   isGrouped = true,
+  isPulling = false,
   onAcceptAllSuggestions,
   onDismissAllSuggestions,
   onAddNewEntry,
@@ -65,9 +67,9 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
     const combined = [...persisted, ...drafts]
     const seen = new Set<string>()
     return combined.filter((item) => {
-      const id = item._id || item.id
-      if (!id || seen.has(id)) return false
-      seen.add(id)
+      const compositeKey = `${item.connectionInstanceId}::${item.sourceId}`
+      if (!item.sourceId || seen.has(compositeKey)) return false
+      seen.add(compositeKey)
       return true
     })
   }, [entries, draftEntries, day])
@@ -104,6 +106,15 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
           <span className="text-muted-foreground font-mono text-xs">
             {format(day, 'dd/MM/yyyy')}
           </span>
+          {isPulling && (
+            <span
+              className="relative flex h-2 w-2"
+              title="Sincronizando apontamentos..."
+            >
+              <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
+              <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

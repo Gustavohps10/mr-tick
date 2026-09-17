@@ -105,7 +105,6 @@ export function TimeEntries() {
             ...updates,
             updatedAt: new Date().toISOString(),
           })
-          queryClient.invalidateQueries({ queryKey: ['time-entries-range'] })
           toast.success('Tempo atualizado')
         }
       } catch {
@@ -120,22 +119,14 @@ export function TimeEntries() {
       if (!db || suggestions.length === 0) return
       try {
         for (const sug of suggestions) {
-          const docId = sug._id || sug.id
-          let doc = await db.timeEntries.findOne(docId).exec()
-          if (!doc) {
-            doc = await db.timeEntries
-              .findOne({
-                selector: {
-                  $or: [
-                    { id: sug.id },
-                    { _id: sug._id },
-                    { id: sug._id },
-                    { _id: sug.id },
-                  ],
-                },
-              })
-              .exec()
-          }
+          const doc = await db.timeEntries
+            .findOne({
+              selector: {
+                connectionInstanceId: sug.connectionInstanceId,
+                sourceId: sug.sourceId,
+              },
+            })
+            .exec()
           if (doc) {
             await doc.patch({
               timeStatus: 'finished',
@@ -146,15 +137,12 @@ export function TimeEntries() {
         toast.success(
           `${suggestions.length} sugestões confirmadas com sucesso!`,
         )
-        await queryClient.invalidateQueries({
-          queryKey: ['time-entries-range'],
-        })
       } catch (err) {
         console.error('Erro ao aceitar todas sugestoes:', err)
         toast.error('Erro ao aceitar sugestões')
       }
     },
-    [db, queryClient],
+    [db],
   )
 
   const handleDismissAllSuggestions = useCallback(
@@ -162,62 +150,43 @@ export function TimeEntries() {
       if (!db || suggestions.length === 0) return
       try {
         for (const sug of suggestions) {
-          const docId = sug._id || sug.id
-          let doc = await db.timeEntries.findOne(docId).exec()
-          if (!doc) {
-            doc = await db.timeEntries
-              .findOne({
-                selector: {
-                  $or: [
-                    { id: sug.id },
-                    { _id: sug._id },
-                    { id: sug._id },
-                    { _id: sug.id },
-                  ],
-                },
-              })
-              .exec()
-          }
+          const doc = await db.timeEntries
+            .findOne({
+              selector: {
+                connectionInstanceId: sug.connectionInstanceId,
+                sourceId: sug.sourceId,
+              },
+            })
+            .exec()
           if (doc) {
             await doc.remove()
           }
         }
         toast.info(`${suggestions.length} sugestões descartadas`)
-        await queryClient.invalidateQueries({
-          queryKey: ['time-entries-range'],
-        })
       } catch (err) {
         console.error('Erro ao descartar todas sugestoes:', err)
         toast.error('Erro ao descartar sugestões')
       }
     },
-    [db, queryClient],
+    [db],
   )
 
   const handlePauseTimer = useCallback(
     async (row: SuggestionRow) => {
       if (!db) return
-      const rowKey = row._id || row.id
-      let doc = await db.timeEntries.findOne(rowKey).exec()
-      if (!doc) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              $or: [
-                { id: rowKey },
-                { _id: rowKey },
-                { id: row.id },
-                { _id: row._id },
-              ],
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries
+        .findOne({
+          selector: {
+            connectionInstanceId: row.connectionInstanceId,
+            sourceId: row.sourceId,
+          },
+        })
+        .exec()
       if (doc) {
         setActive(doc.toMutableJSON())
       } else if (
-        activeTimeEntry?._id !== rowKey &&
-        activeTimeEntry?.id !== rowKey
+        activeTimeEntry?.connectionInstanceId !== row.connectionInstanceId ||
+        activeTimeEntry?.sourceId !== row.sourceId
       ) {
         setActive(row)
       }
@@ -229,27 +198,19 @@ export function TimeEntries() {
   const handleResumeTimer = useCallback(
     async (row: SuggestionRow) => {
       if (!db) return
-      const rowKey = row._id || row.id
-      let doc = await db.timeEntries.findOne(rowKey).exec()
-      if (!doc) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              $or: [
-                { id: rowKey },
-                { _id: rowKey },
-                { id: row.id },
-                { _id: row._id },
-              ],
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries
+        .findOne({
+          selector: {
+            connectionInstanceId: row.connectionInstanceId,
+            sourceId: row.sourceId,
+          },
+        })
+        .exec()
       if (doc) {
         setActive(doc.toMutableJSON())
       } else if (
-        activeTimeEntry?._id !== rowKey &&
-        activeTimeEntry?.id !== rowKey
+        activeTimeEntry?.connectionInstanceId !== row.connectionInstanceId ||
+        activeTimeEntry?.sourceId !== row.sourceId
       ) {
         setActive(row)
       }
@@ -262,27 +223,19 @@ export function TimeEntries() {
     async (row?: SuggestionRow) => {
       if (!db) return
       if (row) {
-        const rowKey = row._id || row.id
-        let doc = await db.timeEntries.findOne(rowKey).exec()
-        if (!doc) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: {
-                $or: [
-                  { id: rowKey },
-                  { _id: rowKey },
-                  { id: row.id },
-                  { _id: row._id },
-                ],
-              },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries
+          .findOne({
+            selector: {
+              connectionInstanceId: row.connectionInstanceId,
+              sourceId: row.sourceId,
+            },
+          })
+          .exec()
         if (doc) {
           setActive(doc.toMutableJSON())
         } else if (
-          activeTimeEntry?._id !== rowKey &&
-          activeTimeEntry?.id !== rowKey
+          activeTimeEntry?.connectionInstanceId !== row.connectionInstanceId ||
+          activeTimeEntry?.sourceId !== row.sourceId
         ) {
           setActive(row)
         }
@@ -339,10 +292,9 @@ export function TimeEntries() {
   ])
 
   const handleRowDoubleClick = useCallback((row: SuggestionRow) => {
-    const key = row._id || row.id
     setEditingRows((prev) => ({
       ...prev,
-      [key]: true,
+      [row.id]: true,
     }))
   }, [])
 
@@ -357,10 +309,27 @@ export function TimeEntries() {
         onToggleGrouped={setIsGrouped}
       />
 
-      {isLoading ? (
-        <TimeEntriesSkeleton />
+      {isLoading || (timeEntries.length === 0 && isPulling) ? (
+        <TimeEntriesSkeleton
+          message={
+            isPulling
+              ? 'Sincronizando apontamentos do período com as fontes remotas...'
+              : undefined
+          }
+        />
       ) : (
         <div className="flex flex-col gap-6">
+          {isPulling && (
+            <div className="border-primary/20 bg-primary/5 text-primary flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs">
+              <span className="relative flex h-2 w-2">
+                <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
+                <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
+              </span>
+              <span className="font-medium">
+                Sincronizando apontamentos do período com as fontes remotas...
+              </span>
+            </div>
+          )}
           {daysInRange.map((day) => (
             <TimeEntriesDayCard
               key={day.toISOString()}
@@ -371,6 +340,7 @@ export function TimeEntries() {
               expandedRows={expandedRows}
               onExpandedChange={setExpandedRows}
               isGrouped={isGrouped}
+              isPulling={isPulling}
               onAcceptAllSuggestions={handleAcceptAllSuggestions}
               onDismissAllSuggestions={handleDismissAllSuggestions}
               onAddNewEntry={handleAddNewEntry}

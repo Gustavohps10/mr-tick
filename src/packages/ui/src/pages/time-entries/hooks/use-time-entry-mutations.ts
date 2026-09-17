@@ -60,8 +60,8 @@ export function useTimeEntryMutations(
     const draftId = `temp-draft-${Date.now()}`
     const draftRow: SuggestionRow = {
       ...sourceRow,
-      _id: draftId,
       id: draftId,
+      sourceId: draftId,
       isDraft: true,
       timeStatus: 'finished',
       subRows: [],
@@ -92,11 +92,15 @@ export function useTimeEntryMutations(
       const defaultUserId = memberIdsByConnection[defaultConnId] || 'local-user'
 
       const draftRow: SuggestionRow = {
-        _id: draftId,
         id: draftId,
+        sourceId: draftId,
         _deleted: false,
         connectionInstanceId: defaultConnId,
         dataSourceId: '',
+        syncStatus: 'local_only',
+        lastPulledAt: null,
+        lastPushedAt: null,
+        lastReconciledAt: null,
         task: parentTask ? { id: parentTask.id } : { id: '' },
         activity: { id: '' },
         user: { id: defaultUserId },
@@ -132,9 +136,7 @@ export function useTimeEntryMutations(
   const handleCancelEdit = useCallback(
     async (rowId: string) => {
       // 1. Remove drafts
-      setDraftEntries((prev) =>
-        prev.filter((d) => d.id !== rowId && d._id !== rowId),
-      )
+      setDraftEntries((prev) => prev.filter((d) => d.id !== rowId))
 
       // 2. Clear editing state
       setEditingRows((prev) => {
@@ -165,17 +167,10 @@ export function useTimeEntryMutations(
       if (!snapshot || !db) return
 
       try {
-        let doc = await db.timeEntries.findOne(rowId).exec()
-        if (!doc) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: { $or: [{ id: rowId }, { _id: rowId }] },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries.findOne(rowId).exec()
         if (!doc) return
 
-        const { _id, id, createdAt, ...revertableFields } = snapshot
+        const { id, createdAt, ...revertableFields } = snapshot
         const reverted = await doc.patch({
           ...revertableFields,
           updatedAt: new Date().toISOString(),
@@ -185,9 +180,7 @@ export function useTimeEntryMutations(
         // Sync store and IPC
         const isCurrentActive =
           activeTimeEntry &&
-          (activeTimeEntry._id === revertedJson._id ||
-            activeTimeEntry.id === revertedJson.id ||
-            activeTimeEntry._id === rowId ||
+          (activeTimeEntry.id === revertedJson.id ||
             activeTimeEntry.id === rowId)
 
         if (isCurrentActive) {
@@ -218,23 +211,16 @@ export function useTimeEntryMutations(
     async (rowUid: string) => {
       if (!db) return
 
-      const isDraft = draftEntriesRef.current.some(
-        (d) => d.id === rowUid || d._id === rowUid,
-      )
+      const isDraft = draftEntriesRef.current.some((d) => d.id === rowUid)
 
       if (isDraft) {
-        const draft = draftEntriesRef.current.find(
-          (d) => d.id === rowUid || d._id === rowUid,
-        )
+        const draft = draftEntriesRef.current.find((d) => d.id === rowUid)
         if (!draft) return
 
         const changes =
-          tempDataRef.current[rowUid] ||
-          tempDataRef.current[draft.id] ||
-          (draft._id ? tempDataRef.current[draft._id] : undefined) ||
-          {}
+          tempDataRef.current[rowUid] || tempDataRef.current[draft.id] || {}
 
-        const id = crypto.randomUUID()
+        const sourceId = crypto.randomUUID()
         const now = new Date().toISOString()
         const resolvedTaskData = (changes.taskData || draft.taskData) as
           SyncTaskRxDBDTO | undefined
@@ -256,10 +242,14 @@ export function useTimeEntryMutations(
         const sanitizedTaskId = cleanTaskId(rawTaskId)
 
         const newEntry: SyncTimeEntryRxDBDTO = {
-          _id: `${dsId}::${connId}-${id}`,
-          id,
+          id: `${connId}::${sourceId}`,
+          sourceId,
           dataSourceId: dsId,
           connectionInstanceId: connId,
+          syncStatus: 'local_only',
+          lastPulledAt: null,
+          lastPushedAt: null,
+          lastReconciledAt: null,
           task: { id: sanitizedTaskId },
           taskData: resolvedTaskData,
           activity: { id: changes.activity?.id || draft.activity?.id || '' },
@@ -277,21 +267,17 @@ export function useTimeEntryMutations(
 
         await db.timeEntries.insert(newEntry)
 
-        setDraftEntries((prev) =>
-          prev.filter((d) => d.id !== rowUid && d._id !== rowUid),
-        )
+        setDraftEntries((prev) => prev.filter((d) => d.id !== rowUid))
         setEditingRows((prev) => {
           const next = { ...prev }
           delete next[rowUid]
           delete next[draft.id]
-          if (draft._id) delete next[draft._id]
           return next
         })
         setTempData((prev) => {
           const next = { ...prev }
           delete next[rowUid]
           delete next[draft.id]
-          if (draft._id) delete next[draft._id]
           return next
         })
         await queryClient.invalidateQueries({
@@ -302,16 +288,7 @@ export function useTimeEntryMutations(
       }
 
       // Persisted row update
-      let doc = await db.timeEntries.findOne(rowUid).exec()
-      if (!doc) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              $or: [{ id: rowUid }, { _id: rowUid }],
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries.findOne(rowUid).exec()
 
       if (!doc) {
         toast.error('Apontamento não encontrado para salvar')
@@ -320,10 +297,7 @@ export function useTimeEntryMutations(
 
       const docJson = doc.toMutableJSON()
       const rawChanges =
-        tempDataRef.current[rowUid] ||
-        tempDataRef.current[docJson.id] ||
-        tempDataRef.current[docJson._id] ||
-        {}
+        tempDataRef.current[rowUid] || tempDataRef.current[docJson.id] || {}
 
       const changes = { ...rawChanges }
       if (changes.task?.id !== undefined) {
@@ -353,10 +327,7 @@ export function useTimeEntryMutations(
       // Sincroniza a store local e via IPC para todas as janelas
       const isCurrentActive =
         activeTimeEntry &&
-        (activeTimeEntry._id === updatedJson._id ||
-          activeTimeEntry.id === updatedJson.id ||
-          activeTimeEntry._id === rowUid ||
-          activeTimeEntry.id === rowUid)
+        (activeTimeEntry.id === updatedJson.id || activeTimeEntry.id === rowUid)
 
       if (isCurrentActive) {
         if (updatedJson.timeStatus === 'finished') {
@@ -372,21 +343,18 @@ export function useTimeEntryMutations(
         const next = { ...prev }
         delete next[rowUid]
         delete next[docJson.id]
-        delete next[docJson._id]
         return next
       })
       setTempData((prev) => {
         const next = { ...prev }
         delete next[rowUid]
         delete next[docJson.id]
-        delete next[docJson._id]
         return next
       })
 
       // Clean up snapshot on successful save
       delete originalSnapshotsRef.current[rowUid]
       delete originalSnapshotsRef.current[docJson.id]
-      delete originalSnapshotsRef.current[docJson._id]
 
       await queryClient.invalidateQueries({
         queryKey: ['time-entries-range'],
@@ -406,14 +374,7 @@ export function useTimeEntryMutations(
   const handleDeleteEntry = useCallback(
     async (id: string) => {
       if (!db) return
-      let doc = await db.timeEntries.findOne(id).exec()
-      if (!doc) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: { $or: [{ id }, { _id: id }] },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries.findOne(id).exec()
       if (!doc) return
 
       const docJson = doc.toMutableJSON()
@@ -421,10 +382,7 @@ export function useTimeEntryMutations(
 
       const isCurrentActive =
         activeTimeEntry &&
-        (activeTimeEntry._id === docJson._id ||
-          activeTimeEntry.id === docJson.id ||
-          activeTimeEntry._id === id ||
-          activeTimeEntry.id === id)
+        (activeTimeEntry.id === docJson.id || activeTimeEntry.id === id)
 
       if (isCurrentActive) {
         clearActive()
@@ -443,26 +401,13 @@ export function useTimeEntryMutations(
     async (row: SuggestionRow) => {
       if (!db) return
       try {
-        const rawId = row._id || row.id
-        const cleanId = rawId.replace(/^addon::local-/, '')
-        const addonDocId = `addon::local-${cleanId}`
-
-        let doc = await db.timeEntries.findOne(rawId).exec()
-        if (!doc) {
-          doc = await db.timeEntries.findOne(addonDocId).exec()
-        }
-        if (!doc) {
+        let doc = await db.timeEntries.findOne(row.id).exec()
+        if (!doc && row.connectionInstanceId && row.sourceId) {
           doc = await db.timeEntries
             .findOne({
               selector: {
-                $or: [
-                  { id: row.id },
-                  { _id: row.id },
-                  { id: row._id },
-                  { _id: row._id },
-                  { id: cleanId },
-                  { _id: addonDocId },
-                ],
+                connectionInstanceId: row.connectionInstanceId,
+                sourceId: row.sourceId,
               },
             })
             .exec()
@@ -472,11 +417,7 @@ export function useTimeEntryMutations(
           return
         }
 
-        const edited =
-          tempDataRef.current[rawId] ||
-          tempDataRef.current[row.id] ||
-          (row._id ? tempDataRef.current[row._id] : undefined) ||
-          {}
+        const edited = tempDataRef.current[row.id] || {}
 
         const updated = await doc.patch({
           ...edited,
@@ -488,20 +429,12 @@ export function useTimeEntryMutations(
 
         setEditingRows((prev) => {
           const next = { ...prev }
-          delete next[rawId]
           delete next[row.id]
-          delete next[cleanId]
-          delete next[addonDocId]
-          if (row._id) delete next[row._id]
           return next
         })
         setTempData((prev) => {
           const next = { ...prev }
-          delete next[rawId]
           delete next[row.id]
-          delete next[cleanId]
-          delete next[addonDocId]
-          if (row._id) delete next[row._id]
           return next
         })
         await queryClient.invalidateQueries({
@@ -520,42 +453,18 @@ export function useTimeEntryMutations(
     async (id: string) => {
       if (!db) return
       try {
-        const cleanId = id.replace(/^addon::local-/, '')
-        const addonDocId = `addon::local-${cleanId}`
-
-        let doc = await db.timeEntries.findOne(id).exec()
-        if (!doc) {
-          doc = await db.timeEntries.findOne(addonDocId).exec()
-        }
-        if (!doc) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: {
-                $or: [
-                  { id },
-                  { _id: id },
-                  { id: cleanId },
-                  { _id: addonDocId },
-                ],
-              },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries.findOne(id).exec()
         if (doc) {
           await doc.remove()
           toast.info('Sugestão descartada')
           setEditingRows((prev) => {
             const next = { ...prev }
             delete next[id]
-            delete next[cleanId]
-            delete next[addonDocId]
             return next
           })
           setTempData((prev) => {
             const next = { ...prev }
             delete next[id]
-            delete next[cleanId]
-            delete next[addonDocId]
             return next
           })
           await queryClient.invalidateQueries({
@@ -592,14 +501,10 @@ export function useTimeEntryMutations(
       }))
 
       // 2. If it's a draft, update draftEntries state
-      const isDraft = draftEntriesRef.current.some(
-        (d) => d.id === rowId || d._id === rowId,
-      )
+      const isDraft = draftEntriesRef.current.some((d) => d.id === rowId)
       if (isDraft) {
         setDraftEntries((prev) =>
-          prev.map((d) =>
-            d.id === rowId || d._id === rowId ? { ...d, ...updates } : d,
-          ),
+          prev.map((d) => (d.id === rowId ? { ...d, ...updates } : d)),
         )
         return
       }
@@ -607,16 +512,7 @@ export function useTimeEntryMutations(
       // 3. If it's a persisted entry, patch RxDB
       if (!db) return
       try {
-        let doc = await db.timeEntries.findOne(rowId).exec()
-        if (!doc) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: {
-                $or: [{ id: rowId }, { _id: rowId }],
-              },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries.findOne(rowId).exec()
         if (doc) {
           // Capture original snapshot before the first edit
           if (!originalSnapshotsRef.current[rowId]) {
@@ -631,9 +527,7 @@ export function useTimeEntryMutations(
 
           const isCurrentActive =
             activeTimeEntry &&
-            (activeTimeEntry._id === updatedJson._id ||
-              activeTimeEntry.id === updatedJson.id ||
-              activeTimeEntry._id === rowId ||
+            (activeTimeEntry.id === updatedJson.id ||
               activeTimeEntry.id === rowId)
 
           if (isCurrentActive) {

@@ -29,10 +29,10 @@ export function TimeEntrySuggestionBanner({
     const map = new Map<string, AddonSourceInfo>()
     suggestions.forEach((s) => {
       if (s.addonSource?.name) {
-        map.set(s.addonSource.id || s.addonSource.name, s.addonSource)
+        map.set(s.addonSource.pluginId || s.addonSource.name, s.addonSource)
       } else if (s.source) {
         map.set(s.source, {
-          id: s.source,
+          pluginId: s.source,
           name: s.source,
         })
       }
@@ -60,23 +60,27 @@ export function TimeEntrySuggestionBanner({
           </p>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            {visibleSources.map((source) => (
-              <div
-                key={source.id}
-                className="border-border/70 bg-background/80 text-foreground inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs"
-              >
-                {source.imageUrl ? (
-                  <img
-                    src={source.imageUrl}
-                    alt={source.name}
-                    className="h-3.5 w-3.5 rounded-sm object-cover"
-                  />
-                ) : (
-                  <Sparkles className="text-primary h-3.5 w-3.5" />
-                )}
-                <span>@{source.name.toLowerCase().replace(/\s+/g, '')}</span>
-              </div>
-            ))}
+            {visibleSources.map((source) => {
+              const displayName = source.name || source.pluginId
+              const key = source.pluginId || displayName
+              return (
+                <div
+                  key={key}
+                  className="border-border/70 bg-background/80 text-foreground inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs"
+                >
+                  {source.imageUrl ? (
+                    <img
+                      src={source.imageUrl}
+                      alt={displayName}
+                      className="h-3.5 w-3.5 rounded-sm object-cover"
+                    />
+                  ) : (
+                    <Sparkles className="text-primary h-3.5 w-3.5" />
+                  )}
+                  <span>@{displayName.toLowerCase().replace(/\s+/g, '')}</span>
+                </div>
+              )
+            })}
 
             {remainingSources.length > 0 && (
               <Popover>
@@ -94,25 +98,29 @@ export function TimeEntrySuggestionBanner({
                     Fontes de sugestão
                   </p>
                   <div className="mt-1 flex flex-col gap-1">
-                    {uniqueSources.map((source) => (
-                      <div
-                        key={source.id}
-                        className="hover:bg-accent flex items-center gap-2 rounded-md px-2 py-1 text-xs"
-                      >
-                        {source.imageUrl ? (
-                          <img
-                            src={source.imageUrl}
-                            alt={source.name}
-                            className="h-4 w-4 rounded-sm object-cover"
-                          />
-                        ) : (
-                          <Sparkles className="text-primary h-4 w-4" />
-                        )}
-                        <span className="text-foreground font-medium">
-                          @{source.name.toLowerCase().replace(/\s+/g, '')}
-                        </span>
-                      </div>
-                    ))}
+                    {uniqueSources.map((source) => {
+                      const displayName = source.name || source.pluginId
+                      const key = source.pluginId || displayName
+                      return (
+                        <div
+                          key={key}
+                          className="hover:bg-accent flex items-center gap-2 rounded-md px-2 py-1 text-xs"
+                        >
+                          {source.imageUrl ? (
+                            <img
+                              src={source.imageUrl}
+                              alt={displayName}
+                              className="h-4 w-4 rounded-sm object-cover"
+                            />
+                          ) : (
+                            <Sparkles className="text-primary h-4 w-4" />
+                          )}
+                          <span className="text-foreground font-medium">
+                            @{displayName.toLowerCase().replace(/\s+/g, '')}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </PopoverContent>
               </Popover>
