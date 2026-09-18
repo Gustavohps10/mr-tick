@@ -376,14 +376,16 @@ export function CardDisplay({
                 </TooltipContent>
               </Tooltip>
             )}
-            {task.syncedAt && (
+            {task.syncStatus === 'synced' && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <CheckCircle className="h-4 w-4 text-green-500" />
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>
-                    Sincronizado em {new Date(task.syncedAt).toLocaleString()}
+                    {task.lastPulledAt
+                      ? `Sincronizado em ${new Date(task.lastPulledAt).toLocaleString()}`
+                      : 'Sincronizado'}
                   </p>
                 </TooltipContent>
               </Tooltip>

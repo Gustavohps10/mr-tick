@@ -403,10 +403,8 @@ export const UltimateTimeTracker = ({
 
         const isActive =
           activeEntry &&
-          (item._id === activeEntry._id ||
-            item.id === activeEntry.id ||
-            item._id === activeEntry.id ||
-            item.id === activeEntry._id)
+          item.connectionInstanceId === activeEntry.connectionInstanceId &&
+          item.sourceId === activeEntry.sourceId
 
         if (isActive) return
 
@@ -431,7 +429,7 @@ export const UltimateTimeTracker = ({
     })
 
     return () => sub.unsubscribe()
-  }, [db, activeEntry?._id, activeEntry?.id])
+  }, [db, activeEntry?.connectionInstanceId, activeEntry?.sourceId])
   const playCurrentTimeEntry = useTimeEntryStore((s) => s.playCurrentTimeEntry)
   const pauseCurrentTimeEntry = useTimeEntryStore(
     (s) => s.pauseCurrentTimeEntry,
@@ -867,15 +865,14 @@ export const UltimateTimeTracker = ({
       }
 
       if (activeEntry && db) {
-        const docId = activeEntry._id || activeEntry.id
-        let doc = await db.timeEntries.findOne(docId).exec()
-        if (!doc) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: { $or: [{ _id: docId }, { id: docId }] },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries
+          .findOne({
+            selector: {
+              connectionInstanceId: activeEntry.connectionInstanceId,
+              sourceId: activeEntry.sourceId,
+            },
+          })
+          .exec()
         if (doc) {
           const updated = await doc.patch({
             task: { id: task.id },
@@ -903,15 +900,14 @@ export const UltimateTimeTracker = ({
     async (newTaskId: string) => {
       setTaskId(newTaskId)
       if (activeEntry && db) {
-        const docId = activeEntry._id || activeEntry.id
-        let doc = await db.timeEntries.findOne(docId).exec()
-        if (!doc) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: { $or: [{ _id: docId }, { id: docId }] },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries
+          .findOne({
+            selector: {
+              connectionInstanceId: activeEntry.connectionInstanceId,
+              sourceId: activeEntry.sourceId,
+            },
+          })
+          .exec()
         if (doc) {
           const updated = await doc.patch({
             task: { id: newTaskId },
@@ -932,15 +928,14 @@ export const UltimateTimeTracker = ({
     async (desc: string) => {
       setDescription(desc)
       if (activeEntry && db) {
-        const docId = activeEntry._id || activeEntry.id
-        let doc = await db.timeEntries.findOne(docId).exec()
-        if (!doc) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: { $or: [{ _id: docId }, { id: docId }] },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries
+          .findOne({
+            selector: {
+              connectionInstanceId: activeEntry.connectionInstanceId,
+              sourceId: activeEntry.sourceId,
+            },
+          })
+          .exec()
         if (doc) {
           const updated = await doc.patch({
             comments: desc,
@@ -961,15 +956,14 @@ export const UltimateTimeTracker = ({
     async (actId: string) => {
       setSelectedActivity(actId)
       if (activeEntry && db) {
-        const docId = activeEntry._id || activeEntry.id
-        let doc = await db.timeEntries.findOne(docId).exec()
-        if (!doc) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: { $or: [{ _id: docId }, { id: docId }] },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries
+          .findOne({
+            selector: {
+              connectionInstanceId: activeEntry.connectionInstanceId,
+              sourceId: activeEntry.sourceId,
+            },
+          })
+          .exec()
         if (doc) {
           const updated = await doc.patch({
             activity: { id: actId },
@@ -992,15 +986,14 @@ export const UltimateTimeTracker = ({
     async (connId: string) => {
       setSelectedConnectionId(connId)
       if (activeEntry && db) {
-        const docId = activeEntry._id || activeEntry.id
-        let doc = await db.timeEntries.findOne(docId).exec()
-        if (!doc) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: { $or: [{ _id: docId }, { id: docId }] },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries
+          .findOne({
+            selector: {
+              connectionInstanceId: activeEntry.connectionInstanceId,
+              sourceId: activeEntry.sourceId,
+            },
+          })
+          .exec()
         if (doc) {
           const updated = await doc.patch({
             connectionInstanceId: connId,
@@ -2173,12 +2166,19 @@ function AddonSingleTool({ menu }: { menu: AddonTimerbarMenuItem }) {
               <Button
                 key={sub.id}
                 variant="ghost"
+                title={
+                  sub.description
+                    ? `${sub.label} - ${sub.description}`
+                    : sub.label
+                }
                 className="flex h-8 w-full items-center justify-between px-2 text-xs font-normal"
                 onClick={() => handleCommandExecute(sub.id, sub.label)}
               >
                 <div className="mr-2 flex min-w-0 flex-1 items-center gap-2">
                   {renderAddonIcon(sub.icon)}
-                  <span className="truncate">{sub.label}</span>
+                  <span className="truncate" title={sub.label}>
+                    {sub.label}
+                  </span>
                 </div>
                 {sub.shortcut && (
                   <span className="text-muted-foreground shrink-0 font-mono text-[10px]">

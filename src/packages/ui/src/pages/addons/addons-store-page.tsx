@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import type { AddonManifest } from '@mr-tick/application'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -162,7 +162,7 @@ export function AddonsStorePage() {
       })
       if (res.isSuccess && res.data?.packages) {
         setInstallVersions(
-          res.data.packages.map((p) => ({
+          res.data.packages.map((p: { version: string }) => ({
             value: p.version,
             label: `v${p.version}`,
           })),

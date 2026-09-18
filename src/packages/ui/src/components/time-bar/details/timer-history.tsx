@@ -89,8 +89,9 @@ export const TimerHistory = memo(
     const isStoreActive =
       activeEntry &&
       storeActiveEntry &&
-      (activeEntry._id === storeActiveEntry._id ||
-        activeEntry.id === storeActiveEntry.id)
+      activeEntry.connectionInstanceId ===
+        storeActiveEntry.connectionInstanceId &&
+      activeEntry.sourceId === storeActiveEntry.sourceId
 
     const [isOpen, setIsOpen] = useState(false)
     const [isAddingInline, setIsAddingInline] = useState(false)
@@ -182,8 +183,14 @@ export const TimerHistory = memo(
     ) => {
       if (!db || !activeEntry) return
 
-      const targetId = activeEntry._id || activeEntry.id
-      const doc = await db.timeEntries.findOne(targetId).exec()
+      const doc = await db.timeEntries
+        .findOne({
+          selector: {
+            connectionInstanceId: activeEntry.connectionInstanceId,
+            sourceId: activeEntry.sourceId,
+          },
+        })
+        .exec()
       if (doc) {
         await doc.patch({
           journal: newJournal,

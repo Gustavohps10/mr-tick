@@ -77,7 +77,7 @@ export function TasksTable({ promises, queryKeys }: TasksTableProps) {
       columnPinning: { right: ['actions'] },
     },
     queryKeys,
-    getRowId: (originalRow) => originalRow._id,
+    getRowId: (originalRow) => originalRow.id,
     shallow: false,
     clearOnDefault: true,
   })

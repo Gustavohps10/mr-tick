@@ -499,7 +499,7 @@ export function TaskPopover({
 
                     return (
                       <div
-                        key={t._id || t.id}
+                        key={t.id}
                         onClick={() => handlePickTask(t)}
                         title={`${ticketId} - ${t.title}`}
                         className={cn(
