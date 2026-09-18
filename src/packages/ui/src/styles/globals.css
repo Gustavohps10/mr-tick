@@ -177,3 +177,36 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes linear-jump-down {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(2.5px);
+  }
+  60% {
+    transform: translateY(0.5px);
+  }
+}
+
+@keyframes linear-jump-up {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-2.5px);
+  }
+  60% {
+    transform: translateY(-0.5px);
+  }
+}
+
+.animate-jump-down {
+  animation: linear-jump-down 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.animate-jump-up {
+  animation: linear-jump-up 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
