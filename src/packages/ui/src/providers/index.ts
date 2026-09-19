@@ -5,5 +5,9 @@ export { DataSourceConnectionsProvider } from '@/contexts/DataSourceConnectionsC
 export { EnvironmentProvider } from '@/contexts/EnvironmentContext'
 export { OpenAPIProvider } from '@/contexts/OpenAPIContext'
 export { useWorkspace, WorkspaceProvider } from '@/contexts/WorkspaceContext'
-export { SyncProvider } from '@/stores/syncStore'
+export {
+  dropAppStorage,
+  SyncProvider,
+  type SyncProviderProps,
+} from '@/stores/syncStore'
 export { TimeEntryProvider } from '@/stores/timeEntryStore'

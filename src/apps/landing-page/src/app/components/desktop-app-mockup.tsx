@@ -15,6 +15,7 @@ import { cn, queryClient } from '@mr-tick/ui/lib'
 import { Metrics, TimeEntries } from '@mr-tick/ui/pages'
 import {
   DataSourceConnectionsProvider,
+  dropAppStorage,
   EnvironmentProvider,
   OpenAPIProvider,
   SidebarProvider,
@@ -720,6 +721,9 @@ export function DesktopAppMockup() {
 
   React.useEffect(() => {
     setMounted(true)
+    if (typeof window !== 'undefined') {
+      void dropAppStorage('db-default')
+    }
   }, [])
 
   if (!mounted) {
@@ -740,7 +744,7 @@ export function DesktopAppMockup() {
                 <QueryClientProvider client={queryClient}>
                   <WorkspaceProvider workspaceId="default">
                     <DataSourceConnectionsProvider>
-                      <SyncProvider>
+                      <SyncProvider useMemoryStorage={true}>
                         <TimeEntryProvider>
                           <TooltipProvider>
                             <SidebarProvider>
