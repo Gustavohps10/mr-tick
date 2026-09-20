@@ -13,9 +13,14 @@ const UserSchema = z.object({
   name: z.string().optional(),
 })
 
+const ActivitySchema = z.object({
+  id: z.string().min(1, 'activity.id é obrigatório'),
+  name: z.string().optional(),
+})
+
 const TimeEntrySchema = z.object({
   task: z.object({ id: z.string() }),
-  activity: z.object({ id: z.string().min(1) }),
+  activity: ActivitySchema,
   user: UserSchema,
   startDate: z.date().optional(),
   endDate: z.date().optional(),
@@ -28,7 +33,7 @@ type TimeEntryProps = z.infer<typeof TimeEntrySchema>
 export class TimeEntry extends Entity {
   private _id: string
   private _task: { id: string }
-  private _activity: { id: string }
+  private _activity: { id: string; name?: string }
   private _user: { id: string; name?: string }
   private _startDate?: Date
   private _endDate?: Date
@@ -40,7 +45,7 @@ export class TimeEntry extends Entity {
   private constructor(
     id: string,
     task: { id: string },
-    activity: { id: string },
+    activity: { id: string; name?: string },
     user: { id: string; name?: string },
     timeSpent: number,
     createdAt: Date,
@@ -91,6 +96,11 @@ export class TimeEntry extends Entity {
 
     const hours = hoursResult.success
 
+    let commentsTrimmed: string | undefined = undefined
+    if (data.comments) {
+      commentsTrimmed = data.comments.trim()
+    }
+
     const instance = new TimeEntry(
       crypto.randomUUID(),
       data.task,
@@ -101,7 +111,7 @@ export class TimeEntry extends Entity {
       now,
       hours.startDate,
       hours.endDate,
-      data.comments?.trim(),
+      commentsTrimmed,
     )
 
     return Either.success(instance)
@@ -163,6 +173,53 @@ export class TimeEntry extends Entity {
     }
 
     this._comments = comments?.trim()
+    this.touch()
+    return Either.success(this)
+  }
+
+  updateTask(task: { id: string }): Either<AppError, TimeEntry> {
+    const parsed = z
+      .object({ id: z.string().min(1, 'task.id é obrigatório') })
+      .safeParse(task)
+
+    if (!parsed.success) {
+      return Either.failure(
+        AppError.ValidationError(
+          'CAMPOS_INVALIDOS',
+          mapZodErrors(parsed.error),
+        ),
+      )
+    }
+
+    this._task = { id: parsed.data.id.trim() }
+    this.touch()
+    return Either.success(this)
+  }
+
+  updateActivity(activity: {
+    id: string
+    name?: string
+  }): Either<AppError, TimeEntry> {
+    const parsed = ActivitySchema.safeParse(activity)
+
+    if (!parsed.success) {
+      return Either.failure(
+        AppError.ValidationError(
+          'CAMPOS_INVALIDOS',
+          mapZodErrors(parsed.error),
+        ),
+      )
+    }
+
+    let activityName: string | undefined = undefined
+    if (parsed.data.name !== undefined) {
+      activityName = parsed.data.name.trim()
+    }
+
+    this._activity = {
+      id: parsed.data.id.trim(),
+      name: activityName,
+    }
     this.touch()
     return Either.success(this)
   }
@@ -249,9 +306,14 @@ function validateHours(
       )
     }
 
-    const computed = Math.floor(diff / 1000)
+    const computedSeconds = Math.floor(diff / 1000)
+    const computedHours = Number((computedSeconds / 3600).toFixed(4))
 
-    if (hasTime && computed !== timeSpent) {
+    if (
+      hasTime &&
+      computedSeconds !== timeSpent &&
+      Math.abs(computedHours - timeSpent) > 0.01
+    ) {
       return Either.failure(
         AppError.ValidationError('TEMPO_INCONSISTENTE', {
           timeSpent: ['timeSpent não corresponde ao intervalo entre as datas'],
@@ -262,7 +324,7 @@ function validateHours(
     return Either.success({
       startDate,
       endDate,
-      timeSpent: computed,
+      timeSpent: hasTime ? timeSpent : computedSeconds,
     })
   }
 

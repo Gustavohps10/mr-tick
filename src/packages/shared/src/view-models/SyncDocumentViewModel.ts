@@ -1,4 +1,5 @@
 export type SyncDocumentViewModel<T> = T & {
+  originalId?: string
   _deleted?: boolean
   conflicted?: boolean
   conflictData?: { server?: T; local: T }

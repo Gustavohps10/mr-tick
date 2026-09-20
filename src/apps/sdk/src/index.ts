@@ -16,6 +16,8 @@ export type {
   AddonTimerbarPopoverSubItem,
   AuthenticationDTO,
   AuthenticationResult,
+  CreatedTaskResult,
+  CreatedTimeEntryResult,
   IAuthenticationStrategy,
   IMemberProvider,
   IMemberQuery,
@@ -37,6 +39,8 @@ export type {
   SyncTimeEntryDTO,
   TaskDTO,
   TimeEntryDTO,
+  UpdatedTaskResult,
+  UpdatedTimeEntryResult,
   WorkspaceDTO,
 } from '@mr-tick/application'
 export { Member, Task, TimeEntry, Workspace } from '@mr-tick/domain'

@@ -2,6 +2,16 @@ import { TimeEntry } from '@mr-tick/domain'
 
 import { PagedResultDTO, PaginationOptionsDTO, TimeEntryDTO } from '@/dtos'
 
+export interface CreatedTimeEntryResult {
+  id: string
+  updatedAt?: Date
+}
+
+export interface UpdatedTimeEntryResult {
+  id: string
+  updatedAt?: Date
+}
+
 export interface ITimeEntryProvider {
   pull(
     memberId: string,
@@ -13,8 +23,8 @@ export interface ITimeEntryProvider {
     startDate: Date,
     endDate: Date,
   ): Promise<PagedResultDTO<TimeEntryDTO>>
-  create(entry: TimeEntry): Promise<void>
-  update(entry: TimeEntry): Promise<void>
+  create(entry: TimeEntry): Promise<CreatedTimeEntryResult | void>
+  update(entry: TimeEntry): Promise<UpdatedTimeEntryResult | void>
   delete(id: string): Promise<void>
   findById(id: string): Promise<TimeEntry | undefined>
   findAll(

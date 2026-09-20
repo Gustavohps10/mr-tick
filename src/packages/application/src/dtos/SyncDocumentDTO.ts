@@ -1,6 +1,7 @@
-﻿import { AppError } from '@mr-tick/shared/helpers'
+import { AppError } from '@mr-tick/shared/helpers'
 
 export type SyncDocumentDTO<T> = T & {
+  originalId?: string
   _deleted?: boolean
   conflicted?: boolean
   conflictData?: { server?: T; local: T }

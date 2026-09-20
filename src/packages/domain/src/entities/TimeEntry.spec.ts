@@ -204,4 +204,61 @@ describe('TimeEntry Entity', () => {
       expect(result.failure.details?.comments).toBeDefined()
     })
   })
+
+  describe('updateTask', () => {
+    let entry: TimeEntry
+
+    beforeEach(() => {
+      const result = TimeEntry.create({ ...makeValidProps(), timeSpent: 60 })
+      entry = result.success
+    })
+
+    it('should update task successfully and touch updatedAt', () => {
+      const updateTime = new Date('2024-05-15T00:00:00Z')
+      vi.setSystemTime(updateTime)
+
+      const result = entry.updateTask({ id: 'task-999' })
+
+      expect(result.isSuccess()).toBe(true)
+      expect(entry.task.id).toBe('task-999')
+      expect(entry.updatedAt).toEqual(updateTime)
+    })
+
+    it('should fail if task id is empty', () => {
+      const result = entry.updateTask({ id: '' })
+
+      expect(result.isFailure()).toBe(true)
+      expect(result.failure.messageKey).toBe('CAMPOS_INVALIDOS')
+      expect(result.failure.details?.id).toBeDefined()
+    })
+  })
+
+  describe('updateActivity', () => {
+    let entry: TimeEntry
+
+    beforeEach(() => {
+      const result = TimeEntry.create({ ...makeValidProps(), timeSpent: 60 })
+      entry = result.success
+    })
+
+    it('should update activity successfully and touch updatedAt', () => {
+      const updateTime = new Date('2024-05-15T00:00:00Z')
+      vi.setSystemTime(updateTime)
+
+      const result = entry.updateActivity({ id: 'act-new-42', name: 'QA' })
+
+      expect(result.isSuccess()).toBe(true)
+      expect(entry.activity.id).toBe('act-new-42')
+      expect(entry.activity.name).toBe('QA')
+      expect(entry.updatedAt).toEqual(updateTime)
+    })
+
+    it('should fail if activity id is empty', () => {
+      const result = entry.updateActivity({ id: '' })
+
+      expect(result.isFailure()).toBe(true)
+      expect(result.failure.messageKey).toBe('CAMPOS_INVALIDOS')
+      expect(result.failure.details?.id).toBeDefined()
+    })
+  })
 })

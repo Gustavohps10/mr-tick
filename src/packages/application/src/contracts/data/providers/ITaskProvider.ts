@@ -2,6 +2,16 @@ import { Task } from '@mr-tick/domain'
 
 import { PagedResultDTO, PaginationOptionsDTO, TaskDTO } from '@/dtos'
 
+export interface CreatedTaskResult {
+  id: string
+  updatedAt?: Date
+}
+
+export interface UpdatedTaskResult {
+  id: string
+  updatedAt?: Date
+}
+
 export interface ITaskProvider {
   pull(
     memberId: string,
@@ -10,7 +20,7 @@ export interface ITaskProvider {
   ): Promise<TaskDTO[]>
   findAll(pagination?: PaginationOptionsDTO): Promise<PagedResultDTO<TaskDTO>>
   findById(id: string): Promise<TaskDTO | undefined>
-  create(task: Task): Promise<void>
-  update(task: Task): Promise<void>
+  create(task: Task): Promise<CreatedTaskResult | void>
+  update(task: Task): Promise<UpdatedTaskResult | void>
   delete(id: string): Promise<void>
 }
