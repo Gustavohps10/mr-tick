@@ -33,6 +33,8 @@ export interface ReplicationStatus {
   lastPushedAt: Date | null
   lastReconciledAt: Date | null
   lastReplication: Date | null
+  lastPushResult: 'success' | 'error' | null
+  lastPullResult: 'success' | 'error' | null
   error: Error | RxError | null
 }
 

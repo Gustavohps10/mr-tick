@@ -23,11 +23,13 @@ export interface TimerConfig {
 export interface CreateTimeEntryData {
   taskId: string
   activityId: string
+  activityName?: string
   dataSourceId: string
   type: 'increasing' | 'decreasing' | 'manual'
   connectionInstanceId: string
   comments?: string
   userId?: string
+  userName?: string
   mode?: 'countup' | 'countdown'
   manualInitialSeconds?: number
 }
@@ -74,26 +76,44 @@ export const createTimeEntryStore = (
       const id = crypto.randomUUID()
       const now = new Date()
 
-      const initialSeconds = data.manualInitialSeconds ?? 0
+      const initialSeconds = data.manualInitialSeconds
+        ? data.manualInitialSeconds
+        : 0
+      const hasTask = Boolean(data.taskId && data.taskId.trim() !== '')
+      const hasConnection = Boolean(
+        data.connectionInstanceId && data.connectionInstanceId.trim() !== '',
+      )
+      const hasActivity = Boolean(
+        data.activityId && data.activityId.trim() !== '',
+      )
+      const isRemoteCandidate = Boolean(hasTask && hasConnection && hasActivity)
+      const initialSyncStatus = isRemoteCandidate
+        ? 'pending_push'
+        : 'local_only'
 
       if (data.type === 'manual') {
         const startDate = subSeconds(now, initialSeconds).toISOString()
         const finalTimeSpentHours = Number((initialSeconds / 3600).toFixed(4))
-        const sourceId = `local-${id}`
 
         const newEntry: SyncTimeEntryRxDBDTO = {
-          id: `${data.connectionInstanceId}::${sourceId}`,
-          sourceId,
+          id,
           _deleted: false,
-          syncStatus: 'pending_push',
+          syncStatus: initialSyncStatus,
+          syncError: null,
+          remoteId: null,
           lastPulledAt: null,
           lastPushedAt: null,
-          lastReconciledAt: null,
           connectionInstanceId: data.connectionInstanceId,
           dataSourceId: data.dataSourceId,
           task: { id: data.taskId },
-          activity: { id: data.activityId },
-          user: { id: data.userId ?? 'local-user' },
+          activity: {
+            id: data.activityId,
+            ...(data.activityName ? { name: data.activityName } : {}),
+          },
+          user: {
+            id: data.userId ? data.userId : 'local-user',
+            ...(data.userName ? { name: data.userName } : {}),
+          },
           startDate,
           endDate: now.toISOString(),
           timeSpent: finalTimeSpentHours,
@@ -106,11 +126,14 @@ export const createTimeEntryStore = (
         }
 
         await db.timeEntries.insert(newEntry)
+        client.events?.emit?.('time-entry:sync', newEntry)
         return // Do NOT call client.timer.start() or set active
       }
 
-      const mode = data.mode ?? 'countup'
-      const baseSeconds = data.manualInitialSeconds ?? 0
+      const mode = data.mode ? data.mode : 'countup'
+      const baseSeconds = data.manualInitialSeconds
+        ? data.manualInitialSeconds
+        : 0
       const initialElapsed = 0
       const startDate = now.toISOString()
       const eventType = 'started'
@@ -128,20 +151,25 @@ export const createTimeEntryStore = (
         }),
       }
 
-      const sourceId = `local-${id}`
       const newEntry: SyncTimeEntryRxDBDTO = {
-        id: `${data.connectionInstanceId}::${sourceId}`,
-        sourceId,
+        id,
         _deleted: false,
-        syncStatus: 'pending_push',
+        syncStatus: initialSyncStatus,
+        syncError: null,
+        remoteId: null,
         lastPulledAt: null,
         lastPushedAt: null,
-        lastReconciledAt: null,
         connectionInstanceId: data.connectionInstanceId,
         dataSourceId: data.dataSourceId,
         task: { id: data.taskId },
-        activity: { id: data.activityId },
-        user: { id: data.userId ?? 'local-user' },
+        activity: {
+          id: data.activityId,
+          ...(data.activityName ? { name: data.activityName } : {}),
+        },
+        user: {
+          id: data.userId ? data.userId : 'local-user',
+          ...(data.userName ? { name: data.userName } : {}),
+        },
         startDate,
         timeSpent: 0,
         timeStatus: 'running',
@@ -160,7 +188,7 @@ export const createTimeEntryStore = (
 
       // Comunica o backend via IPC para iniciar o processamento pesado do timer
       client.timer.start({
-        initialSeconds,
+        initialSeconds: baseSeconds,
         elapsedSeconds: initialElapsed,
         mode,
       })
@@ -279,12 +307,14 @@ export const createTimeEntryStore = (
             (j: JournalEntry) => j.event === 'paused' || j.action === 'pause',
           )
         if (lastPause) {
-          currentSeconds =
-            lastPause.secondsAtMoment ??
-            lastPause.secondsAtEvent ??
-            currentSeconds
+          const pauseSecs =
+            lastPause.secondsAtMoment !== undefined
+              ? lastPause.secondsAtMoment
+              : lastPause.secondsAtEvent
+          if (pauseSecs !== undefined) currentSeconds = pauseSecs
         }
-      } else {
+      }
+      if (active.timeStatus !== 'paused') {
         updatedJournal.push({
           id: crypto.randomUUID(),
           action: 'stop',
@@ -298,26 +328,38 @@ export const createTimeEntryStore = (
 
       const base =
         active.timerConfig?.mode === 'countup'
-          ? (active.timerConfig?.manualInitialSeconds ?? 0)
+          ? active.timerConfig?.manualInitialSeconds
+            ? active.timerConfig.manualInitialSeconds
+            : 0
           : 0
       const totalSeconds = currentSeconds + base
       const finalTimeSpentHours = Number((totalSeconds / 3600).toFixed(4))
 
-      await doc.patch({
+      const docJson = doc.toMutableJSON()
+      const hasTask = Boolean(docJson.task?.id && docJson.task.id.trim() !== '')
+      const hasConnection = Boolean(
+        docJson.connectionInstanceId &&
+        docJson.connectionInstanceId.trim() !== '',
+      )
+      const hasActivity = Boolean(
+        docJson.activity?.id && docJson.activity.id.trim() !== '',
+      )
+      const isRemoteCandidate = Boolean(hasTask && hasConnection && hasActivity)
+      const nextSyncStatus = isRemoteCandidate ? 'pending_push' : 'local_only'
+
+      const updatedDoc = await doc.patch({
         timeStatus: 'finished',
         timeSpent: finalTimeSpentHours,
         endDate: now.toISOString(),
         updatedAt: now.toISOString(),
         journal: updatedJournal,
+        syncStatus: nextSyncStatus,
       })
 
       client.timer.stop()
 
-      client.events?.emit?.('time-entry:sync', {
-        ...active,
-        timeStatus: 'finished',
-        endDate: now.toISOString(),
-      })
+      const finishedEntry = updatedDoc.toMutableJSON()
+      client.events?.emit?.('time-entry:sync', finishedEntry)
       set({ active: null })
     },
 
@@ -375,56 +417,113 @@ export function TimeEntryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!client?.events?.on) return
 
-    const unsubs = [
-      'play',
-      'pause',
-      'resume',
-      'stop',
-      'reset',
-      'mode-changed',
-    ].map((event) =>
-      client.events.on(`timer:${event}`, (payload: any) => {
-        console.log(`[TimeTracker] Evento recebido: timer:${event}`, payload)
-      }),
+    const unsubs: Array<() => void> = []
+
+    const handleStartedOrResumed = () => {
+      const current = storeRef.current?.getState().active
+      if (!current) return
+      if (current.timeStatus === 'running') return
+      storeRef.current
+        ?.getState()
+        .setActive({ ...current, timeStatus: 'running' })
+    }
+
+    const handlePaused = () => {
+      const current = storeRef.current?.getState().active
+      if (!current) return
+      if (current.timeStatus === 'paused') return
+      storeRef.current
+        ?.getState()
+        .setActive({ ...current, timeStatus: 'paused' })
+    }
+
+    const handleStopped = () => {
+      const current = storeRef.current?.getState().active
+      if (!current) return
+      storeRef.current?.getState().clear()
+    }
+
+    unsubs.push(
+      client.events.on('timer:started', handleStartedOrResumed),
+      client.events.on('timer:play', handleStartedOrResumed),
+      client.events.on('timer:resumed', handleStartedOrResumed),
+      client.events.on('timer:resume', handleStartedOrResumed),
+      client.events.on('timer:paused', handlePaused),
+      client.events.on('timer:pause', handlePaused),
+      client.events.on('timer:stopped', handleStopped),
+      client.events.on('timer:stop', handleStopped),
     )
 
     unsubs.push(
-      client.events.on(
+      client.events.on<Partial<SyncTimeEntryRxDBDTO>>(
         'time-entry:sync',
-        (entry: Partial<SyncTimeEntryRxDBDTO>) => {
+        (entry) => {
           if (!entry) return
           const current = storeRef.current?.getState().active
 
           if (entry.timeStatus === 'finished') {
-            const isCurrent = current && current.id === entry.id
-            if (isCurrent) {
+            if (current && current.id === entry.id) {
               storeRef.current?.getState().clear()
+            }
+            if (db?.timeEntries && entry.id) {
+              db.timeEntries
+                .findOne(entry.id)
+                .exec()
+                .then((doc) => {
+                  if (!doc) return
+                  const docJson = doc.toMutableJSON()
+                  if (docJson.timeStatus !== 'finished') {
+                    doc
+                      .patch({
+                        timeStatus: 'finished',
+                        endDate: entry.endDate,
+                        timeSpent: entry.timeSpent,
+                        updatedAt: entry.updatedAt,
+                        syncStatus: entry.syncStatus,
+                        journal: entry.journal,
+                      })
+                      .catch(console.error)
+                  }
+                })
+                .catch(console.error)
             }
             return
           }
 
-          const isCurrentActive = current && current.id === entry.id
-
-          if (isCurrentActive) {
-            storeRef.current
-              ?.getState()
-              .setActive(entry as SyncTimeEntryRxDBDTO)
-            return
-          }
-
           if (entry.timeStatus === 'running' || entry.timeStatus === 'paused') {
-            storeRef.current
-              ?.getState()
-              .setActive(entry as SyncTimeEntryRxDBDTO)
+            const isEntryValid = Boolean(entry.id && entry.connectionInstanceId)
+            if (isEntryValid) {
+              storeRef.current
+                ?.getState()
+                .setActive(entry as SyncTimeEntryRxDBDTO)
+            }
+
+            if (db?.timeEntries && entry.id) {
+              db.timeEntries
+                .findOne(entry.id)
+                .exec()
+                .then((doc) => {
+                  if (doc) {
+                    doc.patch(entry).catch(console.error)
+                    return
+                  }
+                  if (isEntryValid) {
+                    db.timeEntries
+                      .insert(entry as SyncTimeEntryRxDBDTO)
+                      .catch(console.error)
+                  }
+                })
+                .catch(console.error)
+            }
           }
         },
       ),
     )
 
     return () => {
-      unsubs.forEach((unsub) => unsub?.())
+      unsubs.forEach((unsub) => unsub())
     }
-  }, [client])
+  }, [client, db])
 
   // Process and persist Addon Suggestions directly into RxDB timeEntries collection
   useEffect(() => {
@@ -440,17 +539,14 @@ export function TimeEntryProvider({ children }: { children: ReactNode }) {
           ((item.timeSpentSeconds || 0) / 3600).toFixed(4),
         )
         const nowIso = new Date().toISOString()
-        const sourceId = `local-${item.id}`
-        const docId = `addon::${sourceId}`
+        const docId = item.id ? String(item.id) : crypto.randomUUID()
 
         const suggestionDoc: SyncTimeEntryRxDBDTO = {
           id: docId,
-          sourceId,
           _deleted: false,
           syncStatus: 'local_only',
           lastPulledAt: null,
           lastPushedAt: null,
-          lastReconciledAt: null,
           dataSourceId: 'addon',
           connectionInstanceId: 'addon',
           task: { id: item.taskId ? item.taskId : '' },

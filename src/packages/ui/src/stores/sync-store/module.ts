@@ -77,10 +77,16 @@ export class ReplicationModule<
               isPulling: false,
               lastPulledAt: new Date(),
               lastReplication: new Date(),
+              lastPullResult: 'success',
+              error: null,
             })
             return result
           } catch (err) {
-            this.options.onStatusChange({ isPulling: false })
+            this.options.onStatusChange({
+              isPulling: false,
+              lastPullResult: 'error',
+              error: err instanceof Error ? err : new Error(String(err)),
+            })
             throw err
           }
         },
@@ -94,14 +100,25 @@ export class ReplicationModule<
           this.options.onStatusChange({ isPushing: true, error: null })
           try {
             const result = await this.strategy.push(rows)
+
+            const hasErrors = result.length > 0
+
             this.options.onStatusChange({
               isPushing: false,
               lastPushedAt: new Date(),
               lastReplication: new Date(),
+              lastPushResult: hasErrors ? 'error' : 'success',
+              error: hasErrors
+                ? new Error('Alguns registros não puderam ser enviados')
+                : null,
             })
             return result
           } catch (err) {
-            this.options.onStatusChange({ isPushing: false })
+            this.options.onStatusChange({
+              isPushing: false,
+              lastPushResult: 'error',
+              error: err instanceof Error ? err : new Error(String(err)),
+            })
             throw err
           }
         },
@@ -160,7 +177,9 @@ export class ReplicationModule<
     }
 
     try {
-      activeInstance.reSync()
+      if (shouldPull) {
+        activeInstance.reSync()
+      }
       const inSyncPromise = activeInstance.awaitInSync()
       const errorPromise = firstValueFrom(activeInstance.error$).then(
         (error) => {
@@ -219,6 +238,7 @@ export interface CollectionConfigTimeEntries {
     workspaceId: string,
     connectionInstanceId: string,
     dataSourceId: string,
+    collection?: RxCollection<SyncTimeEntryRxDBDTO>,
   ) => IReplicationStrategy<SyncTimeEntryRxDBDTO, ReplicationCheckpoint>
   interval: number
   batch: number
@@ -247,8 +267,8 @@ export const COLLECTION_CONFIGS: CollectionConfig[] = [
   {
     name: 'timeEntries',
     hasPush: true,
-    strategyFactory: (client, workspaceId, connId, dsId) =>
-      new TimeEntriesReplication(client, workspaceId, connId, dsId),
+    strategyFactory: (client, workspaceId, connId, dsId, collection) =>
+      new TimeEntriesReplication(client, workspaceId, connId, dsId, collection),
     interval: 60,
     batch: 30,
   },

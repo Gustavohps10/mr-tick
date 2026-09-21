@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle,
   CheckCircle2,
   ChevronDown,
@@ -53,7 +54,9 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useWorkspaceConflicts } from '@/hooks/queries/use-workspace-conflicts'
 import { cn } from '@/lib/utils'
+import { useConflictModalStore } from '@/stores/conflictModalStore'
 import {
   ReplicationStatus,
   useConnectionsWithSync,
@@ -109,6 +112,8 @@ export function Header({ className }: HeaderProps = {}) {
   const connections = useConnectionsWithSync()
   const dbName = useSyncStore((s) => s.db?.name)
   const isInitialized = useSyncStore((s) => s.isInitialized) ?? false
+  const { conflictCount } = useWorkspaceConflicts()
+  const openConflictModal = useConflictModalStore((s) => s.openConflictModal)
 
   const forceSync = useSyncStore((s) => s.forceSync)
   const reconcile = useSyncStore((s) => s.reconcile)
@@ -210,7 +215,30 @@ export function Header({ className }: HeaderProps = {}) {
 
       <div className="bg-border/50 h-3 w-px" />
 
-      <div className="flex items-center">
+      <div className="flex items-center gap-1">
+        {conflictCount > 0 && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => openConflictModal()}
+                  className="h-5 gap-1 rounded-xs border border-amber-500/40 bg-amber-500/15 px-1.5 text-amber-600 hover:bg-amber-500/25 hover:text-amber-500 dark:text-amber-400"
+                >
+                  <AlertTriangle size={11} className="text-amber-500" />
+                  <span className="text-[10px] font-bold">{conflictCount}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-[10px]">
+                {conflictCount === 1
+                  ? '1 conflito de sincronização pendente'
+                  : `${conflictCount} conflitos de sincronização pendentes`}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
         <TooltipProvider delayDuration={200}>
           <Popover>
             <Tooltip>
@@ -263,6 +291,32 @@ export function Header({ className }: HeaderProps = {}) {
               align="end"
               sideOffset={8}
             >
+              {conflictCount > 0 && (
+                <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                      <div>
+                        <div className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                          Conflitos Detectados ({conflictCount})
+                        </div>
+                        <div className="text-muted-foreground text-[10px]">
+                          Há apontamentos concorrentes para mesclar.
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openConflictModal()}
+                      className="bg-background/80 h-6 shrink-0 border-amber-500/40 px-2 text-[10px] font-semibold text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
+                    >
+                      Resolver
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-muted/30 flex items-center justify-between border-b px-4 py-3">
                 <div className="flex items-center gap-2.5">
                   <div className="bg-background flex h-9 w-9 items-center justify-center rounded-lg border shadow-sm">
@@ -372,6 +426,13 @@ export function Header({ className }: HeaderProps = {}) {
                       const isSyncing = syncEntries.some(
                         (entry) =>
                           entry.status.isPulling || entry.status.isPushing,
+                      )
+                      const hasConnectionError = syncEntries.some(
+                        (entry) =>
+                          (entry.status.error &&
+                            !isAuthError(entry.status.error)) ||
+                          entry.status.lastPushResult === 'error' ||
+                          entry.status.lastPullResult === 'error',
                       )
 
                       return (
@@ -492,10 +553,42 @@ export function Header({ className }: HeaderProps = {}) {
                                 </DropdownMenu>
                               )}
                               {conn.status === 'connected' ? (
-                                <CheckCircle2
-                                  size={14}
-                                  className="shrink-0 text-green-500"
-                                />
+                                hasConnectionError ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-flex cursor-help items-center">
+                                        <XCircle
+                                          size={14}
+                                          className="text-destructive shrink-0"
+                                        />
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="left"
+                                      className="max-w-xs text-xs"
+                                    >
+                                      <p className="text-destructive font-semibold">
+                                        Falha na Conexão
+                                      </p>
+                                      <p className="text-muted-foreground mt-0.5 font-mono text-[10px] break-words">
+                                        {syncEntries.find(
+                                          (entry) => entry.status.error,
+                                        )?.status.error
+                                          ? getRawErrorMessage(
+                                              syncEntries.find(
+                                                (entry) => entry.status.error,
+                                              )!.status.error,
+                                            )
+                                          : 'Falha na sincronização dos dados'}
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  <CheckCircle2
+                                    size={14}
+                                    className="shrink-0 text-green-500"
+                                  />
+                                )
                               ) : (
                                 <CloudOff
                                   size={14}
@@ -508,7 +601,9 @@ export function Header({ className }: HeaderProps = {}) {
                           <div className="flex flex-col gap-1 px-1">
                             {syncEntries.map(({ key, status }) => {
                               const isErr =
-                                status.error && !isAuthError(status.error)
+                                (status.error && !isAuthError(status.error)) ||
+                                status.lastPushResult === 'error' ||
+                                status.lastPullResult === 'error'
 
                               let statusText = 'Sincronizado'
                               let StatusIcon = (
@@ -547,12 +642,37 @@ export function Header({ className }: HeaderProps = {}) {
                                   />
                                 )
                               } else if (isErr) {
-                                statusText = 'Falha técnica'
+                                statusText =
+                                  status.lastPushResult === 'error'
+                                    ? 'Erro no envio (push)'
+                                    : status.lastPullResult === 'error'
+                                      ? 'Erro no recebimento (pull)'
+                                      : 'Falha técnica'
+                                const errDetail = status.error
+                                  ? getRawErrorMessage(status.error)
+                                  : statusText
                                 StatusIcon = (
-                                  <XCircle
-                                    size={12}
-                                    className="text-destructive"
-                                  />
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-flex cursor-help items-center">
+                                        <XCircle
+                                          size={12}
+                                          className="text-destructive"
+                                        />
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="left"
+                                      className="max-w-xs text-xs"
+                                    >
+                                      <p className="text-destructive font-semibold">
+                                        {statusText}
+                                      </p>
+                                      <p className="text-muted-foreground mt-0.5 font-mono text-[10px] break-words">
+                                        {errDetail}
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
                                 )
                               } else if (isAuthError(status.error)) {
                                 statusText = 'Login expirado'

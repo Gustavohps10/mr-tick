@@ -31,21 +31,37 @@ export interface AddonSourceInfo {
 }
 
 export type RecordSyncStatus =
-  'synced' | 'pending_push' | 'pulling' | 'conflict' | 'local_only'
+  'synced' | 'pending_push' | 'conflict' | 'local_only' | 'error'
+
+export interface ConflictDataSnapshot {
+  id?: string
+  startDate?: string
+  endDate?: string | null
+  timeSpent?: number
+  comments?: string
+  updatedAt?: string
+  task?: { id: string }
+  activity?: { id: string; name?: string }
+}
+
+export interface ConflictData {
+  server?: ConflictDataSnapshot
+  local?: ConflictDataSnapshot
+}
 
 export interface SyncTimeEntryRxDBDTO {
   // ── Identificadores e integridade ────────────
   id: string
-  sourceId: string
   connectionInstanceId: string
   dataSourceId: string
   _deleted: boolean
 
   // ── Rastreabilidade de sincronização ─────────
   syncStatus: RecordSyncStatus
-  lastPulledAt: string | null
-  lastPushedAt: string | null
-  lastReconciledAt: string | null
+  syncError?: string | null
+  remoteId?: string | null
+  lastPulledAt?: string | null
+  lastPushedAt?: string | null
 
   // ── Dados de negócio ─────────────────────────
   task: { id: string }
@@ -59,9 +75,9 @@ export interface SyncTimeEntryRxDBDTO {
   startDate: string
 
   /**
-   * Preenchido no stop pelo renderer.
+   * Fim da sessão de tempo. Pode ser nulo se ainda estiver correndo.
    */
-  endDate?: string
+  endDate?: string | null
 
   /**
    * Tempo acumulado em horas.
@@ -75,7 +91,7 @@ export interface SyncTimeEntryRxDBDTO {
   source?: 'manual' | 'timer' | 'ai_suggestion' | 'addon'
   addonSource?: AddonSourceInfo
   type?: 'increasing' | 'decreasing' | 'manual'
-  conflicted?: boolean
+  conflictData?: ConflictData
 
   // ── Campos locais (nunca sincronizados) ───────
   journal?: TimerJournalEntry[]
@@ -92,25 +108,21 @@ export const timeEntriesSyncSchema: RxJsonSchema<SyncTimeEntryRxDBDTO> = {
   description:
     'Time entries with sync metadata, task relation, local journal and timer config',
   type: 'object',
-  primaryKey: {
-    key: 'id',
-    fields: ['connectionInstanceId', 'sourceId'],
-    separator: '::',
-  },
+  primaryKey: 'id',
   properties: {
-    id: { type: 'string', maxLength: 200 },
-    sourceId: { type: 'string', maxLength: 100 },
+    id: { type: 'string', maxLength: 100 },
     connectionInstanceId: { type: 'string', maxLength: 100 },
     dataSourceId: { type: 'string', maxLength: 100 },
     _deleted: { type: 'boolean' },
     syncStatus: {
       type: 'string',
-      enum: ['synced', 'pending_push', 'pulling', 'conflict', 'local_only'],
+      enum: ['synced', 'pending_push', 'conflict', 'local_only', 'error'],
       maxLength: 20,
     },
+    syncError: { type: ['string', 'null'], maxLength: 500 },
+    remoteId: { type: ['string', 'null'], maxLength: 100 },
     lastPulledAt: { type: ['string', 'null'], format: 'date-time' },
     lastPushedAt: { type: ['string', 'null'], format: 'date-time' },
-    lastReconciledAt: { type: ['string', 'null'], format: 'date-time' },
     task: {
       type: 'object',
       properties: {
@@ -167,7 +179,13 @@ export const timeEntriesSyncSchema: RxJsonSchema<SyncTimeEntryRxDBDTO> = {
       enum: ['increasing', 'decreasing', 'manual'],
       maxLength: 20,
     },
-    conflicted: { type: 'boolean' },
+    conflictData: {
+      type: 'object',
+      properties: {
+        server: { type: 'object' },
+        local: { type: 'object' },
+      },
+    },
     journal: {
       type: 'array',
       items: {
@@ -214,7 +232,6 @@ export const timeEntriesSyncSchema: RxJsonSchema<SyncTimeEntryRxDBDTO> = {
   },
   required: [
     'id',
-    'sourceId',
     'connectionInstanceId',
     'dataSourceId',
     'syncStatus',

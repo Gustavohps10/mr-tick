@@ -95,6 +95,7 @@ export const createSyncStore = (
       workspaceId,
       connectionInstanceId,
       dataSourceId,
+      db.timeEntries,
     )
     return new ReplicationModule(db.timeEntries, strategy, {
       identifier: `rep_timeEntries_${workspaceId}_${connectionInstanceId}`,
@@ -122,6 +123,29 @@ export const createSyncStore = (
     set: (fn: (state: SyncStore) => Partial<SyncStore>) => void,
   ) => {
     const connectionModules = new Map<string, IReplicationModule>()
+
+    set((state) => {
+      const nextStatuses = { ...state.statuses }
+      COLLECTION_CONFIGS.forEach((config) => {
+        const key = `${config.name}_${connectionInstanceId}`
+        if (!nextStatuses[key]) {
+          nextStatuses[key] = {
+            isActive: false,
+            isPulling: false,
+            isPushing: false,
+            isReconciling: false,
+            lastPulledAt: null,
+            lastPushedAt: null,
+            lastReconciledAt: null,
+            lastReplication: null,
+            lastPushResult: null,
+            lastPullResult: null,
+            error: null,
+          }
+        }
+      })
+      return { statuses: nextStatuses }
+    })
 
     for (const config of COLLECTION_CONFIGS) {
       const module = createReplicationModule(
@@ -305,14 +329,30 @@ export const createSyncStore = (
         }
 
         for (const localDoc of windowEntries) {
-          const remoteIdentifier = localDoc.sourceId ?? localDoc.id
+          if (localDoc.syncStatus !== 'synced' || localDoc._deleted) {
+            continue
+          }
+
+          const remoteIdentifier = localDoc.remoteId
           if (
-            remoteIdentifier &&
-            !remoteIds.has(String(remoteIdentifier)) &&
-            !localDoc._deleted
+            !remoteIdentifier ||
+            remoteIdentifier.trim() === '' ||
+            remoteIdentifier.startsWith('local-')
           ) {
+            continue
+          }
+
+          const docUpdatedTime = new Date(localDoc.updatedAt).getTime()
+          if (
+            !Number.isNaN(docUpdatedTime) &&
+            Date.now() - docUpdatedTime < 15000
+          ) {
+            continue
+          }
+
+          if (!remoteIds.has(String(remoteIdentifier))) {
             console.log(
-              `[SYNC][reconcile] Deletando hard delete zombie local: ${localDoc.id} (sourceId: ${remoteIdentifier})`,
+              `[SYNC][reconcile] Removendo registro deletado remotamente: ${localDoc.id} (remoteId: ${remoteIdentifier})`,
             )
             await localDoc.remove()
           }

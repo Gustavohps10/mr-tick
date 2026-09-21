@@ -12,7 +12,8 @@ import {
   X,
 } from 'lucide-react'
 import * as LucideIcons from 'lucide-react'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { MangoQuery } from 'rxdb'
 import { useDebounce } from 'use-debounce'
 
 import { LookupInput } from '@/components/lookup-input'
@@ -32,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { AddonConnectionView } from '@/contexts/DataSourceConnectionsContext'
 import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
@@ -39,7 +41,7 @@ import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
 const DEFAULT_ACTIVITIES: Array<{
   id: string
   name: string
-  icon: React.ElementType
+  icon?: React.ElementType
 }> = [
   { id: 'dev', name: 'Desenvolvimento', icon: Code },
   { id: 'design', name: 'Design', icon: Palette },
@@ -85,8 +87,8 @@ export interface TaskPopoverProps {
   onActivityChange?: (activityId: string) => void
   selectedConnectionId?: string
   onConnectionChange?: (connectionId: string) => void
-  activities?: Array<{ id: string; name: string; icon: React.ElementType }>
-  syncConnections?: any[]
+  activities?: Array<{ id: string; name: string; icon?: React.ElementType }>
+  syncConnections?: AddonConnectionView[]
   onSelectTask?: (task: SyncTaskRxDBDTO) => void
   onCommitAndClose?: () => void
 }
@@ -134,11 +136,19 @@ export function TaskPopover({
     trackerContext?.syncConnections ??
     defaultSyncConnections ??
     []
+
+  const validConnection = syncConnections.find(
+    (c) => c.connectionId === propSelectedConnectionId,
+  )
+  const fallbackConnection = syncConnections.find(
+    (c) => c.connectionId === trackerContext?.selectedConnectionId,
+  )
   const selectedConnectionId =
-    propSelectedConnectionId ??
-    trackerContext?.selectedConnectionId ??
+    validConnection?.connectionId ??
+    fallbackConnection?.connectionId ??
     syncConnections[0]?.connectionId ??
     ''
+
   const setSelectedConnectionId =
     propOnConnectionChange ??
     trackerContext?.setSelectedConnectionId ??
@@ -157,6 +167,13 @@ export function TaskPopover({
   const isOpen = propOpen ?? internalOpen
   const setIsOpen = propOnOpenChange ?? setInternalOpen
 
+  useEffect(() => {
+    if (!selectedConnectionId) return
+    if (propSelectedConnectionId === selectedConnectionId) return
+    if (!propOnConnectionChange) return
+    propOnConnectionChange(selectedConnectionId)
+  }, [selectedConnectionId, propSelectedConnectionId, propOnConnectionChange])
+
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch] = useDebounce(searchQuery, 250)
   const [isLookupModalOpen, setIsLookupModalOpen] = useState(false)
@@ -174,11 +191,13 @@ export function TaskPopover({
   }, [])
 
   // Buscar tarefas no RxDB de forma otimizada
-  const { data: tasksList = [] } = useQuery({
+  const { data: tasksList = [] } = useQuery<SyncTaskRxDBDTO[]>({
     queryKey: ['popover-tasks-mini', debouncedSearch, selectedConnectionId],
     queryFn: async () => {
       if (!db?.tasks) return []
-      const selector: any = { _deleted: { $eq: false } }
+      const selector: MangoQuery<SyncTaskRxDBDTO>['selector'] = {
+        _deleted: { $eq: false },
+      }
 
       if (selectedConnectionId) {
         selector.connectionInstanceId = { $eq: selectedConnectionId }
@@ -200,9 +219,7 @@ export function TaskPopover({
         })
         .exec()
 
-      return docs.map((d) =>
-        d.toMutableJSON ? d.toMutableJSON() : d,
-      ) as SyncTaskRxDBDTO[]
+      return docs.map((docItem) => docItem.toMutableJSON())
     },
     enabled: isOpen && !!db?.tasks,
   })
@@ -363,14 +380,16 @@ export function TaskPopover({
                   {activities.map(({ id, name, icon: Icon }) => (
                     <SelectItem key={id} value={id} className="text-xs">
                       <span className="flex items-center gap-2">
-                        <Icon
-                          className={cn(
-                            'h-3.5 w-3.5',
-                            id === selectedActivity
-                              ? 'text-primary'
-                              : 'text-muted-foreground',
-                          )}
-                        />
+                        {Icon && (
+                          <Icon
+                            className={cn(
+                              'h-3.5 w-3.5',
+                              id === selectedActivity
+                                ? 'text-primary'
+                                : 'text-muted-foreground',
+                            )}
+                          />
+                        )}
                         {name}
                       </span>
                     </SelectItem>
@@ -386,7 +405,8 @@ export function TaskPopover({
                   <SelectValue>
                     {(() => {
                       const conn = syncConnections.find(
-                        (c: any) => c.connectionId === selectedConnectionId,
+                        (connItem) =>
+                          connItem.connectionId === selectedConnectionId,
                       )
                       return conn?.addon?.logo ? (
                         <img
@@ -401,17 +421,17 @@ export function TaskPopover({
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent align="end" className="min-w-[170px]">
-                  {syncConnections.map((c: any) => (
+                  {syncConnections.map((connItem) => (
                     <SelectItem
-                      key={c.connectionId}
-                      value={c.connectionId}
+                      key={connItem.connectionId}
+                      value={connItem.connectionId}
                       className="py-1.5 text-xs"
                     >
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
-                          {c.addon?.logo ? (
+                          {connItem.addon?.logo ? (
                             <img
-                              src={c.addon.logo}
+                              src={connItem.addon.logo}
                               className="h-4 w-4 shrink-0 object-contain"
                               alt=""
                             />
@@ -419,14 +439,14 @@ export function TaskPopover({
                             <span className="text-xs">📦</span>
                           )}
                           <span className="truncate font-medium">
-                            {c.addon?.name || c.connectionId}
+                            {connItem.addon?.name ?? connItem.connectionId}
                           </span>
                         </div>
-                        {c.member && (
+                        {connItem.member && (
                           <div className="ml-6 flex items-center gap-1.5">
-                            {c.member.avatarUrl ? (
+                            {connItem.member.avatarUrl ? (
                               <img
-                                src={c.member.avatarUrl}
+                                src={connItem.member.avatarUrl}
                                 alt=""
                                 className="h-3.5 w-3.5 rounded-full"
                               />
@@ -434,7 +454,7 @@ export function TaskPopover({
                               <LucideIcons.User2 className="h-3 w-3 opacity-60" />
                             )}
                             <span className="text-muted-foreground truncate text-[10px]">
-                              {c.member.name || c.member.login}
+                              {connItem.member.name ?? connItem.member.login}
                             </span>
                           </div>
                         )}
@@ -462,6 +482,19 @@ export function TaskPopover({
                 size="xs"
                 placeholder="Buscar ou digitar ID..."
                 className="flex-1"
+                sourceIcon={(() => {
+                  const activeConn = syncConnections.find(
+                    (connItem) =>
+                      connItem.connectionId === selectedConnectionId,
+                  )
+                  return activeConn?.addon?.logo ? (
+                    <img
+                      src={activeConn.addon.logo}
+                      alt={activeConn.addon.name}
+                      className="h-3.5 w-3.5 rounded-xs object-contain"
+                    />
+                  ) : undefined
+                })()}
               />
               <Button
                 type="button"

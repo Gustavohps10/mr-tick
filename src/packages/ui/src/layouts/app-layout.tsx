@@ -14,6 +14,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext'
 import { useOpenAPI } from '@/hooks'
 import { useAutoUpdater } from '@/hooks/use-auto-updater'
+import { GlobalConflictResolutionDialog } from '@/pages/time-entries/components/conflict-resolution-dialog'
 import { DataSourceConnectionsProvider } from '@/providers'
 import { SyncProvider } from '@/stores/syncStore'
 
@@ -101,6 +102,7 @@ export function AppLayout() {
               </section>
             </main>
             <Toaster />
+            <GlobalConflictResolutionDialog />
           </div>
         </SyncProvider>
       </DataSourceConnectionsProvider>

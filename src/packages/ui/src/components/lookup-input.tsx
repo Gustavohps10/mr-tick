@@ -17,6 +17,7 @@ interface LookupInputProps {
   disabled?: boolean
   size?: LookupSize
   className?: string
+  sourceIcon?: React.ReactNode
 }
 
 export function LookupInput({
@@ -29,6 +30,7 @@ export function LookupInput({
   disabled,
   size = 'md',
   className,
+  sourceIcon,
 }: LookupInputProps) {
   const sizeConfig: Record<
     LookupSize,
@@ -92,7 +94,7 @@ export function LookupInput({
         onClick={onOpenLookup}
         title={onOpenLookup ? 'Buscar Tarefa' : undefined}
       >
-        <Search className="h-full w-full" />
+        {sourceIcon ? sourceIcon : <Search className="h-full w-full" />}
       </div>
 
       <Input

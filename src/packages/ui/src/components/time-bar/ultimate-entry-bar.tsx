@@ -214,7 +214,7 @@ export const UltimateTimeTracker = ({
   const [selectedTask, setSelectedTask] = useState<SyncTaskRxDBDTO | null>(null)
   const [isTaskLookupOpen, setIsTaskLookupOpen] = useState(false)
   const [description, setDescription] = useState<string>('')
-  const [selectedActivity, setSelectedActivity] = useState<string>('dev')
+  const [selectedActivity, setSelectedActivity] = useState<string>('')
   const [manualInitialSeconds, setManualInitialSeconds] = useState<number>(0)
   const [timerError, setTimerError] = useState<string | null>(null)
   const [activities, setActivities] =
@@ -292,9 +292,6 @@ export const UltimateTimeTracker = ({
 
         if (isMounted && loaded.length > 0) {
           setActivities(loaded)
-          if (!loaded.some((a) => a.id === selectedActivity)) {
-            setSelectedActivity(loaded[0].id)
-          }
         }
       } catch (err) {
         console.error('[METADATA] Erro ao carregar atividades:', err)
@@ -401,10 +398,7 @@ export const UltimateTimeTracker = ({
           return
         }
 
-        const isActive =
-          activeEntry &&
-          item.connectionInstanceId === activeEntry.connectionInstanceId &&
-          item.sourceId === activeEntry.sourceId
+        const isActive = activeEntry && item.id === activeEntry.id
 
         if (isActive) return
 
@@ -429,7 +423,7 @@ export const UltimateTimeTracker = ({
     })
 
     return () => sub.unsubscribe()
-  }, [db, activeEntry?.connectionInstanceId, activeEntry?.sourceId])
+  }, [db, activeEntry?.id])
   const playCurrentTimeEntry = useTimeEntryStore((s) => s.playCurrentTimeEntry)
   const pauseCurrentTimeEntry = useTimeEntryStore(
     (s) => s.pauseCurrentTimeEntry,
@@ -864,33 +858,27 @@ export const UltimateTimeTracker = ({
         setSelectedConnectionId(connId)
       }
 
-      if (activeEntry && db) {
-        const doc = await db.timeEntries
-          .findOne({
-            selector: {
-              connectionInstanceId: activeEntry.connectionInstanceId,
-              sourceId: activeEntry.sourceId,
-            },
-          })
-          .exec()
-        if (doc) {
-          const updated = await doc.patch({
-            task: { id: task.id },
-            taskData: task,
-            connectionInstanceId: connId,
-            dataSourceId: task.dataSourceId || activeEntry.dataSourceId,
-            updatedAt: new Date().toISOString(),
-          })
-          const updatedJson = updated.toMutableJSON()
-          setActive(updatedJson)
-          openAPI.events?.emit?.('time-entry:sync', updatedJson)
-        }
-      } else {
+      if (!activeEntry || !db) {
         openAPI.events?.emit?.('tracker:draft-sync', {
           taskId: task.id,
           selectedTask: task,
           selectedConnectionId: connId,
         })
+        return
+      }
+
+      const doc = await db.timeEntries.findOne(activeEntry.id).exec()
+      if (doc) {
+        const updated = await doc.patch({
+          task: { id: task.id },
+          taskData: task,
+          connectionInstanceId: connId,
+          dataSourceId: task.dataSourceId || activeEntry.dataSourceId,
+          updatedAt: new Date().toISOString(),
+        })
+        const updatedJson = updated.toMutableJSON()
+        setActive(updatedJson)
+        openAPI.events?.emit?.('time-entry:sync', updatedJson)
       }
     },
     [activeEntry, db, selectedConnectionId, openAPI, setActive],
@@ -899,26 +887,20 @@ export const UltimateTimeTracker = ({
   const handleTaskIdChange = useCallback(
     async (newTaskId: string) => {
       setTaskId(newTaskId)
-      if (activeEntry && db) {
-        const doc = await db.timeEntries
-          .findOne({
-            selector: {
-              connectionInstanceId: activeEntry.connectionInstanceId,
-              sourceId: activeEntry.sourceId,
-            },
-          })
-          .exec()
-        if (doc) {
-          const updated = await doc.patch({
-            task: { id: newTaskId },
-            updatedAt: new Date().toISOString(),
-          })
-          const updatedJson = updated.toMutableJSON()
-          setActive(updatedJson)
-          openAPI.events?.emit?.('time-entry:sync', updatedJson)
-        }
-      } else {
+      if (!activeEntry || !db) {
         openAPI.events?.emit?.('tracker:draft-sync', { taskId: newTaskId })
+        return
+      }
+
+      const doc = await db.timeEntries.findOne(activeEntry.id).exec()
+      if (doc) {
+        const updated = await doc.patch({
+          task: { id: newTaskId },
+          updatedAt: new Date().toISOString(),
+        })
+        const updatedJson = updated.toMutableJSON()
+        setActive(updatedJson)
+        openAPI.events?.emit?.('time-entry:sync', updatedJson)
       }
     },
     [activeEntry, db, openAPI, setActive],
@@ -927,26 +909,20 @@ export const UltimateTimeTracker = ({
   const handleDescriptionChange = useCallback(
     async (desc: string) => {
       setDescription(desc)
-      if (activeEntry && db) {
-        const doc = await db.timeEntries
-          .findOne({
-            selector: {
-              connectionInstanceId: activeEntry.connectionInstanceId,
-              sourceId: activeEntry.sourceId,
-            },
-          })
-          .exec()
-        if (doc) {
-          const updated = await doc.patch({
-            comments: desc,
-            updatedAt: new Date().toISOString(),
-          })
-          const updatedJson = updated.toMutableJSON()
-          setActive(updatedJson)
-          openAPI.events?.emit?.('time-entry:sync', updatedJson)
-        }
-      } else {
+      if (!activeEntry || !db) {
         openAPI.events?.emit?.('tracker:draft-sync', { description: desc })
+        return
+      }
+
+      const doc = await db.timeEntries.findOne(activeEntry.id).exec()
+      if (doc) {
+        const updated = await doc.patch({
+          comments: desc,
+          updatedAt: new Date().toISOString(),
+        })
+        const updatedJson = updated.toMutableJSON()
+        setActive(updatedJson)
+        openAPI.events?.emit?.('time-entry:sync', updatedJson)
       }
     },
     [activeEntry, db, openAPI, setActive],
@@ -956,14 +932,7 @@ export const UltimateTimeTracker = ({
     async (actId: string) => {
       setSelectedActivity(actId)
       if (activeEntry && db) {
-        const doc = await db.timeEntries
-          .findOne({
-            selector: {
-              connectionInstanceId: activeEntry.connectionInstanceId,
-              sourceId: activeEntry.sourceId,
-            },
-          })
-          .exec()
+        const doc = await db.timeEntries.findOne(activeEntry.id).exec()
         if (doc) {
           const updated = await doc.patch({
             activity: { id: actId },
@@ -986,14 +955,7 @@ export const UltimateTimeTracker = ({
     async (connId: string) => {
       setSelectedConnectionId(connId)
       if (activeEntry && db) {
-        const doc = await db.timeEntries
-          .findOne({
-            selector: {
-              connectionInstanceId: activeEntry.connectionInstanceId,
-              sourceId: activeEntry.sourceId,
-            },
-          })
-          .exec()
+        const doc = await db.timeEntries.findOne(activeEntry.id).exec()
         if (doc) {
           const updated = await doc.patch({
             connectionInstanceId: connId,
@@ -1048,11 +1010,25 @@ export const UltimateTimeTracker = ({
         ?.dataSourceId ||
       'default'
 
+    const currentActivity = activities.find((a) => a.id === selectedActivity)
+    const currentConnection = syncConnections.find(
+      (c) => c.connectionId === connectionInstanceId,
+    )
+    const authUserId = currentConnection?.member?.id
+      ? String(currentConnection.member.id)
+      : undefined
+    const authUserName = currentConnection?.member?.name
+      ? String(currentConnection.member.name)
+      : undefined
+
     await createNewTimeEntry(db, {
       taskId,
       activityId: selectedActivity,
+      activityName: currentActivity?.name,
       dataSourceId,
       connectionInstanceId,
+      userId: authUserId,
+      userName: authUserName,
       type: timerDirection === 'up' ? 'increasing' : 'decreasing',
       comments: description,
       mode,
@@ -1060,6 +1036,7 @@ export const UltimateTimeTracker = ({
     })
   }, [
     db,
+    activities,
     activeEntry,
     timerDirection,
     taskId,
@@ -1110,11 +1087,25 @@ export const UltimateTimeTracker = ({
         ?.dataSourceId ||
       'default'
 
+    const currentActivity = activities.find((a) => a.id === selectedActivity)
+    const currentConnection = syncConnections.find(
+      (c) => c.connectionId === connectionInstanceId,
+    )
+    const authUserId = currentConnection?.member?.id
+      ? String(currentConnection.member.id)
+      : undefined
+    const authUserName = currentConnection?.member?.name
+      ? String(currentConnection.member.name)
+      : undefined
+
     await createNewTimeEntry(db, {
       taskId,
       activityId: selectedActivity,
+      activityName: currentActivity?.name,
       dataSourceId,
       connectionInstanceId,
+      userId: authUserId,
+      userName: authUserName,
       type: 'manual',
       comments: description,
       mode: timerDirection === 'up' ? 'countup' : 'countdown',
@@ -1128,6 +1119,7 @@ export const UltimateTimeTracker = ({
     setDescription('')
   }, [
     db,
+    activities,
     selectedTask,
     selectedConnectionId,
     syncConnections,

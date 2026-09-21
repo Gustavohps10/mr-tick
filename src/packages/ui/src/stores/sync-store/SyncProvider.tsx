@@ -275,6 +275,8 @@ const EMPTY_STATUS: ReplicationStatus = {
   lastPushedAt: null,
   lastReconciledAt: null,
   lastReplication: null,
+  lastPushResult: null,
+  lastPullResult: null,
   error: null,
 }
 

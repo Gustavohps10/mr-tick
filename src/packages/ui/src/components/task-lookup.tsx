@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { WorkspaceConnectionDTO } from '@mr-tick/application'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
@@ -24,6 +24,7 @@ import React, {
   useMemo,
   useState,
 } from 'react'
+import { MangoQuerySelector } from 'rxdb'
 import { useDebounce } from 'use-debounce'
 
 import { Badge } from '@/components/ui/badge'
@@ -161,6 +162,18 @@ export function TaskLookup({
     return selectedConnectionIds
   }, [selectedConnectionIds, availableConnections])
 
+  const singleSelectedConnection = useMemo(() => {
+    if (selectedConnectionIds.length === 1) {
+      return availableConnections.find(
+        (conn) => conn.id === selectedConnectionIds[0],
+      )
+    }
+    if (availableConnections.length === 1) {
+      return availableConnections[0]
+    }
+    return undefined
+  }, [selectedConnectionIds, availableConnections])
+
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useInfiniteQuery({
       queryKey: [
@@ -176,7 +189,7 @@ export function TaskLookup({
       queryFn: async ({ pageParam = 0 }) => {
         if (!db) return []
 
-        const andConditions: any[] = []
+        const andConditions: MangoQuerySelector<SyncTaskRxDBDTO>[] = []
 
         if (debouncedSearch) {
           andConditions.push({
@@ -204,7 +217,7 @@ export function TaskLookup({
                   participants: { $elemMatch: { id: String(memberId) } },
                 }
               })
-              .filter(Boolean)
+              .filter((item) => item !== null)
 
             if (myTasksOr.length > 0) {
               andConditions.push({ $or: myTasksOr })
@@ -220,7 +233,7 @@ export function TaskLookup({
           }
         }
 
-        const selector: any =
+        const selector: MangoQuerySelector<SyncTaskRxDBDTO> =
           andConditions.length > 0 ? { $and: andConditions } : {}
 
         const docs = await db.tasks
@@ -318,21 +331,31 @@ export function TaskLookup({
         <DialogOverlay className="pointer-events-auto bg-black/50 backdrop-blur-md transition-all" />
         <DialogContent
           onKeyDown={handleKeyDown}
-          className="bg-card/95 border-border/40 pointer-events-auto flex max-h-[85vh] w-[95vw] max-w-3xl flex-col overflow-hidden rounded-xl border p-0 shadow-2xl backdrop-blur-xl"
+          className="bg-card/95 border-border/40 pointer-events-auto flex max-h-[85vh] w-[95vw] max-w-3xl flex-col overflow-hidden rounded-xl border p-0 shadow-2xl backdrop-blur-xl sm:max-w-3xl"
         >
           {/* Header Command Input Bar */}
           <DialogHeader className="border-border/30 space-y-0 border-b p-0">
             <div className="border-border/20 relative flex items-center border-b px-4 py-3">
               {isLoading ? (
                 <Loader2 className="text-primary h-5 w-5 shrink-0 animate-spin" />
+              ) : singleSelectedConnection?.logo ? (
+                <img
+                  src={singleSelectedConnection.logo}
+                  alt={singleSelectedConnection.label}
+                  className="h-5 w-5 shrink-0 rounded-xs object-contain"
+                />
               ) : (
                 <Search className="text-muted-foreground/60 h-5 w-5 shrink-0" />
               )}
               <Input
                 autoFocus
-                placeholder="Pesquisar por ID, título ou palavra-chave..."
+                placeholder={
+                  singleSelectedConnection
+                    ? `Pesquisar em ${singleSelectedConnection.label}...`
+                    : 'Pesquisar por ID, título ou palavra-chave...'
+                }
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(event) => setSearchTerm(event.target.value)}
                 className="placeholder:text-muted-foreground/40 h-9 border-none bg-transparent px-3 text-base font-medium shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [&::-webkit-search-cancel-button]:appearance-none"
               />
               {searchTerm && (

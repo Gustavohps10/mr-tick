@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/react-query'
+import { isValid, parseISO } from 'date-fns'
 import { Subscription } from 'rxjs'
 
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
@@ -62,14 +63,24 @@ export function setupRxDBQueryCacheSync(
             if (!previousData) {
               return previousData
             }
-            return previousData.filter((entry) => entry.id !== documentId)
+            return previousData.filter(
+              (entry) =>
+                entry.id !== documentId && entry.id !== documentData.id,
+            )
           },
         )
         continue
       }
 
-      const entryDate = documentData.startDate
-      const isInRange = entryDate >= fromIso && entryDate <= toIso
+      const entryDateObj = parseISO(documentData.startDate)
+      const fromObj = parseISO(fromIso)
+      const toObj = parseISO(toIso)
+      const isInRange =
+        isValid(entryDateObj) &&
+        isValid(fromObj) &&
+        isValid(toObj) &&
+        entryDateObj.getTime() >= fromObj.getTime() &&
+        entryDateObj.getTime() <= toObj.getTime()
 
       queryClient.setQueryData<SyncTimeEntryRxDBDTO[]>(
         queryKey,
@@ -78,12 +89,15 @@ export function setupRxDBQueryCacheSync(
             return previousData
           }
           const existingIndex = previousData.findIndex(
-            (entry) => entry.id === documentId,
+            (entry) => entry.id === documentId || entry.id === documentData.id,
           )
 
           if (!isInRange) {
             if (existingIndex >= 0) {
-              return previousData.filter((entry) => entry.id !== documentId)
+              return previousData.filter(
+                (entry) =>
+                  entry.id !== documentId && entry.id !== documentData.id,
+              )
             }
             return previousData
           }

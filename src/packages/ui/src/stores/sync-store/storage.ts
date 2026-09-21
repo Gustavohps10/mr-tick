@@ -180,14 +180,12 @@ export const getOrCreateDatabase = async (
       useMemoryStorage,
     })
 
-    const isDevModeActive = isDevelopment ? true : shouldForceRxDBDebug()
-
     const db = await createRxDatabase<AppDatabase['collections']>({
       name: dbName,
       storage: createAppStorage(useMemoryStorage),
-      ignoreDuplicate: isDevModeActive,
-      closeDuplicates: true,
-      multiInstance: false,
+      ignoreDuplicate: true,
+      closeDuplicates: false,
+      multiInstance: !useMemoryStorage,
     })
 
     console.log('[SYNC][db] createRxDatabase OK, adicionando coleções...', {

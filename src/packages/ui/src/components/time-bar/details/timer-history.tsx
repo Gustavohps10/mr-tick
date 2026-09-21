@@ -87,11 +87,7 @@ export const TimerHistory = memo(
 
     const activeEntry = propEntry !== undefined ? propEntry : storeActiveEntry
     const isStoreActive =
-      activeEntry &&
-      storeActiveEntry &&
-      activeEntry.connectionInstanceId ===
-        storeActiveEntry.connectionInstanceId &&
-      activeEntry.sourceId === storeActiveEntry.sourceId
+      activeEntry && storeActiveEntry && activeEntry.id === storeActiveEntry.id
 
     const [isOpen, setIsOpen] = useState(false)
     const [isAddingInline, setIsAddingInline] = useState(false)
@@ -183,14 +179,7 @@ export const TimerHistory = memo(
     ) => {
       if (!db || !activeEntry) return
 
-      const doc = await db.timeEntries
-        .findOne({
-          selector: {
-            connectionInstanceId: activeEntry.connectionInstanceId,
-            sourceId: activeEntry.sourceId,
-          },
-        })
-        .exec()
+      const doc = await db.timeEntries.findOne(activeEntry.id).exec()
       if (doc) {
         await doc.patch({
           journal: newJournal,
