@@ -1,5 +1,3 @@
-'use client'
-
 import { useQueryClient } from '@tanstack/react-query'
 import { ExpandedState } from '@tanstack/react-table'
 import {
@@ -74,6 +72,7 @@ export function TimeEntriesCalendarView() {
     draftEntries,
     editingRows,
     setEditingRows,
+    tempData,
     setTempData,
     getRowData,
     rowBeingEdited,
@@ -84,10 +83,12 @@ export function TimeEntriesCalendarView() {
     handleDirectUpdateRow,
     handleCancelEdit,
     handleDeleteEntry,
-    handleStartDuplicate,
+    handleDuplicateEntry,
     handleAddNewEntry,
     handleAcceptSuggestion,
     handleDismissSuggestion,
+    handleResolveConflict,
+    handleOpenConflictResolution,
   } = useTimeEntryMutations(db, memberIdsByConnection)
 
   const [currentMonth, setCurrentMonth] = React.useState<Date>(() => new Date())
@@ -144,42 +145,12 @@ export function TimeEntriesCalendarView() {
     setDayDetailsOpen(true)
   }
 
-  const handleTimeChangeDirect = React.useCallback(
-    async (id: string, updates: Partial<SyncTimeEntryRxDBDTO>) => {
-      if (!db) return
-      try {
-        const doc = await db.timeEntries.findOne(id).exec()
-        if (doc) {
-          await doc.patch({
-            ...updates,
-            updatedAt: new Date().toISOString(),
-          })
-          queryClient.invalidateQueries({ queryKey: ['time-entries-range'] })
-          toast.success('Tempo atualizado')
-        }
-      } catch {
-        toast.error('Erro ao atualizar tempo')
-      }
-    },
-    [db, queryClient],
-  )
-
   const handleAcceptAllSuggestions = React.useCallback(
     async (suggestions: SuggestionRow[]) => {
       if (!db || suggestions.length === 0) return
       try {
         for (const sug of suggestions) {
-          let doc = await db.timeEntries.findOne(sug.id).exec()
-          if (!doc && sug.connectionInstanceId && sug.sourceId) {
-            doc = await db.timeEntries
-              .findOne({
-                selector: {
-                  connectionInstanceId: sug.connectionInstanceId,
-                  sourceId: sug.sourceId,
-                },
-              })
-              .exec()
-          }
+          const doc = await db.timeEntries.findOne(sug.id).exec()
           if (doc) {
             await doc.patch({
               timeStatus: 'finished',
@@ -206,17 +177,7 @@ export function TimeEntriesCalendarView() {
       if (!db || suggestions.length === 0) return
       try {
         for (const sug of suggestions) {
-          let doc = await db.timeEntries.findOne(sug.id).exec()
-          if (!doc && sug.connectionInstanceId && sug.sourceId) {
-            doc = await db.timeEntries
-              .findOne({
-                selector: {
-                  connectionInstanceId: sug.connectionInstanceId,
-                  sourceId: sug.sourceId,
-                },
-              })
-              .exec()
-          }
+          const doc = await db.timeEntries.findOne(sug.id).exec()
           if (doc) {
             await doc.remove()
           }
@@ -236,17 +197,7 @@ export function TimeEntriesCalendarView() {
   const handlePauseTimer = React.useCallback(
     async (row: SuggestionRow) => {
       if (!db) return
-      let doc = await db.timeEntries.findOne(row.id).exec()
-      if (!doc && row.connectionInstanceId && row.sourceId) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              connectionInstanceId: row.connectionInstanceId,
-              sourceId: row.sourceId,
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries.findOne(row.id).exec()
       if (doc) {
         setActive(doc.toMutableJSON())
       } else if (activeTimeEntry?.id !== row.id) {
@@ -260,17 +211,7 @@ export function TimeEntriesCalendarView() {
   const handleResumeTimer = React.useCallback(
     async (row: SuggestionRow) => {
       if (!db) return
-      let doc = await db.timeEntries.findOne(row.id).exec()
-      if (!doc && row.connectionInstanceId && row.sourceId) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              connectionInstanceId: row.connectionInstanceId,
-              sourceId: row.sourceId,
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries.findOne(row.id).exec()
       if (doc) {
         setActive(doc.toMutableJSON())
       } else if (activeTimeEntry?.id !== row.id) {
@@ -285,17 +226,7 @@ export function TimeEntriesCalendarView() {
     async (row?: SuggestionRow) => {
       if (!db) return
       if (row) {
-        let doc = await db.timeEntries.findOne(row.id).exec()
-        if (!doc && row.connectionInstanceId && row.sourceId) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: {
-                connectionInstanceId: row.connectionInstanceId,
-                sourceId: row.sourceId,
-              },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries.findOne(row.id).exec()
         if (doc) {
           setActive(doc.toMutableJSON())
         } else if (activeTimeEntry?.id !== row.id) {
@@ -314,21 +245,24 @@ export function TimeEntriesCalendarView() {
       getRowData,
       setEditingRows,
       setTempData,
+      tempData,
       setRowBeingEdited,
       setTaskLookupOpen,
       onSaveRow: handleSaveRow,
       onDirectUpdateRow: handleDirectUpdateRow,
       onCancelEdit: handleCancelEdit,
       onDeleteRow: handleDeleteEntry,
-      onDuplicateRow: handleStartDuplicate,
+      onDuplicateRow: handleDuplicateEntry,
       onAcceptSuggestion: handleAcceptSuggestion,
       onDismissSuggestion: handleDismissSuggestion,
-      onTimeChangeDirect: handleTimeChangeDirect,
+      onTimeChangeDirect: handleDirectUpdateRow,
       onPauseTimer: handlePauseTimer,
       onResumeTimer: handleResumeTimer,
       onStopTimer: handleStopTimer,
       isGrouped: true,
       onAddNewEntry: handleAddNewEntry,
+      onResolveConflict: handleResolveConflict,
+      onOpenConflict: handleOpenConflictResolution,
     })
   }, [
     activities,
@@ -336,20 +270,22 @@ export function TimeEntriesCalendarView() {
     getRowData,
     setEditingRows,
     setTempData,
+    tempData,
     setRowBeingEdited,
     setTaskLookupOpen,
     handleSaveRow,
     handleDirectUpdateRow,
     handleCancelEdit,
     handleDeleteEntry,
-    handleStartDuplicate,
+    handleDuplicateEntry,
     handleAcceptSuggestion,
     handleDismissSuggestion,
-    handleTimeChangeDirect,
     handlePauseTimer,
     handleResumeTimer,
     handleStopTimer,
     handleAddNewEntry,
+    handleResolveConflict,
+    handleOpenConflictResolution,
   ])
 
   const handleRowDoubleClick = React.useCallback(
@@ -570,6 +506,7 @@ export function TimeEntriesCalendarView() {
                     day={selectedDay}
                     entries={timeEntries}
                     draftEntries={draftEntries}
+                    tempData={tempData}
                     columns={columns}
                     expandedRows={expandedRows}
                     onExpandedChange={setExpandedRows}

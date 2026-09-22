@@ -10,6 +10,9 @@ interface TimeEntriesHeaderProps {
   onRangeChange: (range: DateRange | undefined) => void
   isSyncing?: boolean
   isPulling?: boolean
+  isPushing?: boolean
+  syncResult?: 'success' | 'error' | null
+  syncErrorMessage?: string | null
   isGrouped?: boolean
   onToggleGrouped?: (grouped: boolean) => void
 }
@@ -19,6 +22,9 @@ export function TimeEntriesHeader({
   onRangeChange,
   isSyncing = false,
   isPulling = false,
+  isPushing = false,
+  syncResult = null,
+  syncErrorMessage = null,
   isGrouped = true,
   onToggleGrouped,
 }: TimeEntriesHeaderProps) {
@@ -41,7 +47,13 @@ export function TimeEntriesHeader({
         </div>
       )}
 
-      <TimeEntriesSyncIndicator isSyncing={isSyncing} isPulling={isPulling} />
+      <TimeEntriesSyncIndicator
+        isSyncing={isSyncing}
+        isPulling={isPulling}
+        isPushing={isPushing}
+        syncResult={syncResult}
+        syncErrorMessage={syncErrorMessage}
+      />
 
       <DatePickerWithRange
         date={{ from: range.from, to: range.to }}

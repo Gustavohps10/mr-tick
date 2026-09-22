@@ -1,22 +1,72 @@
 import { format, parseISO } from 'date-fns'
 import {
+  Activity,
+  AlertTriangle,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  Ban,
   BarChart2,
+  BookOpen,
+  Boxes,
   Briefcase,
+  Bug,
   CalendarCheck,
   CheckCircle,
+  CheckSquare,
   ClipboardCheck,
+  Clock,
   Code,
+  Code2,
+  Coffee,
+  Compass,
+  Cpu,
+  Database,
+  Eye,
+  File,
+  FileCode,
   FileText,
+  Flame,
   FlaskConical,
+  Folder,
+  FolderGit2,
+  GitBranch,
+  GitCommit,
+  GitMerge,
+  GitPullRequest,
   GraduationCap,
   Handshake,
+  Hash,
+  HelpCircle,
+  History,
+  Inbox,
+  Laptop,
+  Layers,
   LifeBuoy,
+  ListTodo,
+  MessageSquare,
+  MinusCircle,
+  Monitor,
+  Package,
   Palette,
+  Play,
+  Rocket,
+  Search,
   SearchCode,
+  Server,
   Settings,
   ShieldCheck,
+  Sparkles,
+  Tag,
+  Target,
+  Terminal,
+  TerminalSquare,
+  TestTube,
+  Timer,
+  UserCog,
   Users,
+  Workflow,
   Wrench,
+  Zap,
 } from 'lucide-react'
 import type { ElementType } from 'react'
 
@@ -51,23 +101,111 @@ export const formatHours = (decimalHours: number): string => {
 }
 
 export const activityIconMap: Record<string, ElementType> = {
-  Palette,
-  Code,
+  Activity,
+  AlertTriangle,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  Ban,
   BarChart2,
+  BookOpen,
+  Boxes,
+  Briefcase,
+  Bug,
+  Bugfix: Bug,
   CalendarCheck,
   CheckCircle,
-  FlaskConical,
-  SearchCode,
-  Settings,
-  Wrench,
-  LifeBuoy,
-  Handshake,
+  CheckSquare,
   ClipboardCheck,
+  Clock,
+  Code,
+  Code2,
+  Coding: Code,
+  CodeReview: GitMerge,
+  Coffee,
+  Compass,
+  Cpu,
+  Database,
+  Design: Palette,
+  Dev: Code,
+  Development: Code,
+  Eye,
+  File,
+  FileCode,
   FileText,
+  Flame,
+  FlaskConical,
+  Folder,
+  FolderGit2,
+  GitBranch,
+  GitCommit,
+  GitMerge,
+  GitPullRequest,
   GraduationCap,
-  Users,
-  Briefcase,
+  Handshake,
+  Hash,
+  HelpCircle,
+  History,
+  Inbox,
+  Laptop,
+  Layers,
+  LifeBuoy,
+  ListTodo,
+  Meeting: Users,
+  MessageSquare,
+  MinusCircle,
+  Monitor,
+  Package,
+  Palette,
+  Play,
+  Review: Eye,
+  Rocket,
+  Search,
+  SearchCode,
+  Server,
+  Settings,
   ShieldCheck,
+  Sparkles,
+  Tag,
+  Target,
+  Terminal,
+  TerminalSquare,
+  Testing: TestTube,
+  TestTube,
+  Timer,
+  UserCog,
+  Users,
+  Workflow,
+  Wrench,
+  Zap,
+}
+
+export function getActivityIcon(
+  iconName?: string | null,
+): ElementType | undefined {
+  if (!iconName) return undefined
+  if (activityIconMap[iconName]) return activityIconMap[iconName]
+
+  const normalized = iconName.trim()
+  if (activityIconMap[normalized]) return activityIconMap[normalized]
+
+  const pascalName = normalized
+    .split(/[-_\s]+/)
+    .map(
+      (segment) =>
+        segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase(),
+    )
+    .join('')
+
+  if (activityIconMap[pascalName]) return activityIconMap[pascalName]
+
+  const lowerIcon = normalized.toLowerCase()
+  const matchedKey = Object.keys(activityIconMap).find(
+    (key) => key.toLowerCase() === lowerIcon,
+  )
+  if (matchedKey && activityIconMap[matchedKey])
+    return activityIconMap[matchedKey]
+
+  return undefined
 }
 
 export function hasNoTask(item?: Partial<SuggestionRow> | null): boolean {

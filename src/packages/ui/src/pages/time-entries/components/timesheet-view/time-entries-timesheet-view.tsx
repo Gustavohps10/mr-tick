@@ -105,6 +105,7 @@ export function TimeEntriesTimesheetView() {
     draftEntries,
     editingRows,
     setEditingRows,
+    tempData,
     setTempData,
     getRowData,
     rowBeingEdited,
@@ -115,10 +116,12 @@ export function TimeEntriesTimesheetView() {
     handleDirectUpdateRow,
     handleCancelEdit,
     handleDeleteEntry,
-    handleStartDuplicate,
+    handleDuplicateEntry,
     handleAddNewEntry,
     handleAcceptSuggestion,
     handleDismissSuggestion,
+    handleResolveConflict,
+    handleOpenConflictResolution,
   } = useTimeEntryMutations(db, memberIdsByConnection)
 
   const [currentWeekDate, setCurrentWeekDate] = React.useState<Date>(
@@ -273,42 +276,12 @@ export function TimeEntriesTimesheetView() {
     return daysWithEntriesCount > 0 ? totalWeekHours / daysWithEntriesCount : 0
   }, [daysWithEntriesCount, totalWeekHours])
 
-  const handleTimeChangeDirect = React.useCallback(
-    async (id: string, updates: Partial<SyncTimeEntryRxDBDTO>) => {
-      if (!db) return
-      try {
-        const doc = await db.timeEntries.findOne(id).exec()
-        if (doc) {
-          await doc.patch({
-            ...updates,
-            updatedAt: new Date().toISOString(),
-          })
-          queryClient.invalidateQueries({ queryKey: ['time-entries-range'] })
-          toast.success('Tempo atualizado')
-        }
-      } catch {
-        toast.error('Erro ao atualizar tempo')
-      }
-    },
-    [db, queryClient],
-  )
-
   const handleAcceptAllSuggestions = React.useCallback(
     async (suggestions: SuggestionRow[]) => {
       if (!db || suggestions.length === 0) return
       try {
         for (const sug of suggestions) {
-          let doc = await db.timeEntries.findOne(sug.id).exec()
-          if (!doc && sug.connectionInstanceId && sug.sourceId) {
-            doc = await db.timeEntries
-              .findOne({
-                selector: {
-                  connectionInstanceId: sug.connectionInstanceId,
-                  sourceId: sug.sourceId,
-                },
-              })
-              .exec()
-          }
+          const doc = await db.timeEntries.findOne(sug.id).exec()
           if (doc) {
             await doc.patch({
               timeStatus: 'finished',
@@ -335,17 +308,7 @@ export function TimeEntriesTimesheetView() {
       if (!db || suggestions.length === 0) return
       try {
         for (const sug of suggestions) {
-          let doc = await db.timeEntries.findOne(sug.id).exec()
-          if (!doc && sug.connectionInstanceId && sug.sourceId) {
-            doc = await db.timeEntries
-              .findOne({
-                selector: {
-                  connectionInstanceId: sug.connectionInstanceId,
-                  sourceId: sug.sourceId,
-                },
-              })
-              .exec()
-          }
+          const doc = await db.timeEntries.findOne(sug.id).exec()
           if (doc) {
             await doc.remove()
           }
@@ -365,17 +328,7 @@ export function TimeEntriesTimesheetView() {
   const handlePauseTimer = React.useCallback(
     async (row: SuggestionRow) => {
       if (!db) return
-      let doc = await db.timeEntries.findOne(row.id).exec()
-      if (!doc && row.connectionInstanceId && row.sourceId) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              connectionInstanceId: row.connectionInstanceId,
-              sourceId: row.sourceId,
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries.findOne(row.id).exec()
       if (doc) {
         setActive(doc.toMutableJSON())
       } else if (activeTimeEntry?.id !== row.id) {
@@ -389,17 +342,7 @@ export function TimeEntriesTimesheetView() {
   const handleResumeTimer = React.useCallback(
     async (row: SuggestionRow) => {
       if (!db) return
-      let doc = await db.timeEntries.findOne(row.id).exec()
-      if (!doc && row.connectionInstanceId && row.sourceId) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              connectionInstanceId: row.connectionInstanceId,
-              sourceId: row.sourceId,
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries.findOne(row.id).exec()
       if (doc) {
         setActive(doc.toMutableJSON())
       } else if (activeTimeEntry?.id !== row.id) {
@@ -414,17 +357,7 @@ export function TimeEntriesTimesheetView() {
     async (row?: SuggestionRow) => {
       if (!db) return
       if (row) {
-        let doc = await db.timeEntries.findOne(row.id).exec()
-        if (!doc && row.connectionInstanceId && row.sourceId) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: {
-                connectionInstanceId: row.connectionInstanceId,
-                sourceId: row.sourceId,
-              },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries.findOne(row.id).exec()
         if (doc) {
           setActive(doc.toMutableJSON())
         } else if (activeTimeEntry?.id !== row.id) {
@@ -489,21 +422,24 @@ export function TimeEntriesTimesheetView() {
       getRowData,
       setEditingRows,
       setTempData,
+      tempData,
       setRowBeingEdited,
       setTaskLookupOpen,
       onSaveRow: handleSaveRow,
       onDirectUpdateRow: handleDirectUpdateRow,
       onCancelEdit: handleCancelEdit,
       onDeleteRow: handleDeleteEntry,
-      onDuplicateRow: handleStartDuplicate,
+      onDuplicateRow: handleDuplicateEntry,
       onAcceptSuggestion: handleAcceptSuggestion,
       onDismissSuggestion: handleDismissSuggestion,
-      onTimeChangeDirect: handleTimeChangeDirect,
+      onTimeChangeDirect: handleDirectUpdateRow,
       onPauseTimer: handlePauseTimer,
       onResumeTimer: handleResumeTimer,
       onStopTimer: handleStopTimer,
       isGrouped: true,
       onAddNewEntry: handleAddNewEntryInModal,
+      onResolveConflict: handleResolveConflict,
+      onOpenConflict: handleOpenConflictResolution,
     })
   }, [
     activities,
@@ -511,20 +447,22 @@ export function TimeEntriesTimesheetView() {
     getRowData,
     setEditingRows,
     setTempData,
+    tempData,
     setRowBeingEdited,
     setTaskLookupOpen,
     handleSaveRow,
     handleDirectUpdateRow,
     handleCancelEdit,
     handleDeleteEntry,
-    handleStartDuplicate,
+    handleDuplicateEntry,
     handleAcceptSuggestion,
     handleDismissSuggestion,
-    handleTimeChangeDirect,
     handlePauseTimer,
     handleResumeTimer,
     handleStopTimer,
     handleAddNewEntryInModal,
+    handleResolveConflict,
+    handleOpenConflictResolution,
   ])
 
   const handleRowDoubleClick = React.useCallback(
@@ -962,6 +900,7 @@ export function TimeEntriesTimesheetView() {
                     day={selectedDay}
                     entries={modalEntries}
                     draftEntries={modalDraftEntries}
+                    tempData={tempData}
                     columns={columns}
                     expandedRows={expandedRows}
                     onExpandedChange={setExpandedRows}

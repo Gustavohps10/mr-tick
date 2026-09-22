@@ -21,6 +21,7 @@ interface TimeEntriesDayCardProps {
   day: Date
   entries: SyncTimeEntryRxDBDTO[]
   draftEntries?: SuggestionRow[]
+  tempData?: Record<string, Partial<SyncTimeEntryRxDBDTO>>
   columns: ColumnDef<SuggestionRow>[]
   expandedRows: ExpandedState
   onExpandedChange: React.Dispatch<React.SetStateAction<ExpandedState>>
@@ -36,6 +37,7 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
   day,
   entries,
   draftEntries = [],
+  tempData,
   columns,
   expandedRows,
   onExpandedChange,
@@ -46,38 +48,47 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
   onAddNewEntry,
   onRowDoubleClick,
 }: TimeEntriesDayCardProps) {
-  const dayKey = format(day, 'yyyy-MM-dd')
-
   const dayEntries: SuggestionRow[] = useMemo(() => {
+    const safeTemp = tempData ?? {}
+
     const persisted: SuggestionRow[] = entries
       .filter((e) => {
         const dateStr = e.startDate || e.createdAt
         return Boolean(dateStr && isSameDay(parseISO(dateStr), day))
       })
-      .map((e) => ({
-        ...e,
-        isSuggestion: e.timeStatus === 'suggestion',
-      }))
+      .map((e) => {
+        const changes = safeTemp[e.id] ?? {}
+        return {
+          ...e,
+          ...changes,
+          isSuggestion: e.timeStatus === 'suggestion',
+        }
+      })
 
-    const drafts: SuggestionRow[] = draftEntries.filter((d) => {
-      const dateStr = d.startDate || d.createdAt
-      return Boolean(dateStr && isSameDay(parseISO(dateStr), day))
-    })
+    const drafts: SuggestionRow[] = draftEntries
+      .filter((d) => {
+        const dateStr = d.startDate || d.createdAt
+        return Boolean(dateStr && isSameDay(parseISO(dateStr), day))
+      })
+      .map((d) => {
+        const changes = safeTemp[d.id] ?? {}
+        return {
+          ...d,
+          ...changes,
+        }
+      })
 
     const combined = [...persisted, ...drafts]
     const seen = new Set<string>()
     return combined.filter((item) => {
-      const compositeKey = `${item.connectionInstanceId}::${item.sourceId}`
-      if (!item.sourceId || seen.has(compositeKey)) return false
-      seen.add(compositeKey)
+      if (!item.id || seen.has(item.id)) return false
+      seen.add(item.id)
       return true
     })
-  }, [entries, draftEntries, day])
+  }, [entries, draftEntries, tempData, day])
 
   const groupedData = useMemo(() => {
-    if (!isGrouped) {
-      return sortFlatEntries(dayEntries)
-    }
+    if (!isGrouped) return sortFlatEntries(dayEntries)
     return groupByIssue(dayEntries)
   }, [dayEntries, isGrouped])
 
