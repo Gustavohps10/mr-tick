@@ -83,6 +83,7 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
             table.getRowModel().rows.map((row) => (
               <TableRow
                 key={row.id}
+                data-testid="time-entry-row"
                 data-state={row.getIsExpanded() ? 'expanded' : 'collapsed'}
                 onDoubleClick={() => {
                   const isGroupMaster =

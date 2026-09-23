@@ -34,6 +34,12 @@ export class MetadataReplication implements IReplicationStrategy<
       },
     })
 
+    if (!res.isSuccess) {
+      const err = new Error(res.error ? String(res.error) : 'SYNC_PULL_FAILED')
+      Object.assign(err, { statusCode: res.statusCode, status: res.statusCode })
+      throw err
+    }
+
     if (!res.data)
       return {
         documents: [],

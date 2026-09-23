@@ -27,14 +27,12 @@ export class TimeEntriesPullService implements ITimeEntriesPullUseCase {
 
       const member = result.success
 
-      const timeEntries = await adapter.timeEntriesProvider.pull(
+      return await adapter.timeEntriesProvider.pull(
         member.id.toString(),
         input.checkpoint,
         input.batch,
       )
-
-      return Either.success(timeEntries)
-    } catch (error) {
+    } catch {
       return Either.failure(AppError.NotFound('ERRO_INESPERADO'))
     }
   }

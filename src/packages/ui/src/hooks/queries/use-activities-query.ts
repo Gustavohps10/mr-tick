@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 
 import { SyncMetadataItem } from '@/local-db/schemas/metadata-sync-schema'
 import { useSyncStore } from '@/stores/syncStore'
@@ -17,7 +17,8 @@ export interface UseActivitiesQueryResult {
 export function useActivitiesQuery(enabled = true): UseActivitiesQueryResult {
   const queryClient = useQueryClient()
   const db = useSyncStore((state) => state?.db)
-  const queryKey = ['activities']
+  const dbName = db?.name ? db.name : 'no-db'
+  const queryKey = useMemo(() => ['activities', dbName], [dbName])
 
   useEffect(() => {
     if (!db?.metadata || !enabled) return

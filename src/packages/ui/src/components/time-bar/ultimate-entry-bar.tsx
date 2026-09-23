@@ -85,6 +85,7 @@ import {
 import { cn } from '@/lib/utils'
 import { SyncMetadataRxDBDTO } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
+import { extractPureTaskId } from '@/pages/time-entries/lib/time-entries-utils'
 import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
 import { useTimeEntryStore } from '@/stores/timeEntryStore'
 
@@ -183,6 +184,7 @@ type UltimateTimeTrackerContextType = {
 
   timerError: string | null
   setTimerError: React.Dispatch<React.SetStateAction<string | null>>
+  isRemote?: boolean
 }
 
 export const UltimateTimeTrackerContext =
@@ -884,8 +886,22 @@ export const UltimateTimeTracker = ({
     [activeEntry, db, selectedConnectionId, openAPI, setActive],
   )
 
+  const isRemote = Boolean(
+    (activeEntry?.remoteId &&
+      activeEntry.remoteId.trim() !== '' &&
+      !activeEntry.remoteId.startsWith('local-')) ||
+    activeEntry?.syncStatus === 'synced',
+  )
+
   const handleTaskIdChange = useCallback(
     async (newTaskId: string) => {
+      const cleanId = extractPureTaskId(newTaskId)
+      if (!cleanId && isRemote) {
+        toast.error(
+          'Registros sincronizados com o servidor não podem ficar sem tarefa',
+        )
+        return
+      }
       setTaskId(newTaskId)
       if (!activeEntry || !db) {
         openAPI.events?.emit?.('tracker:draft-sync', { taskId: newTaskId })
@@ -903,7 +919,7 @@ export const UltimateTimeTracker = ({
         openAPI.events?.emit?.('time-entry:sync', updatedJson)
       }
     },
-    [activeEntry, db, openAPI, setActive],
+    [activeEntry, db, isRemote, openAPI, setActive],
   )
 
   const handleDescriptionChange = useCallback(
@@ -930,6 +946,12 @@ export const UltimateTimeTracker = ({
 
   const handleActivityChange = useCallback(
     async (actId: string) => {
+      if (!actId && isRemote) {
+        toast.error(
+          'Registros sincronizados com o servidor não podem ficar sem atividade',
+        )
+        return
+      }
       setSelectedActivity(actId)
       if (activeEntry && db) {
         const doc = await db.timeEntries.findOne(activeEntry.id).exec()
@@ -942,13 +964,13 @@ export const UltimateTimeTracker = ({
           setActive(updatedJson)
           openAPI.events?.emit?.('time-entry:sync', updatedJson)
         }
-      } else {
-        openAPI.events?.emit?.('tracker:draft-sync', {
-          selectedActivity: actId,
-        })
+        return
       }
+      openAPI.events?.emit?.('tracker:draft-sync', {
+        selectedActivity: actId,
+      })
     },
-    [activeEntry, db, openAPI, setActive],
+    [activeEntry, db, isRemote, openAPI, setActive],
   )
 
   const handleConnectionChange = useCallback(
@@ -1200,6 +1222,7 @@ export const UltimateTimeTracker = ({
     dbTodaySeconds,
     timerError,
     setTimerError,
+    isRemote,
   }
 
   return (
@@ -1506,6 +1529,7 @@ UltimateTimeTracker.TaskBlock = function TaskBlock() {
     selectedConnectionId,
     setSelectedConnectionId,
     syncConnections,
+    isRemote,
   } = useTrackerContext()
 
   const selectedAct =
@@ -1563,6 +1587,7 @@ UltimateTimeTracker.TaskBlock = function TaskBlock() {
       <TaskPopover
         open={isEditingVertical}
         onOpenChange={setIsEditingVertical}
+        isRemote={isRemote}
         side={popoverSide}
         sideOffset={12}
         trigger={
@@ -1581,7 +1606,7 @@ UltimateTimeTracker.TaskBlock = function TaskBlock() {
             </Button>
             {(() => {
               const conn = syncConnections.find(
-                (c: any) => c.connectionId === selectedConnectionId,
+                (c) => c.connectionId === selectedConnectionId,
               )
               if (conn?.addon?.logo) {
                 return (
@@ -1762,6 +1787,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             className="h-10 w-10 shrink-0 rounded-lg p-0 shadow-md transition-transform active:scale-95"
             onClick={handleStart}
             title="Iniciar cronômetro ao vivo"
+            data-testid="timerbar-start-btn"
           >
             <Play className="h-4 w-4 fill-current" />
           </Button>
@@ -1772,6 +1798,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
               className="h-10 w-[31px] shrink-0 rounded-l-lg rounded-r-none p-0 shadow-md transition-transform active:scale-95"
               onClick={handleStart}
               title="Iniciar cronômetro ao vivo"
+              data-testid="timerbar-start-btn"
             >
               <Play className="ml-[6px] h-4 w-4 fill-current" />
             </Button>
@@ -1795,6 +1822,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
               className="h-10 w-[31px] shrink-0 rounded-l-lg rounded-r-none p-0 shadow-md transition-transform active:scale-95"
               onClick={handleStart}
               title="Iniciar cronômetro ao vivo"
+              data-testid="timerbar-start-btn"
             >
               <Play className="ml-[6px] h-4 w-4 fill-current" />
             </Button>
@@ -1847,6 +1875,9 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             variant={isRunning ? 'outline' : 'default'}
             className="h-10 w-10 shrink-0 rounded-lg p-0 shadow-sm transition-transform active:scale-95"
             onClick={isRunning ? handlePause : handleStart}
+            data-testid={
+              isRunning ? 'timerbar-pause-btn' : 'timerbar-start-btn'
+            }
           >
             {isRunning ? (
               <Pause className="text-primary h-4 w-4 fill-current" />
@@ -1868,6 +1899,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                 : 'h-10 w-10 rounded-lg p-0',
             )}
             onClick={handleStop}
+            data-testid="timerbar-stop-btn"
           >
             <Square
               className={cn(

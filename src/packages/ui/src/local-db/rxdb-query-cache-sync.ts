@@ -28,14 +28,33 @@ export function setupRxDBQueryCacheSync(
         continue
       }
 
-      const rawFrom = queryKey[1]
-      const rawTo = queryKey[2]
-      if (typeof rawFrom !== 'string' || typeof rawTo !== 'string') {
-        continue
+      let fromIso = ''
+      let toIso = ''
+
+      if (queryKey.length >= 4) {
+        const queryDbName = queryKey[1]
+        if (typeof queryDbName === 'string' && queryDbName !== db.name) {
+          continue
+        }
+        const rawFrom = queryKey[2]
+        const rawTo = queryKey[3]
+        if (typeof rawFrom !== 'string' || typeof rawTo !== 'string') {
+          continue
+        }
+        fromIso = rawFrom
+        toIso = rawTo
       }
 
-      const fromIso = rawFrom
-      const toIso = rawTo
+      if (queryKey.length < 4) {
+        const rawFrom = queryKey[1]
+        const rawTo = queryKey[2]
+        if (typeof rawFrom !== 'string' || typeof rawTo !== 'string') {
+          continue
+        }
+        fromIso = rawFrom
+        toIso = rawTo
+      }
+
       const documentId = changeEvent.documentId
 
       if (changeEvent.operation === 'DELETE') {
@@ -133,9 +152,26 @@ export function setupRxDBQueryCacheSync(
 
     for (const query of matchingQueries) {
       const queryKey = query.queryKey
-      const rawConnId = queryKey[1]
-      const connectionInstanceId =
-        typeof rawConnId === 'string' ? rawConnId : 'all'
+      let connectionInstanceId = 'all'
+
+      if (queryKey.length >= 4) {
+        const queryDbName = queryKey[1]
+        if (typeof queryDbName === 'string' && queryDbName !== db.name) {
+          continue
+        }
+        const rawConnId = queryKey[2]
+        if (typeof rawConnId === 'string') {
+          connectionInstanceId = rawConnId
+        }
+      }
+
+      if (queryKey.length < 4) {
+        const rawConnId = queryKey[1]
+        if (typeof rawConnId === 'string') {
+          connectionInstanceId = rawConnId
+        }
+      }
+
       const documentId = changeEvent.documentId
 
       if (changeEvent.operation === 'DELETE') {

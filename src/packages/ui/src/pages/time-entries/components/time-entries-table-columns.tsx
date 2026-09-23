@@ -3,12 +3,14 @@ import { parseISO } from 'date-fns'
 import {
   ChevronDown,
   ChevronRight,
+  CircleDashed,
   MessageSquareDiff,
   Pause,
   Plus,
   Sparkles,
 } from 'lucide-react'
 import React from 'react'
+import { useDebounce } from 'use-debounce'
 
 import { DataSourceLogo } from '@/components/datasource-logo'
 import { TaskPopover } from '@/components/task-popover'
@@ -32,10 +34,12 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib'
 import { SyncMetadataItem } from '@/local-db/schemas/metadata-sync-schema'
+import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { TimeEntryRowActions } from '@/pages/time-entries/components/time-entry-row-actions'
 import {
   decimalToHMS,
+  extractPureTaskId,
   getActivityIcon,
   hasNoTask,
   SuggestionRow,
@@ -45,6 +49,7 @@ import { SyncStatusCell } from './sync-status-cell'
 
 export interface CreateColumnsOptions {
   activities: SyncMetadataItem[]
+  tasksById?: Record<string, SyncTaskRxDBDTO>
   editingRows: Record<string, boolean>
   getRowData: (id: string) => Partial<SyncTimeEntryRxDBDTO> | undefined
   setEditingRows: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
@@ -157,27 +162,30 @@ const MemoizedCommentInput = React.memo(
     const isFocusedRef = React.useRef(false)
     const latestValueRef = React.useRef(initialValue)
     latestValueRef.current = localValue
+    const onChangeRef = React.useRef(onChange)
+    onChangeRef.current = onChange
 
     React.useEffect(() => {
       if (isFocusedRef.current) return
       setLocalValue(initialValue)
     }, [initialValue])
 
-    const deferredValue = React.useDeferredValue(localValue)
+    const [debouncedValue] = useDebounce(localValue, 300)
 
     React.useEffect(() => {
       if (!isFocusedRef.current) return
-      if (deferredValue !== initialValue) onChange(deferredValue)
-    }, [deferredValue, initialValue, onChange])
+      if (debouncedValue === initialValue) return
+      onChangeRef.current(debouncedValue)
+    }, [debouncedValue, initialValue])
 
     const commitChange = React.useCallback(() => {
-      if (latestValueRef.current !== initialValue) {
-        onChange(latestValueRef.current)
-      }
-    }, [initialValue, onChange])
+      if (latestValueRef.current === initialValue) return
+      onChangeRef.current(latestValueRef.current)
+    }, [initialValue])
 
     return (
       <Input
+        data-testid="time-entry-comment-input"
         value={localValue}
         className="border-primary/40 h-7 w-full min-w-0 text-xs focus-visible:ring-1"
         onFocus={() => {
@@ -191,10 +199,9 @@ const MemoizedCommentInput = React.memo(
           commitChange()
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            commitChange()
-            e.currentTarget.blur()
-          }
+          if (e.key !== 'Enter') return
+          commitChange()
+          e.currentTarget.blur()
         }}
       />
     )
@@ -231,6 +238,7 @@ export function createTimeEntriesColumns(
 ): ColumnDef<SuggestionRow>[] {
   const {
     activities,
+    tasksById,
     editingRows,
     getRowData,
     setEditingRows,
@@ -398,13 +406,8 @@ export function createTimeEntriesColumns(
         const mergedRow = { ...original, ...data }
 
         const rawTaskId = mergedRow.task?.id ?? ''
-        const currentTaskId =
-          rawTaskId === '# ticket' ||
-          rawTaskId === '# Ticket' ||
-          rawTaskId === 'sem-issue' ||
-          rawTaskId === 'Tarefa'
-            ? ''
-            : rawTaskId
+        const cleanId = extractPureTaskId(rawTaskId)
+        const currentTaskId = cleanId ? `#${cleanId}` : ''
 
         const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
           setTempData((p) => ({
@@ -420,12 +423,20 @@ export function createTimeEntriesColumns(
           }))
         }
 
-        const taskTitle = mergedRow.taskData?.title || ''
-        const cleanId = currentTaskId.replace(/^#/, '')
+        const taskTitle =
+          mergedRow.taskData?.title ||
+          (cleanId && tasksById ? tasksById[cleanId]?.title : '') ||
+          ''
 
         if (isEditing) {
+          const isRemote = Boolean(
+            (mergedRow.remoteId &&
+              mergedRow.remoteId.trim() !== '' &&
+              !mergedRow.remoteId.startsWith('local-')) ||
+            mergedRow.syncStatus === 'synced',
+          )
           const currentDescription = mergedRow.comments ?? ''
-          const currentActivity = mergedRow.activity?.id ?? 'dev'
+          const currentActivity = mergedRow.activity?.id ?? ''
           const currentConnectionId = mergedRow.connectionInstanceId ?? ''
 
           const formattedActivities = activities.map((act) => ({
@@ -434,9 +445,7 @@ export function createTimeEntriesColumns(
             icon: getActivityIcon(act.icon),
           }))
 
-          const hasSelectedTask = Boolean(
-            currentTaskId && currentTaskId.trim() !== '',
-          )
+          const hasSelectedTask = Boolean(cleanId && cleanId !== '')
           const displayLabel = hasSelectedTask
             ? taskTitle
               ? `#${cleanId} - ${taskTitle}`
@@ -448,12 +457,22 @@ export function createTimeEntriesColumns(
               <TaskPopover
                 side="bottom"
                 align="start"
+                isRemote={isRemote}
                 taskId={currentTaskId}
-                onTaskIdChange={(id) => updateField({ task: { id } })}
+                onTaskIdChange={(id) => {
+                  const clean = extractPureTaskId(id)
+                  if (isRemote && !clean) return
+                  updateField({ task: { id: clean } })
+                }}
                 description={currentDescription}
                 onDescriptionChange={(val) => updateField({ comments: val })}
                 selectedActivity={currentActivity}
                 onActivityChange={(val) => {
+                  if (!val) {
+                    if (isRemote) return
+                    updateField({ activity: { id: '', name: '' } })
+                    return
+                  }
                   const foundActivity = activities.find((a) => a.id === val)
                   let activityName: string | undefined = undefined
                   if (foundActivity) activityName = foundActivity.name
@@ -465,13 +484,9 @@ export function createTimeEntriesColumns(
                 }
                 activities={formattedActivities}
                 onSelectTask={(task) => {
-                  let resolvedTaskId = task.id
-                  if (task.sourceId) {
-                    resolvedTaskId = task.sourceId
-                  } else if (task.id.includes('::')) {
-                    const parts = task.id.split('::')
-                    if (parts[1]) resolvedTaskId = parts[1]
-                  }
+                  const resolvedTaskId = extractPureTaskId(
+                    task.sourceId || task.id,
+                  )
                   updateField({
                     task: { id: resolvedTaskId },
                     taskData: task,
@@ -479,13 +494,9 @@ export function createTimeEntriesColumns(
                     dataSourceId: task.dataSourceId,
                   })
                 }}
-                onCommitAndClose={() => {
-                  if (!original.isDraft) {
-                    onSaveRow(rowKey)
-                  }
-                }}
                 trigger={
                   <Button
+                    data-testid="time-entry-task-popover-trigger"
                     type="button"
                     variant="outline"
                     size="sm"
@@ -519,7 +530,7 @@ export function createTimeEntriesColumns(
         }
 
         if (isGroupMaster) {
-          if (!currentTaskId) {
+          if (!cleanId) {
             return (
               <div className="flex w-full justify-start pl-1">
                 <span className="text-muted-foreground/80 border-border/70 inline-flex items-center gap-1 rounded border border-dashed px-2 py-0.5 font-sans text-[11px] font-medium">
@@ -566,7 +577,7 @@ export function createTimeEntriesColumns(
         }
 
         // Se a linha (sublinha ou isolada) não tem tarefa definida, exibe botão para escolher
-        if (!currentTaskId) {
+        if (!cleanId) {
           return (
             <div className="flex w-full justify-start pl-1">
               <Tooltip>
@@ -700,6 +711,12 @@ export function createTimeEntriesColumns(
             getRowData,
           )
           const mergedRow = { ...original, ...rowData }
+          const isRemote = Boolean(
+            (mergedRow.remoteId &&
+              mergedRow.remoteId.trim() !== '' &&
+              !mergedRow.remoteId.startsWith('local-')) ||
+            mergedRow.syncStatus === 'synced',
+          )
           const currentTaskId = mergedRow.task?.id
           const currentConnectionId = mergedRow.connectionInstanceId
           const hasTaskOrDatasource = Boolean(
@@ -716,8 +733,13 @@ export function createTimeEntriesColumns(
 
           return (
             <Select
-              value={currentVal}
+              value={currentVal || (isRemote ? '' : '__NONE__')}
               onValueChange={(val) => {
+                if (val === '__NONE__') {
+                  if (isRemote) return
+                  updateField({ activity: { id: '', name: '' } })
+                  return
+                }
                 const foundActivity = activities.find((a) => a.id === val)
                 let activityName: string | undefined = undefined
                 if (foundActivity) activityName = foundActivity.name
@@ -733,6 +755,17 @@ export function createTimeEntriesColumns(
                 />
               </SelectTrigger>
               <SelectContent>
+                {!isRemote && (
+                  <SelectItem
+                    value="__NONE__"
+                    className="text-muted-foreground text-xs italic"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <CircleDashed className="text-muted-foreground h-3.5 w-3.5" />
+                      <span>Sem atividade</span>
+                    </div>
+                  </SelectItem>
+                )}
                 {activities.map((a) => {
                   const SelectIcon = getActivityIcon(a.icon)
                   return (

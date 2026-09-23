@@ -1,9 +1,11 @@
 'use client'
 
 import {
+  addDays,
   addSeconds,
   differenceInSeconds,
   format,
+  isBefore,
   isValid,
   parse,
   parseISO,
@@ -174,12 +176,14 @@ export const TimeEntryInputs = ({
     }
 
     const sDate = parse(fStart, 'HH:mm', baseDate)
-    const eDate = parse(fEnd, 'HH:mm', baseDate)
+    let eDate = parse(fEnd, 'HH:mm', baseDate)
 
     if (!isValid(sDate) || !isValid(eDate)) {
       setErrors({ start: !isValid(sDate), end: !isValid(eDate), spent: false })
       return
     }
+
+    if (isBefore(eDate, sDate)) eDate = addDays(eDate, 1)
 
     const seconds = differenceInSeconds(eDate, sDate)
     const decimal = Number((seconds / 3600).toFixed(4))
@@ -220,6 +224,7 @@ export const TimeEntryInputs = ({
       )}
     >
       <Input
+        data-testid="time-entry-start-time-input"
         disabled={disabled}
         value={localStart}
         onFocus={() => setIsFocused(true)}
@@ -247,6 +252,7 @@ export const TimeEntryInputs = ({
       </span>
 
       <Input
+        data-testid="time-entry-end-time-input"
         disabled={disabled}
         value={localEnd}
         onFocus={() => setIsFocused(true)}
@@ -272,6 +278,7 @@ export const TimeEntryInputs = ({
       <div className="bg-border/40 mx-1 h-3 w-px shrink-0" />
 
       <Input
+        data-testid="time-entry-duration-input"
         disabled={disabled}
         value={localSpent}
         onFocus={() => setIsFocused(true)}

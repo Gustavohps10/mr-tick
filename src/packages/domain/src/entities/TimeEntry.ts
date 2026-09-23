@@ -19,6 +19,7 @@ const ActivitySchema = z.object({
 })
 
 const TimeEntrySchema = z.object({
+  id: z.string().optional(),
   task: z.object({ id: z.string() }),
   activity: ActivitySchema,
   user: UserSchema,
@@ -101,8 +102,10 @@ export class TimeEntry extends Entity {
       commentsTrimmed = data.comments.trim()
     }
 
+    const entryId = data.id ? data.id : crypto.randomUUID()
+
     const instance = new TimeEntry(
-      crypto.randomUUID(),
+      entryId,
       data.task,
       data.activity,
       data.user,

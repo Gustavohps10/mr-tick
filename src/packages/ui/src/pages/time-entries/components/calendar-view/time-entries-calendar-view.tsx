@@ -270,7 +270,6 @@ export function TimeEntriesCalendarView() {
     getRowData,
     setEditingRows,
     setTempData,
-    tempData,
     setRowBeingEdited,
     setTaskLookupOpen,
     handleSaveRow,

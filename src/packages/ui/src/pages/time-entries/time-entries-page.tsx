@@ -2,7 +2,7 @@
 
 import { ExpandedState } from '@tanstack/react-table'
 import { format, isSameDay, parseISO } from 'date-fns'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { TaskLookup } from '@/components/task-lookup'
@@ -14,7 +14,7 @@ import { createTimeEntriesColumns } from '@/pages/time-entries/components/time-e
 import { useTimeEntriesData } from '@/pages/time-entries/hooks/use-time-entries-data'
 import { useTimeEntryMutations } from '@/pages/time-entries/hooks/use-time-entry-mutations'
 import {
-  hasNoTask,
+  extractPureTaskId,
   SuggestionRow,
 } from '@/pages/time-entries/lib/time-entries-utils'
 
@@ -32,6 +32,7 @@ export function TimeEntries() {
     syncResult,
     syncErrorMessage,
     activities,
+    tasksById,
     daysInRange,
     activeTimeEntry,
     setActive,
@@ -65,36 +66,53 @@ export function TimeEntries() {
   } = useTimeEntryMutations(db, memberIdsByConnection)
 
   const [isGrouped, setIsGrouped] = useState(true)
-  const [expandedRows, setExpandedRows] = useState<ExpandedState>({})
+  const [collapsedRows, setCollapsedRows] = useState<Record<string, boolean>>(
+    {},
+  )
 
-  // Expand ticket groups by default
-  useEffect(() => {
+  // Compute expanded rows synchronously: all groups expanded by default on frame zero,
+  // unless explicitly collapsed by user interaction.
+  const expandedRows = useMemo<ExpandedState>(() => {
     const allEntries = [...timeEntries, ...draftEntries]
-    if (allEntries.length > 0) {
-      setExpandedRows((prev) => {
-        const nextExpanded = { ...(typeof prev === 'object' ? prev : {}) }
-        daysInRange.forEach((day) => {
-          const dayKey = format(day, 'yyyy-MM-dd')
-          const entries = allEntries.filter(
-            (e) => e.startDate && isSameDay(parseISO(e.startDate), day),
-          )
-          const groupKeys = new Set(
-            entries.map(
-              (e) =>
-                `${dayKey}-${hasNoTask(e) ? 'sem-issue' : (e.task?.id ?? 'sem-issue')}`,
-            ),
-          )
-          groupKeys.forEach((key) => {
-            if (!(key in nextExpanded)) {
-              nextExpanded[key] = true
-            }
-          })
-        })
-        console.log('🔍 [TimeEntries] Auto-expanded row keys:', nextExpanded)
-        return nextExpanded
+    const state: Record<string, boolean> = {}
+
+    daysInRange.forEach((day) => {
+      const dayKey = format(day, 'yyyy-MM-dd')
+      const entries = allEntries.filter(
+        (e) => e.startDate && isSameDay(parseISO(e.startDate), day),
+      )
+      entries.forEach((e) => {
+        const pureId = extractPureTaskId(e.task?.id)
+        const groupKey = `${dayKey}-${pureId || 'no-task'}`
+        state[groupKey] = !collapsedRows[groupKey]
       })
-    }
-  }, [timeEntries, draftEntries, daysInRange])
+    })
+
+    return state
+  }, [timeEntries, draftEntries, daysInRange, collapsedRows])
+
+  const handleExpandedChange: React.Dispatch<
+    React.SetStateAction<ExpandedState>
+  > = useCallback(
+    (updater) => {
+      setCollapsedRows((prev) => {
+        const nextCollapsed = { ...prev }
+        const currentExpanded =
+          typeof updater === 'function' ? updater(expandedRows) : updater
+        if (typeof currentExpanded === 'object' && currentExpanded !== null) {
+          Object.entries(currentExpanded).forEach(([key, isExpanded]) => {
+            if (isExpanded) {
+              delete nextCollapsed[key]
+              return
+            }
+            nextCollapsed[key] = true
+          })
+        }
+        return nextCollapsed
+      })
+    },
+    [expandedRows],
+  )
 
   const handleAcceptAllSuggestions = useCallback(
     async (suggestions: SuggestionRow[]) => {
@@ -186,6 +204,7 @@ export function TimeEntries() {
   const columns = useMemo(() => {
     return createTimeEntriesColumns({
       activities,
+      tasksById,
       editingRows,
       getRowData,
       setEditingRows,
@@ -211,11 +230,11 @@ export function TimeEntries() {
     })
   }, [
     activities,
+    tasksById,
     editingRows,
     getRowData,
     setEditingRows,
     setTempData,
-    tempData,
     setRowBeingEdited,
     setTaskLookupOpen,
     handleSaveRow,
@@ -274,7 +293,7 @@ export function TimeEntries() {
               tempData={tempData}
               columns={columns}
               expandedRows={expandedRows}
-              onExpandedChange={setExpandedRows}
+              onExpandedChange={handleExpandedChange}
               isGrouped={isGrouped}
               isPulling={isPulling}
               onAcceptAllSuggestions={handleAcceptAllSuggestions}

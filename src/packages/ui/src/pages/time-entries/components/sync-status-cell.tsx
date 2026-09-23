@@ -225,28 +225,46 @@ export function SyncStatusCell({
     ? `Recebido em ${formatSyncTimestamp(original.lastPulledAt)}`
     : 'Criado localmente (nunca recebido via pull)'
 
-  let pushTooltipTitle = 'Envio ao Servidor (Push)'
-  let pushTooltipDetail = 'Nunca enviado ao servidor'
-  let pushIconColor = 'text-muted-foreground/30'
-
-  if (isSyncError) {
-    pushTooltipTitle = 'Falha na Sincronização (Push)'
-    pushTooltipDetail =
-      'Ocorreu um erro ao tentar enviar este apontamento ao servidor remoto.'
-    if (original.syncError) {
-      pushTooltipDetail = original.syncError
+  const pushInfo = (() => {
+    if (isSyncError) {
+      let detail =
+        'Ocorreu um erro ao tentar enviar este apontamento ao servidor remoto.'
+      if (original.syncError) detail = original.syncError
+      return {
+        title: 'Falha na Sincronização (Push)',
+        detail,
+        color: 'text-destructive',
+      }
     }
-    pushIconColor = 'text-destructive'
-  } else if (isPendingPush) {
-    pushTooltipTitle = 'Preparado para Envio (Push)'
-    pushTooltipDetail =
-      'Apontamento vinculado à tarefa remota. Alterações locais aguardando envio.'
-    pushIconColor = 'animate-pulse text-amber-500'
-  } else if (hasPushed) {
-    pushTooltipTitle = 'Enviado ao Servidor (Push)'
-    pushTooltipDetail = `Enviado com sucesso em ${formatSyncTimestamp(original.lastPushedAt)}`
-    pushIconColor = 'text-emerald-500/90 hover:text-emerald-500'
-  }
+    if (isPendingPush) {
+      return {
+        title: 'Preparado para Envio (Push)',
+        detail:
+          'Apontamento vinculado à tarefa remota. Alterações locais aguardando envio.',
+        color: 'animate-pulse text-amber-500',
+      }
+    }
+    if (hasPushed) {
+      return {
+        title: 'Enviado ao Servidor (Push)',
+        detail: `Enviado com sucesso em ${formatSyncTimestamp(original.lastPushedAt)}`,
+        color: 'text-emerald-500/90 hover:text-emerald-500',
+      }
+    }
+    return {
+      title: 'Envio ao Servidor (Push)',
+      detail: 'Nunca enviado ao servidor',
+      color: 'text-muted-foreground/30',
+    }
+  })()
+
+  const pushTestId = isSyncError
+    ? 'sync-status-error'
+    : isPendingPush
+      ? 'sync-status-pending-push'
+      : hasPushed
+        ? 'sync-status-synced'
+        : 'sync-status-unpushed'
 
   return (
     <div className="flex items-center justify-center gap-1.5">
@@ -278,9 +296,10 @@ export function SyncStatusCell({
       <Tooltip>
         <TooltipTrigger asChild>
           <span
+            data-testid={pushTestId}
             className={cn(
               'inline-flex cursor-help items-center justify-center transition-colors',
-              pushIconColor,
+              pushInfo.color,
             )}
           >
             {isSyncError ? (
@@ -297,7 +316,7 @@ export function SyncStatusCell({
               isSyncError && 'text-destructive',
             )}
           >
-            {pushTooltipTitle}
+            {pushInfo.title}
           </p>
           <p
             className={cn(
@@ -307,7 +326,7 @@ export function SyncStatusCell({
                 : 'text-muted-foreground font-mono',
             )}
           >
-            {pushTooltipDetail}
+            {pushInfo.detail}
           </p>
         </TooltipContent>
       </Tooltip>

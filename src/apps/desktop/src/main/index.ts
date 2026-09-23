@@ -80,7 +80,8 @@ app.name = 'mr-tick'
 const userDataDir = app.getPath('userData')
 const bridgeFilePath = join(userDataDir, 'oauth_bridge.tmp')
 
-const gotTheLock = app.requestSingleInstanceLock()
+const isTestMode = process.env.NODE_ENV === 'test'
+const gotTheLock = isTestMode ? true : app.requestSingleInstanceLock()
 
 if (!gotTheLock) {
   // PROCESSO SECUNDÁRIO: Grava a URL no arquivo compartilhado e morre instantaneamente
@@ -462,7 +463,7 @@ if (!gotTheLock) {
     }
 
     const updaterService = new UpdaterService()
-    updaterService.init()
+    if (process.env.NODE_ENV !== 'test') updaterService.init()
 
     const localDataSourceResolver = new DataSourceResolver(
       workspacesRepository,
@@ -570,7 +571,7 @@ if (!gotTheLock) {
       () => createSecondaryWindow(),
     )
     createWindow()
-    createSecondaryWindow()
+    if (process.env.NODE_ENV !== 'test') createSecondaryWindow()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()

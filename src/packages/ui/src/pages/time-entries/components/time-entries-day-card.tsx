@@ -52,10 +52,6 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
     const safeTemp = tempData ?? {}
 
     const persisted: SuggestionRow[] = entries
-      .filter((e) => {
-        const dateStr = e.startDate || e.createdAt
-        return Boolean(dateStr && isSameDay(parseISO(dateStr), day))
-      })
       .map((e) => {
         const changes = safeTemp[e.id] ?? {}
         return {
@@ -64,18 +60,22 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
           isSuggestion: e.timeStatus === 'suggestion',
         }
       })
-
-    const drafts: SuggestionRow[] = draftEntries
-      .filter((d) => {
-        const dateStr = d.startDate || d.createdAt
+      .filter((e) => {
+        const dateStr = e.startDate || e.createdAt
         return Boolean(dateStr && isSameDay(parseISO(dateStr), day))
       })
+
+    const drafts: SuggestionRow[] = draftEntries
       .map((d) => {
         const changes = safeTemp[d.id] ?? {}
         return {
           ...d,
           ...changes,
         }
+      })
+      .filter((d) => {
+        const dateStr = d.startDate || d.createdAt
+        return Boolean(dateStr && isSameDay(parseISO(dateStr), day))
       })
 
     const combined = [...persisted, ...drafts]

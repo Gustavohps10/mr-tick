@@ -9,35 +9,13 @@ import {
   RecordSyncStatus,
   SyncTimeEntryRxDBDTO,
 } from '@/local-db/schemas/time-entries-sync-schema'
-import { SuggestionRow } from '@/pages/time-entries/lib/time-entries-utils'
+import {
+  cleanTaskId,
+  SuggestionRow,
+} from '@/pages/time-entries/lib/time-entries-utils'
 import { useConflictModalStore } from '@/stores/conflictModalStore'
 import { AppDatabase, useSyncStore } from '@/stores/syncStore'
 import { useTimeEntryStore } from '@/stores/timeEntryStore'
-
-const cleanTaskId = (id?: string): string => {
-  if (!id) return ''
-  let trimmed = id.trim()
-  if (
-    trimmed === '# ticket' ||
-    trimmed === '# Ticket' ||
-    trimmed === 'sem-issue' ||
-    trimmed === 'Tarefa' ||
-    trimmed === 'Escolher tarefa' ||
-    trimmed === 'Escolher...'
-  ) {
-    return ''
-  }
-  if (trimmed.startsWith('#')) {
-    trimmed = trimmed.replace(/^#/, '')
-  }
-  if (trimmed.includes('::')) {
-    const parts = trimmed.split('::')
-    if (parts[1]) {
-      trimmed = parts[1]
-    }
-  }
-  return trimmed
-}
 
 export function useTimeEntryMutations(
   db: AppDatabase | null | undefined,
@@ -66,6 +44,7 @@ export function useTimeEntryMutations(
 
   // Stores original document snapshots before direct edits, enabling revert on cancel
   const originalSnapshotsRef = useRef<Record<string, SyncTimeEntryRxDBDTO>>({})
+  const savingRowsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     if (!openAPI?.events?.on) return
@@ -116,7 +95,7 @@ export function useTimeEntryMutations(
 
   const handleDuplicateEntry = useCallback(
     (sourceRow: SuggestionRow) => {
-      const draftId = `temp-draft-${crypto.randomUUID()}`
+      const draftId = crypto.randomUUID()
 
       const rawTaskId = sourceRow.taskData?.sourceId
         ? sourceRow.taskData.sourceId
@@ -200,7 +179,7 @@ export function useTimeEntryMutations(
 
   const handleAddNewEntry = useCallback(
     (day: Date, parentTask?: { id: string }) => {
-      const draftId = `temp-draft-${Date.now()}`
+      const draftId = crypto.randomUUID()
       const startOfDayIso = day.toISOString()
 
       const availableConnKeys = Object.keys(memberIdsByConnection).filter(
@@ -308,11 +287,20 @@ export function useTimeEntryMutations(
           setActive(revertedJson)
         }
 
-        openAPI.events?.emit?.('time-entry:sync', revertedJson)
+        queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
+          { queryKey: ['time-entries-range'] },
+          (previous) => {
+            if (!previous) return [revertedJson]
+            return previous.map((item) => {
+              if (item.id === revertedJson.id || item.id === rowId) {
+                return revertedJson
+              }
+              return item
+            })
+          },
+        )
 
-        await queryClient.invalidateQueries({
-          queryKey: ['time-entries-range'],
-        })
+        openAPI.events?.emit?.('time-entry:sync', revertedJson)
       } catch (err) {
         console.error('Erro ao reverter edição:', err)
       } finally {
@@ -331,325 +319,375 @@ export function useTimeEntryMutations(
   const handleSaveRow = useCallback(
     async (rowUid: string) => {
       if (!db) return
+      if (savingRowsRef.current.has(rowUid)) return
 
-      const isDraft = draftEntriesRef.current.some((d) => d.id === rowUid)
+      savingRowsRef.current.add(rowUid)
+      try {
+        const isDraft = draftEntriesRef.current.some((d) => d.id === rowUid)
 
-      if (isDraft) {
-        const draft = draftEntriesRef.current.find((d) => d.id === rowUid)
-        if (!draft) return
+        if (isDraft) {
+          const draft = draftEntriesRef.current.find((d) => d.id === rowUid)
+          if (!draft) return
 
-        let changes: Partial<SyncTimeEntryRxDBDTO> = {}
+          let changes: Partial<SyncTimeEntryRxDBDTO> = {}
+          if (tempDataRef.current[rowUid]) {
+            changes = tempDataRef.current[rowUid]
+          } else if (tempDataRef.current[draft.id]) {
+            changes = tempDataRef.current[draft.id]
+          }
+
+          const id = draft.id
+          const now = new Date().toISOString()
+
+          let resolvedTaskData: SyncTaskRxDBDTO | undefined = undefined
+          if (changes.taskData) {
+            resolvedTaskData = changes.taskData
+          } else if (draft.taskData) {
+            resolvedTaskData = draft.taskData
+          }
+
+          let connId = ''
+          if (changes.connectionInstanceId) {
+            connId = changes.connectionInstanceId
+          } else if (resolvedTaskData?.connectionInstanceId) {
+            connId = resolvedTaskData.connectionInstanceId
+          } else if (draft.connectionInstanceId) {
+            connId = draft.connectionInstanceId
+          } else {
+            const availableConnKeys = Object.keys(memberIdsByConnection)
+            if (availableConnKeys.length > 0) {
+              connId = availableConnKeys[0]
+            }
+          }
+
+          let dsId = 'default'
+          if (changes.dataSourceId) {
+            dsId = changes.dataSourceId
+          } else if (resolvedTaskData?.dataSourceId) {
+            dsId = resolvedTaskData.dataSourceId
+          } else if (draft.dataSourceId) {
+            dsId = draft.dataSourceId
+          }
+
+          let memberId = 'local-user'
+          if (connId && memberIdsByConnection[connId]) {
+            memberId = memberIdsByConnection[connId]
+          } else if (draft.user?.id) {
+            memberId = draft.user.id
+          }
+
+          let rawTaskId = ''
+          if (changes.taskData?.sourceId) {
+            rawTaskId = changes.taskData.sourceId
+          } else if (changes.task?.id) {
+            rawTaskId = changes.task.id
+          } else if (draft.taskData?.sourceId) {
+            rawTaskId = draft.taskData.sourceId
+          } else if (draft.task?.id) {
+            rawTaskId = draft.task.id
+          }
+          const sanitizedTaskId = cleanTaskId(rawTaskId)
+
+          let activityId = ''
+          let activityName: string | undefined = undefined
+          if (changes.activity?.id) {
+            activityId = changes.activity.id
+            activityName = changes.activity.name
+          } else if (draft.activity?.id) {
+            activityId = draft.activity.id
+            activityName = draft.activity.name
+          }
+
+          const isRemoteCandidate = Boolean(
+            sanitizedTaskId &&
+            connId &&
+            connId !== '0' &&
+            activityId &&
+            activityId.trim() !== '',
+          )
+
+          let resolvedStartDate = now
+          if (changes.startDate) {
+            resolvedStartDate = changes.startDate
+          } else if (draft.startDate) {
+            resolvedStartDate = draft.startDate
+          }
+
+          let resolvedTimeSpent = 0
+          if (changes.timeSpent !== undefined) {
+            resolvedTimeSpent = changes.timeSpent
+          } else if (draft.timeSpent !== undefined) {
+            resolvedTimeSpent = draft.timeSpent
+          }
+
+          let resolvedEndDate = changes.endDate
+          if (!resolvedEndDate && draft.endDate) {
+            resolvedEndDate = draft.endDate
+          }
+
+          if (resolvedTimeSpent <= 0) {
+            toast.error('A duração do apontamento deve ser maior que 0')
+            return
+          }
+
+          const startDateObj = parseISO(resolvedStartDate)
+          if (!resolvedEndDate || resolvedEndDate === resolvedStartDate) {
+            resolvedEndDate = addSeconds(
+              startDateObj,
+              Math.round(resolvedTimeSpent * 3600),
+            ).toISOString()
+          }
+
+          let resolvedComments = ''
+          if (changes.comments !== undefined) {
+            resolvedComments = changes.comments
+          } else if (draft.comments !== undefined) {
+            resolvedComments = draft.comments
+          }
+
+          const newEntry: SyncTimeEntryRxDBDTO = {
+            id,
+            dataSourceId: dsId,
+            connectionInstanceId: connId,
+            syncStatus: isRemoteCandidate ? 'pending_push' : 'local_only',
+            syncError: null,
+            remoteId: null,
+            lastPulledAt: null,
+            lastPushedAt: null,
+            task: { id: sanitizedTaskId },
+            taskData: resolvedTaskData,
+            activity: { id: activityId, name: activityName },
+            user: { id: memberId, name: draft.user?.name },
+            startDate: resolvedStartDate,
+            endDate: resolvedEndDate,
+            timeSpent: resolvedTimeSpent,
+            comments: resolvedComments,
+            timeStatus: 'finished',
+            type: 'manual',
+            createdAt: now,
+            updatedAt: now,
+            _deleted: false,
+          }
+
+          await db.timeEntries.insert(newEntry)
+
+          // Injeta a nova entidade persistida no cache da query ANTES de remover o rascunho
+          queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
+            { queryKey: ['time-entries-range'] },
+            (previous) => {
+              if (!previous) return [newEntry]
+              const exists = previous.some((item) => item.id === newEntry.id)
+              if (exists) {
+                return previous.map((item) =>
+                  item.id === newEntry.id ? newEntry : item,
+                )
+              }
+              return [newEntry, ...previous]
+            },
+          )
+
+          setDraftEntries((prev) => prev.filter((d) => d.id !== rowUid))
+          setEditingRows((prev) => {
+            const next = { ...prev }
+            delete next[rowUid]
+            delete next[draft.id]
+            return next
+          })
+          setTempData((prev) => {
+            const next = { ...prev }
+            delete next[rowUid]
+            delete next[draft.id]
+            return next
+          })
+
+          if (
+            forceSync &&
+            newEntry.connectionInstanceId &&
+            newEntry.syncStatus === 'pending_push'
+          ) {
+            forceSync(newEntry.connectionInstanceId, 'push').catch((err) => {
+              console.error('Erro ao sincronizar novo apontamento:', err)
+            })
+          }
+
+          openAPI.events?.emit?.('time-entry:sync', newEntry)
+          toast.success('Registro salvo com sucesso!')
+          return
+        }
+
+        // Persisted row update
+        const doc = await db.timeEntries.findOne(rowUid).exec()
+
+        if (!doc) {
+          toast.error('Apontamento não encontrado para salvar')
+          return
+        }
+
+        const docJson = doc.toMutableJSON()
+        let rawChanges: Partial<SyncTimeEntryRxDBDTO> = {}
         if (tempDataRef.current[rowUid]) {
-          changes = tempDataRef.current[rowUid]
-        } else if (tempDataRef.current[draft.id]) {
-          changes = tempDataRef.current[draft.id]
+          rawChanges = tempDataRef.current[rowUid]
+        } else if (tempDataRef.current[docJson.id]) {
+          rawChanges = tempDataRef.current[docJson.id]
         }
 
-        const id = crypto.randomUUID()
-        const now = new Date().toISOString()
-
-        let resolvedTaskData: SyncTaskRxDBDTO | undefined = undefined
-        if (changes.taskData) {
-          resolvedTaskData = changes.taskData
-        } else if (draft.taskData) {
-          resolvedTaskData = draft.taskData
-        }
-
-        let connId = ''
-        if (changes.connectionInstanceId) {
-          connId = changes.connectionInstanceId
-        } else if (resolvedTaskData?.connectionInstanceId) {
-          connId = resolvedTaskData.connectionInstanceId
-        } else if (draft.connectionInstanceId) {
-          connId = draft.connectionInstanceId
-        } else {
-          const availableConnKeys = Object.keys(memberIdsByConnection)
-          if (availableConnKeys.length > 0) {
-            connId = availableConnKeys[0]
+        const changes = { ...rawChanges }
+        if (changes.taskData?.sourceId) {
+          changes.task = {
+            ...changes.task,
+            id: cleanTaskId(changes.taskData.sourceId),
+          }
+        } else if (changes.task?.id !== undefined) {
+          changes.task = {
+            ...changes.task,
+            id: cleanTaskId(changes.task.id),
           }
         }
 
-        let dsId = 'default'
-        if (changes.dataSourceId) {
-          dsId = changes.dataSourceId
-        } else if (resolvedTaskData?.dataSourceId) {
-          dsId = resolvedTaskData.dataSourceId
-        } else if (draft.dataSourceId) {
-          dsId = draft.dataSourceId
-        }
-
-        let memberId = 'local-user'
-        if (connId && memberIdsByConnection[connId]) {
-          memberId = memberIdsByConnection[connId]
-        } else if (draft.user?.id) {
-          memberId = draft.user.id
-        }
-
-        let rawTaskId = ''
-        if (changes.taskData?.sourceId) {
-          rawTaskId = changes.taskData.sourceId
-        } else if (changes.task?.id) {
-          rawTaskId = changes.task.id
-        } else if (draft.taskData?.sourceId) {
-          rawTaskId = draft.taskData.sourceId
-        } else if (draft.task?.id) {
-          rawTaskId = draft.task.id
-        }
-        const sanitizedTaskId = cleanTaskId(rawTaskId)
-
-        let activityId = ''
-        let activityName: string | undefined = undefined
-        if (changes.activity?.id) {
-          activityId = changes.activity.id
-          activityName = changes.activity.name
-        } else if (draft.activity?.id) {
-          activityId = draft.activity.id
-          activityName = draft.activity.name
-        }
-
-        const isRemoteCandidate = Boolean(
-          sanitizedTaskId &&
-          connId &&
-          connId !== '0' &&
-          activityId &&
-          activityId.trim() !== '',
-        )
-
-        let resolvedStartDate = now
-        if (changes.startDate) {
-          resolvedStartDate = changes.startDate
-        } else if (draft.startDate) {
-          resolvedStartDate = draft.startDate
-        }
-
-        let resolvedTimeSpent = 0
-        if (changes.timeSpent !== undefined) {
-          resolvedTimeSpent = changes.timeSpent
-        } else if (draft.timeSpent !== undefined) {
-          resolvedTimeSpent = draft.timeSpent
-        }
-
-        let resolvedEndDate = changes.endDate
-        if (!resolvedEndDate && draft.endDate) {
-          resolvedEndDate = draft.endDate
-        }
-
-        if (resolvedTimeSpent <= 0) {
+        const finalTimeSpent =
+          changes.timeSpent !== undefined
+            ? changes.timeSpent
+            : docJson.timeSpent
+        if (finalTimeSpent <= 0) {
           toast.error('A duração do apontamento deve ser maior que 0')
           return
         }
 
-        const startDateObj = parseISO(resolvedStartDate)
-        if (!resolvedEndDate || resolvedEndDate === resolvedStartDate) {
-          resolvedEndDate = addSeconds(
-            startDateObj,
-            Math.round(resolvedTimeSpent * 3600),
-          ).toISOString()
+        const isSuggestion = docJson.timeStatus === 'suggestion'
+        let nextTimeStatus = docJson.timeStatus
+        if (isSuggestion) nextTimeStatus = 'finished'
+        if (!isSuggestion && changes.timeStatus)
+          nextTimeStatus = changes.timeStatus
+
+        let finalTaskId = ''
+        if (changes.task?.id !== undefined) finalTaskId = changes.task.id
+        if (changes.task?.id === undefined && docJson.task?.id)
+          finalTaskId = docJson.task.id
+
+        const isLinkedToRemote = Boolean(
+          (docJson.remoteId &&
+            docJson.remoteId.trim() !== '' &&
+            !docJson.remoteId.startsWith('local-')) ||
+          docJson.syncStatus === 'synced',
+        )
+
+        if (isLinkedToRemote) {
+          if (changes.task?.id !== undefined && !cleanTaskId(changes.task.id)) {
+            toast.error('Registros remotos não podem ficar sem tarefa')
+            return
+          }
+          if (
+            changes.activity?.id !== undefined &&
+            !changes.activity.id.trim()
+          ) {
+            toast.error('Registros remotos não podem ficar sem atividade')
+            return
+          }
         }
 
-        let resolvedComments = ''
-        if (changes.comments !== undefined) {
-          resolvedComments = changes.comments
-        } else if (draft.comments !== undefined) {
-          resolvedComments = draft.comments
+        let finalActivityId = ''
+        if (changes.activity?.id !== undefined)
+          finalActivityId = changes.activity.id
+        if (changes.activity?.id === undefined && docJson.activity?.id)
+          finalActivityId = docJson.activity.id
+
+        const targetConnId = changes.connectionInstanceId
+          ? changes.connectionInstanceId
+          : docJson.connectionInstanceId
+
+        const isRemoteCandidate = Boolean(
+          finalTaskId &&
+          targetConnId &&
+          targetConnId !== '0' &&
+          finalActivityId &&
+          finalActivityId.trim() !== '',
+        )
+        let nextSyncStatus: RecordSyncStatus = isRemoteCandidate
+          ? 'pending_push'
+          : 'local_only'
+        if (docJson.syncStatus === 'conflict') {
+          nextSyncStatus = 'conflict'
         }
 
-        const newEntry: SyncTimeEntryRxDBDTO = {
-          id,
-          dataSourceId: dsId,
-          connectionInstanceId: connId,
-          syncStatus: isRemoteCandidate ? 'pending_push' : 'local_only',
+        if (
+          changes.connectionInstanceId &&
+          changes.connectionInstanceId !== docJson.connectionInstanceId
+        ) {
+          changes.remoteId = null
+        }
+
+        const updated = await doc.incrementalPatch({
+          ...changes,
+          timeStatus: nextTimeStatus,
+          syncStatus: nextSyncStatus,
           syncError: null,
-          remoteId: null,
-          lastPulledAt: null,
-          lastPushedAt: null,
-          task: { id: sanitizedTaskId },
-          taskData: resolvedTaskData,
-          activity: { id: activityId, name: activityName },
-          user: { id: memberId, name: draft.user?.name },
-          startDate: resolvedStartDate,
-          endDate: resolvedEndDate,
-          timeSpent: resolvedTimeSpent,
-          comments: resolvedComments,
-          timeStatus: 'finished',
-          type: 'manual',
-          createdAt: now,
-          updatedAt: now,
-          _deleted: false,
+          updatedAt: new Date().toISOString(),
+        })
+        const updatedJson = updated.toMutableJSON()
+        toast.success(
+          isSuggestion ? 'Sugestão confirmada e salva!' : 'Alterações salvas',
+        )
+
+        if (
+          forceSync &&
+          updatedJson.connectionInstanceId &&
+          updatedJson.syncStatus === 'pending_push'
+        ) {
+          forceSync(updatedJson.connectionInstanceId, 'push').catch((err) => {
+            console.error('Erro ao sincronizar apontamento atualizado:', err)
+          })
         }
 
-        await db.timeEntries.insert(newEntry)
+        // Sincroniza a store local e via IPC para todas as janelas
+        const isCurrentActive =
+          activeTimeEntry &&
+          (activeTimeEntry.id === updatedJson.id ||
+            activeTimeEntry.id === rowUid)
 
-        setDraftEntries((prev) => prev.filter((d) => d.id !== rowUid))
+        if (isCurrentActive) {
+          if (updatedJson.timeStatus === 'finished') clearActive()
+          if (updatedJson.timeStatus !== 'finished') setActive(updatedJson)
+        }
+
+        openAPI.events?.emit?.('time-entry:sync', updatedJson)
+
+        // Injeta a atualização no cache do TanStack Query ANTES de limpar tempData
+        queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
+          { queryKey: ['time-entries-range'] },
+          (previous) => {
+            if (!previous) return [updatedJson]
+            return previous.map((item) => {
+              if (
+                item.id === updatedJson.id ||
+                item.id === rowUid ||
+                item.id === docJson.id
+              ) {
+                return updatedJson
+              }
+              return item
+            })
+          },
+        )
+
         setEditingRows((prev) => {
           const next = { ...prev }
           delete next[rowUid]
-          delete next[draft.id]
+          delete next[docJson.id]
           return next
         })
         setTempData((prev) => {
           const next = { ...prev }
           delete next[rowUid]
-          delete next[draft.id]
+          delete next[docJson.id]
           return next
         })
-        await queryClient.invalidateQueries({
-          queryKey: ['time-entries-range'],
-        })
-        toast.success('Registro salvo com sucesso!')
-        return
+
+        // Clean up snapshot on successful save
+        delete originalSnapshotsRef.current[rowUid]
+        delete originalSnapshotsRef.current[docJson.id]
+      } finally {
+        savingRowsRef.current.delete(rowUid)
       }
-
-      // Persisted row update
-      const doc = await db.timeEntries.findOne(rowUid).exec()
-
-      if (!doc) {
-        toast.error('Apontamento não encontrado para salvar')
-        return
-      }
-
-      const docJson = doc.toMutableJSON()
-      let rawChanges: Partial<SyncTimeEntryRxDBDTO> = {}
-      if (tempDataRef.current[rowUid]) {
-        rawChanges = tempDataRef.current[rowUid]
-      } else if (tempDataRef.current[docJson.id]) {
-        rawChanges = tempDataRef.current[docJson.id]
-      }
-
-      const changes = { ...rawChanges }
-      if (changes.taskData?.sourceId) {
-        changes.task = {
-          ...changes.task,
-          id: cleanTaskId(changes.taskData.sourceId),
-        }
-      } else if (changes.task?.id !== undefined) {
-        changes.task = {
-          ...changes.task,
-          id: cleanTaskId(changes.task.id),
-        }
-      }
-
-      const finalTimeSpent =
-        changes.timeSpent !== undefined ? changes.timeSpent : docJson.timeSpent
-      if (finalTimeSpent <= 0) {
-        toast.error('A duração do apontamento deve ser maior que 0')
-        return
-      }
-
-      const isSuggestion = docJson.timeStatus === 'suggestion'
-      let nextTimeStatus = docJson.timeStatus
-      if (isSuggestion) nextTimeStatus = 'finished'
-      if (!isSuggestion && changes.timeStatus)
-        nextTimeStatus = changes.timeStatus
-
-      let finalTaskId = ''
-      if (changes.task?.id !== undefined) finalTaskId = changes.task.id
-      if (changes.task?.id === undefined && docJson.task?.id)
-        finalTaskId = docJson.task.id
-
-      let finalActivityId = ''
-      if (changes.activity?.id !== undefined)
-        finalActivityId = changes.activity.id
-      if (changes.activity?.id === undefined && docJson.activity?.id)
-        finalActivityId = docJson.activity.id
-
-      const targetConnId = changes.connectionInstanceId
-        ? changes.connectionInstanceId
-        : docJson.connectionInstanceId
-
-      const isRemoteCandidate = Boolean(
-        finalTaskId &&
-        targetConnId &&
-        targetConnId !== '0' &&
-        finalActivityId &&
-        finalActivityId.trim() !== '',
-      )
-      let nextSyncStatus: RecordSyncStatus = isRemoteCandidate
-        ? 'pending_push'
-        : 'local_only'
-      if (docJson.syncStatus === 'conflict') {
-        nextSyncStatus = 'conflict'
-      }
-
-      if (
-        changes.connectionInstanceId &&
-        changes.connectionInstanceId !== docJson.connectionInstanceId
-      ) {
-        changes.remoteId = null
-      }
-
-      const updated = await doc.incrementalPatch({
-        ...changes,
-        timeStatus: nextTimeStatus,
-        syncStatus: nextSyncStatus,
-        syncError: null,
-        updatedAt: new Date().toISOString(),
-      })
-      const updatedJson = updated.toMutableJSON()
-      toast.success(
-        isSuggestion ? 'Sugestão confirmada e salva!' : 'Alterações salvas',
-      )
-
-      if (
-        forceSync &&
-        updatedJson.connectionInstanceId &&
-        updatedJson.syncStatus === 'pending_push'
-      ) {
-        forceSync(updatedJson.connectionInstanceId, 'push').catch((err) => {
-          console.error('Erro ao sincronizar apontamento atualizado:', err)
-        })
-      }
-
-      // Sincroniza a store local e via IPC para todas as janelas
-      const isCurrentActive =
-        activeTimeEntry &&
-        (activeTimeEntry.id === updatedJson.id || activeTimeEntry.id === rowUid)
-
-      if (isCurrentActive) {
-        if (updatedJson.timeStatus === 'finished') clearActive()
-        if (updatedJson.timeStatus !== 'finished') setActive(updatedJson)
-      }
-
-      openAPI.events?.emit?.('time-entry:sync', updatedJson)
-
-      setEditingRows((prev) => {
-        const next = { ...prev }
-        delete next[rowUid]
-        delete next[docJson.id]
-        return next
-      })
-      setTempData((prev) => {
-        const next = { ...prev }
-        delete next[rowUid]
-        delete next[docJson.id]
-        return next
-      })
-
-      // Clean up snapshot on successful save
-      delete originalSnapshotsRef.current[rowUid]
-      delete originalSnapshotsRef.current[docJson.id]
-
-      queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
-        { queryKey: ['time-entries-range'] },
-        (previous) => {
-          if (!previous) return previous
-          return previous.map((item) => {
-            if (
-              item.id === updatedJson.id ||
-              item.id === rowUid ||
-              item.id === docJson.id
-            ) {
-              return updatedJson
-            }
-            return item
-          })
-        },
-      )
-
-      await queryClient.invalidateQueries({
-        queryKey: ['time-entries-range'],
-        refetchType: 'all',
-      })
     },
     [
       db,
@@ -689,10 +727,17 @@ export function useTimeEntryMutations(
         openAPI.events?.emit?.('time-entry:sync', null)
       }
 
+      queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
+        { queryKey: ['time-entries-range'] },
+        (previous) => {
+          if (!previous) return []
+          return previous.filter(
+            (item) => item.id !== docJson.id && item.id !== id,
+          )
+        },
+      )
+
       toast.success('Registro removido')
-      await queryClient.invalidateQueries({
-        queryKey: ['time-entries-range'],
-      })
     },
     [db, queryClient, openAPI, activeTimeEntry, clearActive],
   )
@@ -718,7 +763,17 @@ export function useTimeEntryMutations(
           updatedAt: new Date().toISOString(),
         })
         const updatedJson = updated.toMutableJSON()
-        toast.success('Sugestão confirmada e adicionada aos apontamentos!')
+        queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
+          { queryKey: ['time-entries-range'] },
+          (previous) => {
+            if (!previous) return [updatedJson]
+            return previous.map((item) =>
+              item.id === updatedJson.id || item.id === row.id
+                ? updatedJson
+                : item,
+            )
+          },
+        )
 
         setEditingRows((prev) => {
           const next = { ...prev }
@@ -729,9 +784,6 @@ export function useTimeEntryMutations(
           const next = { ...prev }
           delete next[row.id]
           return next
-        })
-        await queryClient.invalidateQueries({
-          queryKey: ['time-entries-range'],
         })
         openAPI.events?.emit?.('time-entry:sync', updatedJson)
       } catch (err) {
@@ -750,6 +802,15 @@ export function useTimeEntryMutations(
         if (doc) {
           await doc.getLatest().remove()
           toast.info('Sugestão descartada')
+
+          queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
+            { queryKey: ['time-entries-range'] },
+            (previous) => {
+              if (!previous) return []
+              return previous.filter((item) => item.id !== id)
+            },
+          )
+
           setEditingRows((prev) => {
             const next = { ...prev }
             delete next[id]
@@ -759,9 +820,6 @@ export function useTimeEntryMutations(
             const next = { ...prev }
             delete next[id]
             return next
-          })
-          await queryClient.invalidateQueries({
-            queryKey: ['time-entries-range'],
           })
         } else {
           console.warn('Sugestão não encontrada para remoção:', id)
@@ -810,6 +868,30 @@ export function useTimeEntryMutations(
           // Capture original snapshot before the first edit
           if (!originalSnapshotsRef.current[rowId]) {
             originalSnapshotsRef.current[rowId] = doc.toMutableJSON()
+          }
+
+          const isLinkedToRemote = Boolean(
+            (doc.remoteId &&
+              doc.remoteId.trim() !== '' &&
+              !doc.remoteId.startsWith('local-')) ||
+            doc.syncStatus === 'synced',
+          )
+
+          if (isLinkedToRemote) {
+            if (
+              updates.task?.id !== undefined &&
+              !cleanTaskId(updates.task.id)
+            ) {
+              toast.error('Registros remotos não podem ficar sem tarefa')
+              return
+            }
+            if (
+              updates.activity?.id !== undefined &&
+              !updates.activity.id.trim()
+            ) {
+              toast.error('Registros remotos não podem ficar sem atividade')
+              return
+            }
           }
 
           let targetTaskId = ''
@@ -870,9 +952,10 @@ export function useTimeEntryMutations(
             },
           )
 
-          await queryClient.invalidateQueries({
-            queryKey: ['time-entries-range'],
-            refetchType: 'all',
+          setTempData((prev) => {
+            const next = { ...prev }
+            delete next[rowId]
+            return next
           })
 
           openAPI.events?.emit?.('time-entry:sync', updatedJson)

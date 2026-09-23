@@ -56,7 +56,6 @@ export class TimeEntriesReplication implements IReplicationStrategy<
   ReplicationCheckpoint
 > {
   private readonly inFlightPushDocIds = new Set<string>()
-  private readonly lastPushedDocTimestamps = new Map<string, number>()
 
   constructor(
     private client: IOpenAPI,
@@ -85,6 +84,12 @@ export class TimeEntriesReplication implements IReplicationStrategy<
       },
     })
 
+    if (!res.isSuccess) {
+      const err = new Error(res.error ? String(res.error) : 'SYNC_PULL_FAILED')
+      Object.assign(err, { statusCode: res.statusCode, status: res.statusCode })
+      throw err
+    }
+
     const data: TimeEntryViewModel[] = res.data ? res.data : []
     if (data.length === 0) {
       if (checkpoint) {
@@ -112,10 +117,12 @@ export class TimeEntriesReplication implements IReplicationStrategy<
       : []
 
     const existingByRemoteId = new Map<string, SyncTimeEntryRxDBDTO>()
+    const existingByDocId = new Map<string, SyncTimeEntryRxDBDTO>()
     const seenRemoteIds = new Set<string>()
 
     for (const doc of existingDocs) {
       const docData = doc.toMutableJSON()
+      existingByDocId.set(docData.id, docData)
       if (!docData.remoteId) continue
       if (seenRemoteIds.has(docData.remoteId)) {
         await doc.remove()
@@ -129,22 +136,47 @@ export class TimeEntriesReplication implements IReplicationStrategy<
 
     for (const item of data) {
       const remoteId = String(item.id)
-      const existingLocalDoc = existingByRemoteId.get(remoteId)
+
+      // Primary lookup: match by remoteId field
+      let existingLocalDoc = existingByRemoteId.get(remoteId)
+
+      // Secondary lookup: remote entry id matches a local doc's own id.
+      // Covers the race where push hasn't set remoteId yet but the server
+      // already stored the entry under the local UUID.
+      if (!existingLocalDoc) {
+        const byDocId = existingByDocId.get(remoteId)
+        if (byDocId) existingLocalDoc = byDocId
+      }
+
+      // Tertiary lookup: match unlinked pending_push document with identical task and start date
+      if (!existingLocalDoc) {
+        const itemStartDate = dateToISO(item.startDate)
+        const pendingMatch = existingDocs.find((d) => {
+          const dData = d.toMutableJSON()
+          if (dData.remoteId) return false
+          if (dData.syncStatus !== 'pending_push') return false
+          const taskMatch =
+            dData.task?.id && item.task?.id && dData.task.id === item.task.id
+          const dateMatch =
+            dData.startDate &&
+            itemStartDate &&
+            dData.startDate === itemStartDate
+          return Boolean(taskMatch && dateMatch)
+        })
+        if (pendingMatch) existingLocalDoc = pendingMatch.toMutableJSON()
+      }
 
       let docId: string = crypto.randomUUID()
 
       if (existingLocalDoc) {
         if (existingLocalDoc.syncStatus === 'conflict') continue
-        if (existingLocalDoc.syncStatus === 'pending_push') continue
+        if (
+          existingLocalDoc.syncStatus === 'pending_push' &&
+          existingLocalDoc.remoteId
+        ) {
+          continue
+        }
         if (existingLocalDoc.syncStatus === 'local_only') continue
-
-        const parsedUpdatedAt = dateToISO(item.updatedAt)
-        const remoteUpdatedTime = parsedUpdatedAt
-          ? new Date(parsedUpdatedAt).getTime()
-          : 0
-        const localUpdatedTime = new Date(existingLocalDoc.updatedAt).getTime()
-
-        if (localUpdatedTime > remoteUpdatedTime) continue
 
         docId = existingLocalDoc.id
       }
@@ -262,11 +294,6 @@ export class TimeEntriesReplication implements IReplicationStrategy<
       )
         continue
 
-      const lastPushTime = this.lastPushedDocTimestamps.get(doc.id)
-      if (lastPushTime && Date.now() - lastPushTime < 3000 && !doc._deleted) {
-        continue
-      }
-
       if (this.collection) {
         const liveDoc = await this.collection.findOne(doc.id).exec()
         if (!liveDoc && !doc._deleted) continue
@@ -277,6 +304,9 @@ export class TimeEntriesReplication implements IReplicationStrategy<
           }
           if (!doc.remoteId && liveData.remoteId) {
             doc.remoteId = liveData.remoteId
+          }
+          if (!doc.conflictData && liveData.conflictData) {
+            doc.conflictData = liveData.conflictData
           }
         }
       }
@@ -314,21 +344,50 @@ export class TimeEntriesReplication implements IReplicationStrategy<
           updatedAt: new Date(doc.updatedAt),
         }
 
-        if (assumedState) {
+        const serverConflictState = doc.conflictData?.server
+        if (serverConflictState) {
+          let assumedId = serverConflictState.id
+            ? serverConflictState.id
+            : doc.id
+          if (doc.remoteId) {
+            assumedId = doc.remoteId
+          }
+          const serverUpdated = serverConflictState.updatedAt
+            ? new Date(serverConflictState.updatedAt)
+            : new Date(doc.updatedAt)
+
+          entry.assumedMasterState = {
+            id: assumedId,
+            task: serverConflictState.task
+              ? { id: serverConflictState.task.id }
+              : { id: doc.task.id },
+            activity: serverConflictState.activity
+              ? {
+                  id: serverConflictState.activity.id,
+                  name: serverConflictState.activity.name,
+                }
+              : { id: doc.activity.id, name: doc.activity.name },
+            user: { id: doc.user.id, name: doc.user.name },
+            timeSpent:
+              serverConflictState.timeSpent !== undefined
+                ? serverConflictState.timeSpent
+                : doc.timeSpent,
+            comments: serverConflictState.comments,
+            startDate: serverConflictState.startDate
+              ? new Date(serverConflictState.startDate)
+              : undefined,
+            endDate: serverConflictState.endDate
+              ? new Date(serverConflictState.endDate)
+              : undefined,
+            createdAt: new Date(doc.createdAt),
+            updatedAt: serverUpdated,
+          }
+        } else if (assumedState) {
           let assumedId = assumedState.id
           if (assumedState.remoteId) {
             assumedId = assumedState.remoteId
           }
-          let assumedUpdatedAt = new Date(assumedState.updatedAt)
-          if (doc.lastPulledAt) {
-            const pulledDate = new Date(doc.lastPulledAt)
-            if (
-              !Number.isNaN(pulledDate.getTime()) &&
-              pulledDate.getTime() > assumedUpdatedAt.getTime()
-            ) {
-              assumedUpdatedAt = pulledDate
-            }
-          }
+          const assumedUpdatedAt = new Date(assumedState.updatedAt)
 
           entry.assumedMasterState = {
             id: assumedId,
@@ -362,6 +421,17 @@ export class TimeEntriesReplication implements IReplicationStrategy<
           entries,
         },
       })
+
+      if (!res.isSuccess) {
+        const err = new Error(
+          res.error ? String(res.error) : 'SYNC_PUSH_FAILED',
+        )
+        Object.assign(err, {
+          statusCode: res.statusCode,
+          status: res.statusCode,
+        })
+        throw err
+      }
 
       const serverItems = res.data ? res.data : []
       const nowIso = new Date().toISOString()
@@ -459,13 +529,12 @@ export class TimeEntriesReplication implements IReplicationStrategy<
             await localDoc.incrementalPatch({
               remoteId: finalRemoteId,
               syncStatus: 'synced',
+              conflictData: undefined,
               lastPushedAt: nowIso,
               lastPulledAt: finalUpdatedAt,
               updatedAt: finalUpdatedAt,
               syncError: null,
             })
-
-            this.lastPushedDocTimestamps.set(docId, Date.now())
           }
         }
       }

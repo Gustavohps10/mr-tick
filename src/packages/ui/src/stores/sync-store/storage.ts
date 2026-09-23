@@ -1,4 +1,4 @@
-import { addRxPlugin, createRxDatabase, RXDB_VERSION } from 'rxdb'
+import { addRxPlugin, createRxDatabase, RXDB_VERSION, RxError } from 'rxdb'
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { getRxStorageMemory } from 'rxdb/plugins/storage-memory'
 import { wrappedValidateAjvStorage } from 'rxdb/plugins/validate-ajv'
@@ -24,6 +24,13 @@ const shouldForceRxDBDebug = (): boolean => {
   } catch {
     return false
   }
+}
+
+export const isDb6Error = (error: Error): boolean => {
+  if (error instanceof RxError && error.code === 'DB6') return true
+  if ('code' in error && error.code === 'DB6') return true
+  if (error.message.includes('DB6')) return true
+  return false
 }
 
 // --- PLUGINS INIT (Executado apenas 1x globalmente) ---
@@ -225,6 +232,17 @@ export const getOrCreateDatabase = async (
       } catch {
         // Ignora erro ao fechar após falha
       }
+
+      if (colErr instanceof Error && isDb6Error(colErr)) {
+        console.warn(
+          '[SYNC][db] Schema incompatível detectado (DB6). Deletando banco desatualizado e recriando...',
+          dbName,
+        )
+        dbPromiseCache.delete(dbName)
+        await dropAppStorage(dbName)
+        return getOrCreateDatabase(workspaceId, isDevelopment, useMemoryStorage)
+      }
+
       throw colErr
     }
 

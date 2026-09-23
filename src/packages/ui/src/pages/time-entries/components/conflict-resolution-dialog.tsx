@@ -250,7 +250,6 @@ export function GlobalConflictResolutionDialog() {
         selection.activity === 'local'
 
       const updatedDoc = await doc.incrementalModify((draft) => {
-        draft.conflictData = undefined
         draft.timeSpent = chosenDuration
         draft.comments = chosenComments
 
@@ -273,6 +272,7 @@ export function GlobalConflictResolutionDialog() {
           draft.syncStatus = 'pending_push'
         } else {
           draft.syncStatus = 'synced'
+          draft.conflictData = undefined
         }
         draft.updatedAt = new Date().toISOString()
         return draft

@@ -210,15 +210,8 @@ export function getActivityIcon(
 
 export function hasNoTask(item?: Partial<SuggestionRow> | null): boolean {
   if (!item) return true
-  const taskId = item.task?.id
-  return (
-    !taskId ||
-    taskId.trim() === '' ||
-    taskId === '# ticket' ||
-    taskId === '# Ticket' ||
-    taskId === 'sem-issue' ||
-    taskId === 'Tarefa'
-  )
+  const pureId = extractPureTaskId(item.task?.id)
+  return pureId === ''
 }
 
 export function getItemDateIso(item?: Partial<SuggestionRow> | null): string {
@@ -239,25 +232,21 @@ export function getItemDateIso(item?: Partial<SuggestionRow> | null): string {
 
 export function sortSubRows(items: SuggestionRow[]): SuggestionRow[] {
   return [...items].sort((a, b) => {
-    // 1. Drafts always at the very bottom/end of the group
-    if (a.isDraft && !b.isDraft) return 1
-    if (!a.isDraft && b.isDraft) return -1
-
-    // 2. Running timers always at the top of the group
+    // 1. Running timers always at the top of the group
     if (a.timeStatus === 'running' && b.timeStatus !== 'running') return -1
     if (a.timeStatus !== 'running' && b.timeStatus === 'running') return 1
 
-    // 3. Paused timers second (top priority)
+    // 2. Paused timers second (top priority)
     if (a.timeStatus === 'paused' && b.timeStatus !== 'paused') return -1
     if (a.timeStatus !== 'paused' && b.timeStatus === 'paused') return 1
 
-    // 4. Unassigned tasks at the top
+    // 3. Unassigned tasks at the top
     const aNoTask = hasNoTask(a)
     const bNoTask = hasNoTask(b)
     if (aNoTask && !bNoTask) return -1
     if (!aNoTask && bNoTask) return 1
 
-    // 5. Date descending
+    // 4. Date descending
     const aDate = new Date(getItemDateIso(a)).getTime()
     const bDate = new Date(getItemDateIso(b)).getTime()
     return bDate - aDate
@@ -276,17 +265,13 @@ export function sortFlatEntries(data: SuggestionRow[]): SuggestionRow[] {
       if (a.timeStatus === 'paused' && b.timeStatus !== 'paused') return -1
       if (a.timeStatus !== 'paused' && b.timeStatus === 'paused') return 1
 
-      // 3. Drafts always at the very bottom of the table
-      if (a.isDraft && !b.isDraft) return 1
-      if (!a.isDraft && b.isDraft) return -1
-
-      // 4. Unassigned tasks AT THE TOP
+      // 3. Unassigned tasks AT THE TOP
       const aNoTask = hasNoTask(a)
       const bNoTask = hasNoTask(b)
       if (aNoTask && !bNoTask) return -1
       if (!aNoTask && bNoTask) return 1
 
-      // 5. Date descending
+      // 4. Date descending
       const aDate = new Date(getItemDateIso(a)).getTime()
       const bDate = new Date(getItemDateIso(b)).getTime()
       return bDate - aDate
@@ -298,7 +283,8 @@ export function groupByIssue(data: SuggestionRow[]): SuggestionRow[] {
   for (const item of data) {
     const dateIso = getItemDateIso(item)
     const dayKey = format(parseISO(dateIso), 'yyyy-MM-dd')
-    const key = `${dayKey}-${hasNoTask(item) ? 'sem-issue' : (item.task?.id ?? 'sem-issue')}`
+    const pureId = extractPureTaskId(item.task?.id)
+    const key = `${dayKey}-${pureId || 'no-task'}`
     counts[key] = (counts[key] || 0) + 1
   }
 
@@ -308,45 +294,48 @@ export function groupByIssue(data: SuggestionRow[]): SuggestionRow[] {
   for (const item of data) {
     const dateIso = getItemDateIso(item)
     const dayKey = format(parseISO(dateIso), 'yyyy-MM-dd')
-    const key = `${dayKey}-${hasNoTask(item) ? 'sem-issue' : (item.task?.id ?? 'sem-issue')}`
+    const pureId = extractPureTaskId(item.task?.id)
+    const key = `${dayKey}-${pureId || 'no-task'}`
 
-    if (counts[key] > 1) {
-      if (!groups[key]) {
-        groups[key] = {
-          ...item,
-          id: key,
-          startDate: dateIso,
-          isSuggestion: false,
-          timeStatus: 'finished',
-          timeSpent: 0,
-          comments: '',
-          subRows: [],
-        }
-
-        result.push(groups[key])
-      }
-
-      if (!item.isSuggestion) {
-        groups[key].timeSpent += item.timeSpent
-      }
-      groups[key].subRows?.push(item)
-    } else {
+    if (counts[key] <= 1) {
       result.push({ ...item, subRows: [] })
+      continue
     }
+
+    if (!groups[key]) {
+      groups[key] = {
+        ...item,
+        id: key,
+        startDate: dateIso,
+        isSuggestion: false,
+        timeStatus: 'finished',
+        timeSpent: 0,
+        comments: '',
+        subRows: [],
+      }
+
+      result.push(groups[key])
+    }
+
+    if (!item.isSuggestion) {
+      groups[key].timeSpent += item.timeSpent
+    }
+    groups[key].subRows?.push(item)
   }
 
   // Sort subRows inside each group:
-  // Running first, paused second, unassigned at top, drafts at the very end
+  // Running first, paused second, unassigned at top
   result.forEach((row) => {
-    if (row.subRows && row.subRows.length > 0) {
-      row.subRows = sortSubRows(row.subRows)
-      const hasRunning = row.subRows.some((s) => s.timeStatus === 'running')
-      const hasPaused = row.subRows.some((s) => s.timeStatus === 'paused')
-      if (hasRunning) {
-        row.timeStatus = 'running'
-      } else if (hasPaused) {
-        row.timeStatus = 'paused'
-      }
+    if (!row.subRows || row.subRows.length === 0) return
+    row.subRows = sortSubRows(row.subRows)
+    const hasRunning = row.subRows.some((s) => s.timeStatus === 'running')
+    if (hasRunning) {
+      row.timeStatus = 'running'
+      return
+    }
+    const hasPaused = row.subRows.some((s) => s.timeStatus === 'paused')
+    if (hasPaused) {
+      row.timeStatus = 'paused'
     }
   })
 
@@ -372,21 +361,35 @@ export function groupByIssue(data: SuggestionRow[]): SuggestionRow[] {
     if (aHasPaused && !bHasPaused) return -1
     if (!aHasPaused && bHasPaused) return 1
 
-    // 3. Standalone draft entries always at the bottom
-    const aIsDraft = a.isDraft && (!a.subRows || a.subRows.length === 0)
-    const bIsDraft = b.isDraft && (!b.subRows || b.subRows.length === 0)
-    if (aIsDraft && !bIsDraft) return 1
-    if (!aIsDraft && bIsDraft) return -1
-
-    // 4. Entries/groups WITHOUT task go AT THE TOP
+    // 3. Entries/groups WITHOUT task go AT THE TOP
     const aNoTask = hasNoTask(a)
     const bNoTask = hasNoTask(b)
     if (aNoTask && !bNoTask) return -1
     if (!aNoTask && bNoTask) return 1
 
-    // 5. Date descending
+    // 4. Date descending
     const aDate = new Date(getItemDateIso(a)).getTime()
     const bDate = new Date(getItemDateIso(b)).getTime()
     return bDate - aDate
   })
 }
+
+export function extractPureTaskId(rawId?: string | null): string {
+  if (!rawId) return ''
+  const trimmed = rawId.trim()
+  if (!trimmed) return ''
+
+  let pureId = trimmed
+  if (pureId.includes('::')) {
+    const parts = pureId.split('::')
+    if (parts[1]) pureId = parts[1]
+  }
+
+  if (pureId.startsWith('#')) {
+    pureId = pureId.slice(1).trim()
+  }
+
+  return pureId
+}
+
+export const cleanTaskId = extractPureTaskId

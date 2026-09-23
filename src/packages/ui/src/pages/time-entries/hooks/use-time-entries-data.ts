@@ -4,7 +4,12 @@ import { DateRange } from 'react-day-picker'
 import { useSearchParams } from 'react-router-dom'
 
 import { useDataSourceConnections } from '@/hooks'
-import { useActivitiesQuery, useTimeEntriesQuery } from '@/hooks/queries'
+import {
+  useActivitiesQuery,
+  useTasksQuery,
+  useTimeEntriesQuery,
+} from '@/hooks/queries'
+import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { useSyncStore } from '@/stores/syncStore'
 import { useTimeEntryStore } from '@/stores/timeEntryStore'
 
@@ -71,6 +76,16 @@ export function useTimeEntriesData() {
   })
 
   const { data: activities } = useActivitiesQuery()
+  const { data: tasks = [] } = useTasksQuery()
+
+  const tasksById = useMemo(() => {
+    const map: Record<string, SyncTaskRxDBDTO> = {}
+    for (const t of tasks) {
+      if (t.id) map[t.id] = t
+      if (t.sourceId) map[t.sourceId] = t
+    }
+    return map
+  }, [tasks])
 
   const daysInRange = useMemo(() => {
     return eachDayOfInterval({ start: range.from, end: range.to }).reverse()
@@ -89,6 +104,8 @@ export function useTimeEntriesData() {
     syncResult,
     syncErrorMessage,
     activities: activities ? activities : [],
+    tasks,
+    tasksById,
     daysInRange,
     activeTimeEntry,
     setActive,

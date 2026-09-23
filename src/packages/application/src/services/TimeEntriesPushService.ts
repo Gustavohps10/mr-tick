@@ -33,9 +33,11 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
 
       const adapter = await this.dataSourceResolver.getDataSource(
         input.workspaceId,
-
         input.connectionInstanceId,
       )
+
+      const authResult = await adapter.getAuthenticatedMemberData()
+      if (authResult.isFailure()) return authResult.forwardFailure()
 
       const timeEntriesProvider = adapter.timeEntriesProvider
       const results: SyncTimeEntryDTO[] = []
@@ -291,6 +293,7 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
     }
 
     const result = TimeEntry.create({
+      id: entry.id,
       task: { id: entry.task.id },
       activity: {
         id: entry.activity.id,

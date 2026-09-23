@@ -81,7 +81,9 @@ describe('TimeEntriesPullService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    timeEntriesProviderMock.pull.mockResolvedValue(fakeTimeEntries)
+    timeEntriesProviderMock.pull.mockResolvedValue(
+      Either.success(fakeTimeEntries),
+    )
 
     // Act
     const result = await sut.execute(input)
@@ -96,6 +98,28 @@ describe('TimeEntriesPullService', () => {
       input.checkpoint,
       input.batch,
     )
+  })
+
+  it('should forward the failure if timeEntriesProvider.pull returns an Unauthorized failure', async () => {
+    // Arrange
+    const input = makeInput()
+    const unauthorizedError = AppError.Unauthorized('TOKEN_EXPIRED')
+
+    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
+      Either.success(fakeMember as any),
+    )
+    timeEntriesProviderMock.pull.mockResolvedValue(
+      Either.failure(unauthorizedError),
+    )
+
+    // Act
+    const result = await sut.execute(input)
+
+    // Assert
+    expect(result.isFailure()).toBe(true)
+    expect(result.failure).toBe(unauthorizedError)
+    expect(result.failure.statusCode).toBe(401)
   })
 
   it('should forward the failure if getAuthenticatedMemberData returns a failure', async () => {

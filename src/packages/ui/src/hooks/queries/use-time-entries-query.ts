@@ -35,11 +35,12 @@ export function useTimeEntriesQuery({
   const db = useSyncStore((state) => state?.db)
   const statuses = useSyncStore((state) => state?.statuses ?? {})
 
+  const dbName = db?.name ? db.name : 'no-db'
   const fromIso = useMemo(() => startOfDay(from).toISOString(), [from])
   const toIso = useMemo(() => endOfDay(to).toISOString(), [to])
   const queryKey = useMemo(
-    () => ['time-entries-range', fromIso, toIso],
-    [fromIso, toIso],
+    () => ['time-entries-range', dbName, fromIso, toIso],
+    [dbName, fromIso, toIso],
   )
 
   const isSyncing = useMemo(() => {

@@ -1,4 +1,5 @@
 import { TimeEntry } from '@mr-tick/domain'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import { PagedResultDTO, PaginationOptionsDTO, TimeEntryDTO } from '@/dtos'
 
@@ -17,7 +18,7 @@ export interface ITimeEntryProvider {
     memberId: string,
     checkpoint: { updatedAt: Date; id: string },
     batch: number,
-  ): Promise<TimeEntryDTO[]>
+  ): Promise<Either<AppError, TimeEntryDTO[]>>
   findByMemberId(
     memberId: string,
     startDate: Date,

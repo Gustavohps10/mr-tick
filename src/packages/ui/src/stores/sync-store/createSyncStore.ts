@@ -305,8 +305,10 @@ export const createSyncStore = (
           .exec()
 
         const windowEntries = localDocs.filter((doc) => {
-          const entryDate = doc.startDate ?? doc.createdAt
-          return entryDate >= since
+          const rawDate = doc.startDate ?? doc.createdAt
+          if (!rawDate) return false
+          const entryTime = new Date(rawDate).getTime()
+          return !Number.isNaN(entryTime) && entryTime >= startDate.getTime()
         })
 
         if (windowEntries.length === 0) return
@@ -329,23 +331,13 @@ export const createSyncStore = (
         }
 
         for (const localDoc of windowEntries) {
-          if (localDoc.syncStatus !== 'synced' || localDoc._deleted) {
-            continue
-          }
+          if (localDoc.syncStatus !== 'synced' || localDoc._deleted) continue
 
           const remoteIdentifier = localDoc.remoteId
           if (
             !remoteIdentifier ||
             remoteIdentifier.trim() === '' ||
             remoteIdentifier.startsWith('local-')
-          ) {
-            continue
-          }
-
-          const docUpdatedTime = new Date(localDoc.updatedAt).getTime()
-          if (
-            !Number.isNaN(docUpdatedTime) &&
-            Date.now() - docUpdatedTime < 15000
           ) {
             continue
           }

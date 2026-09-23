@@ -447,7 +447,6 @@ export function TimeEntriesTimesheetView() {
     getRowData,
     setEditingRows,
     setTempData,
-    tempData,
     setRowBeingEdited,
     setTaskLookupOpen,
     handleSaveRow,

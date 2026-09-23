@@ -27,14 +27,21 @@ export class ListTimeEntriesService implements IListTimeEntriesUseCase {
 
       const member = result.success
 
+      const startDate =
+        input.startDate instanceof Date
+          ? input.startDate
+          : new Date(input.startDate)
+      const endDate =
+        input.endDate instanceof Date ? input.endDate : new Date(input.endDate)
+
       const timeEntries = await adapter.timeEntriesProvider.findByMemberId(
         member.id.toString(),
-        input.startDate,
-        input.endDate,
+        startDate,
+        endDate,
       )
 
       return Either.success(timeEntries)
-    } catch (error) {
+    } catch {
       return Either.failure(AppError.NotFound('ERRO_INESPERADO'))
     }
   }

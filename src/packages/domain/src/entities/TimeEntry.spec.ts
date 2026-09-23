@@ -62,6 +62,23 @@ describe('TimeEntry Entity', () => {
       expect(entry.endDate).toEqual(endDate)
     })
 
+    it('should create successfully and calculate accurate duration when interval crosses midnight (TMR-04)', () => {
+      const startDate = new Date('2024-05-01T23:55:00Z')
+      const endDate = new Date('2024-05-02T00:05:00Z')
+
+      const props = { ...makeValidProps(), startDate, endDate }
+
+      const result = TimeEntry.create(props)
+
+      expect(result.isSuccess()).toBe(true)
+
+      const entry = result.success
+
+      expect(entry.timeSpent).toBe(600)
+      expect(entry.startDate).toEqual(startDate)
+      expect(entry.endDate).toEqual(endDate)
+    })
+
     it('should fail creation if Zod schema is invalid (missing user.id)', () => {
       const invalidProps = {
         task: { id: 'task-1' },
@@ -151,6 +168,18 @@ describe('TimeEntry Entity', () => {
       expect(entry.startDate).toEqual(start)
       expect(entry.endDate).toEqual(end)
       expect(entry.updatedAt).toEqual(updateTime)
+    })
+
+    it('should update successfully when updated interval crosses midnight into the next day (TMR-04)', () => {
+      const start = new Date('2024-05-01T23:50:00Z')
+      const end = new Date('2024-05-02T00:10:00Z')
+
+      const result = entry.updateHours(start, end, 1200)
+
+      expect(result.isSuccess()).toBe(true)
+      expect(entry.timeSpent).toBe(1200)
+      expect(entry.startDate).toEqual(start)
+      expect(entry.endDate).toEqual(end)
     })
 
     it('should fail if no dates and no timeSpent are provided', () => {

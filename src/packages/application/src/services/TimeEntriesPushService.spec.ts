@@ -108,6 +108,23 @@ describe('TimeEntriesPushService', () => {
       expect(result.failure.messageKey).toBe('WORKSPACE_NAO_ENCONTRADO')
     })
 
+    it('should forward failure if getAuthenticatedMemberData fails', async () => {
+      adapterMock.getAuthenticatedMemberData.mockReturnValue(
+        Either.failure(AppError.Unauthorized('TOKEN_EXPIRED')),
+      )
+
+      const result = await sut.execute({
+        workspaceId: 'w-1',
+        pluginId: 'p-1',
+        connectionInstanceId: 'c-1',
+        entries: [],
+      })
+
+      expect(result.isFailure()).toBe(true)
+      expect(result.failure.statusCode).toBe(401)
+      expect(result.failure.messageKey).toBe('TOKEN_EXPIRED')
+    })
+
     it('should return Internal error if an unexpected error occurs in the setup', async () => {
       dataSourceResolverMock.getDataSource.mockRejectedValue(new Error('Crash'))
 
