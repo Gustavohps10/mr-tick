@@ -7,16 +7,14 @@ import { cn } from '@/lib/utils'
 
 type LookupSize = 'micro' | 'xs' | 'sm' | 'md' | 'lg'
 
-interface LookupInputProps {
+interface LookupInputProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'size' | 'onChange'
+> {
   value: string
   onChange: (value: string) => void
   onOpenLookup?: () => void
-  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
-  onBlur?: () => void
-  placeholder?: string
-  disabled?: boolean
   size?: LookupSize
-  className?: string
   sourceIcon?: React.ReactNode
 }
 
@@ -31,6 +29,7 @@ export function LookupInput({
   size = 'md',
   className,
   sourceIcon,
+  ...props
 }: LookupInputProps) {
   const sizeConfig: Record<
     LookupSize,
@@ -113,10 +112,13 @@ export function LookupInput({
         placeholder={placeholder}
         disabled={disabled}
         className={cn(
-          'font-mono transition-all focus-visible:ring-1 focus-visible:ring-offset-0',
-          '[&::-webkit-search-cancel-button]:appearance-none', // Evita X nativo do browser
+          'border-input/40 bg-background/50 focus-visible:ring-primary/20 font-mono shadow-xs backdrop-blur-xs transition-all focus-visible:ring-2 [&::-webkit-search-cancel-button]:appearance-none',
+          value
+            ? 'border-primary/30 bg-primary/5'
+            : 'hover:border-primary/20 hover:bg-background',
           config.input,
         )}
+        {...props}
       />
 
       {value && (

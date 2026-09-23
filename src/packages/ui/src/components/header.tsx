@@ -102,10 +102,78 @@ const getRawErrorMessage = (error: Error | RxError | null): string => {
   return error.message
 }
 
-const isAuthError = (error: Error | RxError | null) =>
-  Boolean(
-    error && getRawErrorMessage(error).includes(ERROR_CODES.MISSING_TOKEN),
-  )
+const AUTH_ERROR_PATTERNS = [
+  'MISSING_TOKEN',
+  'UNAUTHORIZED',
+  'TOKEN_EXPIRED',
+  'INVALID_TOKEN',
+  '401',
+]
+
+const isAuthError = (error: Error | RxError | null): boolean => {
+  if (!error) return false
+
+  if (
+    'statusCode' in error &&
+    typeof error.statusCode === 'number' &&
+    error.statusCode === 401
+  ) {
+    return true
+  }
+
+  if (
+    'status' in error &&
+    typeof error.status === 'number' &&
+    error.status === 401
+  ) {
+    return true
+  }
+
+  if (
+    'parameters' in error &&
+    error.parameters &&
+    typeof error.parameters === 'object'
+  ) {
+    const params = error.parameters
+    if ('errors' in params && params.errors) {
+      const rawErrors = params.errors
+      const errList = Array.isArray(rawErrors) ? rawErrors : [rawErrors]
+      const hasAuthCode = errList.some((e) => {
+        if (!e || typeof e !== 'object') return false
+        const code =
+          'statusCode' in e
+            ? e.statusCode
+            : 'status' in e
+              ? e.status
+              : undefined
+        return code === 401
+      })
+      if (hasAuthCode) return true
+    }
+  }
+
+  const rawMsg = getRawErrorMessage(error).toUpperCase()
+  return AUTH_ERROR_PATTERNS.some((pattern) => rawMsg.includes(pattern))
+}
+
+export type GlobalSyncStatus =
+  | 'initializing'
+  | 'local_only'
+  | 'auth_error'
+  | 'technical_error'
+  | 'reconciling'
+  | 'syncing'
+  | 'pulling'
+  | 'pushing'
+  | 'pending_connections'
+  | 'synced'
+
+interface GlobalSyncState {
+  status: GlobalSyncStatus
+  color: string
+  label: string
+  icon: 'sync' | 'local' | 'reconcile' | 'pull' | 'push'
+}
 
 export function Header({ className }: HeaderProps = {}) {
   const { workspace } = useWorkspace()
@@ -140,46 +208,90 @@ export function Header({ className }: HeaderProps = {}) {
     }
   }
 
-  const getGlobalState = () => {
+  const getGlobalState = (): GlobalSyncState => {
     if (!isInitialized)
-      return { color: 'bg-muted', label: 'Inicializando...', icon: 'sync' }
+      return {
+        status: 'initializing',
+        color: 'bg-muted',
+        label: 'Inicializando...',
+        icon: 'sync',
+      }
     if (!hasRemote)
-      return { color: 'bg-zinc-400', label: 'Modo Local', icon: 'local' }
+      return {
+        status: 'local_only',
+        color: 'bg-zinc-400',
+        label: 'Modo Local',
+        icon: 'local',
+      }
 
-    if (allStatuses.some((v) => v.error && !isAuthError(v.error)))
-      return { color: 'bg-destructive', label: 'Erro técnico', icon: 'sync' }
+    const anyAuthError = allStatuses.some((v) => isAuthError(v.error))
+    if (anyAuthError)
+      return {
+        status: 'auth_error',
+        color: 'bg-amber-500',
+        label: 'Autenticação necessária',
+        icon: 'sync',
+      }
+
+    const technicalError = allStatuses.find(
+      (v) => v.error && !isAuthError(v.error),
+    )
+    if (technicalError) {
+      console.error(
+        '[HEADER] Erro técnico de sincronização:',
+        technicalError.error,
+      )
+      return {
+        status: 'technical_error',
+        color: 'bg-destructive',
+        label: 'Erro técnico',
+        icon: 'sync',
+      }
+    }
     if (isAnyReconciling)
       return {
+        status: 'reconciling',
         color: 'bg-destructive animate-pulse',
         label: 'Conciliando exclusões...',
         icon: 'reconcile',
       }
     if (isAnyPulling && isAnyPushing)
       return {
+        status: 'syncing',
         color: 'bg-blue-500 animate-pulse',
         label: 'Sincronizando (Download & Upload)...',
         icon: 'sync',
       }
     if (isAnyPulling)
       return {
+        status: 'pulling',
         color: 'bg-blue-500 animate-pulse',
         label: 'Baixando atualizações (Pull)...',
         icon: 'pull',
       }
     if (isAnyPushing)
       return {
+        status: 'pushing',
         color: 'bg-amber-500 animate-pulse',
         label: 'Enviando alterações (Push)...',
         icon: 'push',
       }
 
-    const anyDisconnected = allStatuses.some(
-      (v) => isAuthError(v.error) || v.lastReplication === null,
-    )
+    const anyDisconnected = allStatuses.some((v) => v.lastReplication === null)
     if (anyDisconnected)
-      return { color: 'bg-zinc-400', label: 'Conexões pendentes', icon: 'sync' }
+      return {
+        status: 'pending_connections',
+        color: 'bg-zinc-400',
+        label: 'Conexões pendentes',
+        icon: 'sync',
+      }
 
-    return { color: 'bg-green-500', label: 'Sincronizado', icon: 'sync' }
+    return {
+      status: 'synced',
+      color: 'bg-green-500',
+      label: 'Sincronizado',
+      icon: 'sync',
+    }
   }
 
   const globalStatus = getGlobalState()
@@ -247,6 +359,9 @@ export function Header({ className }: HeaderProps = {}) {
                   <Button
                     size="sm"
                     variant="ghost"
+                    data-testid="sync-status-indicator"
+                    data-status={globalStatus.status}
+                    aria-label={globalStatus.label}
                     className="hover:bg-muted/60 text-muted-foreground hover:text-foreground relative flex h-5 items-center gap-1 rounded-xs px-1.5"
                   >
                     {globalStatus.icon === 'local' ? (
@@ -343,6 +458,7 @@ export function Header({ className }: HeaderProps = {}) {
                           onClick={() => forceSync?.(undefined, 'both')}
                           disabled={isAnySyncingGlobally}
                           aria-label="Sincronizar tudo"
+                          data-testid="sync-all-button"
                           className="hover:bg-muted/60 flex h-full w-full cursor-pointer items-center justify-center transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <RefreshCcw
@@ -796,6 +912,7 @@ export function Header({ className }: HeaderProps = {}) {
                     <Button
                       variant="outline"
                       size="sm"
+                      data-testid="reset-database-trigger"
                       className="border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive ml-auto h-6 px-2 text-[10px] transition-colors"
                       disabled={isResetting || !isInitialized}
                     >
@@ -816,6 +933,7 @@ export function Header({ className }: HeaderProps = {}) {
                       <AlertDialogCancel>Cancelar</AlertDialogCancel>
                       <AlertDialogAction
                         onClick={handleReset}
+                        data-testid="confirm-reset-database-btn"
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       >
                         Sim, Resetar

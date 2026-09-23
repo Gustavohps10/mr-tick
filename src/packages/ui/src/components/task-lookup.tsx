@@ -104,7 +104,7 @@ export function TaskLookup({
 
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
-  const [onlyMyTasks, setOnlyMyTasks] = useState(true)
+  const [onlyMyTasks, setOnlyMyTasks] = useState(false)
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
 
   // Lista de IDs de instâncias (connections) selecionadas
@@ -214,7 +214,10 @@ export function TaskLookup({
                 if (!memberId) return null
                 return {
                   connectionInstanceId: connId,
-                  participants: { $elemMatch: { id: String(memberId) } },
+                  $or: [
+                    { participants: { $elemMatch: { id: String(memberId) } } },
+                    { 'assignedTo.id': String(memberId) },
+                  ],
                 }
               })
               .filter((item) => item !== null)
@@ -348,6 +351,7 @@ export function TaskLookup({
                 <Search className="text-muted-foreground/60 h-5 w-5 shrink-0" />
               )}
               <Input
+                data-testid="task-lookup-modal-search-input"
                 autoFocus
                 placeholder={
                   singleSelectedConnection
@@ -430,6 +434,7 @@ export function TaskLookup({
               {/* Right: Dropdowns & Filters */}
               <div className="flex items-center gap-2">
                 <button
+                  data-testid="task-lookup-only-my-tasks-btn"
                   type="button"
                   onClick={() => setOnlyMyTasks(!onlyMyTasks)}
                   className={cn(
@@ -444,7 +449,10 @@ export function TaskLookup({
                 </button>
 
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="bg-background/60 border-border/40 h-6 w-fit border px-2 text-[10px] font-semibold shadow-none focus:ring-0">
+                  <SelectTrigger
+                    data-testid="task-lookup-status-filter"
+                    className="bg-background/60 border-border/40 h-6 w-fit border px-2 text-[10px] font-semibold shadow-none focus:ring-0"
+                  >
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent align="end">
@@ -579,6 +587,7 @@ export function TaskLookup({
                   return (
                     <div
                       key={virtualRow.key}
+                      data-testid="task-lookup-row"
                       onClick={() => !isLoaderRow && task && handleSelect(task)}
                       onMouseEnter={() =>
                         !isLoaderRow && setSelectedIndex(virtualRow.index)

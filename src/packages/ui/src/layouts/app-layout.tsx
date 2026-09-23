@@ -21,6 +21,7 @@ import { SyncProvider } from '@/stores/syncStore'
 export function AppLayout() {
   const [workspaceDialogIsOpen, setWorkspaceDialogIsOpen] = useState(false)
   const [settingsDialogIsOpen, setSettingsDialogIsOpen] = useState(false)
+  const [editingDraftId, setEditingDraftId] = useState<string | undefined>()
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<
     string | undefined
   >()
@@ -46,9 +47,9 @@ export function AppLayout() {
           // ['', 'workspaces', ':workspaceId', ...subpath]
           parts[2] = workspaceId
           navigate(parts.join('/'))
-        } else {
-          navigate(`/workspaces/${workspaceId}/time-entries`)
+          return
         }
+        navigate(`/workspaces/${workspaceId}/time-entries`)
       },
     )
 
@@ -61,6 +62,11 @@ export function AppLayout() {
     currentWorkspaceId && location.pathname.startsWith('/workspaces/'),
   )
 
+  function handleWorkspaceCreated(id: string) {
+    setActiveWorkspaceId(id)
+    navigate(`/workspaces/${id}/time-entries`)
+  }
+
   return (
     <WorkspaceProvider workspaceId={currentWorkspaceId}>
       <DataSourceConnectionsProvider>
@@ -71,8 +77,12 @@ export function AppLayout() {
             <main className="mt-1.5 flex min-h-0 flex-1 overflow-hidden">
               <NewWorkspaceDialog
                 isOpen={workspaceDialogIsOpen}
-                setIsOpen={setWorkspaceDialogIsOpen}
-                setWorkspaceId={setActiveWorkspaceId}
+                setIsOpen={(open) => {
+                  setWorkspaceDialogIsOpen(open)
+                  if (!open) setEditingDraftId(undefined)
+                }}
+                workspaceId={editingDraftId}
+                onWorkspaceCreated={handleWorkspaceCreated}
               />
               <GlobalSettingsDialog
                 isOpen={settingsDialogIsOpen}
@@ -82,7 +92,7 @@ export function AppLayout() {
               {/* Sidebar */}
               <AppRail
                 onNewWorkspaceClick={() => {
-                  setActiveWorkspaceId(undefined)
+                  setEditingDraftId(undefined)
                   setWorkspaceDialogIsOpen(true)
                 }}
                 onSettingsClick={() => setSettingsDialogIsOpen(true)}
@@ -91,8 +101,7 @@ export function AppLayout() {
               {/* Painel de drafts */}
               <DraftWorkspacesPanel
                 onOpenWorkspace={(id) => {
-                  console.log(id)
-                  setActiveWorkspaceId(id)
+                  setEditingDraftId(id)
                   setWorkspaceDialogIsOpen(true)
                 }}
               />

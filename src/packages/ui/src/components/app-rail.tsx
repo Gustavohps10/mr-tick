@@ -159,6 +159,8 @@ export function AppRail({
         <hr className="border-border w-8 shrink-0 border-t" />
 
         <button
+          data-testid="app-rail-new-workspace-btn"
+          aria-label="Novo Workspace"
           onClick={onNewWorkspaceClick}
           onMouseEnter={() => setHoveredId('new-workspace')}
           className={cn(sidebarButtonVariants(), 'shrink-0')}
