@@ -1,0 +1,95 @@
+name: Test Branch Pipeline (Temporary)
+
+on:
+  push:
+    branches:
+      - fix/providers-and-addons-standardization
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test:
+    name: Test & Typecheck
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Run Unit Tests
+        run: yarn test:unit
+
+      - name: Run UI Tests
+        run: yarn test:ui
+
+      - name: Build
+        run: yarn build
+
+  e2e:
+    name: End-to-End Tests (Desktop)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Build Desktop App
+        run: yarn turbo run build --filter=@mr-tick/desktop
+
+      - name: Build Test Addon
+        run: yarn addon:build datasource-fake
+
+      - name: Link Test Addon
+        run: yarn addon:link datasource-fake
+
+      - name: Run E2E Tests
+        run: yarn test:e2e
+
+      - name: Upload Playwright Report on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-branch
+          path: src/apps/desktop/playwright-report/
+          retention-days: 7
