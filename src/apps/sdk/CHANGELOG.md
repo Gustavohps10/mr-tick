@@ -1,5 +1,15 @@
 # @mr-tick/sdk
 
+## 0.4.0
+
+### Minor Changes
+
+- 00bc018: Standardize DataSource and provider contracts, enforce SemVer minor locking for addons, implement functional HostBridge with Either, and stabilize drafts in UI
+
+### Patch Changes
+
+- 394905d: Standardize addon lifecycle contracts, add dynamic settings schema provider, declarative field scopes, and command auto-scoping
+
 ## 0.3.0
 
 ### Minor Changes

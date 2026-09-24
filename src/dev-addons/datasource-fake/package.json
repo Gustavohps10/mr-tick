@@ -1,7 +1,7 @@
 {
   "name": "@mr-tick/datasource-fake",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Datasource fake para testes e validação de envio de dados (1000 tarefas, 1000 apontamentos).",
   "author": "Mr-tick",
   "license": "MIT",
