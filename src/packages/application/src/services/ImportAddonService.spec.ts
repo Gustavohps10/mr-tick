@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -75,11 +75,11 @@ describe('ImportAddonService', () => {
     )
 
     expect(fileStorageMock.write).toHaveBeenCalledWith(
-      `./addons/${fakeAddonId}/1.0.0/manifest.yaml`,
+      `./addons/${fakeAddonId}/0.1.0/manifest.yaml`,
       extractedFiles[0].content,
     )
     expect(fileStorageMock.write).toHaveBeenCalledWith(
-      `./addons/${fakeAddonId}/1.0.0/index.js`,
+      `./addons/${fakeAddonId}/0.1.0/index.js`,
       extractedFiles[1].content,
     )
   })

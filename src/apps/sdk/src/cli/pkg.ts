@@ -47,7 +47,7 @@ export function buildAddon(addonDir: string, options: BuildAddonOptions) {
   }
 
   const addonId = (manifest.id || manifest.AddonId || 'plugin').trim()
-  const version = (manifest.version || manifest.Version || '1.0.0').trim()
+  const version = (manifest.version || manifest.Version || '0.1.0').trim()
   const releaseDate = new Date().toISOString().split('T')[0]
   const downloadUrl = (options.downloadUrl || manifest.downloadUrl || '').trim()
   const changelog =

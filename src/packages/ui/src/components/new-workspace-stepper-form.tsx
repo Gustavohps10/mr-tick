@@ -309,7 +309,7 @@ function InstallConsole({
           </p>
         </div>
         <span className="text-muted-foreground bg-muted shrink-0 rounded-md px-2 py-1 font-mono text-[10px]">
-          {plugin?.version ?? 'v1.0.0'}
+          {plugin?.version ?? 'v0.1.0'}
         </span>
       </div>
 

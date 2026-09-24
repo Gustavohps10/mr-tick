@@ -4,7 +4,11 @@ import {
   IAddonsFacade,
   IFileStorage,
 } from '@mr-tick/application'
-import { AppError, Either } from '@mr-tick/shared/helpers'
+import {
+  AppError,
+  DEFAULT_MIN_API_VERSION,
+  Either,
+} from '@mr-tick/shared/helpers'
 import { IJobEvent } from '@mr-tick/shared/transport'
 import axios from 'axios'
 import { promises as fs } from 'fs'
@@ -310,9 +314,11 @@ export class AddonsFacade implements IAddonsFacade {
       const installer: AddonInstallerDTO = {
         id,
         packages: rawPackages.map((pkg) => ({
-          version: pkg.version ?? pkg.Version ?? '',
+          version: pkg.version ?? pkg.Version ?? DEFAULT_MIN_API_VERSION,
           requiredApiVersion:
-            pkg.requiredApiVersion ?? pkg.RequiredApiVersion ?? '',
+            pkg.requiredApiVersion ??
+            pkg.RequiredApiVersion ??
+            DEFAULT_MIN_API_VERSION,
           releaseDate: pkg.releaseDate ?? pkg.ReleaseDate ?? '',
           downloadUrl: pkg.downloadUrl ?? pkg.DownloadUrl ?? '',
           changelog: pkg.changelog ?? pkg.Changelog ?? [],
@@ -345,9 +351,11 @@ export class AddonsFacade implements IAddonsFacade {
 
     const rawPackages = doc.packages ?? doc.Packages ?? []
     const packages = rawPackages.map((pkg) => ({
-      version: pkg.version ?? pkg.Version ?? '',
+      version: pkg.version ?? pkg.Version ?? DEFAULT_MIN_API_VERSION,
       requiredApiVersion:
-        pkg.requiredApiVersion ?? pkg.RequiredApiVersion ?? '',
+        pkg.requiredApiVersion ??
+        pkg.RequiredApiVersion ??
+        DEFAULT_MIN_API_VERSION,
       releaseDate: pkg.releaseDate ?? pkg.ReleaseDate ?? '',
       downloadUrl: pkg.downloadUrl ?? pkg.DownloadUrl ?? '',
       changelog: pkg.changelog ?? pkg.Changelog ?? [],
@@ -355,7 +363,7 @@ export class AddonsFacade implements IAddonsFacade {
 
     return {
       id,
-      version: doc.version ?? doc.Version ?? '',
+      version: doc.version ?? doc.Version ?? DEFAULT_MIN_API_VERSION,
       name: doc.name ?? doc.Name ?? '',
       creator: doc.author ?? doc.Author ?? doc.creator ?? doc.Creator ?? '',
       description:
@@ -375,7 +383,9 @@ export class AddonsFacade implements IAddonsFacade {
       installerManifestUrl: doc.installerUrl ?? doc.InstallerUrl,
       downloadUrl: doc.downloadUrl ?? doc.DownloadUrl ?? '',
       requiredApiVersion:
-        doc.requiredApiVersion ?? doc.RequiredApiVersion ?? '',
+        doc.requiredApiVersion ??
+        doc.RequiredApiVersion ??
+        DEFAULT_MIN_API_VERSION,
       releaseDate: doc.releaseDate ?? doc.ReleaseDate ?? '',
       changelog: doc.changelog ?? doc.Changelog ?? [],
       packages,

@@ -1,4 +1,4 @@
-﻿import fs from 'fs'
+import fs from 'fs'
 import inquirer from 'inquirer'
 import path from 'path'
 
@@ -78,7 +78,7 @@ export async function runInitWizard(targetDirName?: string) {
   // 1. package.json
   const packageJson = {
     name: answers.id,
-    version: '1.0.0',
+    version: '0.1.0',
     description: answers.shortDescription,
     author: answers.author,
     type: 'module',
@@ -91,7 +91,7 @@ export async function runInitWizard(targetDirName?: string) {
       pack: 'mr-tick pack .',
     },
     devDependencies: {
-      '@mr-tick/sdk': '^1.1.0',
+      '@mr-tick/sdk': '^0.3.0',
       tsup: '^8.5.0',
       typescript: '^5.8.0',
     },
@@ -124,14 +124,14 @@ export async function runInitWizard(targetDirName?: string) {
   const manifest = {
     id: answers.id,
     name: answers.name,
-    version: '1.0.0',
+    version: '0.1.0',
     categories: answers.categories,
     author: answers.author,
     shortDescription: answers.shortDescription,
     description: answers.description,
     tags: [answers.categories[0], 'mr-tick'],
     screenshots: [],
-    requiredApiVersion: '>=1.0.0',
+    requiredApiVersion: '>=0.1.0',
     releaseDate: new Date().toISOString().split('T')[0],
     changelog: ['Versão inicial do plugin'],
   }

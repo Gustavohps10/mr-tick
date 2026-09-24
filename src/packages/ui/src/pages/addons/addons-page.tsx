@@ -43,7 +43,7 @@ const MOCK_ADDONS: AddonItem[] = [
     description:
       'Importe suas issues e gerencie o tempo diretamente no Mr-tick.',
     author: 'Mr-tick Foundation',
-    version: '1.0.0',
+    version: '0.1.0',
     logo: jiraLogo,
     installed: true,
     category: 'integrations',

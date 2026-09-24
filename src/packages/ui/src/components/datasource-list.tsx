@@ -1,6 +1,7 @@
 'use client'
 
 import { AddonInstaller, AddonManifest } from '@mr-tick/application'
+import { isApiVersionCompatible } from '@mr-tick/shared/helpers'
 import { IJobEvent } from '@mr-tick/shared/transport'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -148,8 +149,9 @@ export function DataSourceList({
         toast.error(response.error ?? 'Falha ao carregar pacotes de instalação')
 
       setInstallerData(response.data ?? null)
-      const firstCompatible = response.data?.packages.find(
-        (pkg) => pkg.requiredApiVersion === appVersion,
+      const currentAppVer = appVersion || '0.3.0'
+      const firstCompatible = response.data?.packages.find((pkg) =>
+        isApiVersionCompatible(pkg.requiredApiVersion, currentAppVer),
       )
       if (firstCompatible) setSelectedVersion(firstCompatible.version)
     } finally {
@@ -163,6 +165,14 @@ export function DataSourceList({
       (p) => p.version === selectedVersion,
     )
     if (!pkg) return
+
+    const currentAppVer = appVersion || '0.3.0'
+    if (!isApiVersionCompatible(pkg.requiredApiVersion, currentAppVer)) {
+      toast.error(
+        `Versão incompatível com a versão atual do app (${currentAppVer})`,
+      )
+      return
+    }
 
     const pluginId = activePlugin.id
     const downloadUrl = pkg.downloadUrl
@@ -429,18 +439,23 @@ export function DataSourceList({
             <ScrollArea className="max-h-64 pr-3">
               <div className="flex flex-col gap-2">
                 {installerData?.packages.map((pkg) => {
-                  const isCompatible = pkg.requiredApiVersion === appVersion
+                  const currentAppVer = appVersion || '0.3.0'
+                  const isCompatible = isApiVersionCompatible(
+                    pkg.requiredApiVersion,
+                    currentAppVer,
+                  )
                   const isSelected = selectedVersion === pkg.version
                   return (
                     <Card
                       key={pkg.version}
                       className={cn(
-                        'relative cursor-pointer border-2 p-3 transition-all',
+                        'relative border-2 p-3 transition-all',
+                        isCompatible
+                          ? 'cursor-pointer'
+                          : 'cursor-not-allowed opacity-50 grayscale',
                         isSelected
                           ? 'border-primary bg-primary/5'
                           : 'hover:border-muted-foreground/20 bg-muted/30 border-transparent',
-                        !isCompatible &&
-                          'cursor-not-allowed opacity-50 grayscale',
                       )}
                       onClick={() =>
                         isCompatible && setSelectedVersion(pkg.version)
@@ -448,9 +463,19 @@ export function DataSourceList({
                     >
                       <div className="mb-1 flex items-start justify-between">
                         <div>
-                          <p className="text-sm font-bold">v{pkg.version}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-bold">v{pkg.version}</p>
+                            {!isCompatible && (
+                              <Badge
+                                variant="destructive"
+                                className="text-[9px]"
+                              >
+                                Incompatível
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
-                            Required API: {pkg.requiredApiVersion}
+                            Required API: {pkg.requiredApiVersion || '>=0.1.0'}
                           </p>
                         </div>
                         <Badge variant="secondary" className="text-[9px]">

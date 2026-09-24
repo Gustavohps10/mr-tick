@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -35,9 +35,13 @@ import {
   SidebarMenuItem,
   TimerbarMenuItem,
 } from '@mr-tick/sdk'
-import { AppError, Either } from '@mr-tick/shared/helpers'
+import {
+  AppError,
+  Either,
+  isApiVersionCompatible,
+} from '@mr-tick/shared/helpers'
 import { ISystemEvents } from '@mr-tick/shared/transport'
-import { BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 
 import { getSettings, saveSettings } from '@/main/settings'
 
@@ -191,7 +195,10 @@ export class AddonLoader {
     }
   >()
 
-  constructor(private credentialsStorage: ICredentialsStorage) {
+  constructor(
+    private credentialsStorage: ICredentialsStorage,
+    private hostAppVersion?: string,
+  ) {
     this.registerThemeCommands()
     this.restoreActiveTheme()
   }
@@ -869,6 +876,41 @@ export class AddonLoader {
     try {
       if (this.hasActiveAddon(addonId)) {
         return true
+      }
+
+      // Trava de compatibilidade de versão SemVer
+      const manifestYaml = join(addonFolderPath, 'manifest.yaml')
+      const manifestYml = join(addonFolderPath, 'manifest.yml')
+      let requiredApiVersion: string | undefined = undefined
+
+      const targetManifest = existsSync(manifestYaml)
+        ? manifestYaml
+        : existsSync(manifestYml)
+          ? manifestYml
+          : null
+
+      if (targetManifest) {
+        try {
+          const content = readFileSync(targetManifest, 'utf-8')
+          const match = content.match(
+            /(?:requiredApiVersion|RequiredApiVersion)\s*:\s*['"]?([^'"\r\n]+)['"]?/,
+          )
+          if (match && match[1]) {
+            requiredApiVersion = match[1].trim()
+          }
+        } catch {
+          // Silencia falha pontual de leitura de manifesto
+        }
+      }
+
+      const currentVersion =
+        this.hostAppVersion || (app?.getVersion ? app.getVersion() : '0.3.0')
+
+      if (!isApiVersionCompatible(requiredApiVersion, currentVersion)) {
+        console.warn(
+          `⚠️ [AddonLoader] Addon "${addonId}" ignorado: requer API ${requiredApiVersion ?? 'desconhecida'}, mas o aplicativo está na versão ${currentVersion}`,
+        )
+        return false
       }
 
       const possibleEntries = [
