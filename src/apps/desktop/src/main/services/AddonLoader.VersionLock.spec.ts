@@ -15,7 +15,7 @@ vi.mock('electron', () => ({
     getAllWindows: vi.fn(() => []),
   },
   app: {
-    getVersion: vi.fn(() => '0.3.0'),
+    getVersion: vi.fn(() => '0.4.0'),
   },
 }))
 
@@ -35,8 +35,8 @@ describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
       replaceToken: vi.fn().mockResolvedValue(undefined),
     }
 
-    // Cria AddonLoader configurado com hostAppVersion '0.3.0'
-    addonLoader = new AddonLoader(fakeCredentialsStorage, '0.3.0')
+    // Cria AddonLoader configurado com hostAppVersion '0.4.0'
+    addonLoader = new AddonLoader(fakeCredentialsStorage, '0.4.0')
 
     // Cria diretório temporário para simular addon no disco
     testAddonDir = join(
@@ -64,7 +64,7 @@ describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
   })
 
   it('deve rejeitar e não ativar addon cuja requiredApiVersion no manifesto seja superior à versão do app', async () => {
-    // Escreve manifesto com requiredApiVersion incompatível (>=0.5.0, app é 0.3.0)
+    // Escreve manifesto com requiredApiVersion incompatível (>=0.5.0, app é 0.4.0)
     const manifestContent = `
 id: test-future-addon
 name: Future Addon
@@ -82,7 +82,7 @@ requiredApiVersion: '>=0.5.0'
     expect(addonLoader.hasActiveAddon('test-future-addon')).toBe(false)
   })
 
-  it('deve rejeitar e não ativar addon legado da era 0.1.x (ex: Redmine antigo >=0.1.1) no app 0.3.0', async () => {
+  it('deve rejeitar e não ativar addon legado da era 0.1.x (ex: Redmine antigo >=0.1.1) no app 0.4.0', async () => {
     const manifestContent = `
 id: gustavohps10-redmine
 name: Redmine Legacy
@@ -100,7 +100,7 @@ requiredApiVersion: '>=0.1.1'
     expect(addonLoader.hasActiveAddon('gustavohps10-redmine')).toBe(false)
   })
 
-  it('deve rejeitar addon legado que não especifica requiredApiVersion no app 0.3.0 (fallback 0.1.0 pertence a 0.1.x)', async () => {
+  it('deve rejeitar addon legado que não especifica requiredApiVersion no app 0.4.0 (fallback 0.1.0 pertence a 0.1.x)', async () => {
     const manifestContent = `
 id: test-legacy-addon
 name: Legacy Addon
@@ -117,12 +117,12 @@ version: 0.1.0
     expect(addonLoader.hasActiveAddon('test-legacy-addon')).toBe(false)
   })
 
-  it('deve carregar com sucesso addon com requiredApiVersion compatível com o app atual (>=0.3.0)', async () => {
+  it('deve carregar com sucesso addon com requiredApiVersion compatível com o app atual (>=0.4.0)', async () => {
     const manifestContent = `
 id: test-compatible-addon
 name: Compatible Addon
-version: 0.3.0
-requiredApiVersion: '>=0.3.0'
+version: 0.4.0
+requiredApiVersion: '>=0.4.0'
 `
     writeFileSync(join(testAddonDir, 'manifest.yaml'), manifestContent)
 

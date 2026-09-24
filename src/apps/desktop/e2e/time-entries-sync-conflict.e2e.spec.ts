@@ -167,12 +167,19 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
       .locator('[data-testid="sync-status-indicator"]')
       .first()
     await expect(syncIndicatorPopover).toBeVisible()
-    await syncIndicatorPopover.click({ force: true })
 
     const forceSyncBtn = page
       .getByRole('button', { name: 'Sincronizar tudo' })
       .first()
-    await expect(forceSyncBtn).toBeVisible()
+
+    await expect(async () => {
+      const isVisible = await forceSyncBtn.isVisible()
+      if (!isVisible) {
+        await syncIndicatorPopover.click({ force: true })
+      }
+      expect(await forceSyncBtn.isVisible()).toBe(true)
+    }).toPass({ timeout: 10000 })
+
     await forceSyncBtn.click({ force: true })
     await page.keyboard.press('Escape')
 
