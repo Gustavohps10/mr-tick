@@ -41,5 +41,4 @@ export interface ISystemEvents {
     currentWorkspaceId: string
   }
   'timeEntry:deleted': { workspaceId?: string; id: string }
-  [event: string]: unknown
 }

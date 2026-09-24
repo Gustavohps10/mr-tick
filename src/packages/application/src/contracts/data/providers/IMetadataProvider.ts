@@ -1,3 +1,5 @@
+import { AppError, Either } from '@mr-tick/shared/helpers'
+
 import { MetadataDTO } from '@/dtos'
 
 export interface IMetadataProvider {
@@ -5,5 +7,5 @@ export interface IMetadataProvider {
     memberId: string,
     checkpoint: { updatedAt: Date; id: string },
     batch: number,
-  ): Promise<MetadataDTO>
+  ): Promise<Either<AppError, MetadataDTO>>
 }

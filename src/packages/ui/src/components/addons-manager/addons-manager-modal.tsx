@@ -1,4 +1,4 @@
-﻿import { AddonManifestViewModel } from '@mr-tick/sdk'
+import { AddonManifestViewModel } from '@mr-tick/sdk'
 import { useQuery } from '@tanstack/react-query'
 import {
   Calendar,
@@ -27,7 +27,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { useOpenAPI } from '@/hooks/use-open-api'
+import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib'
 
 import { AddonInstallModal, AddonInstallTarget } from './addon-install-modal'
@@ -161,7 +161,7 @@ export function AddonsManagerModal({
   open,
   onOpenChange,
 }: AddonsManagerModalProps) {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const [activeSection, setActiveSection] = useState<SidebarSection>('browse')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [selectedAddonId, setSelectedAddonId] = useState<string | null>(null)
@@ -174,7 +174,7 @@ export function AddonsManagerModal({
 
   const handleUninstallAddon = async (addonId: string, version?: string) => {
     setIsUninstalling(true)
-    const response = await openAPI.integrations.addons.uninstall({
+    const response = await bridge.addons.uninstall({
       body: { addonId, version },
     })
     setIsUninstalling(false)
@@ -194,7 +194,7 @@ export function AddonsManagerModal({
   >({
     queryKey: ['plugins', 'installed'],
     queryFn: async () => {
-      const response = await openAPI.integrations.addons.listInstalled()
+      const response = await bridge.addons.listInstalled()
       if (!response.isSuccess) throw new Error(response.error)
       return response.data ?? []
     },
@@ -205,7 +205,7 @@ export function AddonsManagerModal({
   >({
     queryKey: ['plugins', 'available'],
     queryFn: async () => {
-      const response = await openAPI.integrations.addons.listAvailable()
+      const response = await bridge.addons.listAvailable()
       if (!response.isSuccess) throw new Error(response.error)
       return response.data ?? []
     },

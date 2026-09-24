@@ -27,9 +27,8 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
       const workspace = await this.workspacesRepository.findById(
         input.workspaceId,
       )
-      if (!workspace) {
+      if (!workspace)
         return Either.failure(AppError.Unauthorized('WORKSPACE_NAO_ENCONTRADO'))
-      }
 
       const adapter = await this.dataSourceResolver.getDataSource(
         input.workspaceId,
@@ -67,8 +66,14 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
     try {
       if (_deleted) return this.handleDeleted(entry, timeEntriesProvider)
 
-      const existing = await timeEntriesProvider.findById(id!)
+      const existingResult = await timeEntriesProvider.findById(id!)
+      if (existingResult.isFailure())
+        return {
+          ...entry,
+          validationError: existingResult.failure,
+        }
 
+      const existing = existingResult.success
       if (existing)
         return this.handleExisting(entry, existing, timeEntriesProvider)
 
@@ -84,9 +89,8 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
   }
 
   private validateDocument(entry: SyncTimeEntryDTO): AppError | null {
-    const { id, updatedAt, _deleted } = entry
-    if (!id) return AppError.ValidationError('DOCUMENT_ID_MISSING')
-    if (!_deleted && !updatedAt)
+    if (!entry.id) return AppError.ValidationError('DOCUMENT_ID_MISSING')
+    if (!entry._deleted && !entry.updatedAt)
       return AppError.ValidationError('DOCUMENT_UPDATED_AT_MISSING')
     return null
   }
@@ -95,13 +99,19 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
     entry: SyncTimeEntryDTO,
     timeEntriesProvider: ITimeEntryProvider,
   ): Promise<SyncTimeEntryDTO> {
-    await timeEntriesProvider.delete(entry.id!)
+    const deleteResult = await timeEntriesProvider.delete(entry.id!)
+    if (deleteResult.isFailure())
+      return {
+        ...entry,
+        validationError: deleteResult.failure,
+      }
+
     return { ...entry, syncedAt: new Date() }
   }
 
   private async handleExisting(
     entry: SyncTimeEntryDTO,
-    existing: TimeEntry,
+    existing: TimeEntryDTO,
     timeEntriesProvider: ITimeEntryProvider,
   ): Promise<SyncTimeEntryDTO> {
     const { assumedMasterState } = entry
@@ -166,61 +176,105 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
       }
     }
 
-    const resultUpdateHours = existing.updateHours(
-      entry.startDate,
-      entry.endDate,
-      entry.timeSpent,
-    )
-
-    if (resultUpdateHours.isFailure()) {
-      return {
-        ...entry,
-        validationError: resultUpdateHours.forwardFailure().failure,
-      }
-    }
-
-    if (entry.task) {
-      const resultUpdateTask = existing.updateTask(entry.task)
-      if (resultUpdateTask.isFailure()) {
-        return {
-          ...entry,
-          validationError: resultUpdateTask.forwardFailure().failure,
-        }
-      }
-    }
-
-    if (entry.activity) {
-      const resultUpdateActivity = existing.updateActivity(entry.activity)
-      if (resultUpdateActivity.isFailure()) {
-        return {
-          ...entry,
-          validationError: resultUpdateActivity.forwardFailure().failure,
-        }
-      }
-    }
-
-    if (entry.comments !== undefined) {
-      const resultUpdateComments = existing.updateComments(entry.comments)
-      if (resultUpdateComments.isFailure()) {
-        return {
-          ...entry,
-          validationError: resultUpdateComments.forwardFailure().failure,
-        }
-      }
-    }
-
-    const updateResult = await timeEntriesProvider.update(existing)
-    let confirmedUpdatedAt = existing.updatedAt
-    if (updateResult && updateResult.updatedAt) {
-      confirmedUpdatedAt = updateResult.updatedAt
-    }
-
-    return {
-      ...entry,
+    const existingEntityResult = TimeEntry.create({
+      id: existing.id,
       task: { id: existing.task.id },
       activity: {
         id: existing.activity.id,
         name: existing.activity.name,
+      },
+      user: { id: existing.user.id, name: existing.user.name },
+      startDate: existing.startDate,
+      endDate: existing.endDate,
+      timeSpent: existing.timeSpent,
+      comments: existing.comments,
+    })
+
+    if (existingEntityResult.isFailure())
+      return {
+        ...entry,
+        validationError: existingEntityResult.failure,
+      }
+
+    const existingEntity = existingEntityResult.success
+
+    const resultUpdateHours = existingEntity.updateHours(
+      entry.startDate !== undefined
+        ? entry.startDate
+        : existingEntity.startDate,
+      entry.endDate !== undefined ? entry.endDate : existingEntity.endDate,
+      entry.timeSpent !== undefined
+        ? entry.timeSpent
+        : existingEntity.timeSpent,
+    )
+
+    if (resultUpdateHours.isFailure())
+      return {
+        ...entry,
+        validationError: resultUpdateHours.forwardFailure().failure,
+      }
+
+    if (entry.task) {
+      const resultUpdateTask = existingEntity.updateTask(entry.task)
+      if (resultUpdateTask.isFailure())
+        return {
+          ...entry,
+          validationError: resultUpdateTask.forwardFailure().failure,
+        }
+    }
+
+    if (entry.activity) {
+      const resultUpdateActivity = existingEntity.updateActivity(entry.activity)
+      if (resultUpdateActivity.isFailure())
+        return {
+          ...entry,
+          validationError: resultUpdateActivity.forwardFailure().failure,
+        }
+    }
+
+    if (entry.comments !== undefined) {
+      const resultUpdateComments = existingEntity.updateComments(entry.comments)
+      if (resultUpdateComments.isFailure())
+        return {
+          ...entry,
+          validationError: resultUpdateComments.forwardFailure().failure,
+        }
+    }
+
+    const updatedDto: TimeEntryDTO = {
+      id: existingEntity.id,
+      task: { id: existingEntity.task.id },
+      activity: {
+        id: existingEntity.activity.id,
+        name: existingEntity.activity.name,
+      },
+      user: { id: existingEntity.user.id, name: existingEntity.user.name },
+      startDate: existingEntity.startDate,
+      endDate: existingEntity.endDate,
+      timeSpent: existingEntity.timeSpent,
+      comments: existingEntity.comments,
+      createdAt: existing.createdAt,
+      updatedAt: existingEntity.updatedAt,
+    }
+
+    const updateResult = await timeEntriesProvider.update(updatedDto)
+    if (updateResult.isFailure())
+      return {
+        ...entry,
+        validationError: updateResult.failure,
+      }
+
+    let confirmedUpdatedAt = existingEntity.updatedAt
+    if (updateResult.success && updateResult.success.updatedAt) {
+      confirmedUpdatedAt = updateResult.success.updatedAt
+    }
+
+    return {
+      ...entry,
+      task: { id: existingEntity.task.id },
+      activity: {
+        id: existingEntity.activity.id,
+        name: existingEntity.activity.name,
       },
       updatedAt: confirmedUpdatedAt,
       syncedAt: new Date(),
@@ -312,15 +366,38 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
         validationError: AppError.ValidationError('TIME_ENTRY_INVALID'),
       }
 
-    const createResult = await timeEntriesProvider.create(result.success)
-    let assignedRemoteId = result.success.id
-    if (createResult && createResult.id) {
-      assignedRemoteId = createResult.id
+    const entity = result.success
+    const entryDto: TimeEntryDTO = {
+      id: entity.id,
+      task: { id: entity.task.id },
+      activity: {
+        id: entity.activity.id,
+        name: entity.activity.name,
+      },
+      user: { id: entity.user.id, name: entity.user.name },
+      startDate: entity.startDate,
+      endDate: entity.endDate,
+      timeSpent: entity.timeSpent,
+      comments: entity.comments,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt,
     }
 
-    let remoteUpdatedAt = result.success.updatedAt
-    if (createResult && createResult.updatedAt) {
-      remoteUpdatedAt = createResult.updatedAt
+    const createResult = await timeEntriesProvider.create(entryDto)
+    if (createResult.isFailure())
+      return {
+        ...entry,
+        validationError: createResult.failure,
+      }
+
+    let assignedRemoteId = entity.id
+    if (createResult.success && createResult.success.id) {
+      assignedRemoteId = createResult.success.id
+    }
+
+    let remoteUpdatedAt = entity.updatedAt
+    if (createResult.success && createResult.success.updatedAt) {
+      remoteUpdatedAt = createResult.success.updatedAt
     }
 
     const output: SyncTimeEntryDTO = {
@@ -328,8 +405,8 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
       id: assignedRemoteId,
       originalId: entry.id,
       activity: {
-        id: result.success.activity.id,
-        name: result.success.activity.name,
+        id: entity.activity.id,
+        name: entity.activity.name,
       },
       user: {
         id: resolvedUserId,

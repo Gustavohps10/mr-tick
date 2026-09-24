@@ -10,20 +10,16 @@ const mockGetById = vi.fn()
 const mockMarkConfigured = vi.fn()
 const mockListInstalled = vi.fn()
 
-vi.mock('@/hooks/use-open-api', () => ({
-  useOpenAPI: () => ({
-    services: {
-      workspaces: {
-        create: mockCreate,
-        updateIdentity: mockUpdateIdentity,
-        getById: mockGetById,
-        markWorkspaceAsConfigured: mockMarkConfigured,
-      },
+vi.mock('@/hooks/use-host-bridge', () => ({
+  useHostBridge: () => ({
+    workspaces: {
+      create: mockCreate,
+      updateIdentity: mockUpdateIdentity,
+      getById: mockGetById,
+      markWorkspaceAsConfigured: mockMarkConfigured,
     },
-    integrations: {
-      addons: {
-        listInstalled: mockListInstalled,
-      },
+    addons: {
+      listInstalled: mockListInstalled,
     },
     events: { on: () => () => {}, emit: () => {} },
   }),

@@ -17,4 +17,6 @@ export interface TimeEntryDTO {
   comments?: string
   createdAt: Date
   updatedAt: Date
+  source?: 'manual' | 'timer' | 'ai_suggestion' | 'addon'
+  addonSource?: { id: string; name: string; imageUrl?: string }
 }

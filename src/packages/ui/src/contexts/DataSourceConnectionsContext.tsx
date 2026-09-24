@@ -17,7 +17,7 @@ import React, {
 } from 'react'
 
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 
 export type ConnectionInstanceId = string
 
@@ -78,7 +78,7 @@ export function DataSourceConnectionsProvider({
   children: ReactNode
 }) {
   const { workspace } = useWorkspace()
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
 
   const workspaceId = workspace?.id
@@ -87,7 +87,7 @@ export function DataSourceConnectionsProvider({
   const { data: installedPlugins = [] } = useQuery({
     queryKey: ['plugins', 'installed'],
     queryFn: async () => {
-      const res = await openAPI.integrations.addons.listInstalled()
+      const res = await bridge.addons.listInstalled()
       if (!res.isSuccess) return []
       return res.data ?? []
     },
@@ -135,7 +135,7 @@ export function DataSourceConnectionsProvider({
     }) => {
       if (!workspaceId) return
 
-      const res = await openAPI.services.workspaces.linkDataSource({
+      const res = await bridge.workspaces.linkDataSource({
         body: {
           workspaceId,
           dataSourceId: pluginId,
@@ -172,14 +172,14 @@ export function DataSourceConnectionsProvider({
 
       return res
     },
-    [openAPI, workspaceId, queryClient],
+    [bridge, workspaceId, queryClient],
   )
 
   const unlink = useCallback(
     async (connectionInstanceId?: ConnectionInstanceId) => {
       if (!workspaceId || !connectionInstanceId) return
 
-      const res = await openAPI.services.workspaces.unlinkDataSource({
+      const res = await bridge.workspaces.unlinkDataSource({
         body: {
           workspaceId,
           connectionInstanceId,
@@ -206,7 +206,7 @@ export function DataSourceConnectionsProvider({
 
       return res
     },
-    [openAPI, workspaceId, queryClient],
+    [bridge, workspaceId, queryClient],
   )
 
   const connect = useCallback(
@@ -223,7 +223,7 @@ export function DataSourceConnectionsProvider({
     }) => {
       if (!workspaceId) return
 
-      const res = await openAPI.services.workspaces.connectDataSource({
+      const res = await bridge.workspaces.connectDataSource({
         body: {
           workspaceId,
           connectionInstanceId,
@@ -263,14 +263,14 @@ export function DataSourceConnectionsProvider({
 
       return res
     },
-    [openAPI, workspaceId, queryClient],
+    [bridge, workspaceId, queryClient],
   )
 
   const disconnect = useCallback(
     async (connectionInstanceId: ConnectionInstanceId) => {
       if (!workspaceId) return
 
-      const res = await openAPI.services.workspaces.disconnectDataSource({
+      const res = await bridge.workspaces.disconnectDataSource({
         body: {
           workspaceId,
           connectionInstanceId,
@@ -302,7 +302,7 @@ export function DataSourceConnectionsProvider({
 
       return res
     },
-    [openAPI, workspaceId, queryClient],
+    [bridge, workspaceId, queryClient],
   )
 
   const value = useMemo<DataSourceConnectionsContextType>(

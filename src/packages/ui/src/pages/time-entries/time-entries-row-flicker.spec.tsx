@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { createStore } from 'zustand/vanilla'
 
-vi.mock('@/hooks/use-open-api', () => ({
-  useOpenAPI: () => ({
+vi.mock('@/hooks/use-host-bridge', () => ({
+  useHostBridge: () => ({
     timer: {
       start: () => Promise.resolve({ isSuccess: true, data: undefined }),
       pause: () => Promise.resolve({ isSuccess: true, data: undefined }),

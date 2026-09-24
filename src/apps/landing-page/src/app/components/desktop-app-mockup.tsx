@@ -1,5 +1,12 @@
-'use client'
-
+import {
+  AddonManifestViewModel,
+  IHostBridge,
+  MemberViewModel,
+  MetadataViewModel,
+  PaginatedViewModel,
+  ViewModel,
+  WorkspaceViewModel,
+} from '@mr-tick/application'
 import {
   AppRail,
   Header,
@@ -17,7 +24,7 @@ import {
   DataSourceConnectionsProvider,
   dropAppStorage,
   EnvironmentProvider,
-  OpenAPIProvider,
+  HostBridgeProvider,
   SidebarProvider,
   SyncProvider,
   TimeEntryProvider,
@@ -44,24 +51,33 @@ import {
 import * as React from 'react'
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 
-// Mock environment for OpenAPI/RxDB fallback in web (injected as darwin for macOS traffic lights)
+// Mock environment for HostBridge/RxDB fallback in web (injected as darwin for macOS traffic lights)
 const mockEnvironment = { isDevelopment: false, platform: 'darwin' }
 
+const mockMember: MemberViewModel = {
+  id: 1,
+  login: 'gustavo.santos',
+  firstname: 'Gustavo',
+  lastname: 'Santos',
+  admin: true,
+  createdOn: '2026-01-01T00:00:00Z',
+  lastLoginOn: '2026-01-01T00:00:00Z',
+  avatarUrl: '',
+  customFields: [],
+}
+
 // Mock workspace data model with Jira and Redmine connections and user credentials
-const mockWorkspace = {
+const mockWorkspace: WorkspaceViewModel = {
   id: 'default',
   name: 'MR. TICK CORE WORKSPACE',
+  status: 'configured',
   description: 'Engineering Productivity Hub',
-  isDefault: true,
-  color: '#6366f1',
   avatarUrl: '',
-  avatar: undefined,
   dataSourceConnections: [
     {
       id: 'conn-1',
       dataSourceId: 'redmine',
       status: 'connected',
-      name: 'Redmine',
       member: {
         id: 'member-1',
         name: 'Gustavo Santos',
@@ -73,7 +89,6 @@ const mockWorkspace = {
       id: 'conn-2',
       dataSourceId: 'jira',
       status: 'connected',
-      name: 'Jira Software',
       member: {
         id: 'member-2',
         name: 'Gustavo Santos',
@@ -82,154 +97,172 @@ const mockWorkspace = {
       },
     },
   ],
+  createdAt: new Date('2026-01-01T00:00:00Z'),
+  updatedAt: new Date('2026-01-01T00:00:00Z'),
 }
 
 // Installed Addon Plugins list for DataSources
-const mockInstalledPlugins = [
+const mockInstalledPlugins: AddonManifestViewModel[] = [
   {
     id: 'redmine',
     name: 'Redmine',
     version: '1.2.0',
     logo: '/ui/temp-plugins-icons/redmine.png',
-    icon: 'redmine',
+    creator: 'Mr. Tick',
+    description: 'Redmine integration',
+    path: '',
+    downloads: 100,
+    stars: 5,
+    installed: true,
   },
   {
     id: 'jira',
     name: 'Jira Software',
     version: '2.4.1',
     logo: '/ui/temp-plugins-icons/jira.png',
-    icon: 'jira',
+    creator: 'Mr. Tick',
+    description: 'Jira integration',
+    path: '',
+    downloads: 200,
+    stars: 5,
+    installed: true,
   },
 ]
 
-// Recursive Proxy to safely handle all nested openAPI/services/integrations/modules calls
-function createOpenApiProxy(base: any = {}): any {
-  const fallbackFn = (..._args: any[]) =>
-    Promise.resolve({ isSuccess: true, data: [] })
-  const target =
-    typeof base === 'function'
-      ? base
-      : typeof base === 'object' && base !== null
-        ? base
-        : fallbackFn
-
-  return new Proxy(target, {
-    get(t, prop: string | symbol) {
-      if (typeof prop !== 'string') return undefined
-      if (prop === 'then' || prop === 'catch' || prop === 'finally') {
-        return undefined
-      }
-      if (prop === 'on' || prop === 'off' || prop === 'subscribe') {
-        return () => () => {}
-      }
-      if (prop in t && t[prop] !== undefined) {
-        if (typeof t[prop] === 'object' && t[prop] !== null) {
-          return createOpenApiProxy(t[prop])
-        }
-        return t[prop]
-      }
-      return createOpenApiProxy(fallbackFn)
-    },
-    apply(t, thisArg, argArray) {
-      if (typeof t === 'function' && t !== fallbackFn) {
-        return t.apply(thisArg, argArray)
-      }
-      return Promise.resolve({ isSuccess: true, data: [] })
-    },
-  })
+const mockMetadata: MetadataViewModel = {
+  activities: [],
+  taskStatuses: [],
+  taskPriorities: [],
+  trackStatuses: [],
+  participantRoles: [],
+  estimationTypes: [],
 }
 
-// Complete Mock OpenAPI Client simulating desktop backend
-const mockOpenApiClient: any = createOpenApiProxy({
-  services: {
-    workspaces: {
-      getById: async () => ({
+function mockSuccess<T>(data: T): ViewModel<T> {
+  return {
+    isSuccess: true,
+    statusCode: 200,
+    data,
+  }
+}
+
+function mockPaginated<T>(data: T): PaginatedViewModel<T> {
+  return {
+    isSuccess: true,
+    statusCode: 200,
+    data,
+    totalItems: Array.isArray(data) ? data.length : 0,
+    totalPages: 1,
+    currentPage: 1,
+  }
+}
+
+const mockBridgeClient: IHostBridge = {
+  workspaces: {
+    getById: async () => mockSuccess(mockWorkspace),
+    listAll: async () => mockPaginated([mockWorkspace]),
+    create: async () => mockSuccess(mockWorkspace),
+    updateIdentity: async () => mockSuccess(mockWorkspace),
+    delete: async () => mockSuccess(undefined),
+    markWorkspaceAsConfigured: async () => mockSuccess(undefined),
+    linkDataSource: async () => mockSuccess(mockWorkspace),
+    unlinkDataSource: async () => mockSuccess(mockWorkspace),
+    connectDataSource: async () =>
+      mockSuccess({
         isSuccess: true,
-        data: mockWorkspace,
+        message: 'Connected',
+        member: mockMember,
       }),
-      list: async () => ({
-        isSuccess: true,
-        data: [mockWorkspace],
-      }),
-      create: async () => ({ isSuccess: true, data: mockWorkspace }),
-      updateIdentity: async () => ({ isSuccess: true, data: mockWorkspace }),
-      remove: async () => ({ isSuccess: true }),
-    },
-    auth: {
-      getCurrentUser: async () => ({
-        isSuccess: true,
-        data: {
-          id: 'user-1',
-          email: 'dev@mr-tick.io',
-          name: 'Gustavo (Tech Lead)',
-        },
-      }),
-      getOrganizations: async () => ({
-        isSuccess: true,
-        data: [],
-      }),
-    },
-    datasources: {
-      list: async () => ({
-        isSuccess: true,
-        data: [
-          { id: 'redmine', name: 'Redmine' },
-          { id: 'jira', name: 'Jira Software' },
-        ],
-      }),
-      link: async () => ({ isSuccess: true }),
-      unlink: async () => ({ isSuccess: true }),
-      connect: async () => ({ isSuccess: true }),
-      disconnect: async () => ({ isSuccess: true }),
-    },
-    addons: {
-      list: async () => ({
-        isSuccess: true,
-        data: mockInstalledPlugins,
-      }),
-    },
+    disconnectDataSource: async () => mockSuccess(undefined),
+    getConnectionMember: async () => mockSuccess(mockMember),
   },
-  integrations: {
-    addons: {
-      listInstalled: async () => ({
-        isSuccess: true,
-        data: mockInstalledPlugins,
-      }),
-      getSidebarMenus: async () => ({
-        isSuccess: true,
-        data: [],
-      }),
-      getTimerbarMenus: async () => ({
-        isSuccess: true,
-        data: [],
-      }),
-      list: async () => ({
-        isSuccess: true,
-        data: mockInstalledPlugins,
-      }),
-    },
+  session: {
+    getCurrentUser: async () => mockSuccess(mockMember),
   },
-  modules: {
-    system: {
-      getEnvironment: async () => mockEnvironment,
-      getAppVersion: async () => '0.1.1',
-    },
-    workspaces: {
-      list: async () => [mockWorkspace],
-      getActive: async () => mockWorkspace,
-    },
-    auth: {
-      getCurrentUser: async () => ({
-        id: 'user-1',
-        email: 'dev@mr-tick.io',
-        name: 'Gustavo',
+  addons: {
+    listAvailable: async () => mockPaginated(mockInstalledPlugins),
+    listInstalled: async () => mockPaginated(mockInstalledPlugins),
+    getInstalledById: async () => mockSuccess(mockInstalledPlugins[0]),
+    updateLocal: async () => mockSuccess(undefined),
+    import: async () => mockSuccess(undefined),
+    getInstaller: async () =>
+      mockSuccess({
+        id: 'mock',
+        packages: [],
       }),
-    },
+    install: async () => mockSuccess({ jobId: 'mock-job' }),
+    uninstall: async () => mockSuccess(undefined),
+    getSidebarMenus: async () => mockSuccess([]),
+    getTimerbarMenus: async () => mockSuccess([]),
+    executeCommand: async () => mockSuccess(undefined),
+    showToast: async () => mockSuccess('toast-1'),
+    dismissToast: async () => mockSuccess(undefined),
+    getSchema: async () => mockSuccess([]),
+    getConnectionSchema: async () => mockSuccess([]),
+    getSettings: async () => mockSuccess({}),
+    saveSettings: async () => mockSuccess(undefined),
+    executeAction: async () => mockSuccess({ isSuccess: true }),
+    setActiveWorkspace: async () => mockSuccess(undefined),
+    getActiveTheme: async () => mockSuccess(null),
+    setActiveTheme: async () => mockSuccess(undefined),
+  },
+  system: {
+    getEnvironment: async () => mockEnvironment,
+    getAppVersion: async () => '0.1.1',
+    getSettings: async () => ({}),
+    saveSettings: async () => {},
+    getDisplays: async () => [],
+    moveToDisplay: async () => {},
+    hideWindow: async () => {},
+    showWindow: async () => {},
+    minimizeWindow: async () => {},
+    maximizeWindow: async () => {},
+    unmaximizeWindow: async () => {},
+    closeWindow: async () => {},
+    isMaximized: async () => false,
+    setIgnoreMouseEvents: async () => {},
+    startKeyboardInterception: async () => {},
+    stopKeyboardInterception: async () => {},
+    toggleTheme: async () => {},
+    forceTopmost: async () => {},
+  },
+  updater: {
+    checkForUpdates: async () => {},
+    downloadUpdate: async () => {},
+    quitAndInstall: async () => {},
+  },
+  tasks: {
+    listTasks: async () => mockPaginated([]),
+    pull: async () => mockSuccess([]),
+  },
+  timeEntries: {
+    listTimeEntries: async () => mockPaginated([]),
+    pull: async () => mockSuccess([]),
+    push: async () => mockSuccess([]),
+  },
+  metadata: {
+    pull: async () => mockSuccess(mockMetadata),
+  },
+  tokens: {
+    saveToken: async () => mockSuccess(undefined),
+    getToken: async () => mockSuccess(null),
+    deleteToken: async () => mockSuccess(undefined),
+  },
+  headers: {
+    setDefaultHeaders: () => {},
+    getDefaultHeaders: () => ({}),
+  },
+  timer: {
+    start: () => {},
+    pause: () => {},
+    resume: () => {},
+    stop: () => {},
   },
   events: {
     on: () => () => {},
+    emit: () => {},
   },
-})
+}
 
 // Custom Mock Sidebar strictly matching original desktop UI
 function MockSidebar({
@@ -739,7 +772,7 @@ export function DesktopAppMockup() {
         {/* Canvas do App com Proporção Desktop Nativa e Scroll Total */}
         <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden">
           <MemoryRouter initialEntries={['/workspaces/default/time-entries']}>
-            <OpenAPIProvider client={mockOpenApiClient}>
+            <HostBridgeProvider bridge={mockBridgeClient}>
               <EnvironmentProvider environment={mockEnvironment}>
                 <QueryClientProvider client={queryClient}>
                   <WorkspaceProvider workspaceId="default">
@@ -757,7 +790,7 @@ export function DesktopAppMockup() {
                   </WorkspaceProvider>
                 </QueryClientProvider>
               </EnvironmentProvider>
-            </OpenAPIProvider>
+            </HostBridgeProvider>
           </MemoryRouter>
         </div>
       </div>

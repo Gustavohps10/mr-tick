@@ -3,8 +3,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import React, { useState } from 'react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/hooks/use-open-api', () => ({
-  useOpenAPI: () => ({
+vi.mock('@/hooks/use-host-bridge', () => ({
+  useHostBridge: () => ({
     timer: {},
     events: { on: () => () => {}, emit: () => {} },
   }),

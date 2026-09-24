@@ -1,10 +1,10 @@
 import { useEffect } from 'react'
 
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { type UpdateInfoData, useUpdaterStore } from '@/stores/updaterStore'
 
 export function useAutoUpdater() {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const {
     setVersion,
     setIsPortable,
@@ -22,32 +22,29 @@ export function useAutoUpdater() {
   // 1. Load initial environment & settings
   useEffect(() => {
     async function loadAppInfo() {
-      if (!openAPI?.modules?.system) return
       try {
-        const v = await openAPI.modules.system.getAppVersion()
+        const v = await bridge.system.getAppVersion()
         setVersion(v)
-        const env = await openAPI.modules.system.getEnvironment()
-        setIsPortable(!!env.isPortable)
+        const env = await bridge.system.getEnvironment()
+        setIsPortable(Boolean(env.isPortable))
         setInstallPath(env.installPath || '')
-        const settings = await openAPI.modules.system.getSettings()
-        setAllowBeta(!!settings.allowBeta)
+        const settings = await bridge.system.getSettings()
+        setAllowBeta(Boolean(settings.allowBeta))
       } catch (err) {
         console.error('[useAutoUpdater] Failed to load initial app info:', err)
       }
     }
     loadAppInfo()
-  }, [openAPI, setVersion, setIsPortable, setInstallPath, setAllowBeta])
+  }, [bridge, setVersion, setIsPortable, setInstallPath, setAllowBeta])
 
   // 2. Listen for updater events from main process
   useEffect(() => {
-    if (!openAPI?.events) return
-
-    const unsubChecking = openAPI.events.on('updater:checking', () => {
+    const unsubChecking = bridge.events.on('updater:checking', () => {
       console.log('[useAutoUpdater] received updater:checking')
       setUpdaterState('checking')
     })
 
-    const unsubAvailable = openAPI.events.on<UpdateInfoData>(
+    const unsubAvailable = bridge.events.on<UpdateInfoData>(
       'updater:update-available',
       (info: UpdateInfoData) => {
         console.log('[useAutoUpdater] received updater:update-available', info)
@@ -55,21 +52,22 @@ export function useAutoUpdater() {
         setUpdateInfo(info)
 
         // Determine if modal should pop up automatically
-        const isSkipped = !!info.version && skippedVersion === info.version
+        const isSkipped =
+          Boolean(info.version) && skippedVersion === info.version
         const isRemindCooldown =
-          !!remindLaterUntil && Date.now() < remindLaterUntil
+          remindLaterUntil !== null && Date.now() < remindLaterUntil
 
         if (!isSkipped && !isRemindCooldown) {
           setShowModal(true)
-        } else {
-          console.log(
-            `[useAutoUpdater] Modal auto-popup suppressed: isSkipped=${isSkipped}, isRemindCooldown=${isRemindCooldown}`,
-          )
+          return
         }
+        console.log(
+          `[useAutoUpdater] Modal auto-popup suppressed: isSkipped=${isSkipped}, isRemindCooldown=${isRemindCooldown}`,
+        )
       },
     )
 
-    const unsubNotAvailable = openAPI.events.on<UpdateInfoData | undefined>(
+    const unsubNotAvailable = bridge.events.on<UpdateInfoData | undefined>(
       'updater:update-not-available',
       (info?: UpdateInfoData) => {
         console.log(
@@ -80,7 +78,7 @@ export function useAutoUpdater() {
       },
     )
 
-    const unsubProgress = openAPI.events.on<{ percent: number }>(
+    const unsubProgress = bridge.events.on<{ percent: number }>(
       'updater:download-progress',
       (data: { percent: number }) => {
         setUpdaterState('downloading')
@@ -88,7 +86,7 @@ export function useAutoUpdater() {
       },
     )
 
-    const unsubDownloaded = openAPI.events.on<UpdateInfoData>(
+    const unsubDownloaded = bridge.events.on<UpdateInfoData>(
       'updater:update-downloaded',
       (info: UpdateInfoData) => {
         console.log('[useAutoUpdater] received updater:update-downloaded', info)
@@ -96,7 +94,7 @@ export function useAutoUpdater() {
       },
     )
 
-    const unsubError = openAPI.events.on<string>(
+    const unsubError = bridge.events.on<string>(
       'updater:error',
       (err: string) => {
         console.error('[useAutoUpdater] received updater:error', err)
@@ -106,15 +104,15 @@ export function useAutoUpdater() {
     )
 
     return () => {
-      unsubChecking?.()
-      unsubAvailable?.()
-      unsubNotAvailable?.()
-      unsubProgress?.()
-      unsubDownloaded?.()
-      unsubError?.()
+      unsubChecking()
+      unsubAvailable()
+      unsubNotAvailable()
+      unsubProgress()
+      unsubDownloaded()
+      unsubError()
     }
   }, [
-    openAPI,
+    bridge,
     setUpdaterState,
     setUpdateInfo,
     setShowModal,

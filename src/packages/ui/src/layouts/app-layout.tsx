@@ -12,7 +12,7 @@ import { UpdateModal } from '@/components/settings/update-modal'
 import { TitleBar } from '@/components/title-bar'
 import { Toaster } from '@/components/ui/sonner'
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { useAutoUpdater } from '@/hooks/use-auto-updater'
 import { GlobalConflictResolutionDialog } from '@/pages/time-entries/components/conflict-resolution-dialog'
 import { DataSourceConnectionsProvider } from '@/providers'
@@ -27,14 +27,14 @@ export function AppLayout() {
   >()
   const navigate = useNavigate()
   const location = useLocation()
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
 
   useAutoUpdater()
 
   useEffect(() => {
-    if (!openAPI?.events?.on) return
+    if (!bridge?.events?.on) return
 
-    const unsub = openAPI.events.on<{ workspaceId: string }>(
+    const unsub = bridge.events.on<{ workspaceId: string }>(
       'workspace:switched',
       ({ workspaceId }) => {
         if (!workspaceId) return
@@ -54,7 +54,7 @@ export function AppLayout() {
     )
 
     return () => unsub?.()
-  }, [openAPI, navigate, location.pathname])
+  }, [bridge, navigate, location.pathname])
 
   const routeWorkspaceId = location.pathname.match(/\/workspaces\/([^/]+)/)?.[1]
   const currentWorkspaceId = activeWorkspaceId || routeWorkspaceId

@@ -49,7 +49,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { cn } from '@/lib/utils'
 
 export interface NavItem {
@@ -448,7 +448,7 @@ function SidebarAddonSection({
 }) {
   const { open } = useSidebar()
   const location = useLocation()
-  const api = useOpenAPI()
+  const bridge = useHostBridge()
   const [addonMenus, setAddonMenus] = useState<AddonSidebarMenuItem[]>([])
 
   useEffect(() => {
@@ -456,7 +456,7 @@ function SidebarAddonSection({
 
     async function loadAddonMenus() {
       try {
-        const response = await api.integrations.addons.getSidebarMenus()
+        const response = await bridge.addons.getSidebarMenus()
         if (!isMounted) return
         if (!response?.isSuccess || !Array.isArray(response.data)) return
         setAddonMenus(response.data)
@@ -469,7 +469,7 @@ function SidebarAddonSection({
     return () => {
       isMounted = false
     }
-  }, [api])
+  }, [bridge])
 
   if (addonMenus.length === 0) return null
 

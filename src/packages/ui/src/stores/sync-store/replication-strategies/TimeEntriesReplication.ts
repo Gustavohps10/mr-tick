@@ -1,4 +1,4 @@
-import { IOpenAPI, SyncTimeEntryDTO } from '@mr-tick/sdk'
+import { IHostBridge, SyncTimeEntryDTO } from '@mr-tick/application'
 import { TimeEntryViewModel } from '@mr-tick/shared/view-models'
 import { RxCollection } from 'rxdb'
 
@@ -58,7 +58,7 @@ export class TimeEntriesReplication implements IReplicationStrategy<
   private readonly inFlightPushDocIds = new Set<string>()
 
   constructor(
-    private client: IOpenAPI,
+    private client: IHostBridge,
     private workspaceId: string,
     private connectionInstanceId: string,
     private pluginId: string,
@@ -72,7 +72,7 @@ export class TimeEntriesReplication implements IReplicationStrategy<
     documents: SyncTimeEntryRxDBDTO[]
     checkpoint: ReplicationCheckpoint
   }> {
-    const res = await this.client.services.timeEntries.pull({
+    const res = await this.client.timeEntries.pull({
       body: {
         workspaceId: this.workspaceId,
         connectionInstanceId: this.connectionInstanceId,
@@ -413,7 +413,7 @@ export class TimeEntriesReplication implements IReplicationStrategy<
         return entry
       })
 
-      const res = await this.client.services.timeEntries.push({
+      const res = await this.client.timeEntries.push({
         body: {
           workspaceId: this.workspaceId,
           pluginId: this.pluginId,

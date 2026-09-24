@@ -1,8 +1,9 @@
-import type {
-  AddonContext,
-  AddonSettingsGroup,
-  IAddon,
-  IDataSource,
+import {
+  type AddonContext,
+  type AddonSettingsGroup,
+  Either,
+  type IAddon,
+  type IDataSource,
 } from '@mr-tick/sdk'
 
 import { FakeAuthenticationStrategy } from './FakeAuthenticationStrategy'
@@ -84,6 +85,12 @@ export const FakeDataSource: IDataSource = {
     timeEntriesProvider: new FakeTimeEntryProvider(context),
     membersProvider: new FakeMemberProvider(context),
     metadataProvider: new FakeMetadataProvider(context),
+    testConnection: async () =>
+      Either.success({
+        ok: true,
+        message: 'Conexão simulada com sucesso',
+        latencyMs: 120,
+      }),
   }),
 }
 

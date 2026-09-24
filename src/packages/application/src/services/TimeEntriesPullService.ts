@@ -18,7 +18,6 @@ export class TimeEntriesPullService implements ITimeEntriesPullUseCase {
     try {
       const adapter = await this.dataSourceResolver.getDataSource(
         input.workspaceId,
-
         input.connectionInstanceId,
       )
 

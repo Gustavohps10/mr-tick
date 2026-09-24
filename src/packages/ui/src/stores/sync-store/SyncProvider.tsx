@@ -18,7 +18,7 @@ import {
 } from '@/contexts/DataSourceConnectionsContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useEnvironment } from '@/hooks'
-import { useOpenAPI } from '@/hooks/use-open-api'
+import { useHostBridge } from '@/hooks/use-host-bridge'
 import {
   type RxDBQueryCacheSyncHandle,
   setupRxDBQueryCacheSync,
@@ -40,7 +40,7 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
 }) => {
   const { isDevelopment } = useEnvironment()
   const { workspace } = useWorkspace()
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const { connections } = useDataSourceConnections()
   const queryClient = useQueryClient()
 
@@ -117,7 +117,7 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
 
         const newStore = createSyncStore(
           nextWorkspaceId,
-          openAPI,
+          bridge,
           isDevelopment,
           isMemoryActive,
         )
@@ -158,7 +158,7 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
           }
           cacheSyncHandleRef.current = setupRxDBQueryCacheSync(db, queryClient)
 
-          const tempTimeEntryStore = createTimeEntryStore(openAPI)
+          const tempTimeEntryStore = createTimeEntryStore(bridge)
           await tempTimeEntryStore.getState().recoverRunningEntry(db)
           console.log('[SYNC][provider] recoverRunningEntry concluído', {
             runId,
@@ -182,7 +182,7 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
         cacheSyncHandleRef.current = null
       }
     }
-  }, [workspace?.id, openAPI, isDevelopment, useMemoryStorage])
+  }, [workspace?.id, bridge, isDevelopment, useMemoryStorage])
 
   useEffect(() => {
     const handleConnectionsChange = async () => {

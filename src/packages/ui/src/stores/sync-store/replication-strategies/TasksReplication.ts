@@ -1,4 +1,4 @@
-import { IOpenAPI } from '@mr-tick/sdk'
+import { IHostBridge } from '@mr-tick/application'
 import { StatusChange, TaskViewModel } from '@mr-tick/shared/view-models'
 
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
@@ -26,7 +26,7 @@ export class TasksReplication implements IReplicationStrategy<
   ReplicationCheckpoint
 > {
   constructor(
-    private client: IOpenAPI,
+    private client: IHostBridge,
     private workspaceId: string,
     private connectionInstanceId: string,
     private pluginId: string,
@@ -39,7 +39,7 @@ export class TasksReplication implements IReplicationStrategy<
     documents: SyncTaskRxDBDTO[]
     checkpoint: ReplicationCheckpoint
   }> {
-    const res = await this.client.services.tasks.pull({
+    const res = await this.client.tasks.pull({
       body: {
         workspaceId: this.workspaceId,
         connectionInstanceId: this.connectionInstanceId,

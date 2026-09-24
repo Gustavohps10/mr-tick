@@ -2,11 +2,11 @@ import React from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { useUpdaterStore } from '@/stores/updaterStore'
 
 export function UpdateSettingsTab() {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const {
     version,
     isPortable,
@@ -19,30 +19,24 @@ export function UpdateSettingsTab() {
 
   const handleToggleBeta = async (checked: boolean) => {
     setAllowBeta(checked)
-    if (openAPI?.modules?.system) {
-      const settings = await openAPI.modules.system.getSettings()
-      await openAPI.modules.system.saveSettings({
-        ...settings,
-        allowBeta: checked,
-      })
-    }
+    const settings = await bridge.system.getSettings()
+    await bridge.system.saveSettings({
+      ...settings,
+      allowBeta: checked,
+    })
   }
 
   const handleCheckUpdates = async () => {
-    if (openAPI?.modules?.updater) {
-      console.log(
-        '[UpdateSettingsTab] Calling openAPI.modules.updater.checkForUpdates()',
-      )
-      setUpdaterState('checking')
-      setShowModal(true)
-      try {
-        const res = await openAPI.modules.updater.checkForUpdates()
-        console.log('[UpdateSettingsTab] checkForUpdates resolved', res)
-      } catch (error) {
-        console.error('[UpdateSettingsTab] checkForUpdates rejected', error)
-        setUpdaterState('error')
-        setErrorMessage(error instanceof Error ? error.message : String(error))
-      }
+    console.log('[UpdateSettingsTab] Calling bridge.updater.checkForUpdates()')
+    setUpdaterState('checking')
+    setShowModal(true)
+    try {
+      const res = await bridge.updater.checkForUpdates()
+      console.log('[UpdateSettingsTab] checkForUpdates resolved', res)
+    } catch (error) {
+      console.error('[UpdateSettingsTab] checkForUpdates rejected', error)
+      setUpdaterState('error')
+      setErrorMessage(error instanceof Error ? error.message : String(error))
     }
   }
 

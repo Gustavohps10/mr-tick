@@ -34,7 +34,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { cn } from '@/lib/utils'
 import { useSyncStore } from '@/stores/syncStore'
 import { JournalEntry, useTimeEntryStore } from '@/stores/timeEntryStore'
@@ -80,7 +80,7 @@ export interface TimerHistoryProps {
 
 export const TimerHistory = memo(
   ({ entry: propEntry, trigger }: TimerHistoryProps = {}) => {
-    const openAPI = useOpenAPI()
+    const bridge = useHostBridge()
     const db = useSyncStore((s) => s.db)
     const storeActiveEntry = useTimeEntryStore((s) => s.active)
     const setActive = useTimeEntryStore((s) => s.setActive)
@@ -204,7 +204,7 @@ export const TimerHistory = memo(
             new Date(),
             parseISO(newStartDate),
           )
-          openAPI?.timer?.start({
+          bridge.timer.start({
             baseSeconds: activeEntry.timerConfig?.manualInitialSeconds ?? 0,
             elapsedSeconds: Math.max(0, elapsed),
             mode: activeEntry.timerConfig?.mode ?? 'countup',
@@ -212,7 +212,7 @@ export const TimerHistory = memo(
         }
       }
 
-      openAPI?.events?.emit?.('time-entry:sync', updatedEntry)
+      bridge.events.emit('time-entry:sync', updatedEntry)
     }
 
     const handleDelete = async (block: TimelineBlock) => {

@@ -77,7 +77,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import {
   useCurrentWidgetPosition,
   useTimerSettings,
@@ -241,7 +241,7 @@ export const UltimateTimeTracker = ({
   const { timerDirection, setTimerDirection } = useTimerSettings()
   const [widgetPosition] = useCurrentWidgetPosition()
   const db = useSyncStore((s) => s.db)
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const setActive = useTimeEntryStore((s) => s.setActive)
 
   // Carrega dinamicamente as atividades do metadata baseado na Task / Conexões ativas
@@ -314,14 +314,14 @@ export const UltimateTimeTracker = ({
     const handleFocusIn = (e: FocusEvent) => {
       const target = e.target as HTMLElement | null
       if (target?.matches?.('input, textarea')) {
-        openAPI.modules.system.startKeyboardInterception?.()
+        bridge.system.startKeyboardInterception()
       }
     }
 
     const handleFocusOut = (e: FocusEvent) => {
       const target = e.target as HTMLElement | null
       if (target?.matches?.('input, textarea')) {
-        openAPI.modules.system.stopKeyboardInterception?.()
+        bridge.system.stopKeyboardInterception()
       }
     }
 
@@ -329,7 +329,7 @@ export const UltimateTimeTracker = ({
     window.addEventListener('focusout', handleFocusOut)
 
     // Ouve os caracteres interceptados pelo C++
-    const cleanupKeyListener = openAPI.events.on<{
+    const cleanupKeyListener = bridge.events.on<{
       vkCode: number
       key: string
     }>('widget:raw-key-input', (data) => {
@@ -347,7 +347,10 @@ export const UltimateTimeTracker = ({
           activeEl.setRangeText('', start, end, 'end')
         }
         activeEl.dispatchEvent(new Event('input', { bubbles: true }))
-      } else if (data.vkCode === 13) {
+        return
+      }
+
+      if (data.vkCode === 13) {
         // Enter
         activeEl.dispatchEvent(
           new KeyboardEvent('keydown', {
@@ -356,10 +359,16 @@ export const UltimateTimeTracker = ({
             bubbles: true,
           }),
         )
-      } else if (data.vkCode === 27) {
+        return
+      }
+
+      if (data.vkCode === 27) {
         // Escape
         activeEl.blur()
-      } else if (data.key) {
+        return
+      }
+
+      if (data.key) {
         // Insere o caractere digitado na posição do cursor
         const start = activeEl.selectionStart ?? activeEl.value.length
         const end = activeEl.selectionEnd ?? activeEl.value.length
@@ -371,9 +380,9 @@ export const UltimateTimeTracker = ({
     return () => {
       window.removeEventListener('focusin', handleFocusIn)
       window.removeEventListener('focusout', handleFocusOut)
-      cleanupKeyListener?.()
+      cleanupKeyListener()
     }
-  }, [])
+  }, [bridge])
 
   const activeEntry = useTimeEntryStore((s) => s.active)
 
@@ -490,7 +499,7 @@ export const UltimateTimeTracker = ({
       isCurrentlyIgnored = shouldIgnore
 
       // Passar sempre { forward: true } quando for ignorar para o Chromium continuar recebendo o mousemove
-      openAPI.modules.system.setIgnoreMouseEvents({
+      bridge.system.setIgnoreMouseEvents({
         body: { ignore: shouldIgnore, forward: true },
       })
     }
@@ -700,7 +709,7 @@ export const UltimateTimeTracker = ({
       isDraggingWidgetRef.current = false
 
       if (!element.matches(':hover')) {
-        openAPI.modules.system.setIgnoreMouseEvents({
+        bridge.system.setIgnoreMouseEvents({
           body: { ignore: true, forward: true },
         })
       }
@@ -861,7 +870,7 @@ export const UltimateTimeTracker = ({
       }
 
       if (!activeEntry || !db) {
-        openAPI.events?.emit?.('tracker:draft-sync', {
+        bridge.events.emit('tracker:draft-sync', {
           taskId: task.id,
           selectedTask: task,
           selectedConnectionId: connId,
@@ -880,10 +889,10 @@ export const UltimateTimeTracker = ({
         })
         const updatedJson = updated.toMutableJSON()
         setActive(updatedJson)
-        openAPI.events?.emit?.('time-entry:sync', updatedJson)
+        bridge.events.emit('time-entry:sync', updatedJson)
       }
     },
-    [activeEntry, db, selectedConnectionId, openAPI, setActive],
+    [activeEntry, db, selectedConnectionId, bridge, setActive],
   )
 
   const isRemote = Boolean(
@@ -904,7 +913,7 @@ export const UltimateTimeTracker = ({
       }
       setTaskId(newTaskId)
       if (!activeEntry || !db) {
-        openAPI.events?.emit?.('tracker:draft-sync', { taskId: newTaskId })
+        bridge.events.emit('tracker:draft-sync', { taskId: newTaskId })
         return
       }
 
@@ -916,17 +925,17 @@ export const UltimateTimeTracker = ({
         })
         const updatedJson = updated.toMutableJSON()
         setActive(updatedJson)
-        openAPI.events?.emit?.('time-entry:sync', updatedJson)
+        bridge.events.emit('time-entry:sync', updatedJson)
       }
     },
-    [activeEntry, db, isRemote, openAPI, setActive],
+    [activeEntry, db, isRemote, bridge, setActive],
   )
 
   const handleDescriptionChange = useCallback(
     async (desc: string) => {
       setDescription(desc)
       if (!activeEntry || !db) {
-        openAPI.events?.emit?.('tracker:draft-sync', { description: desc })
+        bridge.events.emit('tracker:draft-sync', { description: desc })
         return
       }
 
@@ -938,10 +947,10 @@ export const UltimateTimeTracker = ({
         })
         const updatedJson = updated.toMutableJSON()
         setActive(updatedJson)
-        openAPI.events?.emit?.('time-entry:sync', updatedJson)
+        bridge.events.emit('time-entry:sync', updatedJson)
       }
     },
-    [activeEntry, db, openAPI, setActive],
+    [activeEntry, db, bridge, setActive],
   )
 
   const handleActivityChange = useCallback(
@@ -962,15 +971,15 @@ export const UltimateTimeTracker = ({
           })
           const updatedJson = updated.toMutableJSON()
           setActive(updatedJson)
-          openAPI.events?.emit?.('time-entry:sync', updatedJson)
+          bridge.events.emit('time-entry:sync', updatedJson)
         }
         return
       }
-      openAPI.events?.emit?.('tracker:draft-sync', {
+      bridge.events.emit('tracker:draft-sync', {
         selectedActivity: actId,
       })
     },
-    [activeEntry, db, isRemote, openAPI, setActive],
+    [activeEntry, db, isRemote, bridge, setActive],
   )
 
   const handleConnectionChange = useCallback(
@@ -985,33 +994,44 @@ export const UltimateTimeTracker = ({
           })
           const updatedJson = updated.toMutableJSON()
           setActive(updatedJson)
-          openAPI.events?.emit?.('time-entry:sync', updatedJson)
+          bridge.events.emit('time-entry:sync', updatedJson)
         }
-      } else {
-        openAPI.events?.emit?.('tracker:draft-sync', {
-          selectedConnectionId: connId,
-        })
+        return
       }
+      bridge.events.emit('tracker:draft-sync', {
+        selectedConnectionId: connId,
+      })
     },
-    [activeEntry, db, openAPI, setActive],
+    [activeEntry, db, bridge, setActive],
   )
 
   useEffect(() => {
-    if (!openAPI?.events?.on) return
+    interface TrackerDraftSyncEvent {
+      taskId?: string
+      selectedTask?: SyncTaskRxDBDTO
+      selectedConnectionId?: string
+      description?: string
+      selectedActivity?: string
+    }
 
-    const unsub = openAPI.events.on<any>('tracker:draft-sync', (data) => {
-      if (!data) return
-      if (data.taskId !== undefined) setTaskId(data.taskId)
-      if (data.selectedTask !== undefined) setSelectedTask(data.selectedTask)
-      if (data.description !== undefined) setDescription(data.description)
-      if (data.selectedActivity !== undefined)
-        setSelectedActivity(data.selectedActivity)
-      if (data.selectedConnectionId !== undefined)
-        setSelectedConnectionId(data.selectedConnectionId)
-    })
+    const unsub = bridge.events.on<TrackerDraftSyncEvent>(
+      'tracker:draft-sync',
+      (data) => {
+        if (!data) return
+        if (data.taskId !== undefined) setTaskId(data.taskId)
+        if (data.selectedTask !== undefined) setSelectedTask(data.selectedTask)
+        if (data.description !== undefined) setDescription(data.description)
+        if (data.selectedActivity !== undefined)
+          setSelectedActivity(data.selectedActivity)
+        if (data.selectedConnectionId !== undefined)
+          setSelectedConnectionId(data.selectedConnectionId)
+      },
+    )
 
-    return () => unsub?.()
-  }, [openAPI])
+    return () => {
+      unsub()
+    }
+  }, [bridge])
 
   const handleStart = useCallback(async () => {
     if (!db) return
@@ -1949,7 +1969,7 @@ function renderAddonIcon(
 }
 
 function SystemAddonsButton({ isVertical }: { isVertical: boolean }) {
-  const api = useOpenAPI()
+  const bridge = useHostBridge()
   const [timerbarMenus, setTimerbarMenus] = useState<AddonTimerbarMenuItem[]>(
     [],
   )
@@ -1959,7 +1979,7 @@ function SystemAddonsButton({ isVertical }: { isVertical: boolean }) {
 
     async function loadTimerbarMenus() {
       try {
-        const response = await api.integrations.addons.getTimerbarMenus()
+        const response = await bridge.addons.getTimerbarMenus()
         if (!isMounted) return
         if (!response?.isSuccess || !Array.isArray(response.data)) return
         setTimerbarMenus(response.data)
@@ -1970,52 +1990,59 @@ function SystemAddonsButton({ isVertical }: { isVertical: boolean }) {
 
     loadTimerbarMenus()
 
-    const unsub = api.events?.on('addons:toast', (toastData: any) => {
-      console.log('🔔 [UI] Toasts event received in renderer:', toastData)
-      if (!toastData) return
+    interface AddonToastPayload {
+      action?: string
+      toastId?: string
+      type?: 'info' | 'success' | 'error' | 'warning' | 'loading'
+      message?: string
+      title?: string
+    }
 
-      if (toastData.action === 'dismiss' && toastData.toastId) {
-        toast.dismiss(toastData.toastId)
-        return
-      }
-      const type = toastData.type ?? 'info'
-      if (type === 'loading') {
-        toast.loading(toastData.message, {
+    const unsub = bridge.events.on<AddonToastPayload>(
+      'addons:toast',
+      (toastData) => {
+        console.log('🔔 [UI] Toasts event received in renderer:', toastData)
+        if (!toastData) return
+
+        if (toastData.action === 'dismiss' && toastData.toastId) {
+          toast.dismiss(toastData.toastId)
+          return
+        }
+        const message = toastData.message ?? ''
+        const toastOptions = {
           id: toastData.toastId,
           description: toastData.title,
-        })
-      } else if (type === 'success') {
-        toast.success(toastData.message, {
-          id: toastData.toastId,
-          description: toastData.title,
-        })
-      } else if (type === 'error') {
-        toast.error(toastData.message, {
-          id: toastData.toastId,
-          description: toastData.title,
-        })
-      } else if (type === 'warning') {
-        toast.warning(toastData.message, {
-          id: toastData.toastId,
-          description: toastData.title,
-        })
-      } else {
-        toast.info(toastData.message, {
-          id: toastData.toastId,
-          description: toastData.title,
-        })
-      }
-    })
+        }
+
+        switch (toastData.type) {
+          case 'loading':
+            toast.loading(message, toastOptions)
+            return
+          case 'success':
+            toast.success(message, toastOptions)
+            return
+          case 'error':
+            toast.error(message, toastOptions)
+            return
+          case 'warning':
+            toast.warning(message, toastOptions)
+            return
+          default:
+            toast.info(message, toastOptions)
+            return
+        }
+      },
+    )
 
     return () => {
       isMounted = false
-      unsub?.()
+      unsub()
     }
-  }, [api])
+  }, [bridge])
 
   const handleCommandExecute = async (commandId: string, label: string) => {
     try {
-      const res = await api.integrations.addons.executeCommand({
+      const res = await bridge.addons.executeCommand({
         body: { commandId },
       })
       if (!res?.isSuccess) {
@@ -2118,11 +2145,11 @@ function SystemAddonsButton({ isVertical }: { isVertical: boolean }) {
 
 function AddonSingleTool({ menu }: { menu: AddonTimerbarMenuItem }) {
   const { isVertical } = useTrackerContext()
-  const api = useOpenAPI()
+  const bridge = useHostBridge()
 
   const handleCommandExecute = async (commandId: string, label: string) => {
     try {
-      const res = await api.integrations.addons.executeCommand({
+      const res = await bridge.addons.executeCommand({
         body: { commandId },
       })
       if (!res?.isSuccess) {
@@ -2221,7 +2248,7 @@ function AddonSingleTool({ menu }: { menu: AddonTimerbarMenuItem }) {
 }
 
 export function useAddonBlocks() {
-  const api = useOpenAPI()
+  const bridge = useHostBridge()
   const { enabledAddonIds } = useTimerSettings()
   const [timerbarMenus, setTimerbarMenus] = useState<AddonTimerbarMenuItem[]>(
     [],
@@ -2232,7 +2259,7 @@ export function useAddonBlocks() {
 
     async function loadTimerbarMenus() {
       try {
-        const response = await api.integrations.addons.getTimerbarMenus()
+        const response = await bridge.addons.getTimerbarMenus()
         if (!isMounted) return
         if (!response?.isSuccess || !Array.isArray(response.data)) return
         setTimerbarMenus(response.data)
@@ -2245,7 +2272,7 @@ export function useAddonBlocks() {
     return () => {
       isMounted = false
     }
-  }, [api])
+  }, [bridge])
 
   const visibleMenus = timerbarMenus.filter((menu) =>
     (enabledAddonIds ?? []).includes(menu.id),

@@ -18,7 +18,6 @@ export class ListTimeEntriesService implements IListTimeEntriesUseCase {
     try {
       const adapter = await this.dataSourceResolver.getDataSource(
         input.workspaceId,
-
         input.connectionInstanceId,
       )
 
@@ -34,13 +33,16 @@ export class ListTimeEntriesService implements IListTimeEntriesUseCase {
       const endDate =
         input.endDate instanceof Date ? input.endDate : new Date(input.endDate)
 
-      const timeEntries = await adapter.timeEntriesProvider.findByMemberId(
-        member.id.toString(),
-        startDate,
-        endDate,
-      )
+      const timeEntriesResult =
+        await adapter.timeEntriesProvider.findByMemberId(
+          member.id.toString(),
+          startDate,
+          endDate,
+        )
+      if (timeEntriesResult.isFailure())
+        return timeEntriesResult.forwardFailure()
 
-      return Either.success(timeEntries)
+      return Either.success(timeEntriesResult.success)
     } catch {
       return Either.failure(AppError.NotFound('ERRO_INESPERADO'))
     }

@@ -89,7 +89,7 @@ describe('GetCurrentUserService', () => {
       Either.success(fakeAuthMember as any),
     )
     ;(adapterMock.membersProvider.findById as any).mockResolvedValue(
-      fakeMemberDTO,
+      Either.success(fakeMemberDTO),
     )
 
     // Act
@@ -182,7 +182,9 @@ describe('GetCurrentUserService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeAuthMember as any),
     )
-    ;(adapterMock.membersProvider.findById as any).mockResolvedValue(undefined)
+    ;(adapterMock.membersProvider.findById as any).mockResolvedValue(
+      Either.success(null),
+    )
 
     // Act
     const result = await sut.execute(input)

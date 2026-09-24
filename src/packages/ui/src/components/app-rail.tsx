@@ -14,7 +14,7 @@ import { NavLink } from 'react-router-dom'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { useTimerSettings } from '@/hooks/use-timer-settings'
 import { cn } from '@/lib'
 
@@ -79,7 +79,7 @@ export function AppRail({
   onSettingsClick: () => void
 }) {
   const { workspaces } = useWorkspace()
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const { setSelectedWorkspaceId } = useTimerSettings()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
@@ -120,7 +120,7 @@ export function AppRail({
               to={`/workspaces/${workspace.id}`}
               onClick={() => {
                 setSelectedWorkspaceId(workspace.id)
-                openAPI.events?.emit?.('workspace:switched', {
+                bridge.events.emit('workspace:switched', {
                   workspaceId: workspace.id,
                 })
               }}

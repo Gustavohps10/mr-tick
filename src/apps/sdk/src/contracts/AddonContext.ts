@@ -1,4 +1,5 @@
-import { IEventEmitter, ISystemEvents } from '@mr-tick/shared/transport'
+import type { IEventsAPI } from '@mr-tick/application'
+import type { ISystemEvents } from '@mr-tick/shared/transport'
 
 import { IAddonThemesRegistry } from './AddonTheme'
 import { ICommandRegistry } from './commands/ICommandRegistry'
@@ -12,41 +13,7 @@ import { ITimerAPI } from './timer/ITimerAPI'
 
 export * from './oauth/IOAuthAPI'
 
-export interface IAddonEventsAPI extends IEventEmitter<ISystemEvents> {
-  onTimerStart(
-    callback: (payload: ISystemEvents['timer:start']) => void,
-  ): () => void
-  onTimerPause(
-    callback: (payload: ISystemEvents['timer:pause']) => void,
-  ): () => void
-  onTimerResume(
-    callback: (payload: ISystemEvents['timer:resume']) => void,
-  ): () => void
-  onTimerStop(
-    callback: (payload: ISystemEvents['timer:stop']) => void,
-  ): () => void
-  onTimerUpdate(
-    callback: (payload: ISystemEvents['timer:update']) => void,
-  ): () => void
-  onSystemIdle(
-    callback: (payload: ISystemEvents['system:idle']) => void,
-  ): () => void
-  onSystemActive(
-    callback: (payload: ISystemEvents['system:active']) => void,
-  ): () => void
-  onTimeEntryCreated(
-    callback: (payload: ISystemEvents['timeEntry:created']) => void,
-  ): () => void
-  onTimeEntryUpdated(
-    callback: (payload: ISystemEvents['timeEntry:updated']) => void,
-  ): () => void
-  onTimeEntryDeleted(
-    callback: (payload: ISystemEvents['timeEntry:deleted']) => void,
-  ): () => void
-  onWorkspaceChange(
-    callback: (payload: ISystemEvents['workspace:changed']) => void,
-  ): () => void
-}
+export interface IAddonEventsAPI extends IEventsAPI<ISystemEvents> {}
 
 export interface IAddonStorage {
   get(key: string): Promise<string | null>

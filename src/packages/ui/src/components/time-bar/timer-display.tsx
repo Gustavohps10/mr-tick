@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { cn } from '@/lib/utils'
 import { useTimeEntryStore } from '@/stores/timeEntryStore'
 
@@ -49,7 +49,7 @@ export function TimerDisplay({
   max = Infinity,
 }: TimerDisplayProps) {
   const storeStatus = useTimeEntryStore((s) => s.active?.timeStatus) || 'idle'
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
 
   const resolvedStatus: TimerStatus = statusOverride ?? storeStatus
   const isRunning = resolvedStatus === 'running'
@@ -67,14 +67,14 @@ export function TimerDisplay({
   useEffect(() => {
     if (!isRunning) return
 
-    const unsubscribeTick = openAPI.events.on<{ seconds: number }>(
+    const unsubscribeTick = bridge.events.on<{ seconds: number }>(
       'timer:tick',
       (data) => {
         setCurrentSeconds(data.seconds)
       },
     )
 
-    const unsubscribeFinished = openAPI.events.on('timer:finished', () => {
+    const unsubscribeFinished = bridge.events.on('timer:finished', () => {
       setCurrentSeconds(0)
     })
 
@@ -82,7 +82,7 @@ export function TimerDisplay({
       unsubscribeTick()
       unsubscribeFinished()
     }
-  }, [isRunning])
+  }, [isRunning, bridge])
 
   const displaySeconds =
     secondsOverride !== undefined ? secondsOverride : currentSeconds

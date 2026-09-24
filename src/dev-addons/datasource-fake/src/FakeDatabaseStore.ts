@@ -9,7 +9,6 @@ import type {
   TaskDTO,
   TimeEntryDTO,
 } from '@mr-tick/sdk'
-import { Task, TimeEntry } from '@mr-tick/sdk'
 
 import {
   FAKE_MEMBER,
@@ -310,7 +309,7 @@ export class FakeDatabaseStore {
     return filtered.slice(0, batchSize)
   }
 
-  public saveTimeEntryFromEntity(entity: TimeEntry): void {
+  public saveTimeEntry(entity: TimeEntryDTO): void {
     this.ensureLoaded()
     const existingIndex = this.timeEntries.findIndex(
       (item) => item.id === entity.id,
@@ -419,7 +418,7 @@ export class FakeDatabaseStore {
     return filtered.slice(0, batchSize)
   }
 
-  public saveTaskFromEntity(task: Task): void {
+  public saveTask(task: TaskDTO): void {
     this.ensureLoaded()
     const existingIndex = this.tasks.findIndex((item) => item.id === task.id)
     const now = new Date()

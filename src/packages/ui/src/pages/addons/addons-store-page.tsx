@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 
 import type { AddonCategory } from './components/addon-category-sidebar'
 import {
@@ -58,7 +58,7 @@ function addonCategory(m: AddonManifest): AddonCategory {
 }
 
 export function AddonsStorePage() {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
 
   const [activeTab, setActiveTab] = useState<'installed' | 'available'>(
@@ -75,7 +75,7 @@ export function AddonsStorePage() {
   const { data: installedList = [] } = useQuery({
     queryKey: ['plugins', 'installed'],
     queryFn: async () => {
-      const res = await openAPI.integrations.addons.listInstalled()
+      const res = await bridge.addons.listInstalled()
       if (!res.isSuccess) {
         throw new Error(res.error ?? 'Falha ao listar plugins instalados')
       }
@@ -86,7 +86,7 @@ export function AddonsStorePage() {
   const { data: availableList = [] } = useQuery({
     queryKey: ['plugins', 'available'],
     queryFn: async () => {
-      const res = await openAPI.integrations.addons.listAvailable()
+      const res = await bridge.addons.listAvailable()
       if (!res.isSuccess) {
         throw new Error(res.error ?? 'Falha ao listar plugins disponíveis')
       }
@@ -99,7 +99,7 @@ export function AddonsStorePage() {
       installerManifestUrl: string
       version: string
     }) => {
-      const installer = await openAPI.integrations.addons.getInstaller({
+      const installer = await bridge.addons.getInstaller({
         body: { installerUrl: input.installerManifestUrl },
       })
       const pkg = installer.data?.packages.find(
@@ -108,7 +108,7 @@ export function AddonsStorePage() {
       if (!pkg) {
         throw new Error('Versão não encontrada.')
       }
-      return openAPI.integrations.addons.install({
+      return bridge.addons.install({
         body: { downloadUrl: pkg.downloadUrl },
       })
     },
@@ -157,7 +157,7 @@ export function AddonsStorePage() {
     }
 
     try {
-      const res = await openAPI.integrations.addons.getInstaller({
+      const res = await bridge.addons.getInstaller({
         body: { installerUrl: addon.installerManifestUrl },
       })
       if (res.isSuccess && res.data?.packages) {

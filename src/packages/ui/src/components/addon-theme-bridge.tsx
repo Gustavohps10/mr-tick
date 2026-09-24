@@ -3,16 +3,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
-import { useOpenAPI } from '@/hooks/use-open-api'
+import { useHostBridge } from '@/hooks/use-host-bridge'
 
 export function AddonThemeBridge() {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
 
   const { data: activeTheme } = useQuery({
     queryKey: ['addons', 'activeTheme'],
     queryFn: async () => {
-      const res = await openAPI.integrations.addons.getActiveTheme()
+      const res = await bridge.addons.getActiveTheme()
       console.log('🎨 [AddonThemeBridge] API getActiveTheme response:', res)
       if (!res.isSuccess) return null
       return res.data
@@ -22,9 +22,9 @@ export function AddonThemeBridge() {
 
   // Escuta evento IPC em tempo real caso esteja rodando no Electron
   useEffect(() => {
-    if (!openAPI?.events?.on) return
+    if (!bridge?.events?.on) return
 
-    const unsubscribe = openAPI.events.on(
+    const unsubscribe = bridge.events.on(
       'addons:theme-changed',
       (theme: unknown) => {
         console.log(
@@ -38,7 +38,7 @@ export function AddonThemeBridge() {
     return () => {
       unsubscribe?.()
     }
-  }, [openAPI, queryClient])
+  }, [bridge, queryClient])
 
   useEffect(() => {
     const STYLE_ID = 'mr-tick-addon-active-theme'

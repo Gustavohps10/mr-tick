@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { AddonPackageViewModel } from '@mr-tick/sdk'
 import { IJobEvent } from '@mr-tick/shared/transport'
@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useOpenAPI } from '@/hooks/use-open-api'
+import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib'
 
 export interface AddonInstallTarget {
@@ -63,7 +63,7 @@ export function AddonInstallModal({
   onOpenChange,
   onSuccess,
 }: AddonInstallModalProps) {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
   const logEndRef = useRef<HTMLDivElement>(null)
 
@@ -156,7 +156,7 @@ export function AddonInstallModal({
       },
     ])
 
-    const installResponse = await openAPI.integrations.addons.install({
+    const installResponse = await bridge.addons.install({
       body: { downloadUrl: selectedPackage.downloadUrl },
     })
 
@@ -178,7 +178,7 @@ export function AddonInstallModal({
 
     const jobId = installResponse.data.jobId
 
-    const unsubscribeEvents = openAPI.events.on(
+    const unsubscribeEvents = bridge.events.on(
       jobId,
       (event: IJobEvent<string>) => {
         if (event.status === 'progress') {

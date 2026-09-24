@@ -1,4 +1,4 @@
-import { IOpenAPI } from '@mr-tick/sdk'
+import { IHostBridge } from '@mr-tick/application'
 
 import { SyncMetadataRxDBDTO } from '@/local-db/schemas/metadata-sync-schema'
 
@@ -9,7 +9,7 @@ export class MetadataReplication implements IReplicationStrategy<
   ReplicationCheckpoint
 > {
   constructor(
-    private client: IOpenAPI,
+    private client: IHostBridge,
     private workspaceId: string,
     private connectionInstanceId: string,
     private pluginId: string,
@@ -22,7 +22,7 @@ export class MetadataReplication implements IReplicationStrategy<
     documents: SyncMetadataRxDBDTO[]
     checkpoint: ReplicationCheckpoint
   }> {
-    const res = await this.client.services.metadata.pull({
+    const res = await this.client.metadata.pull({
       body: {
         workspaceId: this.workspaceId,
         connectionInstanceId: this.connectionInstanceId,

@@ -121,7 +121,7 @@ export default class MeuAddon implements IAddon {
     const apiKey = await context.storage.get('apiKey')
 
     // 3. Escutando eventos nativos do timer
-    context.events.onTimerStart((payload) => {
+    context.events.on('timer:start', (payload) => {
       console.log('Timer iniciado para a tarefa:', payload.taskId)
     })
   }
@@ -233,3 +233,11 @@ yarn sync:manifest
 git tag v0.1.0
 git push origin main --tags
 ```
+
+---
+
+## 5. Evolução de Contratos e Roadmap (ADR-007)
+
+Para detalhes sobre a padronização funcional com `Either`, isolamento de DTOs e a estratégia de refatoração direta na raiz dos contratos, consulte o documento de decisão arquitetural:
+- 📄 [ADR-007 — Padronização Funcional de Contratos de Addons, Tratamento Determinístico com Either e Desacoplamento Limpo do SDK](./ADR-007.md)
+

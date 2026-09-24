@@ -87,6 +87,11 @@ export class DataSourceResolver implements IDataSourceResolver {
     const datasource = await this.loadModule(connection.dataSourceId)
     const instance = datasource.createInstance(context)
 
+    const runTestConnection = instance.testConnection
+    const testConnection = runTestConnection
+      ? () => runTestConnection()
+      : undefined
+
     return {
       getAuthenticatedMemberData: () => {
         if (!context.authenticatedMemberData)
@@ -100,6 +105,7 @@ export class DataSourceResolver implements IDataSourceResolver {
       timeEntriesProvider: instance.timeEntriesProvider,
       membersProvider: instance.membersProvider,
       metadataProvider: instance.metadataProvider,
+      testConnection,
     }
   }
 

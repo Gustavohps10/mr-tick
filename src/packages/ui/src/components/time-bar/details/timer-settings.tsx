@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { AddonTimerbarMenuItem, DisplayInfo } from '@mr-tick/application'
 import {
@@ -29,7 +29,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import {
   useCurrentWidgetPosition,
   useTimerSettings,
@@ -121,7 +121,7 @@ function PositionCompass({
 }
 
 export const TimerSettings = memo(() => {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const isWidgetWindow =
     typeof window !== 'undefined' && window.location.hash.includes('/widgets/')
   const {
@@ -154,7 +154,7 @@ export const TimerSettings = memo(() => {
 
   useEffect(() => {
     let isMounted = true
-    openAPI.integrations.addons
+    bridge.addons
       .getTimerbarMenus()
       .then((res) => {
         if (isMounted && res?.isSuccess && Array.isArray(res.data)) {
@@ -166,54 +166,57 @@ export const TimerSettings = memo(() => {
     return () => {
       isMounted = false
     }
-  }, [openAPI])
+  }, [bridge])
 
   // Sync initial settings from OS on startup
   useEffect(() => {
-    openAPI.modules.system.getSettings().then((settings) => {
+    bridge.system.getSettings().then((settings) => {
       if (settings && typeof settings.startMinimized === 'boolean') {
         setStartMinimized(settings.startMinimized)
       }
     })
-  }, [openAPI, setStartMinimized])
+  }, [bridge, setStartMinimized])
 
   useEffect(() => {
-    openAPI.modules.system.getDisplays().then((list) => {
+    bridge.system.getDisplays().then((list) => {
       setDisplays(list)
 
       if (list.length > 0 && initialLoad) {
         const savedDisplay = list.find((d) => d.id === selectedDisplayId)
-        const displayToUse =
-          savedDisplay || list.find((d) => d.isPrimary) || list[0]
+        const primaryDisplay = list.find((d) => d.isPrimary)
+        const fallbackDisplay = list.length > 0 ? list[0] : null
+        const displayToUse = savedDisplay ?? primaryDisplay ?? fallbackDisplay
 
-        if (displayToUse.id !== selectedDisplayId) {
-          setSelectedDisplayId(displayToUse.id)
+        if (displayToUse) {
+          if (displayToUse.id !== selectedDisplayId) {
+            setSelectedDisplayId(displayToUse.id)
+          }
+
+          bridge.system.moveToDisplay({
+            body: { displayId: displayToUse.id, windowType: 'widget' },
+          })
+          setInitialLoad(false)
         }
-
-        openAPI.modules.system.moveToDisplay({
-          body: { displayId: displayToUse.id, windowType: 'widget' },
-        })
-        setInitialLoad(false)
       }
     })
-  }, [openAPI, selectedDisplayId, setSelectedDisplayId, initialLoad])
+  }, [bridge, selectedDisplayId, setSelectedDisplayId, initialLoad])
 
   const handleDisplayChange = async (displayIdStr: string) => {
     const displayId = Number(displayIdStr)
     setSelectedDisplayId(displayId)
 
-    await openAPI.modules.system.moveToDisplay({
+    await bridge.system.moveToDisplay({
       body: { displayId, windowType: 'widget' },
     })
   }
 
   const handleStartMinimizedChange = async (checked: boolean) => {
     setStartMinimized(checked)
-    await openAPI.modules.system.saveSettings({ startMinimized: checked })
+    await bridge.system.saveSettings({ startMinimized: checked })
   }
 
   const handleHideWidget = async () => {
-    await openAPI.modules.system.hideWindow('widget')
+    await bridge.system.hideWindow('widget')
   }
 
   return (

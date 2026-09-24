@@ -1,7 +1,9 @@
-import type {
-  DataSourceContext,
-  IMetadataProvider,
-  MetadataDTO,
+import {
+  AppError,
+  type DataSourceContext,
+  Either,
+  type IMetadataProvider,
+  type MetadataDTO,
 } from '@mr-tick/sdk'
 
 import { FakeDatabaseStore } from './FakeDatabaseStore'
@@ -14,10 +16,10 @@ export class FakeMetadataProvider implements IMetadataProvider {
   }
 
   async getMetadata(
-    memberId?: string,
-    checkpoint?: { updatedAt: Date; id: string },
-    batch?: number,
-  ): Promise<MetadataDTO> {
-    return this.store.getMetadata()
+    memberId: string,
+    checkpoint: { updatedAt: Date; id: string },
+    batch: number,
+  ): Promise<Either<AppError, MetadataDTO>> {
+    return Either.success(this.store.getMetadata())
   }
 }

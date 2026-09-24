@@ -9,7 +9,7 @@ import {
 import { queryClient } from '@mr-tick/ui/lib'
 import {
   EnvironmentProvider,
-  OpenAPIProvider,
+  HostBridgeProvider,
   SidebarProvider,
   ThemeProvider,
   TooltipProvider,
@@ -34,14 +34,14 @@ export function AppDesktop() {
   const [environment, setEnvironment] = useState(defaultEnvironment)
 
   useEffect(() => {
-    ipcClient.modules.system
+    ipcClient.system
       .getEnvironment()
       .then(setEnvironment)
       .catch(() => setEnvironment(defaultEnvironment))
   }, [])
 
   return (
-    <OpenAPIProvider client={ipcClient}>
+    <HostBridgeProvider bridge={ipcClient}>
       <AddonToastBridge />
       <EnvironmentProvider environment={environment}>
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -58,6 +58,6 @@ export function AppDesktop() {
           </TooltipProvider>
         </ThemeProvider>
       </EnvironmentProvider>
-    </OpenAPIProvider>
+    </HostBridgeProvider>
   )
 }

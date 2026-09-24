@@ -1,4 +1,4 @@
-import { IOpenAPI } from '@mr-tick/sdk'
+import { IHostBridge } from '@mr-tick/application'
 import { RXDB_VERSION, RxError } from 'rxdb'
 import { createStore, type StoreApi } from 'zustand'
 
@@ -22,7 +22,7 @@ type ReplicationMap = Map<ConnectionInstanceId, Map<string, IReplicationModule>>
 
 export const createSyncStore = (
   workspaceId: string,
-  client: IOpenAPI,
+  client: IHostBridge,
   isDevelopment: boolean,
   useMemoryStorage: boolean = false,
 ): StoreApi<SyncStore> => {
@@ -313,7 +313,7 @@ export const createSyncStore = (
 
         if (windowEntries.length === 0) return
 
-        const res = await client.services.timeEntries.listTimeEntries({
+        const res = await client.timeEntries.listTimeEntries({
           body: {
             workspaceId,
             connectionInstanceId,

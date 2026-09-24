@@ -21,7 +21,7 @@ export interface OAuthTokenResponse {
   expires_in?: number
   refresh_token?: string
   scope?: string
-  [key: string]: unknown
+  [key: string]: string | number | boolean | undefined | null
 }
 
 export interface OAuthStoredToken {

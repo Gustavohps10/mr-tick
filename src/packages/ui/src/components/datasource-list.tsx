@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { AddonInstaller, AddonManifest } from '@mr-tick/application'
 import { IJobEvent } from '@mr-tick/shared/transport'
@@ -34,7 +34,7 @@ import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { cn, queryClient } from '@/lib'
 
 type LogEntry = {
@@ -69,7 +69,7 @@ export function DataSourceList({
   onSelectDataSource,
   onModalOpenChange,
 }: PluginListProps) {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const logEndRef = useRef<HTMLDivElement>(null)
 
   const [activeTab, setActiveTab] = useState('available')
@@ -94,7 +94,7 @@ export function DataSourceList({
 
   const { data: appVersion } = useQuery({
     queryKey: ['appVersion'],
-    queryFn: () => openAPI.modules.system.getAppVersion(),
+    queryFn: () => bridge.system.getAppVersion(),
     staleTime: Infinity,
   })
 
@@ -102,7 +102,7 @@ export function DataSourceList({
     {
       queryKey: ['plugins', 'installed'],
       queryFn: async () => {
-        const response = await openAPI.integrations.addons.listInstalled()
+        const response = await bridge.addons.listInstalled()
 
         if (!response.isSuccess) {
           toast.error(response.error ?? 'Falha ao carregar plugins instalados')
@@ -118,7 +118,7 @@ export function DataSourceList({
     {
       queryKey: ['plugins', 'available'],
       queryFn: async () => {
-        const response = await openAPI.integrations.addons.listAvailable()
+        const response = await bridge.addons.listAvailable()
 
         if (!response.isSuccess) {
           toast.error(response.error ?? 'Falha ao carregar plugins disponíveis')
@@ -140,7 +140,7 @@ export function DataSourceList({
     onModalOpenChange?.(true)
     setLoadingInstaller(true)
     try {
-      const response = await openAPI.integrations.addons.getInstaller({
+      const response = await bridge.addons.getInstaller({
         body: { installerUrl: plugin.installerManifestUrl! },
       })
 
@@ -168,7 +168,7 @@ export function DataSourceList({
     const downloadUrl = pkg.downloadUrl
 
     try {
-      const result = await openAPI.integrations.addons.install({
+      const result = await bridge.addons.install({
         body: { downloadUrl },
       })
       if (!result.isSuccess || !result.data?.jobId) return
@@ -197,7 +197,7 @@ export function DataSourceList({
         },
       }))
 
-      const unsubscribe = openAPI.events.on(jobId, (event: IJobEvent) => {
+      const unsubscribe = bridge.events.on(jobId, (event: IJobEvent) => {
         setInstallationStatus((prev) => {
           const current = prev[pluginId]
           const logId = crypto.randomUUID()

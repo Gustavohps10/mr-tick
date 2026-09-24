@@ -1,4 +1,3 @@
-import { TimeEntry } from '@mr-tick/domain'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import { PagedResultDTO, PaginationOptionsDTO, TimeEntryDTO } from '@/dtos'
@@ -23,12 +22,12 @@ export interface ITimeEntryProvider {
     memberId: string,
     startDate: Date,
     endDate: Date,
-  ): Promise<PagedResultDTO<TimeEntryDTO>>
-  create(entry: TimeEntry): Promise<CreatedTimeEntryResult | void>
-  update(entry: TimeEntry): Promise<UpdatedTimeEntryResult | void>
-  delete(id: string): Promise<void>
-  findById(id: string): Promise<TimeEntry | undefined>
+  ): Promise<Either<AppError, PagedResultDTO<TimeEntryDTO>>>
+  create(entry: TimeEntryDTO): Promise<Either<AppError, CreatedTimeEntryResult>>
+  update(entry: TimeEntryDTO): Promise<Either<AppError, UpdatedTimeEntryResult>>
+  delete(id: string): Promise<Either<AppError, void>>
+  findById(id: string): Promise<Either<AppError, TimeEntryDTO | null>>
   findAll(
     pagination?: PaginationOptionsDTO,
-  ): Promise<PagedResultDTO<TimeEntryDTO>>
+  ): Promise<Either<AppError, PagedResultDTO<TimeEntryDTO>>>
 }

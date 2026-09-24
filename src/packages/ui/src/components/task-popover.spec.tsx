@@ -4,8 +4,8 @@ import React, { useState } from 'react'
 import { toast } from 'sonner'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/hooks/use-open-api', () => ({
-  useOpenAPI: () => ({
+vi.mock('@/hooks/use-host-bridge', () => ({
+  useHostBridge: () => ({
     timer: {},
     events: { on: () => () => {}, emit: () => {} },
   }),

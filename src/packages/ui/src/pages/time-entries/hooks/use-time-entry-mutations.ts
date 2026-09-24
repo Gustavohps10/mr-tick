@@ -3,7 +3,7 @@ import { addSeconds, parseISO } from 'date-fns'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import {
   RecordSyncStatus,
@@ -22,7 +22,7 @@ export function useTimeEntryMutations(
   memberIdsByConnection: Record<string, string>,
 ) {
   const queryClient = useQueryClient()
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const forceSync = useSyncStore((s) => s.forceSync)
   const activeTimeEntry = useTimeEntryStore((s) => s.active)
   const setActive = useTimeEntryStore((s) => s.setActive)
@@ -47,9 +47,9 @@ export function useTimeEntryMutations(
   const savingRowsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    if (!openAPI?.events?.on) return
+    if (!bridge?.events?.on) return
 
-    const unsub = openAPI.events.on<SyncTimeEntryRxDBDTO>(
+    const unsub = bridge.events.on<SyncTimeEntryRxDBDTO>(
       'time-entry:conflict-resolved',
       (updatedEntry) => {
         if (!updatedEntry?.id) return
@@ -87,7 +87,7 @@ export function useTimeEntryMutations(
     )
 
     return () => unsub?.()
-  }, [openAPI])
+  }, [bridge])
 
   const getRowData = useCallback((id: string) => {
     return tempDataRef.current[id]
@@ -300,7 +300,7 @@ export function useTimeEntryMutations(
           },
         )
 
-        openAPI.events?.emit?.('time-entry:sync', revertedJson)
+        bridge.events.emit('time-entry:sync', revertedJson)
       } catch (err) {
         console.error('Erro ao reverter edição:', err)
       } finally {
@@ -313,7 +313,7 @@ export function useTimeEntryMutations(
         })
       }
     },
-    [db, queryClient, openAPI, activeTimeEntry, setActive],
+    [db, queryClient, bridge, activeTimeEntry, setActive],
   )
 
   const handleSaveRow = useCallback(
@@ -510,7 +510,7 @@ export function useTimeEntryMutations(
             })
           }
 
-          openAPI.events?.emit?.('time-entry:sync', newEntry)
+          bridge.events.emit('time-entry:sync', newEntry)
           toast.success('Registro salvo com sucesso!')
           return
         }
@@ -649,7 +649,7 @@ export function useTimeEntryMutations(
           if (updatedJson.timeStatus !== 'finished') setActive(updatedJson)
         }
 
-        openAPI.events?.emit?.('time-entry:sync', updatedJson)
+        bridge.events.emit('time-entry:sync', updatedJson)
 
         // Injeta a atualização no cache do TanStack Query ANTES de limpar tempData
         queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
@@ -693,7 +693,7 @@ export function useTimeEntryMutations(
       db,
       memberIdsByConnection,
       queryClient,
-      openAPI,
+      bridge,
       activeTimeEntry,
       setActive,
       clearActive,
@@ -724,7 +724,7 @@ export function useTimeEntryMutations(
 
       if (isCurrentActive) {
         clearActive()
-        openAPI.events?.emit?.('time-entry:sync', null)
+        bridge.events.emit('time-entry:sync', null)
       }
 
       queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
@@ -739,7 +739,7 @@ export function useTimeEntryMutations(
 
       toast.success('Registro removido')
     },
-    [db, queryClient, openAPI, activeTimeEntry, clearActive],
+    [db, queryClient, bridge, activeTimeEntry, clearActive],
   )
 
   const handleAcceptSuggestion = useCallback(
@@ -785,13 +785,13 @@ export function useTimeEntryMutations(
           delete next[row.id]
           return next
         })
-        openAPI.events?.emit?.('time-entry:sync', updatedJson)
+        bridge.events.emit('time-entry:sync', updatedJson)
       } catch (err) {
         console.error('Erro ao aceitar sugestao:', err)
         toast.error('Erro ao aceitar sugestão')
       }
     },
-    [db, queryClient, openAPI],
+    [db, queryClient, bridge],
   )
 
   const handleDismissSuggestion = useCallback(
@@ -958,14 +958,14 @@ export function useTimeEntryMutations(
             return next
           })
 
-          openAPI.events?.emit?.('time-entry:sync', updatedJson)
+          bridge.events.emit('time-entry:sync', updatedJson)
         }
       } catch (err) {
         console.error('Erro ao atualizar apontamento diretamente:', err)
         toast.error('Erro ao atualizar apontamento')
       }
     },
-    [db, queryClient, openAPI, activeTimeEntry, setActive],
+    [db, queryClient, bridge, activeTimeEntry, setActive],
   )
 
   const [conflictRowBeingResolved, setConflictRowBeingResolved] =
@@ -1018,7 +1018,7 @@ export function useTimeEntryMutations(
               })
             },
           )
-          openAPI.events?.emit?.('time-entry:sync', updatedJson)
+          bridge.events.emit('time-entry:sync', updatedJson)
           if (forceSync) {
             await forceSync(docData.connectionInstanceId, 'push')
           }
@@ -1076,7 +1076,7 @@ export function useTimeEntryMutations(
               })
             },
           )
-          openAPI.events?.emit?.('time-entry:sync', updatedJson)
+          bridge.events.emit('time-entry:sync', updatedJson)
           await queryClient.refetchQueries({
             queryKey: ['time-entries-range'],
             type: 'active',
@@ -1101,7 +1101,7 @@ export function useTimeEntryMutations(
         toast.error('Erro ao resolver conflito de sincronização')
       }
     },
-    [db, queryClient, openAPI, forceSync],
+    [db, queryClient, bridge, forceSync],
   )
 
   const handleResolveConflictAndClose = useCallback(

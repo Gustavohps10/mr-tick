@@ -6,7 +6,6 @@ import {
   type ITimeEntryProvider,
   type PagedResultDTO,
   type PaginationOptionsDTO,
-  TimeEntry,
   type TimeEntryDTO,
   type UpdatedTimeEntryResult,
 } from '@mr-tick/sdk'
@@ -15,7 +14,6 @@ import { FakeDatabaseStore } from './FakeDatabaseStore'
 
 export class FakeTimeEntryProvider implements ITimeEntryProvider {
   private readonly store: FakeDatabaseStore
-  private readonly entityCache: Map<string, TimeEntry> = new Map()
 
   constructor(private readonly context: DataSourceContext) {
     this.store = FakeDatabaseStore.getInstance()
@@ -25,19 +23,19 @@ export class FakeTimeEntryProvider implements ITimeEntryProvider {
     memberId: string,
     startDate: Date,
     endDate: Date,
-  ): Promise<PagedResultDTO<TimeEntryDTO>> {
+  ): Promise<Either<AppError, PagedResultDTO<TimeEntryDTO>>> {
     await this.simulateNetworkLatency()
     const items = this.store.findTimeEntriesByRange(
       memberId,
       startDate,
       endDate,
     )
-    return {
+    return Either.success({
       items,
       total: items.length,
       page: 1,
       pageSize: items.length,
-    }
+    })
   }
 
   private async simulateNetworkLatency(ms = 180): Promise<void> {
@@ -63,7 +61,7 @@ export class FakeTimeEntryProvider implements ITimeEntryProvider {
 
   async findAll(
     pagination?: PaginationOptionsDTO,
-  ): Promise<PagedResultDTO<TimeEntryDTO>> {
+  ): Promise<Either<AppError, PagedResultDTO<TimeEntryDTO>>> {
     const all = this.store.getTimeEntries()
     let page = 1
     if (pagination && pagination.page) {
@@ -75,76 +73,56 @@ export class FakeTimeEntryProvider implements ITimeEntryProvider {
     }
     const startIndex = (page - 1) * pageSize
     const items = all.slice(startIndex, startIndex + pageSize)
-    return {
+    return Either.success({
       items,
       total: all.length,
       page,
       pageSize,
-    }
-  }
-
-  async findById(id: string): Promise<TimeEntry | undefined> {
-    const cached = this.entityCache.get(id)
-    if (cached) {
-      return cached
-    }
-    const dto = this.store.findTimeEntryById(id)
-    if (!dto) {
-      return undefined
-    }
-    let finalId = id
-    if (dto.id) {
-      finalId = dto.id
-    }
-    const entity = TimeEntry.hydrate({
-      id: finalId,
-      task: { id: dto.task.id },
-      activity: { id: dto.activity.id, name: dto.activity.name },
-      user: { id: dto.user.id, name: dto.user.name },
-      timeSpent: dto.timeSpent,
-      createdAt: dto.createdAt,
-      updatedAt: dto.updatedAt,
-      startDate: dto.startDate,
-      endDate: dto.endDate,
-      comments: dto.comments,
     })
-    this.entityCache.set(id, entity)
-    return entity
   }
 
-  async create(entity: TimeEntry): Promise<CreatedTimeEntryResult | void> {
-    await this.simulateNetworkLatency()
-    if (this.store.getSimulateAuthError()) {
-      throw new Error('401 Unauthorized: TOKEN_EXPIRED')
-    }
-    if (entity.id) {
-      this.entityCache.set(entity.id, entity)
-    }
-    this.store.saveTimeEntryFromEntity(entity)
-    return {
-      id: entity.id,
-      updatedAt: entity.updatedAt,
-    }
+  async findById(id: string): Promise<Either<AppError, TimeEntryDTO | null>> {
+    const dto = this.store.findTimeEntryById(id)
+    if (!dto) return Either.success(null)
+    return Either.success(dto)
   }
 
-  async update(entity: TimeEntry): Promise<UpdatedTimeEntryResult | void> {
+  async create(
+    entry: TimeEntryDTO,
+  ): Promise<Either<AppError, CreatedTimeEntryResult>> {
     await this.simulateNetworkLatency()
-    if (this.store.getSimulateAuthError()) {
-      throw new Error('401 Unauthorized: TOKEN_EXPIRED')
-    }
-    if (entity.id) {
-      this.entityCache.set(entity.id, entity)
-    }
-    this.store.saveTimeEntryFromEntity(entity)
-    return {
-      id: entity.id,
-      updatedAt: entity.updatedAt,
-    }
+    if (this.store.getSimulateAuthError())
+      return Either.failure(AppError.Unauthorized('TOKEN_EXPIRED'))
+
+    this.store.saveTimeEntry(entry)
+    const resultId = entry.id ? entry.id : crypto.randomUUID()
+    return Either.success({
+      id: resultId,
+      updatedAt: entry.updatedAt ? entry.updatedAt : new Date(),
+    })
   }
 
-  async delete(id: string): Promise<void> {
+  async update(
+    entry: TimeEntryDTO,
+  ): Promise<Either<AppError, UpdatedTimeEntryResult>> {
     await this.simulateNetworkLatency()
-    this.entityCache.delete(id)
+    if (this.store.getSimulateAuthError())
+      return Either.failure(AppError.Unauthorized('TOKEN_EXPIRED'))
+
+    this.store.saveTimeEntry(entry)
+    const resultId = entry.id ? entry.id : crypto.randomUUID()
+    return Either.success({
+      id: resultId,
+      updatedAt: entry.updatedAt ? entry.updatedAt : new Date(),
+    })
+  }
+
+  async delete(id: string): Promise<Either<AppError, void>> {
+    await this.simulateNetworkLatency()
+    if (this.store.getSimulateAuthError())
+      return Either.failure(AppError.Unauthorized('TOKEN_EXPIRED'))
+
     this.store.deleteTimeEntry(id)
+    return Either.success(undefined)
   }
 }

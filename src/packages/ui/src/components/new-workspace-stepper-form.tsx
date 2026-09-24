@@ -53,7 +53,7 @@ import {
 import { Button, Input, Label, Progress, Textarea } from '@/components/ui'
 import { DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { workspaceKeys } from '@/contexts/WorkspaceContext'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { cn } from '@/lib'
 
 // ---------------------------------------------------------------------------
@@ -562,7 +562,7 @@ export function StepperForm({
   onClose,
   onModalOpenChange,
 }: StepperFormProps) {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
   const [createdWorkspace, setCreatedWorkspace] =
     React.useState<WorkspaceViewModel | null>(null)
@@ -574,7 +574,7 @@ export function StepperForm({
       : ['draft-workspace', 'idle'],
     queryFn: async () => {
       if (!workspaceId) return null
-      const response = await openAPI.services.workspaces.getById({
+      const response = await bridge.workspaces.getById({
         body: { workspaceId },
       })
       if (!response.isSuccess) return null
@@ -627,7 +627,7 @@ export function StepperForm({
   const { data: installedPlugins = [] } = useQuery({
     queryKey: ['plugins', 'installed'],
     queryFn: async () => {
-      const res = await openAPI.integrations.addons.listInstalled()
+      const res = await bridge.addons.listInstalled()
       if (!res.isSuccess) return []
       return res.data ?? []
     },
@@ -706,7 +706,7 @@ export function StepperForm({
     setIsSavingIdentity(true)
     try {
       if (!currentWorkspaceId) {
-        const response = await openAPI.services.workspaces.create({
+        const response = await bridge.workspaces.create({
           body: { name, description, avatarFile },
         })
         if (!response.isSuccess) {
@@ -732,7 +732,7 @@ export function StepperForm({
         return
       }
 
-      const response = await openAPI.services.workspaces.updateIdentity({
+      const response = await bridge.workspaces.updateIdentity({
         body: {
           workspaceId: currentWorkspaceId,
           name,
@@ -807,7 +807,7 @@ export function StepperForm({
     if (!currentWorkspaceId) return
 
     try {
-      const res = await openAPI.services.workspaces.unlinkDataSource({
+      const res = await bridge.workspaces.unlinkDataSource({
         body: {
           workspaceId: currentWorkspaceId,
           connectionInstanceId,
@@ -819,7 +819,7 @@ export function StepperForm({
         return
       }
 
-      const updated = await openAPI.services.workspaces.getById({
+      const updated = await bridge.workspaces.getById({
         body: { workspaceId: currentWorkspaceId },
       })
       if (updated.isSuccess && updated.data) {
@@ -843,7 +843,7 @@ export function StepperForm({
     if (!currentWorkspaceId) return
 
     try {
-      const res = await openAPI.services.workspaces.disconnectDataSource({
+      const res = await bridge.workspaces.disconnectDataSource({
         body: {
           workspaceId: currentWorkspaceId,
           connectionInstanceId,
@@ -855,7 +855,7 @@ export function StepperForm({
         return
       }
 
-      const updated = await openAPI.services.workspaces.getById({
+      const updated = await bridge.workspaces.getById({
         body: { workspaceId: currentWorkspaceId },
       })
       if (updated.isSuccess && updated.data) {
@@ -881,7 +881,7 @@ export function StepperForm({
 
   async function onSubmit(data: WorkspaceFormData) {
     if (currentWorkspaceId) {
-      await openAPI.services.workspaces.markWorkspaceAsConfigured({
+      await bridge.workspaces.markWorkspaceAsConfigured({
         body: { workspaceId: currentWorkspaceId },
       })
 
@@ -928,7 +928,7 @@ export function StepperForm({
     try {
       const connectionInstanceId = crypto.randomUUID()
 
-      const res = await openAPI.services.workspaces.linkDataSource({
+      const res = await bridge.workspaces.linkDataSource({
         body: {
           workspaceId: currentWorkspaceId,
           dataSourceId: plugin.id,
@@ -964,7 +964,7 @@ export function StepperForm({
     if (!currentWorkspaceId) return
 
     try {
-      const res = await openAPI.services.workspaces.connectDataSource({
+      const res = await bridge.workspaces.connectDataSource({
         body: {
           workspaceId: currentWorkspaceId,
           connectionInstanceId: instanceData.connectionInstanceId,
@@ -984,7 +984,7 @@ export function StepperForm({
       methods.setValue('dataSourcePlugin', undefined)
       resetInstall()
 
-      const updated = await openAPI.services.workspaces.getById({
+      const updated = await bridge.workspaces.getById({
         body: { workspaceId: currentWorkspaceId },
       })
       if (updated.isSuccess && updated.data) {

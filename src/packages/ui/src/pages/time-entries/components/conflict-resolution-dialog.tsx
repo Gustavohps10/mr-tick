@@ -28,7 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { useWorkspaceConflicts } from '@/hooks/queries/use-workspace-conflicts'
 import { cn } from '@/lib/utils'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
@@ -87,7 +87,7 @@ export function GlobalConflictResolutionDialog() {
 
   const db = useSyncStore((state) => state.db)
   const forceSync = useSyncStore((state) => state.forceSync)
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
 
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -300,8 +300,8 @@ export function GlobalConflictResolutionDialog() {
         },
       )
 
-      openAPI.events?.emit?.('time-entry:sync', updatedJson)
-      openAPI.events?.emit?.('time-entry:conflict-resolved', updatedJson)
+      bridge.events.emit('time-entry:sync', updatedJson)
+      bridge.events.emit('time-entry:conflict-resolved', updatedJson)
 
       if (hasAnyLocalSelection && forceSync) {
         await forceSync(docData.connectionInstanceId, 'push')

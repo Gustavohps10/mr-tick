@@ -1,4 +1,4 @@
-import { IOpenAPI } from '@mr-tick/sdk'
+import { IHostBridge } from '@mr-tick/application'
 import { ReplicationOptions, RxCollection, RxError } from 'rxdb'
 import {
   replicateRxCollection,
@@ -208,7 +208,7 @@ export interface CollectionConfigMetadata {
   name: 'metadata'
   hasPush: false
   strategyFactory: (
-    client: IOpenAPI,
+    client: IHostBridge,
     workspaceId: string,
     connectionInstanceId: string,
     dataSourceId: string,
@@ -221,7 +221,7 @@ export interface CollectionConfigTasks {
   name: 'tasks'
   hasPush: false
   strategyFactory: (
-    client: IOpenAPI,
+    client: IHostBridge,
     workspaceId: string,
     connectionInstanceId: string,
     dataSourceId: string,
@@ -234,7 +234,7 @@ export interface CollectionConfigTimeEntries {
   name: 'timeEntries'
   hasPush: true
   strategyFactory: (
-    client: IOpenAPI,
+    client: IHostBridge,
     workspaceId: string,
     connectionInstanceId: string,
     dataSourceId: string,

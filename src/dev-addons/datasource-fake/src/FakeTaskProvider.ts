@@ -1,12 +1,13 @@
-import type {
-  CreatedTaskResult,
-  DataSourceContext,
-  ITaskProvider,
-  PagedResultDTO,
-  PaginationOptionsDTO,
-  Task,
-  TaskDTO,
-  UpdatedTaskResult,
+import {
+  AppError,
+  type CreatedTaskResult,
+  type DataSourceContext,
+  Either,
+  type ITaskProvider,
+  type PagedResultDTO,
+  type PaginationOptionsDTO,
+  type TaskDTO,
+  type UpdatedTaskResult,
 } from '@mr-tick/sdk'
 
 import { FakeDatabaseStore } from './FakeDatabaseStore'
@@ -26,48 +27,53 @@ export class FakeTaskProvider implements ITaskProvider {
     memberId: string,
     checkpoint: { updatedAt: Date; id: string },
     batch: number,
-  ): Promise<TaskDTO[]> {
+  ): Promise<Either<AppError, TaskDTO[]>> {
     await this.simulateNetworkLatency()
-    return this.store.pullTasks(checkpoint.id, checkpoint.updatedAt, batch)
+    return Either.success(
+      this.store.pullTasks(checkpoint.id, checkpoint.updatedAt, batch),
+    )
   }
 
   async findAll(
     pagination?: PaginationOptionsDTO,
-  ): Promise<PagedResultDTO<TaskDTO>> {
+  ): Promise<Either<AppError, PagedResultDTO<TaskDTO>>> {
     const all = this.store.getTasks()
     const page = pagination?.page ?? 1
     const pageSize = pagination?.pageSize ?? all.length
     const startIndex = (page - 1) * pageSize
     const items = all.slice(startIndex, startIndex + pageSize)
-    return {
+    return Either.success({
       items,
       total: all.length,
       page,
       pageSize,
-    }
+    })
   }
 
-  async findById(id: string): Promise<TaskDTO | undefined> {
-    return this.store.findTaskById(id)
+  async findById(id: string): Promise<Either<AppError, TaskDTO | null>> {
+    const task = this.store.findTaskById(id)
+    if (!task) return Either.success(null)
+    return Either.success(task)
   }
 
-  async create(entity: Task): Promise<CreatedTaskResult> {
-    this.store.saveTaskFromEntity(entity)
-    return {
-      id: entity.id,
-      updatedAt: entity.updatedAt,
-    }
+  async create(task: TaskDTO): Promise<Either<AppError, CreatedTaskResult>> {
+    this.store.saveTask(task)
+    return Either.success({
+      id: task.id,
+      updatedAt: task.updatedAt,
+    })
   }
 
-  async update(entity: Task): Promise<UpdatedTaskResult> {
-    this.store.saveTaskFromEntity(entity)
-    return {
-      id: entity.id,
-      updatedAt: entity.updatedAt,
-    }
+  async update(task: TaskDTO): Promise<Either<AppError, UpdatedTaskResult>> {
+    this.store.saveTask(task)
+    return Either.success({
+      id: task.id,
+      updatedAt: task.updatedAt,
+    })
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string): Promise<Either<AppError, void>> {
     this.store.deleteTask(id)
+    return Either.success(undefined)
   }
 }

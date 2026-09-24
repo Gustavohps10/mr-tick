@@ -1,9 +1,11 @@
-import type {
-  DataSourceContext,
-  IMemberProvider,
-  MemberDTO,
-  PagedResultDTO,
-  PaginationOptionsDTO,
+import {
+  AppError,
+  type DataSourceContext,
+  Either,
+  type IMemberProvider,
+  type MemberDTO,
+  type PagedResultDTO,
+  type PaginationOptionsDTO,
 } from '@mr-tick/sdk'
 
 import { FakeDatabaseStore } from './FakeDatabaseStore'
@@ -15,34 +17,44 @@ export class FakeMemberProvider implements IMemberProvider {
     this.store = FakeDatabaseStore.getInstance()
   }
 
-  async getCurrentUser(): Promise<MemberDTO | undefined> {
+  async getCurrentUser(): Promise<Either<AppError, MemberDTO | null>> {
     const members = this.store.getMembers()
-    return members[0]
+    const member = members.length > 0 ? members[0] : null
+    return Either.success(member)
   }
 
-  async findByCredentials(login: string, password: string): Promise<MemberDTO> {
+  async findByCredentials(
+    login: string,
+    password: string,
+  ): Promise<Either<AppError, MemberDTO>> {
     const members = this.store.getMembers()
-    return members[0]
+    const member = members.find((m) => m.email === login) ?? members[0]
+    if (!member)
+      return Either.failure(AppError.NotFound('USUARIO_NAO_ENCONTRADO'))
+    return Either.success(member)
   }
 
   async findAll(
     pagination?: PaginationOptionsDTO,
-  ): Promise<PagedResultDTO<MemberDTO>> {
+  ): Promise<Either<AppError, PagedResultDTO<MemberDTO>>> {
     const members = this.store.getMembers()
-    const page = pagination?.page ?? 1
-    const pageSize = pagination?.pageSize ?? 10
+    let page = 1
+    if (pagination && pagination.page) page = pagination.page
+    let pageSize = 10
+    if (pagination && pagination.pageSize) pageSize = pagination.pageSize
     const startIndex = (page - 1) * pageSize
     const items = members.slice(startIndex, startIndex + pageSize)
-    return {
+    return Either.success({
       items,
       total: members.length,
       page,
       pageSize,
-    }
+    })
   }
 
-  async findById(id: string): Promise<MemberDTO | undefined> {
+  async findById(id: string): Promise<Either<AppError, MemberDTO | null>> {
     const members = this.store.getMembers()
-    return members.find((member) => String(member.id) === id)
+    const member = members.find((m) => String(m.id) === id) ?? null
+    return Either.success(member)
   }
 }

@@ -74,7 +74,9 @@ describe('ListTimeEntriesService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    timeEntriesProviderMock.findByMemberId.mockResolvedValue(fakeResult)
+    timeEntriesProviderMock.findByMemberId.mockResolvedValue(
+      Either.success(fakeResult),
+    )
 
     // Act
     const result = await sut.execute(input)

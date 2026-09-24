@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 
 type Theme = 'dark' | 'light' | 'system'
 
@@ -30,35 +30,32 @@ export function ThemeProvider({
   storageKey = 'mr-tick-theme',
   ...props
 }: ThemeProviderProps) {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const [theme, setThemeState] = useState<Theme>(defaultTheme)
   const [mounted, setMounted] = useState(false)
 
   // Carrega o tema inicial do localStorage
   useEffect(() => {
-    const savedTheme = localStorage.getItem(storageKey) as Theme
-    if (savedTheme) {
-      setThemeState(savedTheme)
+    const saved = localStorage.getItem(storageKey)
+    if (saved === 'dark' || saved === 'light' || saved === 'system') {
+      setThemeState(saved)
     }
     setMounted(true)
   }, [storageKey])
 
   // Escuta alterações de tema disparadas por outras janelas via IPC
   useEffect(() => {
-    const unsubscribe = openAPI.events.on<Theme>(
-      'theme:changed',
-      (newTheme) => {
-        if (newTheme) {
-          localStorage.setItem(storageKey, newTheme)
-          setThemeState(newTheme)
-        }
-      },
-    )
+    const unsubscribe = bridge.events.on<Theme>('theme:changed', (newTheme) => {
+      if (newTheme) {
+        localStorage.setItem(storageKey, newTheme)
+        setThemeState(newTheme)
+      }
+    })
 
     return () => {
-      unsubscribe?.()
+      unsubscribe()
     }
-  }, [openAPI, storageKey])
+  }, [bridge, storageKey])
 
   // Aplica as classes CSS no <html>
   useEffect(() => {
@@ -85,7 +82,7 @@ export function ThemeProvider({
     setTheme: (nextTheme: Theme) => {
       localStorage.setItem(storageKey, nextTheme)
       setThemeState(nextTheme)
-      openAPI.modules.system.toggleTheme({ body: { theme: nextTheme } })
+      bridge.system.toggleTheme({ body: { theme: nextTheme } })
     },
   }
 

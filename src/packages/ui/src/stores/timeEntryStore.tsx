@@ -1,13 +1,14 @@
 // stores/timeEntryStore.tsx
 'use client'
 
-import { IOpenAPI } from '@mr-tick/sdk'
+import { IHostBridge } from '@mr-tick/application'
 import { differenceInSeconds, parseISO, subSeconds } from 'date-fns'
 import { createContext, ReactNode, useContext, useEffect, useRef } from 'react'
 import { createStore, StoreApi, useStore } from 'zustand'
 
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import {
+  AddonSourceInfo,
   SyncTimeEntryRxDBDTO,
   TimerJournalEntry,
 } from '@/local-db/schemas/time-entries-sync-schema'
@@ -55,7 +56,7 @@ export type TimeEntryStore = TimeEntryState & TimeEntryActions
 
 // Criação da store focada APENAS em transições de estado, sem interagir com ticks por segundo.
 export const createTimeEntryStore = (
-  client: IOpenAPI,
+  client: IHostBridge,
 ): StoreApi<TimeEntryStore> => {
   return createStore<TimeEntryStore>((set, get) => ({
     active: null,
@@ -126,7 +127,7 @@ export const createTimeEntryStore = (
         }
 
         await db.timeEntries.insert(newEntry)
-        client.events?.emit?.('time-entry:sync', newEntry)
+        client.events.emit('time-entry:sync', newEntry)
         return // Do NOT call client.timer.start() or set active
       }
 
@@ -193,7 +194,7 @@ export const createTimeEntryStore = (
         mode,
       })
 
-      client.events?.emit?.('time-entry:sync', newEntry)
+      client.events.emit('time-entry:sync', newEntry)
       set({ active: newEntry })
     },
 
@@ -238,7 +239,7 @@ export const createTimeEntryStore = (
       client.timer.pause()
 
       const updatedActive = updatedDoc.toMutableJSON()
-      client.events?.emit?.('time-entry:sync', updatedActive)
+      client.events.emit('time-entry:sync', updatedActive)
       set({ active: updatedActive })
     },
 
@@ -283,7 +284,7 @@ export const createTimeEntryStore = (
       })
 
       const updatedActive = updatedDoc.toMutableJSON()
-      client.events?.emit?.('time-entry:sync', updatedActive)
+      client.events.emit('time-entry:sync', updatedActive)
       set({ active: updatedActive })
     },
 
@@ -359,7 +360,7 @@ export const createTimeEntryStore = (
       client.timer.stop()
 
       const finishedEntry = updatedDoc.toMutableJSON()
-      client.events?.emit?.('time-entry:sync', finishedEntry)
+      client.events.emit('time-entry:sync', finishedEntry)
       set({ active: null })
     },
 
@@ -398,7 +399,7 @@ export const TimeEntryContext = createContext<
 >(undefined)
 
 export function TimeEntryProvider({ children }: { children: ReactNode }) {
-  const client: IOpenAPI = useOpenAPI()
+  const client: IHostBridge = useHostBridge()
   const db = useSyncStore((s) => s.db)
   const storeRef = useRef<StoreApi<TimeEntryStore> | null>(null)
 
@@ -527,13 +528,24 @@ export function TimeEntryProvider({ children }: { children: ReactNode }) {
 
   // Process and persist Addon Suggestions directly into RxDB timeEntries collection
   useEffect(() => {
-    if (!client?.events?.on || !db) return
+    interface SuggestionCreatedPayload {
+      id?: string
+      taskId?: string
+      timeSpentSeconds?: number
+      startDate?: string
+      createdAt?: string
+      endDate?: string
+      source?: 'timer' | 'manual' | 'ai_suggestion' | 'addon'
+      addonSource?: AddonSourceInfo
+      comments?: string
+    }
 
-    const unsub = client.events.on(
+    const unsub = client.events.on<SuggestionCreatedPayload>(
       'addons:suggestion-created',
-      async (item: any) => {
+      async (item) => {
         console.log('🤖 [TimeEntryStore] Sugestão recebida para RxDB:', item)
         if (!item) return
+        if (!db) return
 
         const timeSpentHours = Number(
           ((item.timeSpentSeconds || 0) / 3600).toFixed(4),
