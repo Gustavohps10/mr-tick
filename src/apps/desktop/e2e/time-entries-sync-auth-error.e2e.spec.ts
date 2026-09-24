@@ -37,7 +37,7 @@ test.describe('E2E - Resiliência a Erro 401 / Token Expirado (SYNC-07)', () => 
     ).toBeVisible({ timeout: 5000 })
 
     // Fecha o menu de addons
-    await page.locator('body').click({ position: { x: 10, y: 10 } })
+    await page.keyboard.press('Escape')
 
     // 5. Dispara sincronização para provocar a falha de autenticação
     const statusBtn = page.locator('[data-testid="sync-status-indicator"]')
@@ -77,18 +77,21 @@ test.describe('E2E - Resiliência a Erro 401 / Token Expirado (SYNC-07)', () => 
     await expect(pendingPushStatus.first()).toBeVisible({ timeout: 10000 })
 
     // 8. Restaura a autenticação no servidor fake
-    await addonsBtn.click({ force: true })
     const restoreAuthBtn = page.locator(
       'button:has-text("Restaurar autenticação")',
     )
-    await expect(restoreAuthBtn).toBeVisible()
+    if (!(await restoreAuthBtn.isVisible())) {
+      await expect(addonsBtn).toBeVisible()
+      await addonsBtn.click({ force: true })
+    }
+    await expect(restoreAuthBtn).toBeVisible({ timeout: 10000 })
     await restoreAuthBtn.click({ force: true })
 
     await expect(
       page.locator('text=Fake DB: Auth Restaurada').first(),
     ).toBeVisible({ timeout: 5000 })
 
-    await page.locator('body').click({ position: { x: 10, y: 10 } })
+    await page.keyboard.press('Escape')
 
     // 9. Força sincronização após restauração
     await statusBtn.click({ force: true })

@@ -22,6 +22,7 @@ test.describe('E2E - Edição de Duração e Horários (TE-05)', () => {
     await expect(actionTriggers.first()).toBeVisible({ timeout: 15000 })
 
     // 4. Abre o menu de contexto do primeiro apontamento e clica em "Editar"
+    await actionTriggers.first().scrollIntoViewIfNeeded()
     await actionTriggers.first().click()
 
     const editBtn = page.locator('[data-testid="time-entry-edit-btn"]')

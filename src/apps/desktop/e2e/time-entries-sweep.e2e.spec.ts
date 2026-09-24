@@ -29,7 +29,7 @@ test.describe('E2E - Sweep Reconcile Local-First (SYNC-06)', () => {
     })
 
     // Fecha o popover de Addons
-    await page.locator('body').click({ position: { x: 10, y: 10 } })
+    await page.keyboard.press('Escape')
 
     const syncIndicatorPopover = page
       .locator('[data-testid="sync-status-indicator"]')
@@ -42,6 +42,7 @@ test.describe('E2E - Sweep Reconcile Local-First (SYNC-06)', () => {
       .first()
     await expect(forceSyncBtn).toBeVisible()
     await forceSyncBtn.click({ force: true })
+    await page.keyboard.press('Escape')
 
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
@@ -51,12 +52,13 @@ test.describe('E2E - Sweep Reconcile Local-First (SYNC-06)', () => {
     const initialCount = await rows.count()
 
     // 3. Executa a exclusão remota (hard delete) do registro mais recente
-    await page.locator('body').click({ position: { x: 10, y: 10 } })
-    await expect(addonsBtn).toBeVisible()
-    await addonsBtn.click({ force: true })
-
     const deleteRandomBtn = page.locator('button:has-text("Excluir último")')
-    await expect(deleteRandomBtn).toBeVisible()
+    if (!(await deleteRandomBtn.isVisible())) {
+      await expect(addonsBtn).toBeVisible()
+      await addonsBtn.click({ force: true })
+    }
+
+    await expect(deleteRandomBtn).toBeVisible({ timeout: 10000 })
     await deleteRandomBtn.click({ force: true })
 
     // Aguarda sincronizar a deleção no backend
@@ -64,8 +66,8 @@ test.describe('E2E - Sweep Reconcile Local-First (SYNC-06)', () => {
       page.locator('text=Fake DB: Registro Removido').first(),
     ).toBeVisible({ timeout: 5000 })
 
-    // Clica de volta no botão de Addons para fechar
-    await page.locator('body').click({ position: { x: 10, y: 10 } })
+    // Fecha o popover de Addons
+    await page.keyboard.press('Escape')
 
     // 4. Força a sincronização
     await expect(syncIndicatorPopover).toBeVisible()
@@ -73,6 +75,7 @@ test.describe('E2E - Sweep Reconcile Local-First (SYNC-06)', () => {
 
     await expect(forceSyncBtn).toBeVisible()
     await forceSyncBtn.click({ force: true })
+    await page.keyboard.press('Escape')
 
     // 5. Aguarda conclusão do sync
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })

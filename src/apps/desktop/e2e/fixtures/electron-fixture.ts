@@ -109,7 +109,7 @@ export const test = baseTest.extend<ElectronTestFixtures>({
     const logs: string[] = []
 
     const app = await electronLauncher.launch({
-      args: ['.'],
+      args: ['.', '--window-size=1600,900'],
       cwd: desktopRoot,
       env: {
         ...process.env,
@@ -147,6 +147,7 @@ export const test = baseTest.extend<ElectronTestFixtures>({
     const isVerbose = process.env.E2E_VERBOSE === 'true'
     const rendererLogs: string[] = []
     const window = await electronApp.firstWindow()
+    await window.setViewportSize({ width: 1600, height: 900 })
     await window.context().setOffline(false)
 
     window.on('console', (msg) => {

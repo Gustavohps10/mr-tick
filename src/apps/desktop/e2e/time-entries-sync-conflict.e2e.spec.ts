@@ -31,8 +31,8 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
       page.locator('text=Fake DB: Conflito Criado').first(),
     ).toBeVisible({ timeout: 5000 })
 
-    // Clica fora para fechar o popover de Addons
-    await page.locator('body').click({ position: { x: 10, y: 10 } })
+    // Fecha o popover de Addons
+    await page.keyboard.press('Escape')
 
     // 5. Imediatamente edita a mesma (última/primeira) linha LOCALMENTE
     const actionTriggers = page.locator(
@@ -60,7 +60,7 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
     await expect(saveBtn).not.toBeVisible({ timeout: 10000 })
 
     // 6. Força Sincronização
-    await page.locator('body').click({ position: { x: 10, y: 10 } })
+    await page.keyboard.press('Escape')
     const syncIndicatorPopover = page
       .locator('[data-testid="sync-status-indicator"]')
       .first()
@@ -72,6 +72,7 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
       .first()
     await expect(forceSyncBtn).toBeVisible()
     await forceSyncBtn.click({ force: true })
+    await page.keyboard.press('Escape')
 
     // 7. Espera o botão de resolver conflito aparecer
     const resolverBtn = page.getByRole('button', { name: 'Resolver' }).first()
@@ -134,7 +135,7 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
       page.locator('text=Fake DB: Conflito Criado').first(),
     ).toBeVisible({ timeout: 5000 })
 
-    await page.locator('body').click({ position: { x: 10, y: 10 } })
+    await page.keyboard.press('Escape')
 
     // 4. Edita a mesma linha localmente
     const actionTriggers = page.locator(
@@ -161,7 +162,7 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
     await expect(saveBtn).not.toBeVisible({ timeout: 10000 })
 
     // 5. Força sincronização para detectar conflito
-    await page.locator('body').click({ position: { x: 10, y: 10 } })
+    await page.keyboard.press('Escape')
     const syncIndicatorPopover = page
       .locator('[data-testid="sync-status-indicator"]')
       .first()
@@ -173,6 +174,7 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
       .first()
     await expect(forceSyncBtn).toBeVisible()
     await forceSyncBtn.click({ force: true })
+    await page.keyboard.press('Escape')
 
     // 6. Abre modal de resolução de conflito
     const resolverBtn = page.getByRole('button', { name: 'Resolver' }).first()

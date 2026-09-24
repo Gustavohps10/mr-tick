@@ -50,8 +50,8 @@ test.describe('E2E - Concorrência Pull vs Edição Local (STR-03)', () => {
       page.locator('text=Fake DB: Novo Registro').first(),
     ).toBeVisible({ timeout: 5000 })
 
-    // Fecha o popover de Addons clicando fora
-    await page.locator('body').click({ position: { x: 10, y: 10 } })
+    // Fecha o popover de Addons
+    await page.keyboard.press('Escape')
 
     // 6. Força sincronização Pull em segundo plano enquanto a edição continua aberta
     await syncIndicator.click({ force: true })
