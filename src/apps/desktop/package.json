@@ -15,6 +15,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "build:win": "yarn build && electron-builder --win",
     "test:win": "yarn build && electron-builder --win --dir -c.publish.provider=github && node -e \"const fs=require('fs'); const p='.output/win-unpacked/resources/app-update.yml'; if(!fs.existsSync(p)) fs.copyFileSync('dev-app-update.yml', p);\"",
     "build:mac": "yarn build && electron-builder --mac",
@@ -49,6 +51,7 @@
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
+    "@playwright/test": "^1.63.0",
     "@rollup/plugin-image": "^3.0.3",
     "@tailwindcss/postcss": "^4.1.11",
     "@types/better-sqlite3": "^7.6.13",

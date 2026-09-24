@@ -1,0 +1,13 @@
+id: mr-tick-datasource-fake
+name: DataSource Fake (Testes)
+version: 1.0.1
+categories:
+  - dataSource
+author: Mr-tick
+shortDescription: Datasource mock para testes
+description: Datasource com dados locais fixos (1000 tarefas, 1000 apontamentos) para testes e validação de envio de dados.
+tags:
+  - teste
+  - mock
+  - dataSource
+  - desenvolvimento
