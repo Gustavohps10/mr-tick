@@ -70,8 +70,12 @@ export class DataSourceResolver implements IDataSourceResolver {
         ? JSON.parse(credentialsSerialized)
         : undefined
 
+      let authenticatedMemberData = parsed?.member
+      if (!authenticatedMemberData && connection?.member)
+        authenticatedMemberData = connection.member
+
       context = {
-        authenticatedMemberData: parsed?.member,
+        authenticatedMemberData,
         config,
         credentials: parsed?.credentials,
         httpClient: this.httpClient,
@@ -83,14 +87,15 @@ export class DataSourceResolver implements IDataSourceResolver {
     const datasource = await this.loadModule(connection.dataSourceId)
     const instance = datasource.createInstance(context)
 
+    const runTestConnection = instance.testConnection
+    const testConnection = runTestConnection
+      ? () => runTestConnection()
+      : undefined
+
     return {
       getAuthenticatedMemberData: () => {
         if (!context.authenticatedMemberData)
-          return Either.failure(
-            AppError.ValidationError(
-              'NAO FOI POSSIVEL OBTER DADOS DO USUARIO AUTENTICADO',
-            ),
-          )
+          return Either.failure(AppError.Unauthorized('TOKEN_EXPIRED'))
 
         return Either.success(context.authenticatedMemberData)
       },
@@ -100,6 +105,7 @@ export class DataSourceResolver implements IDataSourceResolver {
       timeEntriesProvider: instance.timeEntriesProvider,
       membersProvider: instance.membersProvider,
       metadataProvider: instance.metadataProvider,
+      testConnection,
     }
   }
 

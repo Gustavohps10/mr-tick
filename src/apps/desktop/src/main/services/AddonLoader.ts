@@ -1,8 +1,9 @@
-import { existsSync } from 'node:fs'
+import { EventEmitter } from 'node:events'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { ICredentialsStorage } from '@mr-tick/application'
+import { ICredentialsStorage, TimeEntryRecordDTO } from '@mr-tick/application'
 import {
   AddonActionResponse,
   AddonContext,
@@ -34,8 +35,13 @@ import {
   SidebarMenuItem,
   TimerbarMenuItem,
 } from '@mr-tick/sdk'
-import { IEventEmitter, ISystemEvents } from '@mr-tick/shared/transport'
-import { BrowserWindow, shell } from 'electron'
+import {
+  AppError,
+  Either,
+  isApiVersionCompatible,
+} from '@mr-tick/shared/helpers'
+import { ISystemEvents } from '@mr-tick/shared/transport'
+import { app, BrowserWindow, shell } from 'electron'
 
 import { getSettings, saveSettings } from '@/main/settings'
 
@@ -88,116 +94,86 @@ export class CommandRegistry implements ICommandRegistry {
   }
 }
 
-export class SimpleEventEmitter<
-  TEvents extends Record<string, any>,
-> implements IEventEmitter<TEvents> {
-  private listeners = new Map<string, Set<(payload: any) => void>>()
-
-  on<K extends keyof TEvents>(
-    event: K,
-    handler: (payload: TEvents[K]) => void,
-  ): () => void {
-    const key = String(event)
-    if (!this.listeners.has(key)) {
-      this.listeners.set(key, new Set())
+export type AddonToastEventData =
+  | {
+      action: 'show'
+      type: 'info' | 'success' | 'warning' | 'error' | 'loading'
+      message: string
+      title?: string
+      toastId: string
     }
-    this.listeners.get(key)!.add(handler)
-    return () => this.off(event, handler)
-  }
-
-  once<K extends keyof TEvents>(
-    event: K,
-    handler: (payload: TEvents[K]) => void,
-  ): void {
-    const wrapper = (payload: TEvents[K]) => {
-      this.off(event, wrapper)
-      handler(payload)
+  | {
+      action: 'dismiss'
+      toastId: string
     }
-    this.on(event, wrapper)
-  }
-
-  emit<K extends keyof TEvents>(event: K, payload: TEvents[K]): void {
-    const key = String(event)
-    const set = this.listeners.get(key)
-    if (set) {
-      set.forEach((fn) => {
-        try {
-          fn(payload)
-        } catch (err) {
-          console.error(`Erro ao disparar evento ${String(event)}:`, err)
-        }
-      })
-    }
-  }
-
-  off<K extends keyof TEvents>(
-    event: K,
-    handler: (payload: TEvents[K]) => void,
-  ): void {
-    const key = String(event)
-    const set = this.listeners.get(key)
-    if (set) {
-      set.delete(handler)
-    }
-  }
-}
 
 export interface ActiveAddonInfo {
   addonId: string
   instance: IAddon & { metadata?: { name?: string; iconUrl?: string } }
 }
 
-export class AddonEventEmitter
-  extends SimpleEventEmitter<ISystemEvents>
-  implements IAddonEventsAPI
-{
-  onTimerStart(callback: (payload: ISystemEvents['timer:start']) => void) {
-    return this.on('timer:start', callback)
+export class AddonEventEmitter implements IAddonEventsAPI {
+  private emitter = new EventEmitter()
+
+  on<K extends keyof ISystemEvents>(
+    event: K,
+    handler: (payload: ISystemEvents[K]) => void,
+  ): () => void
+  on<T = void>(channel: string, handler: (data: T) => void): () => void
+  on(
+    channel: string,
+    handler: (data: ISystemEvents[keyof ISystemEvents]) => void,
+  ): () => void {
+    const listener = (data: ISystemEvents[keyof ISystemEvents]) => {
+      handler(data)
+    }
+    this.emitter.on(channel, listener)
+    return () => {
+      this.emitter.off(channel, listener)
+    }
   }
-  onTimerPause(callback: (payload: ISystemEvents['timer:pause']) => void) {
-    return this.on('timer:pause', callback)
+
+  once<K extends keyof ISystemEvents>(
+    event: K,
+    handler: (payload: ISystemEvents[K]) => void,
+  ): void
+  once<T = void>(channel: string, handler: (data: T) => void): void
+  once(
+    channel: string,
+    handler: (data: ISystemEvents[keyof ISystemEvents]) => void,
+  ): void {
+    const listener = (data: ISystemEvents[keyof ISystemEvents]) => {
+      handler(data)
+    }
+    this.emitter.once(channel, listener)
   }
-  onTimerResume(callback: (payload: ISystemEvents['timer:resume']) => void) {
-    return this.on('timer:resume', callback)
+
+  emit<K extends keyof ISystemEvents>(event: K, payload: ISystemEvents[K]): void
+  emit<T = void>(channel: string, payload?: T): void
+  emit(channel: string, payload?: ISystemEvents[keyof ISystemEvents]): void {
+    this.emitter.emit(channel, payload)
   }
-  onTimerStop(callback: (payload: ISystemEvents['timer:stop']) => void) {
-    return this.on('timer:stop', callback)
-  }
-  onTimerUpdate(callback: (payload: ISystemEvents['timer:update']) => void) {
-    return this.on('timer:update', callback)
-  }
-  onSystemIdle(callback: (payload: ISystemEvents['system:idle']) => void) {
-    return this.on('system:idle', callback)
-  }
-  onSystemActive(callback: (payload: ISystemEvents['system:active']) => void) {
-    return this.on('system:active', callback)
-  }
-  onTimeEntryCreated(
-    callback: (payload: ISystemEvents['timeEntry:created']) => void,
-  ) {
-    return this.on('timeEntry:created', callback)
-  }
-  onTimeEntryUpdated(
-    callback: (payload: ISystemEvents['timeEntry:updated']) => void,
-  ) {
-    return this.on('timeEntry:updated', callback)
-  }
-  onTimeEntryDeleted(
-    callback: (payload: ISystemEvents['timeEntry:deleted']) => void,
-  ) {
-    return this.on('timeEntry:deleted', callback)
-  }
-  onWorkspaceChange(
-    callback: (payload: ISystemEvents['workspace:changed']) => void,
-  ) {
-    return this.on('workspace:changed', callback)
+
+  off<K extends keyof ISystemEvents>(
+    event: K,
+    handler: (payload: ISystemEvents[K]) => void,
+  ): void
+  off<T = void>(channel: string, handler: (data: T) => void): void
+  off(
+    channel: string,
+    handler: (data: ISystemEvents[keyof ISystemEvents]) => void,
+  ): void {
+    const listener = (data: ISystemEvents[keyof ISystemEvents]) => {
+      handler(data)
+    }
+    this.emitter.off(channel, listener)
   }
 }
 
 export class AddonLoader {
   private activeAddons = new Map<string, ActiveAddonInfo>()
   private activeTimerControllerAddonId: string | null = null
-  private toastListeners: Array<(toastData: any) => void> = []
+  private toastListeners: Array<(toastData: AddonToastEventData) => void> = []
 
   public readonly sidebarRegistry = new MemoryRegistry<SidebarMenuItem>()
   private addonTimerbarItems = new Map<string, TimerbarMenuItem>()
@@ -219,7 +195,10 @@ export class AddonLoader {
     }
   >()
 
-  constructor(private credentialsStorage: ICredentialsStorage) {
+  constructor(
+    private credentialsStorage: ICredentialsStorage,
+    private hostAppVersion?: string,
+  ) {
     this.registerThemeCommands()
     this.restoreActiveTheme()
   }
@@ -259,7 +238,7 @@ export class AddonLoader {
     const generatedId =
       toastId ||
       `toast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
-    const toastData = {
+    const toastData: AddonToastEventData = {
       action: 'show',
       type,
       message,
@@ -286,7 +265,7 @@ export class AddonLoader {
   }
 
   public dismissToast(toastId: string): void {
-    const toastData = { action: 'dismiss', toastId }
+    const toastData: AddonToastEventData = { action: 'dismiss', toastId }
     console.log(`🔔 [AddonLoader] Dismissing toast: ${toastId}`)
     this.toastListeners.forEach((listener) => listener(toastData))
 
@@ -305,7 +284,9 @@ export class AddonLoader {
     }
   }
 
-  public onToast(listener: (toastData: any) => void): () => void {
+  public onToast(
+    listener: (toastData: AddonToastEventData) => void,
+  ): () => void {
     this.toastListeners.push(listener)
     return () => {
       this.toastListeners = this.toastListeners.filter((l) => l !== listener)
@@ -424,84 +405,115 @@ export class AddonLoader {
     }
 
     const timer: ITimerAPI = {
-      getActiveEntry: async () => null,
+      getActiveEntry: async () => Either.success(null),
       requestControlLock: async () => {
         if (
           this.activeTimerControllerAddonId === null ||
           this.activeTimerControllerAddonId === addonId
         ) {
           this.activeTimerControllerAddonId = addonId
-          return true
+          return Either.success(true)
         }
-        return false
+        return Either.success(false)
       },
       releaseControlLock: async () => {
         if (this.activeTimerControllerAddonId === addonId) {
           this.activeTimerControllerAddonId = null
         }
+        return Either.success(undefined)
       },
       isControlLockHeld: async () => {
-        return this.activeTimerControllerAddonId === addonId
+        return Either.success(this.activeTimerControllerAddonId === addonId)
       },
       start: async (payload) => {
         if (
           this.activeTimerControllerAddonId &&
           this.activeTimerControllerAddonId !== addonId
         ) {
-          throw new Error(
-            `[TimerAPI] Controle exclusivo retido pelo addon ${this.activeTimerControllerAddonId}`,
+          return Either.failure(
+            AppError.Unauthorized(
+              `[TimerAPI] Controle exclusivo retido pelo addon ${this.activeTimerControllerAddonId}`,
+            ),
           )
         }
         console.log(
           `⏱️ [TimerAPI] Iniciar timer por addon ${addonId}:`,
           payload,
         )
+        return Either.success(undefined)
       },
       pause: async () => {
         if (
           this.activeTimerControllerAddonId &&
           this.activeTimerControllerAddonId !== addonId
         ) {
-          throw new Error(
-            `[TimerAPI] Controle exclusivo retido pelo addon ${this.activeTimerControllerAddonId}`,
+          return Either.failure(
+            AppError.Unauthorized(
+              `[TimerAPI] Controle exclusivo retido pelo addon ${this.activeTimerControllerAddonId}`,
+            ),
           )
         }
         console.log(`⏱️ [TimerAPI] Pausar timer por addon ${addonId}`)
+        return Either.success(undefined)
+      },
+      resume: async () => {
+        if (
+          this.activeTimerControllerAddonId &&
+          this.activeTimerControllerAddonId !== addonId
+        ) {
+          return Either.failure(
+            AppError.Unauthorized(
+              `[TimerAPI] Controle exclusivo retido pelo addon ${this.activeTimerControllerAddonId}`,
+            ),
+          )
+        }
+        console.log(`⏱️ [TimerAPI] Retomar timer por addon ${addonId}`)
+        return Either.success(undefined)
       },
       stop: async () => {
         if (
           this.activeTimerControllerAddonId &&
           this.activeTimerControllerAddonId !== addonId
         ) {
-          throw new Error(
-            `[TimerAPI] Controle exclusivo retido pelo addon ${this.activeTimerControllerAddonId}`,
+          return Either.failure(
+            AppError.Unauthorized(
+              `[TimerAPI] Controle exclusivo retido pelo addon ${this.activeTimerControllerAddonId}`,
+            ),
           )
         }
         console.log(`⏱️ [TimerAPI] Parar timer por addon ${addonId}`)
+        return Either.success(undefined)
       },
       logTime: async (payload) => {
         if (payload.timeSpentSeconds <= 0) {
-          throw new Error(
-            '[TimerAPI] Apontamento não pode ser menor ou igual a zero.',
+          return Either.failure(
+            AppError.ValidationError(
+              '[TimerAPI] Apontamento não pode ser menor ou igual a zero.',
+            ),
           )
         }
         if (payload.timeSpentSeconds > 86400) {
-          throw new Error(
-            '[TimerAPI] Apontamento não pode exceder 24h (86400s).',
+          return Either.failure(
+            AppError.ValidationError(
+              '[TimerAPI] Apontamento não pode exceder 24h (86400s).',
+            ),
           )
         }
         console.log(`⏱️ [TimerAPI] Lançar horas por addon ${addonId}:`, payload)
+        return Either.success(undefined)
       },
     }
 
     const timeEntries: ITimeEntriesAPI = {
-      list: async () => [],
-      getById: async () => null,
+      list: async () => Either.success([]),
+      getById: async () => Either.success(null),
       create: async (payload) => {
         if (payload.timeSpentSeconds <= 0) {
-          throw new Error('[TimeEntriesAPI] Duração inválida.')
+          return Either.failure(
+            AppError.ValidationError('[TimeEntriesAPI] Duração inválida.'),
+          )
         }
-        return {
+        const record: TimeEntryRecordDTO = {
           id: `entry_${Date.now()}`,
           taskId: payload.taskId,
           comments: payload.comments,
@@ -511,6 +523,7 @@ export class AddonLoader {
           source: payload.source ?? 'addon',
           createdAt: new Date().toISOString(),
         }
+        return Either.success(record)
       },
       createSuggestion: async (payload) => {
         const now = new Date()
@@ -538,7 +551,9 @@ export class AddonLoader {
         }
 
         if (timeSpentSeconds <= 0) {
-          throw new Error('[TimeEntriesAPI] Duração inválida.')
+          return Either.failure(
+            AppError.ValidationError('[TimeEntriesAPI] Duração inválida.'),
+          )
         }
 
         const addonSource = this.getAddonSourceInfo(addonId)
@@ -547,7 +562,7 @@ export class AddonLoader {
           `🤖 [TimeEntriesAPI] Sugestão de apontamento criada por addon ${addonId}:`,
           payload,
         )
-        const item = {
+        const item: TimeEntryRecordDTO = {
           id: `sug_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           taskId: payload.taskId,
           comments: payload.comments,
@@ -555,7 +570,7 @@ export class AddonLoader {
           endDate,
           timeSpentSeconds,
           pauseSeconds: payload.pauseSeconds ?? 0,
-          status: 'suggestion' as const,
+          status: 'suggestion',
           source: payload.source ?? 'ai_suggestion',
           addonSource,
           createdAt: nowIso,
@@ -572,11 +587,11 @@ export class AddonLoader {
           console.error('❌ [AddonLoader] Erro ao enviar IPC de sugestão:', err)
         }
 
-        return item
+        return Either.success(item)
       },
       acceptSuggestion: async (id) => {
         console.log(`✅ [TimeEntriesAPI] Sugestão aceita: ${id}`)
-        return {
+        const record: TimeEntryRecordDTO = {
           id,
           timeSpentSeconds: 3600,
           pauseSeconds: 0,
@@ -584,18 +599,21 @@ export class AddonLoader {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }
+        return Either.success(record)
       },
       dismissSuggestion: async (id) => {
         console.log(`🗑️ [TimeEntriesAPI] Sugestão descartada: ${id}`)
-        return true
+        return Either.success(true)
       },
       update: async (id, payload) => {
         if (payload.pauseSeconds !== undefined && payload.pauseSeconds < 0) {
-          throw new Error(
-            '[TimeEntriesAPI] Tempo de pausa não pode ser negativo.',
+          return Either.failure(
+            AppError.ValidationError(
+              '[TimeEntriesAPI] Tempo de pausa não pode ser negativo.',
+            ),
           )
         }
-        return {
+        const record: TimeEntryRecordDTO = {
           id,
           timeSpentSeconds: payload.timeSpentSeconds ?? 3600,
           pauseSeconds: payload.pauseSeconds ?? 0,
@@ -603,8 +621,9 @@ export class AddonLoader {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }
+        return Either.success(record)
       },
-      delete: async () => true,
+      delete: async () => Either.success(true),
     }
 
     const oauth: IOAuthAPI = {
@@ -857,6 +876,41 @@ export class AddonLoader {
     try {
       if (this.hasActiveAddon(addonId)) {
         return true
+      }
+
+      // Trava de compatibilidade de versão SemVer
+      const manifestYaml = join(addonFolderPath, 'manifest.yaml')
+      const manifestYml = join(addonFolderPath, 'manifest.yml')
+      let requiredApiVersion: string | undefined = undefined
+
+      const targetManifest = existsSync(manifestYaml)
+        ? manifestYaml
+        : existsSync(manifestYml)
+          ? manifestYml
+          : null
+
+      if (targetManifest) {
+        try {
+          const content = readFileSync(targetManifest, 'utf-8')
+          const match = content.match(
+            /(?:requiredApiVersion|RequiredApiVersion)\s*:\s*['"]?([^'"\r\n]+)['"]?/,
+          )
+          if (match && match[1]) {
+            requiredApiVersion = match[1].trim()
+          }
+        } catch {
+          // Silencia falha pontual de leitura de manifesto
+        }
+      }
+
+      const currentVersion =
+        this.hostAppVersion || (app?.getVersion ? app.getVersion() : '0.3.0')
+
+      if (!isApiVersionCompatible(requiredApiVersion, currentVersion)) {
+        console.warn(
+          `⚠️ [AddonLoader] Addon "${addonId}" ignorado: requer API ${requiredApiVersion ?? 'desconhecida'}, mas o aplicativo está na versão ${currentVersion}`,
+        )
+        return false
       }
 
       const possibleEntries = [

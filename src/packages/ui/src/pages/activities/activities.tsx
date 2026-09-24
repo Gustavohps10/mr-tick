@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { WorkspaceViewModel } from '@mr-tick/shared/view-models'
 import {
@@ -255,7 +255,9 @@ function KanbanBoard({
   const { data: kanbanColumns } = useSuspenseQuery({
     queryKey: ['kanbanColumns'],
     queryFn: async () => {
-      const docs = await db.kanbanColumns
+      const col = db.collections?.kanbanColumns ?? db.kanbanColumns
+      if (!col || db.closed) return []
+      const docs = await col
         .find({
           selector: { _deleted: { $ne: true }, isActive: { $eq: true } },
           sort: [{ order: 'asc' }],
@@ -268,7 +270,9 @@ function KanbanBoard({
   const { data: kanbanRelations } = useSuspenseQuery({
     queryKey: ['kanbanRelations'],
     queryFn: async () => {
-      const docs = await db.kanbanTaskColumns
+      const col = db.collections?.kanbanTaskColumns ?? db.kanbanTaskColumns
+      if (!col || db.closed) return []
+      const docs = await col
         .find({
           selector: { _deleted: { $ne: true }, inWorkspace: { $eq: true } },
         })
@@ -280,18 +284,23 @@ function KanbanBoard({
   const { data: tasks } = useSuspenseQuery({
     queryKey: ['tasks'],
     queryFn: async (): Promise<TaskWithTimeEntries[]> => {
-      const taskDocs = await db.tasks.find().exec()
+      const tasksCol = db.collections?.tasks ?? db.tasks
+      if (!tasksCol || db.closed) return []
+      const taskDocs = await tasksCol.find().exec()
+      const timeEntriesCol = db.collections?.timeEntries ?? db.timeEntries
       const tasksWithTimeEntries = await Promise.all(
         taskDocs.map(async (t: RxDocument<SyncTaskRxDBDTO>) => {
           const obj = t.toJSON()
-          const timeDocs = await db.timeEntries
-            .find({
-              selector: {
-                _deleted: { $ne: true },
-                'task.id': { $eq: obj.id },
-              },
-            })
-            .exec()
+          const timeDocs = timeEntriesCol
+            ? await timeEntriesCol
+                .find({
+                  selector: {
+                    _deleted: { $ne: true },
+                    'task.id': { $eq: obj.id },
+                  },
+                })
+                .exec()
+            : []
           return {
             ...obj,
             timeEntries: timeDocs.map((d) => d.toJSON()),
@@ -305,7 +314,9 @@ function KanbanBoard({
   const { data: metadata } = useSuspenseQuery({
     queryKey: ['metadata'],
     queryFn: async () => {
-      const doc = await db.metadata.findOne().exec()
+      const metadataCol = db.collections?.metadata ?? db.metadata
+      if (!metadataCol || db.closed) return null
+      const doc = await metadataCol.findOne().exec()
       return doc ? (doc.toJSON() as SyncMetadataRxDBDTO) : null
     },
   })

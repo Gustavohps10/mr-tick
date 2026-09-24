@@ -23,12 +23,11 @@ export class ListTaskService implements IListTasksUseCase {
       const result = await adapter.getAuthenticatedMemberData()
       if (result.isFailure()) return result.forwardFailure()
 
-      const member = result.success
+      const tasksResult = await adapter.tasksProvider.findAll()
+      if (tasksResult.isFailure()) return tasksResult.forwardFailure()
 
-      const tasks = await adapter.tasksProvider.findAll()
-
-      return Either.success(tasks)
-    } catch (error: unknown) {
+      return Either.success(tasksResult.success)
+    } catch {
       return Either.failure(AppError.NotFound('ERRO_INESPERADO'))
     }
   }

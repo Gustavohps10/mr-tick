@@ -1,10 +1,17 @@
-﻿import { IOpenAPI } from '@mr-tick/application'
+import { IHostBridge } from '@mr-tick/application'
 
-const ipcClient: IOpenAPI = {
+const ipcClient: IHostBridge = {
+  workspaces: window.api.workspaces,
+  session: window.api.session,
+  tasks: window.api.tasks,
+  timeEntries: window.api.timeEntries,
+  metadata: window.api.metadata,
+  tokens: window.api.tokens,
+  headers: window.api.headers,
+  system: window.api.system,
+  updater: window.api.updater,
+  addons: window.api.addons,
   timer: window.api.timer,
-  services: window.api.services,
-  modules: window.api.modules,
-  integrations: window.api.integrations,
   events: window.api.events,
 }
 

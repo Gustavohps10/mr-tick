@@ -13,12 +13,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { cn } from '@/lib/utils'
 import { useUpdaterStore } from '@/stores/updaterStore'
 
 export function UpdateModal() {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const {
     version,
     updaterState,
@@ -37,36 +37,32 @@ export function UpdateModal() {
 
   const [isInstalling, setIsInstalling] = useState(false)
 
-  const isNewVersionBeta =
-    !!updateInfo?.version &&
-    (updateInfo.version.toLowerCase().includes('beta') ||
-      updateInfo.version.toLowerCase().includes('alpha'))
+  const isNewVersionBeta = updateInfo?.version
+    ? updateInfo.version.toLowerCase().includes('beta') ||
+      updateInfo.version.toLowerCase().includes('alpha')
+    : false
 
   const handleDownload = async () => {
-    if (openAPI?.modules?.updater) {
-      setUpdaterState('downloading')
-      setProgress(0)
-      try {
-        await openAPI.modules.updater.downloadUpdate()
-      } catch (err) {
-        console.error('[UpdateModal] downloadUpdate failed', err)
-        setUpdaterState('error')
-        setErrorMessage(err instanceof Error ? err.message : String(err))
-      }
+    setUpdaterState('downloading')
+    setProgress(0)
+    try {
+      await bridge.updater.downloadUpdate()
+    } catch (err) {
+      console.error('[UpdateModal] downloadUpdate failed', err)
+      setUpdaterState('error')
+      setErrorMessage(err instanceof Error ? err.message : String(err))
     }
   }
 
   const handleInstall = async () => {
-    if (openAPI?.modules?.updater) {
-      try {
-        setIsInstalling(true)
-        await openAPI.modules.updater.quitAndInstall()
-      } catch (error) {
-        console.error('[UpdateModal] quitAndInstall failed', error)
-        setIsInstalling(false)
-        setUpdaterState('error')
-        setErrorMessage(error instanceof Error ? error.message : String(error))
-      }
+    try {
+      setIsInstalling(true)
+      await bridge.updater.quitAndInstall()
+    } catch (error) {
+      console.error('[UpdateModal] quitAndInstall failed', error)
+      setIsInstalling(false)
+      setUpdaterState('error')
+      setErrorMessage(error instanceof Error ? error.message : String(error))
     }
   }
 

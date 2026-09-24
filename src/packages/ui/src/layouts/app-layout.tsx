@@ -12,27 +12,29 @@ import { UpdateModal } from '@/components/settings/update-modal'
 import { TitleBar } from '@/components/title-bar'
 import { Toaster } from '@/components/ui/sonner'
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 import { useAutoUpdater } from '@/hooks/use-auto-updater'
+import { GlobalConflictResolutionDialog } from '@/pages/time-entries/components/conflict-resolution-dialog'
 import { DataSourceConnectionsProvider } from '@/providers'
 import { SyncProvider } from '@/stores/syncStore'
 
 export function AppLayout() {
   const [workspaceDialogIsOpen, setWorkspaceDialogIsOpen] = useState(false)
   const [settingsDialogIsOpen, setSettingsDialogIsOpen] = useState(false)
+  const [editingDraftId, setEditingDraftId] = useState<string | undefined>()
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<
     string | undefined
   >()
   const navigate = useNavigate()
   const location = useLocation()
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
 
   useAutoUpdater()
 
   useEffect(() => {
-    if (!openAPI?.events?.on) return
+    if (!bridge?.events?.on) return
 
-    const unsub = openAPI.events.on<{ workspaceId: string }>(
+    const unsub = bridge.events.on<{ workspaceId: string }>(
       'workspace:switched',
       ({ workspaceId }) => {
         if (!workspaceId) return
@@ -45,20 +47,25 @@ export function AppLayout() {
           // ['', 'workspaces', ':workspaceId', ...subpath]
           parts[2] = workspaceId
           navigate(parts.join('/'))
-        } else {
-          navigate(`/workspaces/${workspaceId}/time-entries`)
+          return
         }
+        navigate(`/workspaces/${workspaceId}/time-entries`)
       },
     )
 
     return () => unsub?.()
-  }, [openAPI, navigate, location.pathname])
+  }, [bridge, navigate, location.pathname])
 
   const routeWorkspaceId = location.pathname.match(/\/workspaces\/([^/]+)/)?.[1]
   const currentWorkspaceId = activeWorkspaceId || routeWorkspaceId
   const isWorkspaceActive = Boolean(
     currentWorkspaceId && location.pathname.startsWith('/workspaces/'),
   )
+
+  function handleWorkspaceCreated(id: string) {
+    setActiveWorkspaceId(id)
+    navigate(`/workspaces/${id}/time-entries`)
+  }
 
   return (
     <WorkspaceProvider workspaceId={currentWorkspaceId}>
@@ -70,8 +77,12 @@ export function AppLayout() {
             <main className="mt-1.5 flex min-h-0 flex-1 overflow-hidden">
               <NewWorkspaceDialog
                 isOpen={workspaceDialogIsOpen}
-                setIsOpen={setWorkspaceDialogIsOpen}
-                setWorkspaceId={setActiveWorkspaceId}
+                setIsOpen={(open) => {
+                  setWorkspaceDialogIsOpen(open)
+                  if (!open) setEditingDraftId(undefined)
+                }}
+                workspaceId={editingDraftId}
+                onWorkspaceCreated={handleWorkspaceCreated}
               />
               <GlobalSettingsDialog
                 isOpen={settingsDialogIsOpen}
@@ -81,7 +92,7 @@ export function AppLayout() {
               {/* Sidebar */}
               <AppRail
                 onNewWorkspaceClick={() => {
-                  setActiveWorkspaceId(undefined)
+                  setEditingDraftId(undefined)
                   setWorkspaceDialogIsOpen(true)
                 }}
                 onSettingsClick={() => setSettingsDialogIsOpen(true)}
@@ -90,8 +101,7 @@ export function AppLayout() {
               {/* Painel de drafts */}
               <DraftWorkspacesPanel
                 onOpenWorkspace={(id) => {
-                  console.log(id)
-                  setActiveWorkspaceId(id)
+                  setEditingDraftId(id)
                   setWorkspaceDialogIsOpen(true)
                 }}
               />
@@ -101,6 +111,7 @@ export function AppLayout() {
               </section>
             </main>
             <Toaster />
+            <GlobalConflictResolutionDialog />
           </div>
         </SyncProvider>
       </DataSourceConnectionsProvider>

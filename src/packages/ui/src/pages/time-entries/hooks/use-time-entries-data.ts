@@ -4,7 +4,12 @@ import { DateRange } from 'react-day-picker'
 import { useSearchParams } from 'react-router-dom'
 
 import { useDataSourceConnections } from '@/hooks'
-import { useActivitiesQuery, useTimeEntriesQuery } from '@/hooks/queries'
+import {
+  useActivitiesQuery,
+  useTasksQuery,
+  useTimeEntriesQuery,
+} from '@/hooks/queries'
+import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { useSyncStore } from '@/stores/syncStore'
 import { useTimeEntryStore } from '@/stores/timeEntryStore'
 
@@ -15,9 +20,9 @@ export function useTimeEntriesData() {
 
   const memberIdsByConnection = useMemo(() => {
     const next: Record<string, string> = {}
-    for (const [connId, state] of Object.entries(connections)) {
-      if (state.member?.id) {
-        next[connId] = String(state.member.id)
+    for (const conn of connections) {
+      if (conn.connectionId && conn.member?.id) {
+        next[conn.connectionId] = String(conn.member.id)
       }
     }
     return next
@@ -62,12 +67,25 @@ export function useTimeEntriesData() {
     isLoading,
     isSyncing,
     isPulling,
+    isPushing,
+    syncResult,
+    syncErrorMessage,
   } = useTimeEntriesQuery({
     from: range.from,
     to: range.to,
   })
 
   const { data: activities } = useActivitiesQuery()
+  const { data: tasks = [] } = useTasksQuery()
+
+  const tasksById = useMemo(() => {
+    const map: Record<string, SyncTaskRxDBDTO> = {}
+    for (const t of tasks) {
+      if (t.id) map[t.id] = t
+      if (t.sourceId) map[t.sourceId] = t
+    }
+    return map
+  }, [tasks])
 
   const daysInRange = useMemo(() => {
     return eachDayOfInterval({ start: range.from, end: range.to }).reverse()
@@ -78,11 +96,16 @@ export function useTimeEntriesData() {
     range,
     handleRangeChange,
     memberIdsByConnection,
-    timeEntries: timeEntries || [],
+    timeEntries: timeEntries ? timeEntries : [],
     isLoading,
     isSyncing,
     isPulling,
-    activities: activities || [],
+    isPushing,
+    syncResult,
+    syncErrorMessage,
+    activities: activities ? activities : [],
+    tasks,
+    tasksById,
     daysInRange,
     activeTimeEntry,
     setActive,

@@ -16,7 +16,6 @@ export class MetadataPullService implements IMetadataPullUseCase {
     try {
       const adapter = await this.dataSourceResolver.getDataSource(
         input.workspaceId,
-
         input.connectionInstanceId,
       )
 
@@ -25,14 +24,15 @@ export class MetadataPullService implements IMetadataPullUseCase {
 
       const member = result.success
 
-      const metadata = await adapter.metadataProvider.getMetadata(
+      const metadataResult = await adapter.metadataProvider.getMetadata(
         member.id.toString(),
         input.checkpoint,
         input.batch,
       )
+      if (metadataResult.isFailure()) return metadataResult.forwardFailure()
 
-      return Either.success(metadata)
-    } catch (error) {
+      return Either.success(metadataResult.success)
+    } catch {
       return Either.failure(AppError.NotFound('Failed to pull metadata'))
     }
   }

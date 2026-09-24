@@ -10,8 +10,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useHostBridge } from '@/hooks'
 import { useEnvironment } from '@/hooks/use-environment'
-import { useOpenAPI } from '@/hooks/use-open-api'
 
 export interface TitleBarProps {
   title?: string
@@ -20,7 +20,7 @@ export interface TitleBarProps {
 
 export function TitleBar({ title, children }: TitleBarProps) {
   const environment = useEnvironment()
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const [isMaximized, setIsMaximized] = useState(false)
 
   const platform = environment?.platform ?? 'web'
@@ -30,46 +30,44 @@ export function TitleBar({ title, children }: TitleBarProps) {
 
   // Consulta o estado inicial de maximizado
   useEffect(() => {
-    if (isWeb || !openAPI?.modules?.system?.isMaximized) return
+    if (isWeb) return
 
-    openAPI.modules.system
+    bridge.system
       .isMaximized('main')
       .then((maximized) => setIsMaximized(Boolean(maximized)))
       .catch(() => {})
-  }, [openAPI, isWeb])
+  }, [bridge, isWeb])
 
   // Ouve eventos em tempo real do Electron Main
   useEffect(() => {
-    if (isWeb || !openAPI?.events?.on) return
+    if (isWeb) return
 
-    const unsub = openAPI.events.on<boolean>(
+    const unsub = bridge.events.on<boolean>(
       'window:maximized-change',
       (maximized) => {
         setIsMaximized(Boolean(maximized))
       },
     )
 
-    return () => unsub?.()
-  }, [openAPI, isWeb])
+    return () => unsub()
+  }, [bridge, isWeb])
 
   const handleMinimize = () => {
-    openAPI?.modules?.system?.minimizeWindow?.('main')
+    bridge.system.minimizeWindow('main')
   }
 
   const handleMaximizeToggle = async () => {
-    if (!openAPI?.modules?.system) return
-
     if (isMaximized) {
-      await openAPI.modules.system.unmaximizeWindow?.('main')
+      await bridge.system.unmaximizeWindow('main')
       setIsMaximized(false)
-    } else {
-      await openAPI.modules.system.maximizeWindow?.('main')
-      setIsMaximized(true)
+      return
     }
+    await bridge.system.maximizeWindow('main')
+    setIsMaximized(true)
   }
 
   const handleClose = () => {
-    openAPI?.modules?.system?.closeWindow?.('main')
+    bridge.system.closeWindow('main')
   }
 
   // Estilos de região arrastável

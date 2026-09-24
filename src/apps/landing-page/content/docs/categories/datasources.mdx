@@ -44,7 +44,12 @@ import type {
   MemberDTO,
   MetadataDTO,
   PagedResultDTO,
+  Task,
   TimeEntry,
+  CreatedTaskResult,
+  UpdatedTaskResult,
+  CreatedTimeEntryResult,
+  UpdatedTimeEntryResult,
 } from '@mr-tick/sdk'
 
 // 1. Providers Especializados
@@ -68,16 +73,18 @@ class MinhaApiTaskProvider implements ITaskProvider {
     return undefined
   }
 
-  async create(): Promise<void> {
-    throw new Error('Criação de tarefas não suportada')
+  async create(task: Task): Promise<CreatedTaskResult> {
+    // Envia criação para a API e retorna o ID e carimbo gerados pelo servidor
+    return { id: 'task-123', updatedAt: new Date() }
   }
 
-  async update(): Promise<void> {
-    throw new Error('Edição de tarefas não suportada')
+  async update(task: Task): Promise<UpdatedTaskResult> {
+    // Atualiza na API e retorna o ID e carimbo de atualização confirmado pelo servidor
+    return { id: task.id, updatedAt: new Date() }
   }
 
-  async delete(): Promise<void> {
-    throw new Error('Exclusão de tarefas não suportada')
+  async delete(id: string): Promise<void> {
+    // Exclui a tarefa na API remota
   }
 }
 
@@ -100,12 +107,14 @@ class MinhaApiTimeEntryProvider implements ITimeEntryProvider {
     return { items: [], total: 0, page: 1, pageSize: 50 }
   }
 
-  async create(entry: TimeEntry): Promise<void> {
-    // Envia novo apontamento de horas para a API
+  async create(entry: TimeEntry): Promise<CreatedTimeEntryResult> {
+    // Envia novo apontamento para a API e retorna o ID e updatedAt gerados pelo servidor
+    return { id: '10423', updatedAt: new Date() }
   }
 
-  async update(entry: TimeEntry): Promise<void> {
-    // Atualiza apontamento existente na API
+  async update(entry: TimeEntry): Promise<UpdatedTimeEntryResult> {
+    // Atualiza apontamento existente na API e retorna confirmação do servidor
+    return { id: entry.id, updatedAt: new Date() }
   }
 
   async delete(id: string): Promise<void> {

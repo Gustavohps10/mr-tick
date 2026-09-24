@@ -1,4 +1,18 @@
 import { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
+export type { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
+export type {
+  AddonInstallerViewModel,
+  AddonManifestViewModel,
+  ConnectionResultViewModel,
+  MemberViewModel,
+  MetadataViewModel,
+  PaginatedViewModel,
+  SyncDocumentViewModel,
+  TaskViewModel,
+  TimeEntryViewModel,
+  ViewModel,
+  WorkspaceViewModel,
+} from '@mr-tick/shared/view-models'
 import {
   AddonInstallerViewModel,
   AddonManifestViewModel,
@@ -13,11 +27,15 @@ import {
   WorkspaceViewModel,
 } from '@mr-tick/shared/view-models'
 
-import { FileData } from '@/contracts/infra'
+import { StartTimerDTO, TimerResumeDTO } from '../../dtos'
+import { FileData } from '../infra'
 import {
   PushTimeEntriesInput,
   UpdateWorkspaceIdentityInput,
-} from '@/contracts/use-cases'
+} from '../use-cases'
+import { IEventsAPI } from './IEventsAPI'
+
+export type { IEventsAPI } from './IEventsAPI'
 
 export interface IWorkspacesAPI {
   create(
@@ -274,8 +292,8 @@ export interface AddonSettingsField {
   defaultValue?: string | number | boolean
   description?: string
   placeholder?: string
-  options?: AddonSettingsOption[] // For select
-  actionId?: string // For button
+  options?: AddonSettingsOption[]
+  actionId?: string
   variant?:
     'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
   display?: {
@@ -283,7 +301,7 @@ export interface AddonSettingsField {
     message?: string
     avatarUrl?: string
     data?: Record<string, string>
-  } // For info-card
+  }
 }
 
 export interface AddonSettingsGroup {
@@ -454,29 +472,11 @@ export interface ISystemAPI {
   toggleTheme(payload: IRequest<{ theme: ThemeMode }>): Promise<void>
 }
 
-export interface TimerStartInput {
-  baseSeconds?: number
-  initialSeconds?: number
-  elapsedSeconds?: number
-  mode?: 'countup' | 'countdown'
-}
-
-export interface TimerResumeInput {
-  baseSeconds?: number
-  initialSeconds?: number
-  elapsedSeconds?: number
-}
-
 export interface ITimerAPI {
-  start(input: TimerStartInput): void
+  start(input: StartTimerDTO): void
   pause(): void
-  resume(input?: TimerResumeInput): void
+  resume(input?: TimerResumeDTO): void
   stop(): void
-}
-
-export interface IEventAPI {
-  on<T = unknown>(channel: string, handler: (data: T) => void): () => void
-  emit?<T = unknown>(channel: string, data?: T): void
 }
 
 export interface UpdaterInfo {
@@ -497,23 +497,17 @@ export interface IUpdaterAPI {
   quitAndInstall(): Promise<void>
 }
 
-export interface IOpenAPI {
+export interface IHostBridge {
+  workspaces: IWorkspacesAPI
+  session: ISessionAPI
+  tasks: ITaskAPI
+  timeEntries: ITimeEntriesAPI
+  metadata: IMetadataAPI
+  tokens: ITokenStorageAPI
+  headers: IHeadersAPI
+  system: ISystemAPI
+  updater: IUpdaterAPI
+  addons: IAddonsAPI
   timer: ITimerAPI
-  services: {
-    workspaces: IWorkspacesAPI
-    session: ISessionAPI
-    tasks: ITaskAPI
-    timeEntries: ITimeEntriesAPI
-    metadata: IMetadataAPI
-  }
-  modules: {
-    headers: IHeadersAPI
-    tokenStorage: ITokenStorageAPI
-    system: ISystemAPI
-    updater: IUpdaterAPI
-  }
-  integrations: {
-    addons: IAddonsAPI
-  }
-  events: IEventAPI
+  events: IEventsAPI
 }

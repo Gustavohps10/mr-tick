@@ -1,4 +1,8 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import {
+  AppError,
+  DEFAULT_MIN_API_VERSION,
+  Either,
+} from '@mr-tick/shared/helpers'
 import { IJobEvent } from '@mr-tick/shared/transport'
 
 import { FileData, IFileManager, IFileStorage } from '@/contracts'
@@ -48,7 +52,8 @@ export class ImportAddonService implements IImportAddonUseCase {
       }
 
       const addonId = manifestContentResult.success.id
-      const version = manifestContentResult.success.version || '1.0.0'
+      const version =
+        manifestContentResult.success.version || DEFAULT_MIN_API_VERSION
 
       if (!addonId) {
         return Either.failure(AppError.NotFound('ADDONID_NAO_ENCONTRADO'))

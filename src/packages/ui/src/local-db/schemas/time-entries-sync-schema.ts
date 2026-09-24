@@ -3,53 +3,67 @@ import { RxJsonSchema } from 'rxdb'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 
 // ─────────────────────────────────────────────
-// Journal — histórico local de eventos do timer
-// Nunca sincronizado com datasources externos
+// Tipos auxiliares de negócio e rastreabilidade
 // ─────────────────────────────────────────────
-
-export type TimerJournalEvent =
-  | 'started' // Timer iniciado do zero pelo usuário
-  | 'adjusted' // Timer iniciado com tempo manual (startDate retroativo)
-  | 'paused' // Timer pausado pelo usuário
-  | 'resumed' // Timer retomado após pausa
-  | 'stopped' // Timer encerrado definitivamente
 
 export interface TimerJournalEntry {
-  event: TimerJournalEvent
-  at: string // ISO datetime — momento exato do evento
-  secondsAtEvent: number // Segundos acumulados no momento do evento
-  note?: string // Observação livre (ex: "Usuário definiu 6h manualmente")
+  id: string
+  action: 'start' | 'pause' | 'resume' | 'stop' | 'adjust'
+  timestamp: string
+  secondsAtMoment: number
+  note?: string
+  event: 'started' | 'adjusted' | 'paused' | 'resumed' | 'stopped'
+  at: string
+  secondsAtEvent: number
 }
-
-// ─────────────────────────────────────────────
-// TimerConfig — configuração local do timer
-// Nunca sincronizado com datasources externos
-// ─────────────────────────────────────────────
-
-export type TimerMode = 'countup' | 'countdown'
 
 export interface TimerConfig {
-  mode: TimerMode
-  manualInitialSeconds?: number // Offset manual definido pelo usuário no início
+  mode: 'countup' | 'countdown'
+  manualInitialSeconds?: number
 }
 
-// ─────────────────────────────────────────────
-// SyncTimeEntryRxDBDTO
-// ─────────────────────────────────────────────
-
 export interface AddonSourceInfo {
-  id: string
-  name: string
+  pluginId: string
+  name?: string
   imageUrl?: string
+  rawId?: string
+  lastSyncedAt?: string
+}
+
+export type RecordSyncStatus =
+  'synced' | 'pending_push' | 'conflict' | 'local_only' | 'error'
+
+export interface ConflictDataSnapshot {
+  id?: string
+  startDate?: string
+  endDate?: string | null
+  timeSpent?: number
+  comments?: string
+  updatedAt?: string
+  task?: { id: string }
+  activity?: { id: string; name?: string }
+}
+
+export interface ConflictData {
+  server?: ConflictDataSnapshot
+  local?: ConflictDataSnapshot
 }
 
 export interface SyncTimeEntryRxDBDTO {
-  // ── Campos sincronizados ──────────────────────
-  _id: string
-  _deleted: boolean
-  dataSourceId: string
-  connectionInstanceId: string
+  // ── Identificadores e integridade ────────────
   id: string
+  connectionInstanceId: string
+  dataSourceId: string
+  _deleted: boolean
+
+  // ── Rastreabilidade de sincronização ─────────
+  syncStatus: RecordSyncStatus
+  syncError?: string | null
+  remoteId?: string | null
+  lastPulledAt?: string | null
+  lastPushedAt?: string | null
+
+  // ── Dados de negócio ─────────────────────────
   task: { id: string }
   taskData?: SyncTaskRxDBDTO
   activity: { id: string; name?: string }
@@ -57,28 +71,16 @@ export interface SyncTimeEntryRxDBDTO {
 
   /**
    * Âncora temporal do timer.
-   *
-   * Representa o ponto a partir do qual `now - startDate` retorna
-   * os segundos acumulados corretamente. Em casos de tempo inicial
-   * manual ou retomada após pausa, é recalculado retroativamente
-   * como `now - secondsAtMoment`.
-   *
-   * Não representa necessariamente o momento real em que o trabalho
-   * foi iniciado — consulte o journal para o histórico completo.
    */
-  startDate?: string
+  startDate: string
 
   /**
-   * Preenchido no stop pelo renderer.
-   * Enviado ao datasource externo via adapter no push manual.
+   * Fim da sessão de tempo. Pode ser nulo se ainda estiver correndo.
    */
-  endDate?: string
+  endDate?: string | null
 
   /**
    * Tempo acumulado em horas.
-   * Calculado localmente pelo renderer a partir dos segundos
-   * acumulados durante a sessão. Enviado ao datasource externo
-   * no push via adapter.
    */
   timeSpent: number
 
@@ -89,26 +91,10 @@ export interface SyncTimeEntryRxDBDTO {
   source?: 'manual' | 'timer' | 'ai_suggestion' | 'addon'
   addonSource?: AddonSourceInfo
   type?: 'increasing' | 'decreasing' | 'manual'
-  conflicted?: boolean
-  conflictData?: { server?: any; local?: any }
-  validationError?: any
-
-  syncedAt?: string
-  assumedMasterState?: any
+  conflictData?: ConflictData
 
   // ── Campos locais (nunca sincronizados) ───────
-
-  /**
-   * Histórico de eventos do timer para este apontamento.
-   * Permite auditoria, recálculo e exibição de histórico ao usuário.
-   * Excluído da estratégia de replicação — dado exclusivamente local.
-   */
   journal?: TimerJournalEntry[]
-
-  /**
-   * Configuração do timer para este apontamento específico.
-   * Excluído da estratégia de replicação — dado exclusivamente local.
-   */
   timerConfig?: TimerConfig
 }
 
@@ -122,38 +108,77 @@ export const timeEntriesSyncSchema: RxJsonSchema<SyncTimeEntryRxDBDTO> = {
   description:
     'Time entries with sync metadata, task relation, local journal and timer config',
   type: 'object',
-  primaryKey: '_id',
+  primaryKey: 'id',
   properties: {
-    _id: { type: 'string', maxLength: 200 },
-    _deleted: { type: 'boolean' },
-    dataSourceId: { type: 'string', maxLength: 100 },
-    connectionInstanceId: { type: 'string', maxLength: 100 },
     id: { type: 'string', maxLength: 100 },
+    connectionInstanceId: { type: 'string', maxLength: 100 },
+    dataSourceId: { type: 'string', maxLength: 100 },
+    _deleted: { type: 'boolean' },
+    syncStatus: {
+      type: 'string',
+      enum: ['synced', 'pending_push', 'conflict', 'local_only', 'error'],
+      maxLength: 20,
+    },
+    syncError: { type: ['string', 'null'], maxLength: 500 },
+    remoteId: { type: ['string', 'null'], maxLength: 100 },
+    lastPulledAt: { type: ['string', 'null'], format: 'date-time' },
+    lastPushedAt: { type: ['string', 'null'], format: 'date-time' },
     task: {
       type: 'object',
-      properties: { id: { type: 'string' } },
+      properties: {
+        id: { type: 'string', maxLength: 100 },
+      },
       required: ['id'],
     },
-    taskData: {
-      type: 'object',
-    },
+    taskData: { type: 'object' },
     activity: {
       type: 'object',
-      properties: { id: { type: 'string' }, name: { type: 'string' } },
+      properties: {
+        id: { type: 'string', maxLength: 100 },
+        name: { type: 'string', maxLength: 250 },
+      },
       required: ['id'],
     },
     user: {
       type: 'object',
-      properties: { id: { type: 'string' }, name: { type: 'string' } },
+      properties: {
+        id: { type: 'string', maxLength: 100 },
+        name: { type: 'string', maxLength: 250 },
+      },
       required: ['id'],
     },
-    startDate: { type: 'string', format: 'date-time' },
-    endDate: { type: 'string', format: 'date-time' },
+    startDate: { type: 'string', format: 'date-time', maxLength: 30 },
+    endDate: { type: 'string', format: 'date-time', maxLength: 30 },
     timeSpent: { type: 'number' },
     comments: { type: 'string' },
-    createdAt: { type: 'string', format: 'date-time' },
-    updatedAt: { type: 'string', format: 'date-time' },
-    conflicted: { type: 'boolean' },
+    createdAt: { type: 'string', format: 'date-time', maxLength: 30 },
+    updatedAt: { type: 'string', format: 'date-time', maxLength: 30 },
+    timeStatus: {
+      type: 'string',
+      enum: ['running', 'paused', 'finished', 'suggestion'],
+      maxLength: 20,
+    },
+    source: {
+      type: 'string',
+      enum: ['manual', 'timer', 'ai_suggestion', 'addon'],
+      maxLength: 20,
+    },
+    addonSource: {
+      type: 'object',
+      properties: {
+        pluginId: { type: 'string', maxLength: 100 },
+        name: { type: 'string', maxLength: 100 },
+        imageUrl: { type: 'string', maxLength: 500 },
+        rawId: { type: 'string', maxLength: 100 },
+        lastSyncedAt: { type: 'string', format: 'date-time', maxLength: 30 },
+      },
+      required: ['pluginId'],
+    },
+    type: {
+      type: 'string',
+      enum: ['increasing', 'decreasing', 'manual'],
+      maxLength: 20,
+    },
     conflictData: {
       type: 'object',
       properties: {
@@ -161,46 +186,36 @@ export const timeEntriesSyncSchema: RxJsonSchema<SyncTimeEntryRxDBDTO> = {
         local: { type: 'object' },
       },
     },
-    validationError: { type: 'object' },
-    syncedAt: { type: 'string', format: 'date-time' },
-    assumedMasterState: { type: 'object' },
-    timeStatus: {
-      type: 'string',
-      enum: ['running', 'paused', 'finished', 'suggestion'],
-    },
-    source: {
-      type: 'string',
-      enum: ['manual', 'timer', 'ai_suggestion', 'addon'],
-    },
-    addonSource: {
-      type: 'object',
-      properties: {
-        id: { type: 'string' },
-        name: { type: 'string' },
-        imageUrl: { type: 'string' },
-      },
-      required: ['id', 'name'],
-    },
-    type: {
-      type: 'string',
-      enum: ['increasing', 'decreasing', 'manual'],
-    },
-
-    // ── Campos locais ─────────────────────────────
     journal: {
       type: 'array',
       items: {
         type: 'object',
         properties: {
+          id: { type: 'string', maxLength: 100 },
+          action: {
+            type: 'string',
+            enum: ['start', 'pause', 'resume', 'stop', 'adjust'],
+          },
+          timestamp: { type: 'string', format: 'date-time', maxLength: 30 },
+          secondsAtMoment: { type: 'number' },
+          note: { type: 'string' },
           event: {
             type: 'string',
             enum: ['started', 'adjusted', 'paused', 'resumed', 'stopped'],
+            maxLength: 20,
           },
-          at: { type: 'string', format: 'date-time' },
+          at: { type: 'string', format: 'date-time', maxLength: 30 },
           secondsAtEvent: { type: 'number' },
-          note: { type: 'string' },
         },
-        required: ['event', 'at', 'secondsAtEvent'],
+        required: [
+          'id',
+          'action',
+          'timestamp',
+          'secondsAtMoment',
+          'event',
+          'at',
+          'secondsAtEvent',
+        ],
       },
     },
     timerConfig: {
@@ -216,14 +231,17 @@ export const timeEntriesSyncSchema: RxJsonSchema<SyncTimeEntryRxDBDTO> = {
     },
   },
   required: [
-    '_id',
-    'dataSourceId',
     'id',
+    'connectionInstanceId',
+    'dataSourceId',
+    'syncStatus',
     'task',
     'activity',
     'user',
     'timeSpent',
+    'startDate',
     'createdAt',
     'updatedAt',
   ],
+  indexes: ['connectionInstanceId', 'updatedAt', 'startDate', 'syncStatus'],
 }

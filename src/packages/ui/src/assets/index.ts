@@ -7,3 +7,4 @@ export const logoDark = '/ui/logo-dark.jpg'
 
 export const jiraLogo = '/ui/temp-plugins-icons/jira.png'
 export const youtrackLogo = '/ui/temp-plugins-icons/youtrack.png'
+export const arrowJumpDownLottie = '/ui/arrow-jump-down-lottie.svg'

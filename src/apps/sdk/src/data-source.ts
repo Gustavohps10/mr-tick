@@ -1,4 +1,5 @@
 import type {
+  ConnectionHealthDTO,
   DataSourceContext,
   IAuthenticationStrategy,
   IMemberProvider,
@@ -6,6 +7,9 @@ import type {
   ITaskProvider,
   ITimeEntryProvider,
 } from '@mr-tick/application'
+import type { AppError, Either } from '@mr-tick/shared/helpers'
+
+import type { AddonSettingsSchema } from './contracts/settings'
 
 export type { DataSourceContext }
 
@@ -15,9 +19,8 @@ export interface IDataSourceInstance {
   readonly timeEntriesProvider: ITimeEntryProvider
   readonly membersProvider: IMemberProvider
   readonly metadataProvider: IMetadataProvider
+  testConnection?(): Promise<Either<AppError, ConnectionHealthDTO>>
 }
-
-import type { AddonSettingsSchema } from './contracts/settings'
 
 export interface IDataSource {
   getConnectionSchema(): AddonSettingsSchema

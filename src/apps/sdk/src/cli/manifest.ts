@@ -38,7 +38,7 @@ export async function runManifestWizard(addonDir: string) {
     existingManifest.version ||
     existingManifest.Version ||
     pkg.version ||
-    '1.0.0'
+    '0.1.0'
   const defaultAuthor =
     existingManifest.author ||
     existingManifest.Author ||

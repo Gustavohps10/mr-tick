@@ -1,11 +1,11 @@
-﻿import { FileData } from '@mr-tick/application'
+import { FileData } from '@mr-tick/application'
 import { WorkspaceViewModel } from '@mr-tick/shared/view-models'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, ReactNode, useContext, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 
 export interface CreateWorkspaceInput {
   name: string
@@ -55,7 +55,7 @@ export const WorkspaceProvider: React.FC<WorkspaceProviderProps> = ({
   children,
   workspaceId,
 }) => {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { data: workspace, isLoading } = useQuery({
@@ -65,7 +65,7 @@ export const WorkspaceProvider: React.FC<WorkspaceProviderProps> = ({
     queryFn: async () => {
       if (!workspaceId) return null
 
-      const response = await openAPI.services.workspaces.getById({
+      const response = await bridge.workspaces.getById({
         body: { workspaceId },
       })
 
@@ -78,14 +78,14 @@ export const WorkspaceProvider: React.FC<WorkspaceProviderProps> = ({
 
   useEffect(() => {
     if (workspaceId) {
-      openAPI.integrations.addons.setActiveWorkspace({ body: { workspaceId } })
+      bridge.addons.setActiveWorkspace({ body: { workspaceId } })
     }
-  }, [workspaceId, openAPI])
+  }, [workspaceId, bridge])
 
   const { data: workspaces = [], isLoading: isLoadingWorkspaces } = useQuery({
     queryKey: workspaceKeys.all,
     queryFn: async () => {
-      const response = await openAPI.services.workspaces.listAll()
+      const response = await bridge.workspaces.listAll()
 
       if (!response.isSuccess) {
         toast.error('Falha ao carregar workspaces.')
@@ -98,7 +98,7 @@ export const WorkspaceProvider: React.FC<WorkspaceProviderProps> = ({
 
   const { mutateAsync: create, isPending: isCreating } = useMutation({
     mutationFn: async (input: CreateWorkspaceInput) => {
-      const response = await openAPI.services.workspaces.create({ body: input })
+      const response = await bridge.workspaces.create({ body: input })
       if (!response.isSuccess) throw new Error(response.error)
       return response.data
     },
@@ -120,7 +120,7 @@ export const WorkspaceProvider: React.FC<WorkspaceProviderProps> = ({
       mutationFn: async (input: UpdateIdentityInput) => {
         if (!workspaceId) throw new Error('workspaceId ausente.')
 
-        const response = await openAPI.services.workspaces.updateIdentity({
+        const response = await bridge.workspaces.updateIdentity({
           body: { workspaceId, ...input },
         })
 
@@ -157,7 +157,7 @@ export const WorkspaceProvider: React.FC<WorkspaceProviderProps> = ({
     mutationFn: async () => {
       if (!workspaceId) return
 
-      const response = await openAPI.services.workspaces.delete({
+      const response = await bridge.workspaces.delete({
         body: { workspaceId },
       })
 

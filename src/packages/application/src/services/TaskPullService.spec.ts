@@ -84,7 +84,7 @@ describe('TaskPullService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    tasksProviderMock.pull.mockResolvedValue(fakeTasks)
+    tasksProviderMock.pull.mockResolvedValue(Either.success(fakeTasks))
 
     // Act
     const result = await sut.execute(input)

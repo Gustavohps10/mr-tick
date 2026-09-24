@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { useSyncStore } from '@/stores/syncStore'
@@ -26,7 +26,13 @@ export function useTasksQuery(
   const { search, connectionInstanceId, enabled = true } = options
   const queryClient = useQueryClient()
   const db = useSyncStore((state) => state?.db)
-  const queryKey = ['tasks', connectionInstanceId ?? 'all', search ?? '']
+  const dbName = db?.name ? db.name : 'no-db'
+  const connectionKey = connectionInstanceId ? connectionInstanceId : 'all'
+  const searchKey = search ? search : ''
+  const queryKey = useMemo(
+    () => ['tasks', dbName, connectionKey, searchKey],
+    [dbName, connectionKey, searchKey],
+  )
 
   useEffect(() => {
     if (!db?.tasks || !enabled) return

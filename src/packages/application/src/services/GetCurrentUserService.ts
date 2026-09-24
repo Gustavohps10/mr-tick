@@ -22,19 +22,17 @@ export class GetCurrentUserService implements IGetCurrentUserUseCase {
         input.workspaceId,
       )
 
-      if (!workspace) {
+      if (!workspace)
         return Either.failure(AppError.NotFound('WORKSPACE_NAO_ENCONTRADO'))
-      }
 
       const connection = workspace.dataSourceConnections.find(
         (c) => c.id === input.connectionInstanceId,
       )
 
-      if (!connection) {
+      if (!connection)
         return Either.failure(
           AppError.NotFound('CONEXAO_NAO_ENCONTRADA_OU_INVALIDA'),
         )
-      }
 
       const adapter = await this.dataSourceResolver.getDataSource(
         input.workspaceId,
@@ -46,14 +44,17 @@ export class GetCurrentUserService implements IGetCurrentUserUseCase {
 
       const member = result.success
 
-      const user = await adapter.membersProvider.findById(member.id.toString())
+      const userResult = await adapter.membersProvider.findById(
+        member.id.toString(),
+      )
+      if (userResult.isFailure()) return userResult.forwardFailure()
 
-      if (!user) {
+      const user = userResult.success
+      if (!user)
         return Either.failure(AppError.NotFound('USUARIO_NAO_ENCONTRADO'))
-      }
 
       return Either.success(user)
-    } catch (error: unknown) {
+    } catch {
       return Either.failure(AppError.NotFound('ERRO_AO_OBTER_USUARIO'))
     }
   }

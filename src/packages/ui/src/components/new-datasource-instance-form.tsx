@@ -11,7 +11,7 @@ import React from 'react'
 import { FormProvider, useForm } from 'react-hook-form'
 
 import { Button, Input, Label } from '@/components/ui'
-import { useOpenAPI } from '@/hooks/use-open-api'
+import { useHostBridge } from '@/hooks'
 
 export type FieldPrimitiveValue = string | number | boolean
 
@@ -38,7 +38,7 @@ export function NewDataSourceInstanceForm({
   isSubmitting = false,
   hideSubmitButton = false,
 }: NewDataSourceInstanceFormProps) {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
 
   // 2. Busca dinâmica de campos baseada no pluginId
   const {
@@ -48,7 +48,7 @@ export function NewDataSourceInstanceForm({
   } = useQuery({
     queryKey: ['datasource-fields', pluginId],
     queryFn: async (): Promise<AddonSettingsTab[]> => {
-      const res = await openAPI.integrations.addons.getConnectionSchema({
+      const res = await bridge.addons.getConnectionSchema({
         body: { addonId: pluginId },
       })
 

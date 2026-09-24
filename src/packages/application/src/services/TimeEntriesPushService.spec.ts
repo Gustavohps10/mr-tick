@@ -10,6 +10,7 @@ import type {
 } from '@/contracts'
 import type { IDataSourceAdapter } from '@/contracts/resolvers/IDataSourceAdapter'
 import type { SyncTimeEntryDTO } from '@/contracts/use-cases'
+import type { TimeEntryDTO } from '@/dtos'
 
 import { TimeEntriesPushService } from './TimeEntriesPushService'
 
@@ -26,7 +27,7 @@ describe('TimeEntriesPushService', () => {
 
   const fakeWorkspace = { id: 'workspace-123' }
 
-  let fakeDomainTimeEntry: Mocked<TimeEntry>
+  let fakeServerTimeEntry: TimeEntryDTO
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -42,10 +43,18 @@ describe('TimeEntriesPushService', () => {
     } as unknown as Mocked<IWorkspacesRepository>
 
     timeEntriesProviderMock = {
-      findById: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
+      findById: vi.fn().mockResolvedValue(Either.success(null)),
+      create: vi
+        .fn()
+        .mockResolvedValue(
+          Either.success({ id: 'created-id', updatedAt: fakeCurrentTime }),
+        ),
+      update: vi
+        .fn()
+        .mockResolvedValue(
+          Either.success({ id: 'updated-id', updatedAt: fakeCurrentTime }),
+        ),
+      delete: vi.fn().mockResolvedValue(Either.success(undefined)),
       pull: vi.fn(),
       findByMemberId: vi.fn(),
       findAll: vi.fn(),
@@ -53,18 +62,28 @@ describe('TimeEntriesPushService', () => {
 
     adapterMock = {
       timeEntriesProvider: timeEntriesProviderMock,
+      getAuthenticatedMemberData: vi.fn().mockReturnValue(
+        Either.success({
+          id: 'member-1',
+          firstname: 'John',
+          lastname: 'Doe',
+        }),
+      ),
     } as unknown as Mocked<IDataSourceAdapter>
 
     dataSourceResolverMock = {
       getDataSource: vi.fn(),
     } as unknown as Mocked<IDataSourceResolver>
 
-    fakeDomainTimeEntry = {
-      id: 'existing-id',
+    fakeServerTimeEntry = {
+      id: 'existing-1',
       updatedAt: fakeCurrentTime,
-      updateHours: vi.fn().mockReturnValue(Either.success()),
-      updateComments: vi.fn().mockReturnValue(Either.success()),
-    } as unknown as Mocked<TimeEntry>
+      createdAt: fakeCurrentTime,
+      task: { id: 'task-1' },
+      activity: { id: 'act-1', name: 'QA' },
+      user: { id: 'usr-1', name: 'User' },
+      timeSpent: 3600,
+    }
 
     sut = new TimeEntriesPushService(
       workspacesRepositoryMock,
@@ -93,6 +112,23 @@ describe('TimeEntriesPushService', () => {
       expect(result.isFailure()).toBe(true)
       expect(result.failure.statusCode).toBe(401)
       expect(result.failure.messageKey).toBe('WORKSPACE_NAO_ENCONTRADO')
+    })
+
+    it('should forward failure if getAuthenticatedMemberData fails', async () => {
+      adapterMock.getAuthenticatedMemberData.mockReturnValue(
+        Either.failure(AppError.Unauthorized('TOKEN_EXPIRED')),
+      )
+
+      const result = await sut.execute({
+        workspaceId: 'w-1',
+        pluginId: 'p-1',
+        connectionInstanceId: 'c-1',
+        entries: [],
+      })
+
+      expect(result.isFailure()).toBe(true)
+      expect(result.failure.statusCode).toBe(401)
+      expect(result.failure.messageKey).toBe('TOKEN_EXPIRED')
     })
 
     it('should return Internal error if an unexpected error occurs in the setup', async () => {
@@ -167,7 +203,9 @@ describe('TimeEntriesPushService', () => {
         comments: 'New comment',
       } as SyncTimeEntryDTO
 
-      timeEntriesProviderMock.findById.mockResolvedValue(fakeDomainTimeEntry)
+      timeEntriesProviderMock.findById.mockResolvedValue(
+        Either.success(fakeServerTimeEntry),
+      )
 
       const result = await sut.execute({
         workspaceId: 'w-1',
@@ -176,22 +214,112 @@ describe('TimeEntriesPushService', () => {
         entries: [entry],
       })
 
-      expect(fakeDomainTimeEntry.updateHours).toHaveBeenCalled()
-      expect(timeEntriesProviderMock.update).toHaveBeenCalledWith(
-        fakeDomainTimeEntry,
-      )
+      expect(timeEntriesProviderMock.update).toHaveBeenCalled()
       expect(result.success?.[0].syncedAt).toBeDefined()
     })
 
-    it('should detect conflict if assumedMasterState differs from server', async () => {
+    it('should update task and activity on existing entry', async () => {
       const entry = {
         id: 'existing-1',
         _deleted: false,
         updatedAt: fakeCurrentTime,
-        assumedMasterState: { updatedAt: fakeOldTime }, // Conflito!
+        task: { id: 'new-task-id' },
+        activity: { id: 'new-act-id', name: 'Design' },
+        comments: 'Updated comments',
       } as SyncTimeEntryDTO
 
-      timeEntriesProviderMock.findById.mockResolvedValue(fakeDomainTimeEntry)
+      timeEntriesProviderMock.findById.mockResolvedValue(
+        Either.success(fakeServerTimeEntry),
+      )
+
+      const result = await sut.execute({
+        workspaceId: 'w-1',
+        pluginId: 'p-1',
+        connectionInstanceId: 'c-1',
+        entries: [entry],
+      })
+
+      expect(timeEntriesProviderMock.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'existing-1',
+          task: { id: 'new-task-id' },
+          activity: { id: 'new-act-id', name: 'Design' },
+          comments: 'Updated comments',
+        }),
+      )
+      expect(result.success?.[0].task?.id).toBe('new-task-id')
+      expect(result.success?.[0].activity?.id).toBe('new-act-id')
+    })
+
+    it('should return validation error if updateTask fails', async () => {
+      const entry = {
+        id: 'existing-1',
+        _deleted: false,
+        updatedAt: fakeCurrentTime,
+        task: { id: '' },
+      } as SyncTimeEntryDTO
+
+      timeEntriesProviderMock.findById.mockResolvedValue(
+        Either.success(fakeServerTimeEntry),
+      )
+
+      const result = await sut.execute({
+        workspaceId: 'w-1',
+        pluginId: 'p-1',
+        connectionInstanceId: 'c-1',
+        entries: [entry],
+      })
+
+      expect(result.success?.[0].validationError?.messageKey).toBe(
+        'CAMPOS_INVALIDOS',
+      )
+      expect(timeEntriesProviderMock.update).not.toHaveBeenCalled()
+    })
+
+    it('should return validation error if updateActivity fails', async () => {
+      const entry = {
+        id: 'existing-1',
+        _deleted: false,
+        updatedAt: fakeCurrentTime,
+        activity: { id: '' },
+      } as SyncTimeEntryDTO
+
+      timeEntriesProviderMock.findById.mockResolvedValue(
+        Either.success(fakeServerTimeEntry),
+      )
+
+      const result = await sut.execute({
+        workspaceId: 'w-1',
+        pluginId: 'p-1',
+        connectionInstanceId: 'c-1',
+        entries: [entry],
+      })
+
+      expect(result.success?.[0].validationError?.messageKey).toBe(
+        'CAMPOS_INVALIDOS',
+      )
+      expect(timeEntriesProviderMock.update).not.toHaveBeenCalled()
+    })
+
+    it('should detect conflict if server data diverged from assumedMasterState', async () => {
+      const entry = {
+        id: 'existing-1',
+        _deleted: false,
+        updatedAt: fakeCurrentTime,
+        task: { id: 'task-1' },
+        activity: { id: 'act-1', name: 'QA' },
+        timeSpent: 7200,
+        assumedMasterState: {
+          updatedAt: fakeOldTime,
+          task: { id: 'task-different' }, // Servidor mudou concorrentemente!
+          activity: { id: 'act-1', name: 'QA' },
+          timeSpent: 3600,
+        },
+      } as SyncTimeEntryDTO
+
+      timeEntriesProviderMock.findById.mockResolvedValue(
+        Either.success(fakeServerTimeEntry),
+      )
 
       const result = await sut.execute({
         workspaceId: 'w-1',
@@ -202,22 +330,30 @@ describe('TimeEntriesPushService', () => {
 
       const processed = result.success?.[0]
       expect(processed?.conflicted).toBe(true)
-      expect(processed?.conflictData?.server).toBe(fakeDomainTimeEntry)
+      expect(processed?.conflictData?.server?.id).toBe(fakeServerTimeEntry.id)
+      expect(processed?.conflictData?.server?.activity.name).toBe('QA')
       expect(timeEntriesProviderMock.update).not.toHaveBeenCalled()
     })
 
-    it('should forward domain validation errors during update', async () => {
+    it('should NOT detect conflict if server data matches assumedMasterState even if timestamps differ', async () => {
       const entry = {
-        id: '123',
+        id: 'existing-1',
         _deleted: false,
         updatedAt: fakeCurrentTime,
+        task: { id: 'task-1' },
+        activity: { id: 'act-1', name: 'QA' },
+        timeSpent: 7200,
+        assumedMasterState: {
+          updatedAt: fakeOldTime,
+          task: { id: 'task-1' }, // Mesmo task que fakeServerTimeEntry
+          activity: { id: 'act-1', name: 'QA' },
+          timeSpent: 3600, // Mesmo timeSpent que fakeServerTimeEntry
+        },
       } as SyncTimeEntryDTO
-      const domainError = AppError.ValidationError('INVALID_RANGE')
 
-      fakeDomainTimeEntry.updateHours.mockReturnValue(
-        Either.failure(domainError),
+      timeEntriesProviderMock.findById.mockResolvedValue(
+        Either.success(fakeServerTimeEntry),
       )
-      timeEntriesProviderMock.findById.mockResolvedValue(fakeDomainTimeEntry)
 
       const result = await sut.execute({
         workspaceId: 'w-1',
@@ -226,7 +362,68 @@ describe('TimeEntriesPushService', () => {
         entries: [entry],
       })
 
-      expect(result.success?.[0].validationError).toBe(domainError)
+      const processed = result.success?.[0]
+      expect(processed?.conflicted).toBeUndefined()
+      expect(processed?.activity.name).toBe('QA')
+      expect(timeEntriesProviderMock.update).toHaveBeenCalled()
+    })
+
+    it('should NOT detect conflict if entry data is already identical to server data even if timestamps differ', async () => {
+      const entry = {
+        id: 'existing-1',
+        _deleted: false,
+        updatedAt: fakeCurrentTime,
+        task: { id: 'task-1' },
+        activity: { id: 'act-1', name: 'QA' },
+        timeSpent: 3600,
+        assumedMasterState: {
+          updatedAt: fakeOldTime,
+        },
+      } as SyncTimeEntryDTO
+
+      timeEntriesProviderMock.findById.mockResolvedValue(
+        Either.success(fakeServerTimeEntry),
+      )
+
+      const result = await sut.execute({
+        workspaceId: 'w-1',
+        pluginId: 'p-1',
+        connectionInstanceId: 'c-1',
+        entries: [entry],
+      })
+
+      const processed = result.success?.[0]
+      expect(processed?.conflicted).toBeUndefined()
+      expect(processed?.activity.name).toBe('QA')
+      expect(timeEntriesProviderMock.update).not.toHaveBeenCalled()
+    })
+
+    it('should forward domain validation errors during update', async () => {
+      const entry = {
+        id: 'existing-1',
+        _deleted: false,
+        updatedAt: fakeCurrentTime,
+        timeSpent: -5,
+      } as SyncTimeEntryDTO
+      const domainError = AppError.ValidationError('CAMPOS_INVALIDOS')
+      vi.spyOn(TimeEntry.prototype, 'updateHours').mockReturnValue(
+        Either.failure(domainError),
+      )
+
+      timeEntriesProviderMock.findById.mockResolvedValue(
+        Either.success(fakeServerTimeEntry),
+      )
+
+      const result = await sut.execute({
+        workspaceId: 'w-1',
+        pluginId: 'p-1',
+        connectionInstanceId: 'c-1',
+        entries: [entry],
+      })
+
+      expect(result.success?.[0].validationError?.messageKey).toBe(
+        'CAMPOS_INVALIDOS',
+      )
     })
 
     it('should create new entry successfully when not found in repository', async () => {
@@ -237,12 +434,10 @@ describe('TimeEntriesPushService', () => {
         task: { id: 't1' },
         activity: { id: 'a1' },
         user: { id: 'u1' },
+        timeSpent: 1200,
       } as SyncTimeEntryDTO
 
-      timeEntriesProviderMock.findById.mockResolvedValue(null as any)
-      vi.spyOn(TimeEntry, 'create').mockReturnValue(
-        Either.success(fakeDomainTimeEntry),
-      )
+      timeEntriesProviderMock.findById.mockResolvedValue(Either.success(null))
 
       const result = await sut.execute({
         workspaceId: 'w-1',

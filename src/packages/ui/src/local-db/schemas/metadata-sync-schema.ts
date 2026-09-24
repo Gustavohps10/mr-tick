@@ -13,37 +13,44 @@ export interface SyncMetadataItem {
 }
 
 export interface SyncMetadataRxDBDTO {
-  _id: string
-  _deleted: boolean
-  dataSourceId: string
-  connectionInstanceId: string
   id: string
+  sourceId: string
+  connectionInstanceId: string
+  dataSourceId: string
+  _deleted: boolean
+  syncStatus: 'synced' | 'pending_push' | 'pulling' | 'conflict' | 'local_only'
+  lastPulledAt: string | null
   taskStatuses: SyncMetadataItem[]
   taskPriorities: SyncMetadataItem[]
   activities: SyncMetadataItem[]
   trackStatuses: SyncMetadataItem[]
   participantRoles: SyncMetadataItem[]
   estimationTypes: SyncMetadataItem[]
-
   conflicted?: boolean
-  conflictData?: { server?: any; local?: any }
-  validationError?: any
-  syncedAt?: string
-  assumedMasterState?: any
 }
 
 export const metadataSyncSchema: RxJsonSchema<SyncMetadataRxDBDTO> = {
   title: 'metadata schema',
   version: 0,
   description: 'Stores metadata from external sources like Redmine or Jira',
-  primaryKey: '_id',
+  primaryKey: {
+    key: 'id',
+    fields: ['connectionInstanceId', 'sourceId'],
+    separator: '::',
+  },
   type: 'object',
   properties: {
-    _id: { type: 'string', maxLength: 200 },
-    _deleted: { type: 'boolean' },
-    dataSourceId: { type: 'string', maxLength: 100 },
+    id: { type: 'string', maxLength: 200 },
+    sourceId: { type: 'string', maxLength: 100 },
     connectionInstanceId: { type: 'string', maxLength: 100 },
-    id: { type: 'string', maxLength: 100 },
+    dataSourceId: { type: 'string', maxLength: 100 },
+    _deleted: { type: 'boolean' },
+    syncStatus: {
+      type: 'string',
+      enum: ['synced', 'pending_push', 'pulling', 'conflict', 'local_only'],
+      maxLength: 20,
+    },
+    lastPulledAt: { type: ['string', 'null'], format: 'date-time' },
     taskStatuses: {
       type: 'array',
       items: {
@@ -177,21 +184,13 @@ export const metadataSyncSchema: RxJsonSchema<SyncMetadataRxDBDTO> = {
       },
     },
     conflicted: { type: 'boolean' },
-    conflictData: {
-      type: 'object',
-      properties: {
-        server: { type: 'object' },
-        local: { type: 'object' },
-      },
-    },
-    validationError: { type: 'object' },
-    syncedAt: { type: 'string', format: 'date-time' },
-    assumedMasterState: { type: 'object' },
   },
   required: [
-    '_id',
-    'dataSourceId',
     'id',
+    'sourceId',
+    'connectionInstanceId',
+    'dataSourceId',
+    'syncStatus',
     'taskStatuses',
     'taskPriorities',
     'activities',
@@ -199,4 +198,5 @@ export const metadataSyncSchema: RxJsonSchema<SyncMetadataRxDBDTO> = {
     'participantRoles',
     'estimationTypes',
   ],
+  indexes: ['dataSourceId', 'syncStatus'],
 }

@@ -8,18 +8,26 @@
   "lint-staged": {
     "*.{ts,tsx}": [
       "eslint",
-      "yarn vitest related --run"
+      "yarn test:changed"
     ]
   },
   "workspaces": [
     "src/apps/*",
-    "src/packages/*"
+    "src/packages/*",
+    "src/dev-addons/datasource-fake"
   ],
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run; yarn test:e2e",
+    "test:unit": "vitest run --project unit",
+    "test:ui": "vitest run --project ui",
+    "test:e2e": "yarn --cwd src/apps/desktop test:e2e",
+    "test:changed": "vitest --changed --passWithNoTests --run",
+    "test:changed:unit": "vitest --changed --project unit --passWithNoTests --run",
+    "test:changed:ui": "vitest --changed --project ui --passWithNoTests --run",
     "test:watch": "vitest",
-    "test:run": "vitest run",
-    "test:ui": "vitest --ui",
+    "test:watch:unit": "vitest --project unit",
+    "test:watch:ui": "vitest --project ui",
+    "test:dashboard": "vitest --ui",
     "test:coverage": "vitest run --coverage",
     "dev:landing-page": "turbo run dev --parallel --filter=@mr-tick/landing-page",
     "dev:desktop": "turbo run dev --parallel --filter=@mr-tick/desktop",
@@ -57,6 +65,7 @@
     "@mermaid-js/mermaid-cli": "^11.12.0",
     "@swc/core": "^1.12.11",
     "@swc/helpers": "^0.5.17",
+    "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/js-yaml": "^4.0.9",

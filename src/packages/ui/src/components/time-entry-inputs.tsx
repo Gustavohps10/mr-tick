@@ -1,9 +1,11 @@
 'use client'
 
 import {
+  addDays,
   addSeconds,
   differenceInSeconds,
   format,
+  isBefore,
   isValid,
   parse,
   parseISO,
@@ -43,7 +45,7 @@ const parseFlexTime = (val: string): number | null => {
 }
 
 const decimalToHMS = (decimalHours?: number) => {
-  if (decimalHours === undefined || decimalHours <= 0) return ''
+  if (decimalHours === undefined || decimalHours <= 0) return '00:00:00'
   const totalSeconds = Math.round(decimalHours * 3600)
   const h = Math.floor(totalSeconds / 3600)
     .toString()
@@ -95,24 +97,30 @@ export const TimeEntryInputs = ({
   const [localEnd, setLocalEnd] = useState(toHHMM(endDate))
   const [localSpent, setLocalSpent] = useState(decimalToHMS(timeSpent))
 
+  const [isFocused, setIsFocused] = useState(false)
   const [errors, setErrors] = useState({
     start: false,
     end: false,
-    spent: false,
+    spent: timeSpent <= 0,
   })
 
   useEffect(() => {
+    if (isFocused) return
     setLocalStart(toHHMM(startDate))
     setErrors((p) => ({ ...p, start: false }))
-  }, [startDate])
+  }, [startDate, isFocused])
+
   useEffect(() => {
+    if (isFocused) return
     setLocalEnd(toHHMM(endDate))
     setErrors((p) => ({ ...p, end: false }))
-  }, [endDate])
+  }, [endDate, isFocused])
+
   useEffect(() => {
+    if (isFocused) return
     setLocalSpent(decimalToHMS(timeSpent))
-    setErrors((p) => ({ ...p, spent: false }))
-  }, [timeSpent])
+    setErrors((p) => ({ ...p, spent: timeSpent <= 0 }))
+  }, [timeSpent, isFocused])
 
   const baseDate = useMemo(
     () => (startDate ? parseISO(startDate) : new Date()),
@@ -140,42 +148,53 @@ export const TimeEntryInputs = ({
       return
     }
 
-    let decimal = 0
-    let sISO = startDate
-    let eISO = endDate
-
     if (fieldTriggered === 'spent') {
       const parsed = parseFlexTime(fSpent)
-      if (parsed === null) {
+      if (parsed === null || parsed <= 0) {
         setErrors((prev) => ({ ...prev, spent: true }))
         return
       }
-      decimal = parsed
 
+      const decimal = parsed
       const startRef = startDate ? parseISO(startDate) : baseDate
-      sISO = startRef.toISOString()
-      eISO = addSeconds(startRef, Math.round(decimal * 3600)).toISOString()
+      const sISO = startRef.toISOString()
+      const eISO = addSeconds(
+        startRef,
+        Math.round(decimal * 3600),
+      ).toISOString()
 
       setLocalStart(format(parseISO(sISO), 'HH:mm'))
       setLocalEnd(format(parseISO(eISO), 'HH:mm'))
       setLocalSpent(decimalToHMS(decimal))
-    } else {
-      const sDate = parse(fStart, 'HH:mm', baseDate)
-      const eDate = parse(fEnd, 'HH:mm', baseDate)
-
-      if (isValid(sDate) && isValid(eDate)) {
-        const seconds = differenceInSeconds(eDate, sDate)
-        decimal = Number((seconds / 3600).toFixed(4))
-        if (decimal < 0) {
-          setErrors({ start: true, end: true, spent: false })
-          return
-        }
-        sISO = sDate.toISOString()
-        eISO = eDate.toISOString()
-        setLocalSpent(decimalToHMS(decimal))
-      }
+      setErrors({ start: false, end: false, spent: false })
+      onChange({
+        startDate: sISO,
+        endDate: eISO,
+        timeSpent: decimal,
+      })
+      return
     }
 
+    const sDate = parse(fStart, 'HH:mm', baseDate)
+    let eDate = parse(fEnd, 'HH:mm', baseDate)
+
+    if (!isValid(sDate) || !isValid(eDate)) {
+      setErrors({ start: !isValid(sDate), end: !isValid(eDate), spent: false })
+      return
+    }
+
+    if (isBefore(eDate, sDate)) eDate = addDays(eDate, 1)
+
+    const seconds = differenceInSeconds(eDate, sDate)
+    const decimal = Number((seconds / 3600).toFixed(4))
+    if (decimal <= 0) {
+      setErrors({ start: true, end: true, spent: true })
+      return
+    }
+
+    const sISO = sDate.toISOString()
+    const eISO = eDate.toISOString()
+    setLocalSpent(decimalToHMS(decimal))
     setErrors({ start: false, end: false, spent: false })
     onChange({
       startDate: sISO,
@@ -189,29 +208,37 @@ export const TimeEntryInputs = ({
     setter(cleaned)
   }
 
+  const isSpentInvalid = errors.spent || (!disabled && timeSpent <= 0)
+  const hasAnyError = errors.start || errors.end || isSpentInvalid
+
   return (
     <div
       className={cn(
         'inline-flex items-center gap-0.5 rounded border px-1 py-0.5 transition-all',
         disabled
           ? 'border-transparent bg-transparent'
-          : 'bg-muted/20 border-border hover:border-border/80',
+          : hasAnyError
+            ? 'bg-destructive/5 border-destructive/40 hover:border-destructive/60'
+            : 'bg-muted/20 border-border hover:border-border/80',
         className,
       )}
     >
       <Input
+        data-testid="time-entry-start-time-input"
         disabled={disabled}
         value={localStart}
+        onFocus={() => setIsFocused(true)}
         onChange={(e) => {
           handleTextChange(e.target.value, setLocalStart)
           setErrors((p) => ({ ...p, start: false }))
         }}
-        onBlur={() =>
+        onBlur={() => {
+          setIsFocused(false)
           validateAndSync(localStart, localEnd, localSpent, 'start')
-        }
-        onKeyDown={(e) =>
-          e.key === 'Enter' && (e.target as HTMLInputElement).blur()
-        }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+        }}
         style={{ padding: 0, lineHeight: 1 }}
         className={cn(
           'h-5 w-[46px] border-none bg-transparent text-center font-mono text-[11px] focus-visible:ring-0',
@@ -225,16 +252,21 @@ export const TimeEntryInputs = ({
       </span>
 
       <Input
+        data-testid="time-entry-end-time-input"
         disabled={disabled}
         value={localEnd}
+        onFocus={() => setIsFocused(true)}
         onChange={(e) => {
           handleTextChange(e.target.value, setLocalEnd)
           setErrors((p) => ({ ...p, end: false }))
         }}
-        onBlur={() => validateAndSync(localStart, localEnd, localSpent, 'end')}
-        onKeyDown={(e) =>
-          e.key === 'Enter' && (e.target as HTMLInputElement).blur()
-        }
+        onBlur={() => {
+          setIsFocused(false)
+          validateAndSync(localStart, localEnd, localSpent, 'end')
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+        }}
         style={{ padding: 0, lineHeight: 1 }}
         className={cn(
           'h-5 w-[46px] border-none bg-transparent text-center font-mono text-[11px] focus-visible:ring-0',
@@ -246,22 +278,27 @@ export const TimeEntryInputs = ({
       <div className="bg-border/40 mx-1 h-3 w-px shrink-0" />
 
       <Input
+        data-testid="time-entry-duration-input"
         disabled={disabled}
         value={localSpent}
+        onFocus={() => setIsFocused(true)}
         onChange={(e) => {
           handleTextChange(e.target.value, setLocalSpent)
-          setErrors((p) => ({ ...p, spent: false }))
+          const parsed = parseFlexTime(e.target.value)
+          const isInvalid = parsed === null || parsed <= 0
+          setErrors((p) => ({ ...p, spent: isInvalid }))
         }}
-        onBlur={() =>
+        onBlur={() => {
+          setIsFocused(false)
           validateAndSync(localStart, localEnd, localSpent, 'spent')
-        }
-        onKeyDown={(e) =>
-          e.key === 'Enter' && (e.target as HTMLInputElement).blur()
-        }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+        }}
         style={{ padding: 0, lineHeight: 1 }}
         className={cn(
-          'text-primary h-5 w-[72px] border-none bg-transparent text-center font-mono text-[11px] font-semibold focus-visible:ring-0',
-          errors.spent && 'text-destructive',
+          'h-5 w-[72px] border-none bg-transparent text-center font-mono text-[11px] font-semibold focus-visible:ring-0',
+          isSpentInvalid ? 'text-destructive font-bold' : 'text-primary',
           disabled && 'text-foreground/60',
         )}
         placeholder="0:00"

@@ -1,11 +1,15 @@
-﻿'use client'
+'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AddonManifest } from '@mr-tick/application'
-import { WorkspaceConnectionViewModel, WorkspaceViewModel } from '@mr-tick/sdk'
+import {
+  AddonManifestViewModel,
+  WorkspaceConnectionViewModel,
+  WorkspaceViewModel,
+} from '@mr-tick/sdk'
 import { defineStepper } from '@stepperize/react'
 import { useStepItemContext } from '@stepperize/react/primitives'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
   BookOpen,
@@ -48,10 +52,9 @@ import {
 } from '@/components/new-datasource-instance-form'
 import { Button, Input, Label, Progress, Textarea } from '@/components/ui'
 import { DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useWorkspace, workspaceKeys } from '@/contexts/WorkspaceContext'
-import { useDataSourceConnections, useOpenAPI } from '@/hooks'
+import { workspaceKeys } from '@/contexts/WorkspaceContext'
+import { useHostBridge } from '@/hooks'
 import { cn } from '@/lib'
-import { useConnectionsWithSync } from '@/stores/syncStore'
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -88,7 +91,9 @@ const configSchema = z.object({
     .enum(['DEV', 'QA', 'STUDY', 'ANALYST', 'TECHLEAD', 'NONE'])
     .default('DEV'),
   currentConnectionInstanceId: z.string().optional(),
-  dataSourcePlugin: z.any().optional(),
+  dataSourcePlugin: z
+    .custom<AddonManifest | AddonManifestViewModel>()
+    .optional(),
   dataSourceInstances: z.array(workspaceConnectionSchema).default([]),
 })
 
@@ -271,7 +276,7 @@ function InstallConsole({
   logs: LogEntry[]
   progress: number
   status: InstallState
-  plugin: any
+  plugin?: AddonManifest | AddonManifestViewModel | null
   onRetry: () => void
   onContinue: () => void
 }) {
@@ -284,9 +289,9 @@ function InstallConsole({
   return (
     <div className="bg-background/50 flex flex-col gap-4 rounded-xl border p-4">
       <div className="bg-muted/30 flex items-center gap-3 rounded-xl border p-3">
-        {plugin?.iconUrl ? (
+        {plugin?.logo ? (
           <img
-            src={plugin.iconUrl}
+            src={plugin.logo}
             alt={plugin?.name}
             className="h-9 w-9 rounded-lg object-contain"
           />
@@ -304,7 +309,7 @@ function InstallConsole({
           </p>
         </div>
         <span className="text-muted-foreground bg-muted shrink-0 rounded-md px-2 py-1 font-mono text-[10px]">
-          {plugin?.version ?? 'v1.0.0'}
+          {plugin?.version ?? 'v0.1.0'}
         </span>
       </div>
 
@@ -546,33 +551,70 @@ function PresetCard({
 
 interface StepperFormProps {
   workspaceId?: string
-  onWorkspaceCreated: (id: string) => void
+  onWorkspaceCreated?: (id: string) => void
   onClose: () => void
   onModalOpenChange: (open: boolean) => void
 }
 
 export function StepperForm({
+  workspaceId,
   onWorkspaceCreated,
   onClose,
   onModalOpenChange,
 }: StepperFormProps) {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
-  const { create, updateIdentity, isCreating, workspace } = useWorkspace()
+  const [createdWorkspace, setCreatedWorkspace] =
+    React.useState<WorkspaceViewModel | null>(null)
+  const [isSavingIdentity, setIsSavingIdentity] = React.useState(false)
+
+  const { data: initialDraftWorkspace, isLoading: isLoadingDraft } = useQuery({
+    queryKey: workspaceId
+      ? workspaceKeys.detail(workspaceId)
+      : ['draft-workspace', 'idle'],
+    queryFn: async () => {
+      if (!workspaceId) return null
+      const response = await bridge.workspaces.getById({
+        body: { workspaceId },
+      })
+      if (!response.isSuccess) return null
+      if (!response.data) return null
+      return response.data
+    },
+    enabled: Boolean(workspaceId),
+    retry: false,
+  })
+
+  const currentWorkspace = createdWorkspace ?? initialDraftWorkspace ?? null
+  const currentWorkspaceId = currentWorkspace?.id
 
   const methods = useForm<WorkspaceFormData>({
     resolver: zodResolver(workspaceFormSchema),
     defaultValues: {
-      name: workspace?.name ?? '',
-      description: workspace?.description ?? '',
-      avatarUrl: workspace?.avatarUrl ?? '',
+      name: '',
+      description: '',
+      avatarUrl: '',
       currency: 'BRL',
       sourceType: 'DATASOURCE',
       presetCode: 'DEV',
-      dataSourceInstances: workspace?.dataSourceConnections ?? [],
+      dataSourceInstances: [],
     },
     mode: 'onChange',
   })
+
+  React.useEffect(() => {
+    if (!initialDraftWorkspace) return
+    setCreatedWorkspace(initialDraftWorkspace)
+    methods.reset({
+      name: initialDraftWorkspace.name,
+      description: initialDraftWorkspace.description ?? '',
+      avatarUrl: initialDraftWorkspace.avatarUrl ?? '',
+      currency: 'BRL',
+      sourceType: 'DATASOURCE',
+      presetCode: 'DEV',
+      dataSourceInstances: initialDraftWorkspace.dataSourceConnections ?? [],
+    })
+  }, [initialDraftWorkspace, methods])
 
   const sourceType = methods.watch('sourceType')
   const selectedPlugin = methods.watch('dataSourcePlugin')
@@ -581,11 +623,36 @@ export function StepperForm({
   const [installLogs, setInstallLogs] = React.useState<LogEntry[]>([])
   const [installProgress, setInstallProgress] = React.useState(0)
   const [showDataSourcePicker, setShowDataSourcePicker] = React.useState(false)
-  const { connect, link, unlink, disconnect } = useDataSourceConnections()
 
-  const syncedConnections = useConnectionsWithSync()
+  const { data: installedPlugins = [] } = useQuery({
+    queryKey: ['plugins', 'installed'],
+    queryFn: async () => {
+      const res = await bridge.addons.listInstalled()
+      if (!res.isSuccess) return []
+      return res.data ?? []
+    },
+  })
 
-  const instances = syncedConnections
+  const dataSourceInstances = methods.watch('dataSourceInstances') ?? []
+
+  const instances = React.useMemo(() => {
+    return dataSourceInstances.map((conn) => {
+      const addon = installedPlugins.find((p) => p.id === conn.dataSourceId)
+      return {
+        connectionId: conn.id,
+        dataSourceId: conn.dataSourceId,
+        status: conn.status,
+        config: conn.config,
+        member: conn.member,
+        addon,
+        sync: {
+          metadata: { isPulling: false, isPushing: false, error: null },
+          tasks: { isPulling: false, isPushing: false, error: null },
+          timeEntries: { isPulling: false, isPushing: false, error: null },
+        },
+      }
+    })
+  }, [dataSourceInstances, installedPlugins])
 
   // -------------------------------------------------------------------------
   // Helpers
@@ -625,9 +692,8 @@ export function StepperForm({
     let avatarFile: Uint8Array | undefined
     let removeAvatar = false
 
-    if (!avatarUrl) {
-      removeAvatar = true
-    } else if (avatarUrl.startsWith('blob:')) {
+    if (!avatarUrl) removeAvatar = true
+    if (avatarUrl && avatarUrl.startsWith('blob:')) {
       try {
         const blob = await fetch(avatarUrl).then((r) => r.blob())
         avatarFile = new Uint8Array(await blob.arrayBuffer())
@@ -637,23 +703,69 @@ export function StepperForm({
       }
     }
 
-    if (!workspace?.id) {
-      const newWorkspace = await create({ name, description, avatarFile })
-      if (newWorkspace?.id) {
-        onWorkspaceCreated(newWorkspace.id)
-        stepperNext(e)
-      }
-      return
-    }
+    setIsSavingIdentity(true)
+    try {
+      if (!currentWorkspaceId) {
+        const response = await bridge.workspaces.create({
+          body: { name, description, avatarFile },
+        })
+        if (!response.isSuccess) {
+          toast.error(response.error ?? 'Falha ao criar workspace.')
+          return
+        }
+        if (!response.data) {
+          toast.error('Falha ao criar workspace.')
+          return
+        }
 
-    const updated = await updateIdentity({
-      name,
-      description,
-      avatarFile,
-      removeAvatar,
-    })
-    if (updated) stepperNext(e)
+        const created = response.data
+        setCreatedWorkspace(created)
+        queryClient.setQueryData<WorkspaceViewModel[]>(
+          workspaceKeys.all,
+          (prev) => {
+            if (!prev) return [created]
+            return [...prev, created]
+          },
+        )
+        toast.success('Workspace criado com sucesso.')
+        stepperNext(e)
+        return
+      }
+
+      const response = await bridge.workspaces.updateIdentity({
+        body: {
+          workspaceId: currentWorkspaceId,
+          name,
+          description,
+          avatarFile,
+          removeAvatar,
+        },
+      })
+      if (!response.isSuccess) {
+        toast.error(response.error ?? 'Falha ao atualizar workspace.')
+        return
+      }
+      if (!response.data) {
+        toast.error('Falha ao atualizar workspace.')
+        return
+      }
+
+      const updated = response.data
+      setCreatedWorkspace(updated)
+      queryClient.setQueryData<WorkspaceViewModel[]>(
+        workspaceKeys.all,
+        (prev) => {
+          if (!prev) return [updated]
+          return prev.map((w) => (w.id === currentWorkspaceId ? updated : w))
+        },
+      )
+      toast.success('Identidade atualizada com sucesso.')
+      stepperNext(e)
+    } finally {
+      setIsSavingIdentity(false)
+    }
   }
+
   // -------------------------------------------------------------------------
   // Step 3 – install datasource plugin
   // -------------------------------------------------------------------------
@@ -684,62 +796,125 @@ export function StepperForm({
       setInstallProgress(100)
       addLog('success', 'Integração concluída com sucesso.')
       setInstallState('success')
-    } else {
-      addLog('error', 'Falha ao autenticar com o servidor remoto.')
-      setInstallState('error')
+      return
     }
+
+    addLog('error', 'Falha ao autenticar com o servidor remoto.')
+    setInstallState('error')
   }
 
-  async function removeInstance(id: string) {
+  async function removeInstance(connectionInstanceId: string) {
+    if (!currentWorkspaceId) return
+
     try {
-      const res = await unlink(id)
+      const res = await bridge.workspaces.unlinkDataSource({
+        body: {
+          workspaceId: currentWorkspaceId,
+          connectionInstanceId,
+        },
+      })
 
-      if (res?.isSuccess) {
-        const updatedInstances: WorkspaceConnectionViewModel[] =
-          syncedConnections
-            .filter((conn) => conn.connectionId !== id)
-            .map((conn) => ({
-              id: conn.connectionId,
-              dataSourceId: conn.dataSourceId,
-              status: conn.status,
-              config: conn.config,
-              member: conn.member,
-            }))
-
-        methods.setValue('dataSourceInstances', updatedInstances, {
-          shouldValidate: true,
-          shouldDirty: true,
-        })
-
-        toast.success('Integração removida com sucesso')
+      if (!res.isSuccess) {
+        toast.error(res.error ?? 'Não foi possível remover a integração')
+        return
       }
-    } catch (error) {
-      console.error('Erro ao remover instância:', error)
+
+      const updated = await bridge.workspaces.getById({
+        body: { workspaceId: currentWorkspaceId },
+      })
+      if (updated.isSuccess && updated.data) {
+        setCreatedWorkspace(updated.data)
+        methods.setValue(
+          'dataSourceInstances',
+          updated.data.dataSourceConnections,
+          {
+            shouldValidate: true,
+            shouldDirty: true,
+          },
+        )
+      }
+      toast.success('Integração removida com sucesso')
+    } catch {
       toast.error('Não foi possível remover a integração')
     }
   }
+
+  async function handleDisconnect(connectionInstanceId: string) {
+    if (!currentWorkspaceId) return
+
+    try {
+      const res = await bridge.workspaces.disconnectDataSource({
+        body: {
+          workspaceId: currentWorkspaceId,
+          connectionInstanceId,
+        },
+      })
+
+      if (!res.isSuccess) {
+        toast.error(res.error ?? 'Falha ao desconectar')
+        return
+      }
+
+      const updated = await bridge.workspaces.getById({
+        body: { workspaceId: currentWorkspaceId },
+      })
+      if (updated.isSuccess && updated.data) {
+        setCreatedWorkspace(updated.data)
+        methods.setValue(
+          'dataSourceInstances',
+          updated.data.dataSourceConnections,
+          {
+            shouldValidate: true,
+            shouldDirty: true,
+          },
+        )
+      }
+      toast.success('Desconectado com sucesso')
+    } catch {
+      toast.error('Falha ao desconectar')
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Final submit (step 4)
   // -------------------------------------------------------------------------
 
   async function onSubmit(data: WorkspaceFormData) {
-    if (workspace?.id) {
-      await openAPI.services.workspaces.markWorkspaceAsConfigured({
-        body: { workspaceId: workspace.id },
+    if (currentWorkspaceId) {
+      await bridge.workspaces.markWorkspaceAsConfigured({
+        body: { workspaceId: currentWorkspaceId },
       })
 
       queryClient.setQueryData<WorkspaceViewModel>(
-        workspaceKeys.detail(workspace.id),
-        (prev) => (prev ? { ...prev, status: 'configured' } : prev),
+        workspaceKeys.detail(currentWorkspaceId),
+        (prev) => {
+          if (!prev) return prev
+          const configured: WorkspaceViewModel = {
+            ...prev,
+            status: 'configured',
+          }
+          return configured
+        },
       )
 
       queryClient.setQueryData<WorkspaceViewModel[]>(
         workspaceKeys.all,
-        (prev) =>
-          prev?.map((w) =>
-            w.id === workspace.id ? { ...w, status: 'configured' } : w,
-          ) ?? [],
+        (prev) => {
+          if (!prev) return []
+          return prev.map((w) => {
+            if (w.id === currentWorkspaceId) {
+              const configured: WorkspaceViewModel = {
+                ...w,
+                status: 'configured',
+              }
+              return configured
+            }
+            return w
+          })
+        },
       )
+
+      onWorkspaceCreated?.(currentWorkspaceId)
     }
 
     toast.success('Workspace configurado com sucesso!')
@@ -747,25 +922,38 @@ export function StepperForm({
   }
 
   async function handleSelectDataSource(plugin: AddonManifest | null) {
-    if (!plugin || !workspace?.id) return
+    if (!plugin) return
+    if (!currentWorkspaceId) return
 
     try {
       const connectionInstanceId = crypto.randomUUID()
 
-      const res = await link({
-        connectionInstanceId,
-        pluginId: plugin.id,
+      const res = await bridge.workspaces.linkDataSource({
+        body: {
+          workspaceId: currentWorkspaceId,
+          dataSourceId: plugin.id,
+          connectionInstanceId,
+        },
       })
 
-      if (!res?.isSuccess) {
+      if (!res.isSuccess) {
+        toast.error(res.error ?? 'Erro ao vincular fonte de dados.')
+        return
+      }
+      if (!res.data) {
         toast.error('Erro ao vincular fonte de dados.')
         return
       }
 
+      setCreatedWorkspace(res.data)
+      methods.setValue('dataSourceInstances', res.data.dataSourceConnections, {
+        shouldValidate: true,
+        shouldDirty: true,
+      })
       methods.setValue('dataSourcePlugin', plugin)
       methods.setValue('currentConnectionInstanceId', connectionInstanceId)
       toast.success(`${plugin.name} vinculado ao workspace.`)
-    } catch (err) {
+    } catch {
       toast.error('Erro ao vincular fonte de dados.')
     }
   }
@@ -773,28 +961,49 @@ export function StepperForm({
   async function handleConnectDataSource(
     instanceData: DataSourceInstanceFormData,
   ) {
-    if (!workspace?.id) return
+    if (!currentWorkspaceId) return
 
     try {
-      const res = await connect({
-        connectionInstanceId: instanceData.connectionInstanceId,
-        pluginId: instanceData.pluginId,
-        credentials: instanceData.credentials,
-        configuration: instanceData.configuration,
+      const res = await bridge.workspaces.connectDataSource({
+        body: {
+          workspaceId: currentWorkspaceId,
+          connectionInstanceId: instanceData.connectionInstanceId,
+          pluginId: instanceData.pluginId,
+          credentials: instanceData.credentials,
+          configuration: instanceData.configuration,
+        },
       })
 
-      if (res?.isSuccess) {
-        toast.success(`Conexão estabelecida com sucesso!`)
-        setShowDataSourcePicker(false)
-        methods.setValue('dataSourcePlugin', undefined)
-        resetInstall()
-      } else {
-        toast.error(res?.error ?? 'Falha na autenticação.')
+      if (!res.isSuccess) {
+        toast.error(res.error ?? 'Falha na autenticação.')
+        return
       }
-    } catch (error) {
+
+      toast.success('Conexão estabelecida com sucesso!')
+      setShowDataSourcePicker(false)
+      methods.setValue('dataSourcePlugin', undefined)
+      resetInstall()
+
+      const updated = await bridge.workspaces.getById({
+        body: { workspaceId: currentWorkspaceId },
+      })
+      if (updated.isSuccess && updated.data) {
+        setCreatedWorkspace(updated.data)
+        methods.setValue(
+          'dataSourceInstances',
+          updated.data.dataSourceConnections,
+          {
+            shouldValidate: true,
+            shouldDirty: true,
+          },
+        )
+      }
+    } catch {
       toast.error('Erro ao validar conexão.')
     }
   }
+
+  if (isLoadingDraft) return <WorkspaceDialogSkeleton />
 
   return (
     <FormProvider {...methods}>
@@ -816,7 +1025,7 @@ export function StepperForm({
         </DialogHeader>
 
         <Stepper.Root
-          initialStep={workspace?.id ? 'source-selection' : 'identity'}
+          initialStep={workspaceId ? 'source-selection' : 'identity'}
         >
           {({ stepper }) => (
             <>
@@ -834,7 +1043,7 @@ export function StepperForm({
                     >
                       <Stepper.Trigger
                         type="button"
-                        disabled={!workspace?.id && step.id !== 'identity'}
+                        disabled={!currentWorkspaceId && step.id !== 'identity'}
                         className="group flex flex-col items-center gap-2 outline-none"
                       >
                         <Stepper.Indicator className="border-muted bg-background text-muted-foreground data-[status=active]:border-primary data-[status=active]:bg-primary data-[status=active]:text-primary-foreground data-[status=success]:border-primary data-[status=success]:bg-primary/10 data-[status=success]:text-primary flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-bold transition-all">
@@ -850,7 +1059,7 @@ export function StepperForm({
               </div>
 
               {/* Persist Header after creation */}
-              {workspace?.id && (
+              {currentWorkspaceId && (
                 <div className="bg-muted/10 flex items-center justify-between border-b px-6 py-2">
                   <div className="flex items-center gap-2">
                     <div className="bg-primary/10 flex h-6 w-6 items-center justify-center overflow-hidden rounded border">
@@ -901,6 +1110,7 @@ export function StepperForm({
                         Nome do Workspace
                       </Label>
                       <Input
+                        data-testid="workspace-name-input"
                         placeholder="Ex: Redmine Atak, Freelance..."
                         {...methods.register('name')}
                       />
@@ -1120,12 +1330,10 @@ export function StepperForm({
                                             title="Configurar credenciais"
                                             className="text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 h-8 w-8 rounded-lg"
                                             onClick={() => {
+                                              if (!inst.addon) return
                                               methods.setValue(
                                                 'dataSourcePlugin',
-                                                {
-                                                  ...inst.addon,
-                                                  installed: true,
-                                                },
+                                                inst.addon,
                                               )
 
                                               methods.setValue(
@@ -1148,7 +1356,9 @@ export function StepperForm({
                                             title="Desconectar"
                                             className="text-muted-foreground/60 h-8 w-8 rounded-lg hover:bg-amber-500/10 hover:text-amber-500"
                                             onClick={() =>
-                                              disconnect(inst.connectionId)
+                                              handleDisconnect(
+                                                inst.connectionId,
+                                              )
                                             }
                                           >
                                             <WifiOff className="h-4 w-4" />
@@ -1238,9 +1448,9 @@ export function StepperForm({
                               <div className="flex items-center justify-between border-b pb-4">
                                 <div className="flex items-center gap-3">
                                   <div className="bg-primary/10 border-primary/20 flex h-10 w-10 items-center justify-center rounded-lg border">
-                                    {selectedPlugin?.iconUrl ? (
+                                    {selectedPlugin?.logo ? (
                                       <img
-                                        src={selectedPlugin.iconUrl}
+                                        src={selectedPlugin.logo}
                                         alt={selectedPlugin?.name}
                                         className="h-7 w-7 object-contain"
                                       />
@@ -1547,7 +1757,11 @@ export function StepperForm({
 
                 <div className="flex gap-2">
                   {stepper.state.isLast ? (
-                    <Button type="submit" data-submit-btn>
+                    <Button
+                      type="submit"
+                      data-submit-btn
+                      data-testid="workspace-stepper-finish-btn"
+                    >
                       Finalizar
                     </Button>
                   ) : (
@@ -1555,7 +1769,7 @@ export function StepperForm({
                       render={(stepperProps) => {
                         const currentStepId = stepper.state.current.data.id
                         const isIdentityStep = currentStepId === 'identity'
-                        const isEditingDraft = !!workspace?.id
+                        const isEditingDraft = Boolean(currentWorkspaceId)
                         const isConfigStep = currentStepId === 'configuration'
                         const canSkip = isEditingDraft || !isIdentityStep
 
@@ -1573,6 +1787,7 @@ export function StepperForm({
                           <>
                             {canSkip && (
                               <Button
+                                data-testid="workspace-stepper-skip-btn"
                                 variant="link"
                                 type="button"
                                 className="text-muted-foreground"
@@ -1586,11 +1801,13 @@ export function StepperForm({
                             )}
                             <Button
                               {...stepperProps}
+                              data-testid="workspace-stepper-next-btn"
                               type="button"
                               disabled={
                                 (isConfigStep && showDataSourcePicker) ||
                                 installState === 'installing' ||
-                                methods.formState.isSubmitting
+                                methods.formState.isSubmitting ||
+                                isSavingIdentity
                               }
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -1598,11 +1815,11 @@ export function StepperForm({
                               }}
                             >
                               {(methods.formState.isSubmitting ||
-                                isCreating) && (
+                                isSavingIdentity) && (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                               )}
                               {isIdentityStep
-                                ? workspace?.id
+                                ? currentWorkspaceId
                                   ? 'Salvar e Continuar'
                                   : 'Criar e Continuar'
                                 : 'Próximo'}
@@ -1619,5 +1836,50 @@ export function StepperForm({
         </Stepper.Root>
       </form>
     </FormProvider>
+  )
+}
+
+function WorkspaceDialogSkeleton() {
+  return (
+    <div className="flex h-full flex-col gap-6 p-6">
+      {/* Header */}
+      <div className="bg-muted h-6 w-40 animate-pulse rounded-md" />
+
+      {/* Step indicators */}
+      <div className="flex items-center justify-between">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex flex-col items-center gap-2">
+            <div className="bg-muted h-8 w-8 animate-pulse rounded-full" />
+            <div className="bg-muted h-3 w-14 animate-pulse rounded" />
+          </div>
+        ))}
+      </div>
+
+      {/* Workspace header bar */}
+      <div className="bg-muted h-9 w-full animate-pulse rounded-lg" />
+
+      {/* Avatar + fields */}
+      <div className="flex items-center gap-4">
+        <div className="bg-muted h-16 w-16 animate-pulse rounded-xl" />
+        <div className="flex flex-col gap-2">
+          <div className="bg-muted h-4 w-24 animate-pulse rounded" />
+          <div className="bg-muted h-3 w-32 animate-pulse rounded" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div className="bg-muted h-3 w-28 animate-pulse rounded" />
+        <div className="bg-muted h-10 w-full animate-pulse rounded-lg" />
+      </div>
+      <div className="space-y-2">
+        <div className="bg-muted h-3 w-20 animate-pulse rounded" />
+        <div className="bg-muted h-20 w-full animate-pulse rounded-lg" />
+      </div>
+
+      {/* Footer */}
+      <div className="flex justify-between border-t pt-4">
+        <div className="bg-muted h-9 w-24 animate-pulse rounded-lg" />
+        <div className="bg-muted h-9 w-36 animate-pulse rounded-lg" />
+      </div>
+    </div>
   )
 }

@@ -1,6 +1,6 @@
-export * from '../open-api/IOpenAPI'
 export * from './data'
 export * from './facades'
+export * from './host'
 export * from './infra'
 export * from './resolvers'
 export * from './strategies'

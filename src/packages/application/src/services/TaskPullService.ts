@@ -23,14 +23,15 @@ export class TaskPullService implements ITaskPullUseCase {
 
       const member = result.success
 
-      const tasks = await adapter.tasksProvider.pull(
+      const pullResult = await adapter.tasksProvider.pull(
         member.id.toString(),
         input.checkpoint,
         input.batch,
       )
+      if (pullResult.isFailure()) return pullResult.forwardFailure()
 
-      return Either.success(tasks)
-    } catch (ex) {
+      return Either.success(pullResult.success)
+    } catch {
       return Either.failure(AppError.NotFound('ERRO_INESPERADO'))
     }
   }

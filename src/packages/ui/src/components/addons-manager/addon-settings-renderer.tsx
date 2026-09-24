@@ -28,17 +28,17 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDataSourceConnections } from '@/contexts/DataSourceConnectionsContext'
-import { useOpenAPI } from '@/hooks/use-open-api'
+import { useHostBridge } from '@/hooks/use-host-bridge'
 import { ConnectionCard } from '@/pages/addons/components/addon-list'
 
 export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
 
   const { data: schema, isLoading: isLoadingSchema } = useQuery({
     queryKey: ['addon-schema', addonId],
     queryFn: async () => {
-      const res = await openAPI.integrations.addons.getSchema({
+      const res = await bridge.addons.getSchema({
         body: { addonId },
       })
       if (!res.isSuccess) throw new Error(res.error)
@@ -49,7 +49,7 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
   const { data: savedSettings = {}, isLoading: isLoadingSettings } = useQuery({
     queryKey: ['addon-settings', addonId],
     queryFn: async () => {
-      const res = await openAPI.integrations.addons.getSettings({
+      const res = await bridge.addons.getSettings({
         body: { addonId },
       })
       if (!res.isSuccess) throw new Error(res.error)
@@ -71,7 +71,7 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
     mutationFn: async (
       values: Record<string, string | number | boolean | null>,
     ) => {
-      const res = await openAPI.integrations.addons.saveSettings({
+      const res = await bridge.addons.saveSettings({
         body: { addonId, settings: values },
       })
       if (!res.isSuccess) throw new Error(res.error)
@@ -368,7 +368,7 @@ function FieldRenderer({
   value: string | number | boolean | null | undefined
   onChange: (fieldId: string, value: string | number | boolean | null) => void
 }) {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const fieldValue = value !== undefined ? value : field.defaultValue
 
   if (field.type === 'datasource-instances') {
@@ -433,7 +433,7 @@ function FieldRenderer({
               if (field.actionId) {
                 setActionState({ isOpen: true, isLoading: true })
                 try {
-                  const res = await openAPI.integrations.addons.executeAction({
+                  const res = await bridge.addons.executeAction({
                     body: { addonId, actionId: field.actionId },
                   })
                   queryClient.invalidateQueries({

@@ -21,10 +21,12 @@ interface TimeEntriesDayCardProps {
   day: Date
   entries: SyncTimeEntryRxDBDTO[]
   draftEntries?: SuggestionRow[]
+  tempData?: Record<string, Partial<SyncTimeEntryRxDBDTO>>
   columns: ColumnDef<SuggestionRow>[]
   expandedRows: ExpandedState
   onExpandedChange: React.Dispatch<React.SetStateAction<ExpandedState>>
   isGrouped?: boolean
+  isPulling?: boolean
   onAcceptAllSuggestions?: (rows: SuggestionRow[]) => void
   onDismissAllSuggestions?: (rows: SuggestionRow[]) => void
   onAddNewEntry?: (day: Date) => void
@@ -35,47 +37,58 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
   day,
   entries,
   draftEntries = [],
+  tempData,
   columns,
   expandedRows,
   onExpandedChange,
   isGrouped = true,
+  isPulling = false,
   onAcceptAllSuggestions,
   onDismissAllSuggestions,
   onAddNewEntry,
   onRowDoubleClick,
 }: TimeEntriesDayCardProps) {
-  const dayKey = format(day, 'yyyy-MM-dd')
-
   const dayEntries: SuggestionRow[] = useMemo(() => {
+    const safeTemp = tempData ?? {}
+
     const persisted: SuggestionRow[] = entries
+      .map((e) => {
+        const changes = safeTemp[e.id] ?? {}
+        return {
+          ...e,
+          ...changes,
+          isSuggestion: e.timeStatus === 'suggestion',
+        }
+      })
       .filter((e) => {
         const dateStr = e.startDate || e.createdAt
         return Boolean(dateStr && isSameDay(parseISO(dateStr), day))
       })
-      .map((e) => ({
-        ...e,
-        isSuggestion: e.timeStatus === 'suggestion',
-      }))
 
-    const drafts: SuggestionRow[] = draftEntries.filter((d) => {
-      const dateStr = d.startDate || d.createdAt
-      return Boolean(dateStr && isSameDay(parseISO(dateStr), day))
-    })
+    const drafts: SuggestionRow[] = draftEntries
+      .map((d) => {
+        const changes = safeTemp[d.id] ?? {}
+        return {
+          ...d,
+          ...changes,
+        }
+      })
+      .filter((d) => {
+        const dateStr = d.startDate || d.createdAt
+        return Boolean(dateStr && isSameDay(parseISO(dateStr), day))
+      })
 
     const combined = [...persisted, ...drafts]
     const seen = new Set<string>()
     return combined.filter((item) => {
-      const id = item._id || item.id
-      if (!id || seen.has(id)) return false
-      seen.add(id)
+      if (!item.id || seen.has(item.id)) return false
+      seen.add(item.id)
       return true
     })
-  }, [entries, draftEntries, day])
+  }, [entries, draftEntries, tempData, day])
 
   const groupedData = useMemo(() => {
-    if (!isGrouped) {
-      return sortFlatEntries(dayEntries)
-    }
+    if (!isGrouped) return sortFlatEntries(dayEntries)
     return groupByIssue(dayEntries)
   }, [dayEntries, isGrouped])
 
@@ -104,6 +117,15 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
           <span className="text-muted-foreground font-mono text-xs">
             {format(day, 'dd/MM/yyyy')}
           </span>
+          {isPulling && (
+            <span
+              className="relative flex h-2 w-2"
+              title="Sincronizando apontamentos..."
+            >
+              <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
+              <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

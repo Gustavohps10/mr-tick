@@ -102,7 +102,9 @@ describe('ListTasksService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    ;(adapterMock.tasksProvider.findAll as any).mockResolvedValue(fakeTasksPage)
+    ;(adapterMock.tasksProvider.findAll as any).mockResolvedValue(
+      Either.success(fakeTasksPage),
+    )
 
     // Act
     const result = await sut.execute(input)

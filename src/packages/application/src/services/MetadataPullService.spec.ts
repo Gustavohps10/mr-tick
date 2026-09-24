@@ -85,7 +85,9 @@ describe('MetadataPullService', () => {
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
-    metadataProviderMock.getMetadata.mockResolvedValue(fakeMetadata)
+    metadataProviderMock.getMetadata.mockResolvedValue(
+      Either.success(fakeMetadata),
+    )
 
     // Act
     const result = await sut.execute(input)

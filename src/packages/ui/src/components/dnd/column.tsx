@@ -64,7 +64,7 @@ const idle = { type: 'idle' } satisfies TColumnState
 
 const CardList = memo(function CardList({ column }: { column: TColumn }) {
   return column.cards.map((card) => (
-    <Card key={card.task._id} card={card} columnId={column.id} />
+    <Card key={card.task.id} card={card} columnId={column.id} />
   ))
 })
 

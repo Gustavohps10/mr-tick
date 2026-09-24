@@ -1,19 +1,18 @@
 import { ColumnDef, Row as TanStackRow } from '@tanstack/react-table'
 import { parseISO } from 'date-fns'
 import {
-  AlertCircle,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  CloudOff,
-  Lightbulb,
+  CircleDashed,
   MessageSquareDiff,
   Pause,
   Plus,
   Sparkles,
 } from 'lucide-react'
 import React from 'react'
+import { useDebounce } from 'use-debounce'
 
+import { DataSourceLogo } from '@/components/datasource-logo'
 import { TaskPopover } from '@/components/task-popover'
 import { TimerDisplay } from '@/components/time-bar/timer-display'
 import { useActiveTimer } from '@/components/time-bar/useActiveTimer'
@@ -35,17 +34,22 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib'
 import { SyncMetadataItem } from '@/local-db/schemas/metadata-sync-schema'
+import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { TimeEntryRowActions } from '@/pages/time-entries/components/time-entry-row-actions'
 import {
-  activityIconMap,
   decimalToHMS,
+  extractPureTaskId,
+  getActivityIcon,
   hasNoTask,
   SuggestionRow,
 } from '@/pages/time-entries/lib/time-entries-utils'
 
+import { SyncStatusCell } from './sync-status-cell'
+
 export interface CreateColumnsOptions {
   activities: SyncMetadataItem[]
+  tasksById?: Record<string, SyncTaskRxDBDTO>
   editingRows: Record<string, boolean>
   getRowData: (id: string) => Partial<SyncTimeEntryRxDBDTO> | undefined
   setEditingRows: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
@@ -54,6 +58,7 @@ export interface CreateColumnsOptions {
   >
   setRowBeingEdited: (id: string | null) => void
   setTaskLookupOpen: (open: boolean) => void
+  tempData?: Record<string, Partial<SyncTimeEntryRxDBDTO>>
   onSaveRow: (id: string) => void
   onDirectUpdateRow?: (
     id: string,
@@ -73,6 +78,11 @@ export interface CreateColumnsOptions {
   onStopTimer?: (row: SuggestionRow) => void
   isGrouped?: boolean
   onAddNewEntry?: (day: Date, parentTask?: { id: string }) => void
+  onResolveConflict?: (
+    rowId: string,
+    resolution: 'local' | 'remote',
+  ) => Promise<void> | void
+  onOpenConflict?: (row: SuggestionRow) => void
 }
 
 function MasterGroupTotalTimeCell({ subRows }: { subRows?: SuggestionRow[] }) {
@@ -119,39 +129,79 @@ function AudioWavePlayingIndicator() {
  * Wrapper that renders TimerDisplay inside the table cell for a running entry.
  * Uses IPC timer:tick from the main process for precision, same as the widget/bar.
  */
-function RunningTimerCellWrapper() {
+interface RunningTimerCellWrapperProps {
+  initialSeconds?: number
+}
+
+function RunningTimerCellWrapper({
+  initialSeconds = 0,
+}: RunningTimerCellWrapperProps) {
   return (
     <div className="text-primary bg-primary/10 border-primary/30 animate-in fade-in flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-xs font-bold shadow-xs">
       <span className="relative flex h-2 w-2">
         <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
         <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
       </span>
-      <TimerDisplay status="running" className="text-xs font-bold" />
+      <TimerDisplay
+        status="running"
+        initialValue={initialSeconds}
+        className="text-xs font-bold"
+      />
     </div>
   )
 }
 
+interface MemoizedCommentInputProps {
+  initialValue: string
+  onChange: (val: string) => void
+}
+
 const MemoizedCommentInput = React.memo(
-  ({
-    initialValue,
-    onChange,
-  }: {
-    initialValue: string
-    onChange: (val: string) => void
-  }) => {
+  ({ initialValue, onChange }: MemoizedCommentInputProps) => {
     const [localValue, setLocalValue] = React.useState(initialValue)
+    const isFocusedRef = React.useRef(false)
+    const latestValueRef = React.useRef(initialValue)
+    latestValueRef.current = localValue
+    const onChangeRef = React.useRef(onChange)
+    onChangeRef.current = onChange
 
     React.useEffect(() => {
+      if (isFocusedRef.current) return
       setLocalValue(initialValue)
+    }, [initialValue])
+
+    const [debouncedValue] = useDebounce(localValue, 300)
+
+    React.useEffect(() => {
+      if (!isFocusedRef.current) return
+      if (debouncedValue === initialValue) return
+      onChangeRef.current(debouncedValue)
+    }, [debouncedValue, initialValue])
+
+    const commitChange = React.useCallback(() => {
+      if (latestValueRef.current === initialValue) return
+      onChangeRef.current(latestValueRef.current)
     }, [initialValue])
 
     return (
       <Input
+        data-testid="time-entry-comment-input"
         value={localValue}
-        className="border-primary/40 h-7 text-xs focus-visible:ring-1"
+        className="border-primary/40 h-7 w-full min-w-0 text-xs focus-visible:ring-1"
+        onFocus={() => {
+          isFocusedRef.current = true
+        }}
         onChange={(e) => {
           setLocalValue(e.target.value)
-          onChange(e.target.value)
+        }}
+        onBlur={() => {
+          isFocusedRef.current = false
+          commitChange()
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter') return
+          commitChange()
+          e.currentTarget.blur()
         }}
       />
     )
@@ -159,21 +209,44 @@ const MemoizedCommentInput = React.memo(
 )
 MemoizedCommentInput.displayName = 'MemoizedCommentInput'
 
-const getRowKey = (row: SuggestionRow): string => row._id || row.id
+const getRowKey = (row: SuggestionRow): string => row.id
+
+function resolveRowTempData(
+  rowKey: string,
+  originalId: string,
+  tempData?: Record<string, Partial<SyncTimeEntryRxDBDTO>>,
+  getRowData?: (id: string) => Partial<SyncTimeEntryRxDBDTO> | undefined,
+): Partial<SyncTimeEntryRxDBDTO> {
+  if (getRowData) {
+    const fromRefKey = getRowData(rowKey)
+    if (fromRefKey && Object.keys(fromRefKey).length > 0) return fromRefKey
+    const fromRefId = getRowData(originalId)
+    if (fromRefId && Object.keys(fromRefId).length > 0) return fromRefId
+  }
+  if (tempData) {
+    const fromStateKey = tempData[rowKey]
+    if (fromStateKey && Object.keys(fromStateKey).length > 0)
+      return fromStateKey
+    const fromStateId = tempData[originalId]
+    if (fromStateId && Object.keys(fromStateId).length > 0) return fromStateId
+  }
+  return {}
+}
 
 export function createTimeEntriesColumns(
   options: CreateColumnsOptions,
 ): ColumnDef<SuggestionRow>[] {
   const {
     activities,
+    tasksById,
     editingRows,
     getRowData,
     setEditingRows,
     setTempData,
+    tempData,
     setRowBeingEdited,
     setTaskLookupOpen,
     onSaveRow,
-    onDirectUpdateRow,
     onCancelEdit,
     onDeleteRow,
     onDuplicateRow,
@@ -185,15 +258,17 @@ export function createTimeEntriesColumns(
     onStopTimer,
     isGrouped = true,
     onAddNewEntry,
+    onResolveConflict,
+    onOpenConflict,
   } = options
 
   return [
     {
       id: 'expand',
       header: '',
-      size: 105,
-      minSize: 52,
-      maxSize: 130,
+      size: 50,
+      minSize: 44,
+      maxSize: 70,
       cell: ({ row }) => {
         if (
           row.original.isSuggestion ||
@@ -307,9 +382,9 @@ export function createTimeEntriesColumns(
           Ticket
         </div>
       ),
-      size: 190,
-      minSize: 135,
-      maxSize: 260,
+      size: 210,
+      minSize: 170,
+      maxSize: 280,
       cell: ({ row }: { row: TanStackRow<SuggestionRow> }) => {
         const original = row.original
         const rowKey = getRowKey(original)
@@ -319,64 +394,58 @@ export function createTimeEntriesColumns(
         const isEditing =
           !isGroupMaster &&
           (Boolean(original.isSuggestion) ||
-            Boolean(
-              editingRows[rowKey] ||
-              editingRows[original.id] ||
-              (original._id && editingRows[original._id]),
-            ))
+            Boolean(editingRows[rowKey] || editingRows[original.id]))
 
-        const data =
-          getRowData(rowKey) ||
-          getRowData(original.id) ||
-          (original._id ? getRowData(original._id) : undefined)
+        const data = resolveRowTempData(
+          rowKey,
+          original.id,
+          tempData,
+          getRowData,
+        )
 
-        const rawTaskId = data?.task?.id ?? original.task?.id ?? ''
-        const currentTaskId =
-          rawTaskId === '# ticket' ||
-          rawTaskId === '# Ticket' ||
-          rawTaskId === 'sem-issue' ||
-          rawTaskId === 'Tarefa'
-            ? ''
-            : rawTaskId
+        const mergedRow = { ...original, ...data }
+
+        const rawTaskId = mergedRow.task?.id ?? ''
+        const cleanId = extractPureTaskId(rawTaskId)
+        const currentTaskId = cleanId ? `#${cleanId}` : ''
 
         const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
-          if (onDirectUpdateRow) {
-            onDirectUpdateRow(rowKey, updates)
-          } else {
-            setTempData((p) => ({
-              ...p,
-              [rowKey]: {
-                ...p[rowKey],
-                ...updates,
-              },
-              [original.id]: {
-                ...p[original.id],
-                ...updates,
-              },
-            }))
-          }
+          setTempData((p) => ({
+            ...p,
+            [rowKey]: {
+              ...p[rowKey],
+              ...updates,
+            },
+            [original.id]: {
+              ...p[original.id],
+              ...updates,
+            },
+          }))
         }
 
-        const taskTitle = original.taskData?.title || ''
-        const cleanId = currentTaskId.replace(/^#/, '')
+        const taskTitle =
+          mergedRow.taskData?.title ||
+          (cleanId && tasksById ? tasksById[cleanId]?.title : '') ||
+          ''
 
         if (isEditing) {
-          const currentDescription = data?.comments ?? original.comments ?? ''
-          const currentActivity =
-            data?.activity?.id ?? original.activity?.id ?? 'dev'
-          const currentConnectionId =
-            data?.connectionInstanceId ?? original.connectionInstanceId
+          const isRemote = Boolean(
+            (mergedRow.remoteId &&
+              mergedRow.remoteId.trim() !== '' &&
+              !mergedRow.remoteId.startsWith('local-')) ||
+            mergedRow.syncStatus === 'synced',
+          )
+          const currentDescription = mergedRow.comments ?? ''
+          const currentActivity = mergedRow.activity?.id ?? ''
+          const currentConnectionId = mergedRow.connectionInstanceId ?? ''
 
           const formattedActivities = activities.map((act) => ({
             id: act.id,
             name: act.name,
-            icon: (activityIconMap[act.icon || 'Code'] ||
-              activityIconMap.Code) as React.ElementType,
+            icon: getActivityIcon(act.icon),
           }))
 
-          const hasSelectedTask = Boolean(
-            currentTaskId && currentTaskId.trim() !== '',
-          )
+          const hasSelectedTask = Boolean(cleanId && cleanId !== '')
           const displayLabel = hasSelectedTask
             ? taskTitle
               ? `#${cleanId} - ${taskTitle}`
@@ -388,34 +457,46 @@ export function createTimeEntriesColumns(
               <TaskPopover
                 side="bottom"
                 align="start"
+                isRemote={isRemote}
                 taskId={currentTaskId}
-                onTaskIdChange={(id) => updateField({ task: { id } })}
+                onTaskIdChange={(id) => {
+                  const clean = extractPureTaskId(id)
+                  if (isRemote && !clean) return
+                  updateField({ task: { id: clean } })
+                }}
                 description={currentDescription}
                 onDescriptionChange={(val) => updateField({ comments: val })}
                 selectedActivity={currentActivity}
-                onActivityChange={(val) =>
-                  updateField({ activity: { id: val } })
-                }
+                onActivityChange={(val) => {
+                  if (!val) {
+                    if (isRemote) return
+                    updateField({ activity: { id: '', name: '' } })
+                    return
+                  }
+                  const foundActivity = activities.find((a) => a.id === val)
+                  let activityName: string | undefined = undefined
+                  if (foundActivity) activityName = foundActivity.name
+                  updateField({ activity: { id: val, name: activityName } })
+                }}
                 selectedConnectionId={currentConnectionId}
                 onConnectionChange={(val) =>
                   updateField({ connectionInstanceId: val })
                 }
                 activities={formattedActivities}
                 onSelectTask={(task) => {
+                  const resolvedTaskId = extractPureTaskId(
+                    task.sourceId || task.id,
+                  )
                   updateField({
-                    task: { id: task.id },
+                    task: { id: resolvedTaskId },
                     taskData: task,
                     connectionInstanceId: task.connectionInstanceId,
                     dataSourceId: task.dataSourceId,
                   })
                 }}
-                onCommitAndClose={() => {
-                  if (!original.isDraft) {
-                    onSaveRow(rowKey)
-                  }
-                }}
                 trigger={
                   <Button
+                    data-testid="time-entry-task-popover-trigger"
                     type="button"
                     variant="outline"
                     size="sm"
@@ -429,7 +510,13 @@ export function createTimeEntriesColumns(
                   >
                     <div className="flex min-w-0 items-center gap-1.5 truncate">
                       {hasSelectedTask ? (
-                        <MessageSquareDiff className="text-primary h-3.5 w-3.5 shrink-0" />
+                        <DataSourceLogo
+                          connectionInstanceId={currentConnectionId}
+                          className="h-3.5 w-3.5 shrink-0 rounded-xs"
+                          fallback={
+                            <MessageSquareDiff className="text-primary h-3.5 w-3.5 shrink-0" />
+                          }
+                        />
                       ) : (
                         <Plus className="text-primary h-3.5 w-3.5 shrink-0" />
                       )}
@@ -443,7 +530,7 @@ export function createTimeEntriesColumns(
         }
 
         if (isGroupMaster) {
-          if (!currentTaskId) {
+          if (!cleanId) {
             return (
               <div className="flex w-full justify-start pl-1">
                 <span className="text-muted-foreground/80 border-border/70 inline-flex items-center gap-1 rounded border border-dashed px-2 py-0.5 font-sans text-[11px] font-medium">
@@ -458,6 +545,11 @@ export function createTimeEntriesColumns(
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="border-border/60 bg-secondary/70 hover:bg-secondary inline-flex max-w-[180px] cursor-help items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-colors">
+                    <DataSourceLogo
+                      connectionInstanceId={original.connectionInstanceId}
+                      dataSourceId={original.dataSourceId}
+                      className="h-3.5 w-3.5 shrink-0 rounded-xs"
+                    />
                     <span className="shrink-0 font-mono font-bold">{`#${cleanId}`}</span>
                     {taskTitle && (
                       <>
@@ -485,15 +577,15 @@ export function createTimeEntriesColumns(
         }
 
         // Se a linha (sublinha ou isolada) não tem tarefa definida, exibe botão para escolher
-        if (!currentTaskId) {
+        if (!cleanId) {
           return (
             <div className="flex w-full justify-start pl-1">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
+                    onClick={(event) => {
+                      event.stopPropagation()
                       setEditingRows((prev) => ({ ...prev, [rowKey]: true }))
                     }}
                     className="hover:border-primary text-muted-foreground hover:text-primary bg-muted/20 hover:bg-primary/10 border-muted-foreground/40 inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-dashed px-2 font-sans text-[11px] font-medium transition-all"
@@ -520,6 +612,11 @@ export function createTimeEntriesColumns(
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="border-border/60 bg-secondary/70 hover:bg-secondary inline-flex max-w-[180px] cursor-help items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-colors">
+                  <DataSourceLogo
+                    connectionInstanceId={original.connectionInstanceId}
+                    dataSourceId={original.dataSourceId}
+                    className="h-3.5 w-3.5 shrink-0 rounded-xs"
+                  />
                   <span className="shrink-0 font-mono font-bold">{`#${cleanId}`}</span>
                   {taskTitle && (
                     <>
@@ -551,88 +648,24 @@ export function createTimeEntriesColumns(
       id: 'syncStatus',
       header: () => (
         <div className="text-center text-[10px] font-bold uppercase opacity-70">
-          Status
+          Sync
         </div>
       ),
-      size: 70,
+      size: 60,
+      minSize: 50,
+      maxSize: 75,
       cell: ({ row }) => {
         const original = row.original
         const isGroupMaster =
           (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
 
-        if (isGroupMaster) {
-          return (
-            <div className="text-muted-foreground/40 flex justify-center font-mono text-xs select-none">
-              —
-            </div>
-          )
-        }
-
-        if (original.timeStatus === 'running') {
-          return (
-            <div className="flex justify-center">
-              <Badge
-                variant="outline"
-                className="border-primary/50 bg-primary/15 text-primary gap-1 px-1.5 py-0.5 text-[10px] font-bold shadow-xs"
-              >
-                <span className="relative flex h-2 w-2">
-                  <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
-                  <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
-                </span>
-                <span>AO VIVO</span>
-              </Badge>
-            </div>
-          )
-        }
-
-        if (original.timeStatus === 'paused') {
-          return (
-            <div className="flex justify-center">
-              <Badge
-                variant="outline"
-                className="gap-1 border-amber-500/50 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
-              >
-                <Pause className="h-2.5 w-2.5 fill-current" />
-                <span>PAUSADO</span>
-              </Badge>
-            </div>
-          )
-        }
-
-        if (original.isSuggestion || original.timeStatus === 'suggestion') {
-          return (
-            <div className="flex justify-center">
-              <Badge
-                variant="outline"
-                className="gap-1 border-amber-500/50 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
-              >
-                <Lightbulb className="h-3 w-3 fill-current text-amber-500" />
-                <span>SUGESTÃO</span>
-              </Badge>
-            </div>
-          )
-        }
-
-        if (original.conflicted) {
-          return (
-            <div className="flex justify-center text-amber-500">
-              <AlertCircle className="h-4 w-4" />
-            </div>
-          )
-        }
-
-        if (original.syncedAt) {
-          return (
-            <div className="flex justify-center text-emerald-500">
-              <CheckCircle2 className="h-4 w-4" />
-            </div>
-          )
-        }
-
         return (
-          <div className="text-muted-foreground flex justify-center opacity-60">
-            <CloudOff className="h-3.5 w-3.5" />
-          </div>
+          <SyncStatusCell
+            original={original}
+            isGroupMaster={isGroupMaster}
+            onResolveConflict={onResolveConflict}
+            onOpenConflict={onOpenConflict}
+          />
         )
       },
     },
@@ -643,6 +676,9 @@ export function createTimeEntriesColumns(
           Atividade
         </div>
       ),
+      size: 140,
+      minSize: 120,
+      maxSize: 170,
       cell: ({ row }: { row: TanStackRow<SuggestionRow> }) => {
         const original = row.original
         const rowKey = getRowKey(original)
@@ -651,52 +687,64 @@ export function createTimeEntriesColumns(
         const isEditing =
           !isGroupMaster &&
           (Boolean(original.isSuggestion) ||
-            Boolean(
-              editingRows[rowKey] ||
-              editingRows[original.id] ||
-              (original._id && editingRows[original._id]),
-            ))
+            Boolean(editingRows[rowKey] || editingRows[original.id]))
 
         const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
-          if (onDirectUpdateRow) {
-            onDirectUpdateRow(rowKey, updates)
-          } else {
-            setTempData((p) => ({
-              ...p,
-              [rowKey]: {
-                ...p[rowKey],
-                ...updates,
-              },
-              [original.id]: {
-                ...p[original.id],
-                ...updates,
-              },
-            }))
-          }
+          setTempData((p) => ({
+            ...p,
+            [rowKey]: {
+              ...p[rowKey],
+              ...updates,
+            },
+            [original.id]: {
+              ...p[original.id],
+              ...updates,
+            },
+          }))
         }
 
         if (isEditing) {
-          const rowData =
-            getRowData(rowKey) ||
-            getRowData(original.id) ||
-            (original._id ? getRowData(original._id) : undefined)
-          const currentTaskId = rowData?.task?.id ?? original.task?.id
-          const currentConnectionId =
-            rowData?.connectionInstanceId ?? original.connectionInstanceId
+          const rowData = resolveRowTempData(
+            rowKey,
+            original.id,
+            tempData,
+            getRowData,
+          )
+          const mergedRow = { ...original, ...rowData }
+          const isRemote = Boolean(
+            (mergedRow.remoteId &&
+              mergedRow.remoteId.trim() !== '' &&
+              !mergedRow.remoteId.startsWith('local-')) ||
+            mergedRow.syncStatus === 'synced',
+          )
+          const currentTaskId = mergedRow.task?.id
+          const currentConnectionId = mergedRow.connectionInstanceId
           const hasTaskOrDatasource = Boolean(
             currentTaskId || currentConnectionId || original.dataSourceId,
           )
 
-          const currentVal =
-            rowData?.activity?.id || original.activity?.id || activities[0]?.id
+          let currentVal = ''
+          if (mergedRow.activity && mergedRow.activity.id) {
+            currentVal = mergedRow.activity.id
+          }
 
           const isSelectDisabled =
             !hasTaskOrDatasource && activities.length === 0
 
           return (
             <Select
-              value={currentVal}
-              onValueChange={(val) => updateField({ activity: { id: val } })}
+              value={currentVal || (isRemote ? '' : '__NONE__')}
+              onValueChange={(val) => {
+                if (val === '__NONE__') {
+                  if (isRemote) return
+                  updateField({ activity: { id: '', name: '' } })
+                  return
+                }
+                const foundActivity = activities.find((a) => a.id === val)
+                let activityName: string | undefined = undefined
+                if (foundActivity) activityName = foundActivity.name
+                updateField({ activity: { id: val, name: activityName } })
+              }}
               disabled={isSelectDisabled}
             >
               <SelectTrigger className="border-primary/40 h-7 text-xs focus:ring-1">
@@ -707,11 +755,28 @@ export function createTimeEntriesColumns(
                 />
               </SelectTrigger>
               <SelectContent>
-                {activities.map((a) => (
-                  <SelectItem key={a.id} value={a.id} className="text-xs">
-                    {a.name}
+                {!isRemote && (
+                  <SelectItem
+                    value="__NONE__"
+                    className="text-muted-foreground text-xs italic"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <CircleDashed className="text-muted-foreground h-3.5 w-3.5" />
+                      <span>Sem atividade</span>
+                    </div>
                   </SelectItem>
-                ))}
+                )}
+                {activities.map((a) => {
+                  const SelectIcon = getActivityIcon(a.icon)
+                  return (
+                    <SelectItem key={a.id} value={a.id}>
+                      <div className="flex items-center gap-1.5">
+                        {SelectIcon && <SelectIcon size={12} />}
+                        <span>{a.name}</span>
+                      </div>
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
           )
@@ -725,51 +790,108 @@ export function createTimeEntriesColumns(
           )
         }
 
-        const uniqueActivityIds = Array.from(
-          new Set(
-            (original.subRows || []).length > 0
-              ? (original.subRows || []).map((s) => s.activity?.id)
-              : [original.activity?.id],
-          ),
-        ).filter(Boolean)
+        if (isGroupMaster) {
+          const uniqueActivityIds = Array.from(
+            new Set(
+              (original.subRows || []).length > 0
+                ? (original.subRows || []).map((s) => s.activity?.id)
+                : [original.activity?.id],
+            ),
+          ).filter(Boolean)
 
-        const groupActivities = uniqueActivityIds
-          .map((id) => activities.find((a) => a.id === id))
-          .filter((a): a is SyncMetadataItem => !!a)
+          const groupActivities = uniqueActivityIds
+            .map((id) => activities.find((a) => a.id === id))
+            .filter((a): a is SyncMetadataItem => Boolean(a))
+
+          return (
+            <div className="relative flex h-8 w-full min-w-0 items-center">
+              <div className="relative h-6 w-full">
+                {groupActivities.slice(0, 3).map((act, i) => {
+                  const IconComponent = getActivityIcon(act.icon)
+                  return (
+                    <div
+                      key={act.id}
+                      className={cn(
+                        'absolute flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm transition-all',
+                        i === 0 && 'top-0 left-0 z-3',
+                        i === 1 && 'z-2 translate-x-2 translate-y-1',
+                        i === 2 && 'z-1 translate-x-4 translate-y-2',
+                      )}
+                      style={{
+                        backgroundColor: act.colors?.background,
+                        color: act.colors?.text,
+                        borderColor: act.colors?.badge,
+                      }}
+                    >
+                      {IconComponent && <IconComponent size={12} />}
+                      <span className="max-w-[80px] truncate md:max-w-[120px]">
+                        {act.name}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+              {groupActivities.length > 3 && (
+                <Badge variant="outline" className="ml-auto text-[10px]">
+                  +{groupActivities.length - 3}
+                </Badge>
+              )}
+            </div>
+          )
+        }
+
+        const foundActivity = activities.find(
+          (a) => a.id === original.activity?.id,
+        )
+
+        if (!foundActivity) {
+          if (original.activity?.name) {
+            return (
+              <div className="border-border/60 bg-secondary/70 inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs">
+                <span className="max-w-[120px] truncate">
+                  {original.activity.name}
+                </span>
+              </div>
+            )
+          }
+
+          return (
+            <div className="flex w-full justify-start pl-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setEditingRows((prev) => ({ ...prev, [rowKey]: true }))
+                    }}
+                    className="hover:border-primary text-muted-foreground hover:text-primary bg-muted/20 hover:bg-primary/10 border-muted-foreground/40 inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-dashed px-2 font-sans text-[11px] font-medium transition-all"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>Selecione a atividade</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="text-xs">Clique para definir uma atividade</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          )
+        }
+
+        const SingleIconComponent = getActivityIcon(foundActivity.icon)
 
         return (
-          <div className="relative flex h-8 w-full min-w-0 items-center">
-            <div className="relative h-6 w-full">
-              {groupActivities.slice(0, 3).map((act, i) => {
-                const IconComponent = activityIconMap[act.icon]
-                return (
-                  <div
-                    key={act.id}
-                    className={cn(
-                      'absolute flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm transition-all',
-                      i === 0 && 'top-0 left-0 z-3',
-                      i === 1 && 'z-2 translate-x-2 translate-y-1',
-                      i === 2 && 'z-1 translate-x-4 translate-y-2',
-                    )}
-                    style={{
-                      backgroundColor: act.colors?.background,
-                      color: act.colors?.text,
-                      borderColor: act.colors?.badge,
-                    }}
-                  >
-                    {IconComponent && <IconComponent size={12} />}
-                    <span className="max-w-[80px] truncate md:max-w-[120px]">
-                      {act.name}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-            {groupActivities.length > 3 && (
-              <Badge variant="outline" className="ml-auto text-[10px]">
-                +{groupActivities.length - 3}
-              </Badge>
-            )}
+          <div
+            className="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-all"
+            style={{
+              backgroundColor: foundActivity.colors?.background,
+              color: foundActivity.colors?.text,
+              borderColor: foundActivity.colors?.badge,
+            }}
+          >
+            {SingleIconComponent && <SingleIconComponent size={12} />}
+            <span className="max-w-[120px] truncate">{foundActivity.name}</span>
           </div>
         )
       },
@@ -777,6 +899,8 @@ export function createTimeEntriesColumns(
     {
       id: 'comments',
       accessorKey: 'comments',
+      size: 260,
+      minSize: 160,
       header: () => (
         <div className="text-[10px] font-bold uppercase opacity-70">
           Comentários
@@ -790,42 +914,37 @@ export function createTimeEntriesColumns(
         const isEditing =
           !isGroupMaster &&
           (Boolean(original.isSuggestion) ||
-            Boolean(
-              editingRows[rowKey] ||
-              editingRows[original.id] ||
-              (original._id && editingRows[original._id]),
-            ))
+            Boolean(editingRows[rowKey] || editingRows[original.id]))
 
         const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
-          if (onDirectUpdateRow) {
-            onDirectUpdateRow(rowKey, updates)
-          } else {
-            setTempData((p) => ({
-              ...p,
-              [rowKey]: {
-                ...p[rowKey],
-                ...updates,
-              },
-              [original.id]: {
-                ...p[original.id],
-                ...updates,
-              },
-            }))
-          }
+          setTempData((p) => ({
+            ...p,
+            [rowKey]: {
+              ...p[rowKey],
+              ...updates,
+            },
+            [original.id]: {
+              ...p[original.id],
+              ...updates,
+            },
+          }))
         }
 
         if (isEditing) {
-          const currentVal =
-            getRowData(rowKey)?.comments ??
-            getRowData(original.id)?.comments ??
-            (original._id ? getRowData(original._id)?.comments : undefined) ??
-            original.comments ??
-            ''
+          const rowData = resolveRowTempData(
+            rowKey,
+            original.id,
+            tempData,
+            getRowData,
+          )
+          const currentVal = rowData.comments ?? original.comments ?? ''
           return (
-            <MemoizedCommentInput
-              initialValue={currentVal}
-              onChange={(val) => updateField({ comments: val })}
-            />
+            <div className="w-full min-w-0 pr-2">
+              <MemoizedCommentInput
+                initialValue={currentVal}
+                onChange={(val) => updateField({ comments: val })}
+              />
+            </div>
           )
         }
 
@@ -838,6 +957,9 @@ export function createTimeEntriesColumns(
     },
     {
       id: 'hours',
+      size: 215,
+      minSize: 205,
+      maxSize: 230,
       header: () => (
         <div className="text-right text-[10px] font-bold uppercase opacity-70">
           Tempo
@@ -848,27 +970,25 @@ export function createTimeEntriesColumns(
         const rowKey = getRowKey(original)
         const isGroupMaster =
           (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
-        const rowData =
-          getRowData(rowKey) ||
-          getRowData(original.id) ||
-          (original._id ? getRowData(original._id) : undefined) ||
-          {}
 
         if (isGroupMaster) {
           return <MasterGroupTotalTimeCell subRows={original.subRows} />
         }
 
         if (original.timeStatus === 'running') {
+          const initialSecs = original.timeSpent
+            ? Math.round(original.timeSpent * 3600)
+            : 0
           return (
-            <div className="flex items-center justify-end">
-              <RunningTimerCellWrapper />
+            <div className="flex shrink-0 items-center justify-end whitespace-nowrap">
+              <RunningTimerCellWrapper initialSeconds={initialSecs} />
             </div>
           )
         }
 
         if (original.timeStatus === 'paused') {
           return (
-            <div className="flex items-center justify-end">
+            <div className="flex shrink-0 items-center justify-end whitespace-nowrap">
               <div className="flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 font-mono text-xs font-semibold text-amber-600 dark:text-amber-400">
                 <Pause className="h-2.5 w-2.5 fill-current" />
                 <span>{decimalToHMS(original.timeSpent || 0)}</span>
@@ -877,15 +997,32 @@ export function createTimeEntriesColumns(
           )
         }
 
+        const isEditing =
+          !isGroupMaster &&
+          (Boolean(original.isSuggestion) ||
+            Boolean(editingRows[rowKey] || editingRows[original.id]))
+
+        const rowData = resolveRowTempData(
+          rowKey,
+          original.id,
+          tempData,
+          getRowData,
+        )
+        const mergedRow = { ...original, ...rowData }
+        const resolvedEndDate = mergedRow.endDate
         return (
-          <div className="flex items-center justify-end">
+          <div className="flex shrink-0 items-center justify-end whitespace-nowrap">
             <TimeEntryInputs
-              startDate={rowData.startDate ?? original.startDate}
-              endDate={rowData.endDate ?? original.endDate}
-              timeSpent={rowData.timeSpent ?? original.timeSpent}
+              startDate={mergedRow.startDate}
+              endDate={
+                resolvedEndDate !== null && resolvedEndDate !== undefined
+                  ? resolvedEndDate
+                  : undefined
+              }
+              timeSpent={mergedRow.timeSpent ?? 0}
               disabled={isGroupMaster && !original.isSuggestion}
               onChange={(newData) => {
-                if (original.isSuggestion) {
+                if (original.isSuggestion || isEditing) {
                   setTempData((p) => ({
                     ...p,
                     [rowKey]: { ...p[rowKey], ...newData },
@@ -903,9 +1040,9 @@ export function createTimeEntriesColumns(
     {
       id: 'actions',
       header: '',
-      size: 85,
-      minSize: 70,
-      maxSize: 105,
+      size: 75,
+      minSize: 65,
+      maxSize: 90,
       cell: ({ row }) => {
         const original = row.original
         const rowKey = getRowKey(original)
@@ -943,11 +1080,7 @@ export function createTimeEntriesColumns(
         const isEditing =
           !isGroupMaster &&
           (Boolean(original.isSuggestion) ||
-            Boolean(
-              editingRows[rowKey] ||
-              editingRows[original.id] ||
-              (original._id && editingRows[original._id]),
-            ))
+            Boolean(editingRows[rowKey] || editingRows[original.id]))
 
         return (
           <TimeEntryRowActions
@@ -962,12 +1095,8 @@ export function createTimeEntriesColumns(
                 } else {
                   delete next[rowKey]
                   delete next[original.id]
-                  if (original._id) delete next[original._id]
                   Object.keys(next).forEach((k) => {
-                    if (
-                      k.endsWith(original.id) ||
-                      (original._id && k.endsWith(original._id))
-                    ) {
+                    if (k.endsWith(original.id)) {
                       delete next[k]
                     }
                   })

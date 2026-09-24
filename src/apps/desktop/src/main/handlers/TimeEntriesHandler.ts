@@ -1,4 +1,4 @@
-﻿import {
+import {
   IListTimeEntriesUseCase,
   ITimeEntriesPullUseCase,
   ITimeEntriesPushUseCase,
@@ -38,7 +38,7 @@ export class TimeEntriesHandler implements HandlerBase<TimeEntriesHandler> {
   ) {}
 
   public async listTimeEntries(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<ListTimeEntriesRequest>,
   ): Promise<PaginatedViewModel<TimeEntryViewModel[]>> {
     const result = await this.listTimeEntriesService.execute({
@@ -69,7 +69,7 @@ export class TimeEntriesHandler implements HandlerBase<TimeEntriesHandler> {
     return createResponseViewModel(mappedResult)
   }
   public async pull(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<PullTimeEntriesRequest>,
   ): Promise<ViewModel<TimeEntryViewModel[]>> {
     const result = await this.timeEntriesPullService.execute({
@@ -98,7 +98,7 @@ export class TimeEntriesHandler implements HandlerBase<TimeEntriesHandler> {
   }
 
   public async push(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<PushTimeEntriesInput>,
   ): Promise<ViewModel<SyncDocumentViewModel<TimeEntryViewModel>[]>> {
     const result = await this.timeEntriesPushService.execute(body)

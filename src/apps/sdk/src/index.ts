@@ -16,18 +16,14 @@ export type {
   AddonTimerbarPopoverSubItem,
   AuthenticationDTO,
   AuthenticationResult,
+  ConnectionHealthDTO,
+  CreatedTaskResult,
+  CreatedTimeEntryResult,
   IAuthenticationStrategy,
   IMemberProvider,
-  IMemberQuery,
   IMetadataProvider,
-  IMetadataQuery,
-  IOpenAPI,
   ITaskProvider,
-  ITaskQuery,
-  ITaskRepository,
   ITimeEntryProvider,
-  ITimeEntryQuery,
-  ITimeEntryRepository,
   MemberDTO,
   MetadataDTO,
   MetadataItem,
@@ -36,9 +32,10 @@ export type {
   Participants,
   TaskDTO,
   TimeEntryDTO,
+  UpdatedTaskResult,
+  UpdatedTimeEntryResult,
   WorkspaceDTO,
 } from '@mr-tick/application'
-export { Member, Task, TimeEntry, Workspace } from '@mr-tick/domain'
 export { AppError, Either } from '@mr-tick/shared/helpers'
 export type { IHeaders, IRequest } from '@mr-tick/shared/transport'
 export * from '@mr-tick/shared/view-models'

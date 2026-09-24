@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import {
+  CircleDashed,
   Code,
   ExternalLink,
   MessageSquareDiff,
@@ -12,7 +13,9 @@ import {
   X,
 } from 'lucide-react'
 import * as LucideIcons from 'lucide-react'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { MangoQuery } from 'rxdb'
+import { toast } from 'sonner'
 import { useDebounce } from 'use-debounce'
 
 import { LookupInput } from '@/components/lookup-input'
@@ -32,14 +35,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { AddonConnectionView } from '@/contexts/DataSourceConnectionsContext'
 import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
+import { extractPureTaskId } from '@/pages/time-entries/lib/time-entries-utils'
 import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
 
 const DEFAULT_ACTIVITIES: Array<{
   id: string
   name: string
-  icon: React.ElementType
+  icon?: React.ElementType
 }> = [
   { id: 'dev', name: 'Desenvolvimento', icon: Code },
   { id: 'design', name: 'Design', icon: Palette },
@@ -85,10 +90,11 @@ export interface TaskPopoverProps {
   onActivityChange?: (activityId: string) => void
   selectedConnectionId?: string
   onConnectionChange?: (connectionId: string) => void
-  activities?: Array<{ id: string; name: string; icon: React.ElementType }>
-  syncConnections?: any[]
+  activities?: Array<{ id: string; name: string; icon?: React.ElementType }>
+  syncConnections?: AddonConnectionView[]
   onSelectTask?: (task: SyncTaskRxDBDTO) => void
   onCommitAndClose?: () => void
+  isRemote?: boolean
 }
 
 export function TaskPopover({
@@ -111,9 +117,12 @@ export function TaskPopover({
   syncConnections: propSyncConnections,
   onSelectTask: propOnSelectTask,
   onCommitAndClose: propOnCommitAndClose,
+  isRemote: propIsRemote,
 }: TaskPopoverProps) {
   const trackerContext = useOptionalTrackerContext()
   const defaultSyncConnections = useConnectionsWithSync()
+
+  const isRemote = propIsRemote ?? trackerContext?.isRemote ?? false
 
   // Resolve state & handlers (props take priority, then context, then defaults)
   const taskId = propTaskId ?? trackerContext?.taskId ?? ''
@@ -124,8 +133,33 @@ export function TaskPopover({
   const setDescription =
     propOnDescriptionChange ?? trackerContext?.setDescription ?? (() => {})
 
+  const [localDescription, setLocalDescription] = useState(description)
+  const isDescriptionFocusedRef = useRef(false)
+  const latestDescriptionRef = useRef(description)
+  latestDescriptionRef.current = localDescription
+  const setDescriptionRef = useRef(setDescription)
+  setDescriptionRef.current = setDescription
+
+  useEffect(() => {
+    if (isDescriptionFocusedRef.current) return
+    setLocalDescription(description)
+  }, [description])
+
+  const [debouncedDescription] = useDebounce(localDescription, 300)
+
+  useEffect(() => {
+    if (!isDescriptionFocusedRef.current) return
+    if (debouncedDescription === description) return
+    setDescriptionRef.current(debouncedDescription)
+  }, [debouncedDescription, description])
+
+  const commitDescription = useCallback(() => {
+    if (latestDescriptionRef.current === description) return
+    setDescriptionRef.current(latestDescriptionRef.current)
+  }, [description])
+
   const selectedActivity =
-    propSelectedActivity ?? trackerContext?.selectedActivity ?? 'dev'
+    propSelectedActivity ?? trackerContext?.selectedActivity ?? ''
   const setSelectedActivity =
     propOnActivityChange ?? trackerContext?.setSelectedActivity ?? (() => {})
 
@@ -134,18 +168,27 @@ export function TaskPopover({
     trackerContext?.syncConnections ??
     defaultSyncConnections ??
     []
+
+  const validConnection = syncConnections.find(
+    (c) => c.connectionId === propSelectedConnectionId,
+  )
+  const fallbackConnection = syncConnections.find(
+    (c) => c.connectionId === trackerContext?.selectedConnectionId,
+  )
   const selectedConnectionId =
-    propSelectedConnectionId ??
-    trackerContext?.selectedConnectionId ??
-    syncConnections[0]?.connectionId ??
-    ''
+    validConnection?.connectionId ?? fallbackConnection?.connectionId ?? ''
+
   const setSelectedConnectionId =
     propOnConnectionChange ??
     trackerContext?.setSelectedConnectionId ??
     (() => {})
 
   const activities =
-    propActivities ?? trackerContext?.activities ?? DEFAULT_ACTIVITIES
+    propActivities && propActivities.length > 0
+      ? propActivities
+      : trackerContext?.activities && trackerContext.activities.length > 0
+        ? trackerContext.activities
+        : DEFAULT_ACTIVITIES
 
   const handleSelectTask =
     propOnSelectTask ?? trackerContext?.handleSelectTask ?? (() => {})
@@ -174,11 +217,13 @@ export function TaskPopover({
   }, [])
 
   // Buscar tarefas no RxDB de forma otimizada
-  const { data: tasksList = [] } = useQuery({
+  const { data: tasksList = [] } = useQuery<SyncTaskRxDBDTO[]>({
     queryKey: ['popover-tasks-mini', debouncedSearch, selectedConnectionId],
     queryFn: async () => {
       if (!db?.tasks) return []
-      const selector: any = { _deleted: { $eq: false } }
+      const selector: MangoQuery<SyncTaskRxDBDTO>['selector'] = {
+        _deleted: { $eq: false },
+      }
 
       if (selectedConnectionId) {
         selector.connectionInstanceId = { $eq: selectedConnectionId }
@@ -200,9 +245,7 @@ export function TaskPopover({
         })
         .exec()
 
-      return docs.map((d) =>
-        d.toMutableJSON ? d.toMutableJSON() : d,
-      ) as SyncTaskRxDBDTO[]
+      return docs.map((docItem) => docItem.toMutableJSON())
     },
     enabled: isOpen && !!db?.tasks,
   })
@@ -230,50 +273,71 @@ export function TaskPopover({
   }
 
   const handleCommitAndClose = useCallback(async () => {
+    commitDescription()
     const rawVal = taskId.trim()
-    const cleanId = rawVal.replace(/^#/, '')
+    const cleanId = extractPureTaskId(rawVal)
 
-    if (rawVal) {
-      let matched = sortedTasks.find(
-        (t) =>
-          t.id === rawVal ||
-          t.id === cleanId ||
-          t.id.toLowerCase() === rawVal.toLowerCase() ||
-          t.id.toLowerCase() === cleanId.toLowerCase(),
+    if (!cleanId && isRemote) {
+      toast.error(
+        'Registros sincronizados com o servidor não podem ficar sem tarefa',
       )
-
-      if (!matched && db?.tasks && cleanId) {
-        try {
-          const docs = await db.tasks
-            .find({
-              selector: {
-                _deleted: { $eq: false },
-                $or: [
-                  { id: { $eq: cleanId } },
-                  { id: { $eq: rawVal } },
-                  { id: { $regex: cleanId, $options: 'i' } },
-                ],
-              },
-              limit: 1,
-            })
-            .exec()
-          if (docs.length > 0) matched = docs[0].toMutableJSON()
-        } catch (e) {
-          console.error('Erro ao buscar tarefa no Enter:', e)
-        }
+      if (propTaskId) {
+        setTaskId(propTaskId)
+        setSearchQuery(propTaskId)
       }
+      return
+    }
 
-      if (matched) {
-        handleSelectTask(matched)
-      } else {
-        setTaskId(rawVal)
+    if (!cleanId) {
+      setTaskId('')
+      onCommitAndClose?.()
+      setIsOpen(false)
+      return
+    }
+
+    let matched = sortedTasks.find(
+      (t) =>
+        extractPureTaskId(t.id) === cleanId ||
+        extractPureTaskId(t.sourceId) === cleanId,
+    )
+
+    if (!matched && db?.tasks) {
+      try {
+        const docs = await db.tasks
+          .find({
+            selector: {
+              _deleted: { $eq: false },
+              $or: [
+                { id: { $eq: cleanId } },
+                { sourceId: { $eq: cleanId } },
+                { id: { $eq: rawVal } },
+              ],
+            },
+            limit: 1,
+          })
+          .exec()
+        const firstDoc = docs[0]
+        if (firstDoc) matched = firstDoc.toMutableJSON()
+      } catch (e) {
+        console.error('Erro ao buscar tarefa no Enter:', e)
       }
     }
 
+    if (matched) {
+      handleSelectTask(matched)
+      onCommitAndClose?.()
+      setIsOpen(false)
+      return
+    }
+
+    setTaskId(cleanId)
     onCommitAndClose?.()
     setIsOpen(false)
   }, [
+    commitDescription,
     taskId,
+    isRemote,
+    propTaskId,
     sortedTasks,
     db,
     handleSelectTask,
@@ -284,18 +348,18 @@ export function TaskPopover({
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
-      if (!nextOpen) {
-        handleCommitAndClose()
-      } else {
-        setIsOpen(true)
-      }
+      if (!nextOpen) commitDescription()
+      setIsOpen(nextOpen)
     },
-    [handleCommitAndClose, setIsOpen],
+    [commitDescription, setIsOpen],
   )
 
   return (
     <>
-      <Popover open={isOpen} onOpenChange={handleOpenChange}>
+      <Popover
+        open={isOpen && !isLookupModalOpen}
+        onOpenChange={handleOpenChange}
+      >
         {trigger ? (
           <PopoverTrigger asChild>{trigger}</PopoverTrigger>
         ) : (
@@ -318,7 +382,43 @@ export function TaskPopover({
           side={side}
           sideOffset={sideOffset}
           align={align}
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          data-no-drag
+          onPointerDownOutside={(event) => {
+            const originalTarget =
+              event.detail?.originalEvent?.target ?? event.target
+            const element =
+              originalTarget instanceof Element
+                ? originalTarget
+                : originalTarget instanceof Node
+                  ? originalTarget.parentElement
+                  : null
+
+            if (
+              element?.closest(
+                '[data-slot="select-content"], [data-slot="select-item"], [role="listbox"], [data-radix-select-viewport]',
+              )
+            ) {
+              event.preventDefault()
+            }
+          }}
+          onInteractOutside={(event) => {
+            const originalTarget =
+              event.detail?.originalEvent?.target ?? event.target
+            const element =
+              originalTarget instanceof Element
+                ? originalTarget
+                : originalTarget instanceof Node
+                  ? originalTarget.parentElement
+                  : null
+
+            if (
+              element?.closest(
+                '[data-slot="select-content"], [data-slot="select-item"], [role="listbox"], [data-radix-select-viewport]',
+              )
+            ) {
+              event.preventDefault()
+            }
+          }}
           className={cn(
             'border-border/50 bg-card flex w-[285px] flex-col gap-1.5 rounded-xl border p-2.5 shadow-xl backdrop-blur-md',
             className,
@@ -352,25 +452,43 @@ export function TaskPopover({
             {/* LINHA 1: Atividade + Conexão/Datasource */}
             <div className="flex items-center gap-1.5">
               <Select
-                value={selectedActivity}
-                onValueChange={setSelectedActivity}
-                disabled={!selectedConnectionId}
+                value={selectedActivity || (isRemote ? '' : '__NONE__')}
+                onValueChange={(val) => {
+                  if (val === '__NONE__') {
+                    if (!isRemote) setSelectedActivity('')
+                    return
+                  }
+                  setSelectedActivity(val)
+                }}
               >
                 <SelectTrigger className="h-7 flex-1 text-[11px] font-medium">
-                  <SelectValue />
+                  <SelectValue placeholder="Selecione uma atividade..." />
                 </SelectTrigger>
                 <SelectContent>
+                  {!isRemote && (
+                    <SelectItem
+                      value="__NONE__"
+                      className="text-muted-foreground text-xs italic"
+                    >
+                      <span className="flex items-center gap-2">
+                        <CircleDashed className="text-muted-foreground h-3.5 w-3.5" />
+                        <span>Sem atividade</span>
+                      </span>
+                    </SelectItem>
+                  )}
                   {activities.map(({ id, name, icon: Icon }) => (
                     <SelectItem key={id} value={id} className="text-xs">
                       <span className="flex items-center gap-2">
-                        <Icon
-                          className={cn(
-                            'h-3.5 w-3.5',
-                            id === selectedActivity
-                              ? 'text-primary'
-                              : 'text-muted-foreground',
-                          )}
-                        />
+                        {Icon && (
+                          <Icon
+                            className={cn(
+                              'h-3.5 w-3.5',
+                              id === selectedActivity
+                                ? 'text-primary'
+                                : 'text-muted-foreground',
+                            )}
+                          />
+                        )}
                         {name}
                       </span>
                     </SelectItem>
@@ -386,7 +504,8 @@ export function TaskPopover({
                   <SelectValue>
                     {(() => {
                       const conn = syncConnections.find(
-                        (c: any) => c.connectionId === selectedConnectionId,
+                        (connItem) =>
+                          connItem.connectionId === selectedConnectionId,
                       )
                       return conn?.addon?.logo ? (
                         <img
@@ -401,17 +520,17 @@ export function TaskPopover({
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent align="end" className="min-w-[170px]">
-                  {syncConnections.map((c: any) => (
+                  {syncConnections.map((connItem) => (
                     <SelectItem
-                      key={c.connectionId}
-                      value={c.connectionId}
+                      key={connItem.connectionId}
+                      value={connItem.connectionId}
                       className="py-1.5 text-xs"
                     >
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
-                          {c.addon?.logo ? (
+                          {connItem.addon?.logo ? (
                             <img
-                              src={c.addon.logo}
+                              src={connItem.addon.logo}
                               className="h-4 w-4 shrink-0 object-contain"
                               alt=""
                             />
@@ -419,14 +538,14 @@ export function TaskPopover({
                             <span className="text-xs">📦</span>
                           )}
                           <span className="truncate font-medium">
-                            {c.addon?.name || c.connectionId}
+                            {connItem.addon?.name ?? connItem.connectionId}
                           </span>
                         </div>
-                        {c.member && (
+                        {connItem.member && (
                           <div className="ml-6 flex items-center gap-1.5">
-                            {c.member.avatarUrl ? (
+                            {connItem.member.avatarUrl ? (
                               <img
-                                src={c.member.avatarUrl}
+                                src={connItem.member.avatarUrl}
                                 alt=""
                                 className="h-3.5 w-3.5 rounded-full"
                               />
@@ -434,7 +553,7 @@ export function TaskPopover({
                               <LucideIcons.User2 className="h-3 w-3 opacity-60" />
                             )}
                             <span className="text-muted-foreground truncate text-[10px]">
-                              {c.member.name || c.member.login}
+                              {connItem.member.name ?? connItem.member.login}
                             </span>
                           </div>
                         )}
@@ -448,6 +567,7 @@ export function TaskPopover({
             {/* LINHA 2: Input de Busca Compacto (h-7) + Botão de Busca Detalhada */}
             <div className="flex items-center gap-1.5">
               <LookupInput
+                data-testid="time-entry-task-lookup-input"
                 value={taskId}
                 onChange={(val) => {
                   setTaskId(val)
@@ -462,8 +582,22 @@ export function TaskPopover({
                 size="xs"
                 placeholder="Buscar ou digitar ID..."
                 className="flex-1"
+                sourceIcon={(() => {
+                  const activeConn = syncConnections.find(
+                    (connItem) =>
+                      connItem.connectionId === selectedConnectionId,
+                  )
+                  return activeConn?.addon?.logo ? (
+                    <img
+                      src={activeConn.addon.logo}
+                      alt={activeConn.addon.name}
+                      className="h-3.5 w-3.5 rounded-xs object-contain"
+                    />
+                  ) : undefined
+                })()}
               />
               <Button
+                data-testid="time-entry-task-lookup-modal-btn"
                 type="button"
                 variant="outline"
                 size="icon"
@@ -499,7 +633,7 @@ export function TaskPopover({
 
                     return (
                       <div
-                        key={t._id || t.id}
+                        key={t.id}
                         onClick={() => handlePickTask(t)}
                         title={`${ticketId} - ${t.title}`}
                         className={cn(
@@ -556,13 +690,21 @@ export function TaskPopover({
 
             {/* LINHA 4 (NO FIM DO POPOVER): Input "No que está trabalhando?" */}
             <Input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              data-testid="time-entry-popover-comment-input"
+              value={localDescription}
+              onFocus={() => {
+                isDescriptionFocusedRef.current = true
+              }}
+              onChange={(e) => setLocalDescription(e.target.value)}
+              onBlur={() => {
+                isDescriptionFocusedRef.current = false
+                commitDescription()
+              }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  handleCommitAndClose()
-                }
+                if (e.key !== 'Enter') return
+                e.preventDefault()
+                commitDescription()
+                handleCommitAndClose()
               }}
               placeholder="No que está trabalhando?"
               className="h-7 text-[11px] focus-visible:ring-1"

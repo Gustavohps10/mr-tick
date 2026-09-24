@@ -3,7 +3,11 @@ export { SidebarProvider } from '@/components/ui/sidebar'
 export { TooltipProvider } from '@/components/ui/tooltip'
 export { DataSourceConnectionsProvider } from '@/contexts/DataSourceConnectionsContext'
 export { EnvironmentProvider } from '@/contexts/EnvironmentContext'
-export { OpenAPIProvider } from '@/contexts/OpenAPIContext'
+export { HostBridgeProvider } from '@/contexts/HostBridgeContext'
 export { useWorkspace, WorkspaceProvider } from '@/contexts/WorkspaceContext'
-export { SyncProvider } from '@/stores/syncStore'
+export {
+  dropAppStorage,
+  SyncProvider,
+  type SyncProviderProps,
+} from '@/stores/syncStore'
 export { TimeEntryProvider } from '@/stores/timeEntryStore'

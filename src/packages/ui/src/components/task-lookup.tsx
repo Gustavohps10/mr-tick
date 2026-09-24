@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { WorkspaceConnectionDTO } from '@mr-tick/application'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
@@ -24,6 +24,7 @@ import React, {
   useMemo,
   useState,
 } from 'react'
+import { MangoQuerySelector } from 'rxdb'
 import { useDebounce } from 'use-debounce'
 
 import { Badge } from '@/components/ui/badge'
@@ -103,7 +104,7 @@ export function TaskLookup({
 
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
-  const [onlyMyTasks, setOnlyMyTasks] = useState(true)
+  const [onlyMyTasks, setOnlyMyTasks] = useState(false)
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
 
   // Lista de IDs de instâncias (connections) selecionadas
@@ -161,6 +162,18 @@ export function TaskLookup({
     return selectedConnectionIds
   }, [selectedConnectionIds, availableConnections])
 
+  const singleSelectedConnection = useMemo(() => {
+    if (selectedConnectionIds.length === 1) {
+      return availableConnections.find(
+        (conn) => conn.id === selectedConnectionIds[0],
+      )
+    }
+    if (availableConnections.length === 1) {
+      return availableConnections[0]
+    }
+    return undefined
+  }, [selectedConnectionIds, availableConnections])
+
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useInfiniteQuery({
       queryKey: [
@@ -176,7 +189,7 @@ export function TaskLookup({
       queryFn: async ({ pageParam = 0 }) => {
         if (!db) return []
 
-        const andConditions: any[] = []
+        const andConditions: MangoQuerySelector<SyncTaskRxDBDTO>[] = []
 
         if (debouncedSearch) {
           andConditions.push({
@@ -201,10 +214,13 @@ export function TaskLookup({
                 if (!memberId) return null
                 return {
                   connectionInstanceId: connId,
-                  participants: { $elemMatch: { id: String(memberId) } },
+                  $or: [
+                    { participants: { $elemMatch: { id: String(memberId) } } },
+                    { 'assignedTo.id': String(memberId) },
+                  ],
                 }
               })
-              .filter(Boolean)
+              .filter((item) => item !== null)
 
             if (myTasksOr.length > 0) {
               andConditions.push({ $or: myTasksOr })
@@ -220,7 +236,7 @@ export function TaskLookup({
           }
         }
 
-        const selector: any =
+        const selector: MangoQuerySelector<SyncTaskRxDBDTO> =
           andConditions.length > 0 ? { $and: andConditions } : {}
 
         const docs = await db.tasks
@@ -318,21 +334,32 @@ export function TaskLookup({
         <DialogOverlay className="pointer-events-auto bg-black/50 backdrop-blur-md transition-all" />
         <DialogContent
           onKeyDown={handleKeyDown}
-          className="bg-card/95 border-border/40 pointer-events-auto flex max-h-[85vh] w-[95vw] max-w-3xl flex-col overflow-hidden rounded-xl border p-0 shadow-2xl backdrop-blur-xl"
+          className="bg-card/95 border-border/40 pointer-events-auto flex max-h-[85vh] w-[95vw] max-w-3xl flex-col overflow-hidden rounded-xl border p-0 shadow-2xl backdrop-blur-xl sm:max-w-3xl"
         >
           {/* Header Command Input Bar */}
           <DialogHeader className="border-border/30 space-y-0 border-b p-0">
             <div className="border-border/20 relative flex items-center border-b px-4 py-3">
               {isLoading ? (
                 <Loader2 className="text-primary h-5 w-5 shrink-0 animate-spin" />
+              ) : singleSelectedConnection?.logo ? (
+                <img
+                  src={singleSelectedConnection.logo}
+                  alt={singleSelectedConnection.label}
+                  className="h-5 w-5 shrink-0 rounded-xs object-contain"
+                />
               ) : (
                 <Search className="text-muted-foreground/60 h-5 w-5 shrink-0" />
               )}
               <Input
+                data-testid="task-lookup-modal-search-input"
                 autoFocus
-                placeholder="Pesquisar por ID, título ou palavra-chave..."
+                placeholder={
+                  singleSelectedConnection
+                    ? `Pesquisar em ${singleSelectedConnection.label}...`
+                    : 'Pesquisar por ID, título ou palavra-chave...'
+                }
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(event) => setSearchTerm(event.target.value)}
                 className="placeholder:text-muted-foreground/40 h-9 border-none bg-transparent px-3 text-base font-medium shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [&::-webkit-search-cancel-button]:appearance-none"
               />
               {searchTerm && (
@@ -407,6 +434,7 @@ export function TaskLookup({
               {/* Right: Dropdowns & Filters */}
               <div className="flex items-center gap-2">
                 <button
+                  data-testid="task-lookup-only-my-tasks-btn"
                   type="button"
                   onClick={() => setOnlyMyTasks(!onlyMyTasks)}
                   className={cn(
@@ -421,7 +449,10 @@ export function TaskLookup({
                 </button>
 
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="bg-background/60 border-border/40 h-6 w-fit border px-2 text-[10px] font-semibold shadow-none focus:ring-0">
+                  <SelectTrigger
+                    data-testid="task-lookup-status-filter"
+                    className="bg-background/60 border-border/40 h-6 w-fit border px-2 text-[10px] font-semibold shadow-none focus:ring-0"
+                  >
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent align="end">
@@ -556,6 +587,7 @@ export function TaskLookup({
                   return (
                     <div
                       key={virtualRow.key}
+                      data-testid="task-lookup-row"
                       onClick={() => !isLoaderRow && task && handleSelect(task)}
                       onMouseEnter={() =>
                         !isLoaderRow && setSelectedIndex(virtualRow.index)

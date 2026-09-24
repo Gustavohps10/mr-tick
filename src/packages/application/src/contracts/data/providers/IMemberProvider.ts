@@ -1,8 +1,15 @@
+import { AppError, Either } from '@mr-tick/shared/helpers'
+
 import { MemberDTO, PagedResultDTO, PaginationOptionsDTO } from '@/dtos'
 
 export interface IMemberProvider {
-  getCurrentUser(): Promise<MemberDTO | undefined>
-  findById(id: string): Promise<MemberDTO | undefined>
-  findByCredentials(login: string, password: string): Promise<MemberDTO>
-  findAll(pagination?: PaginationOptionsDTO): Promise<PagedResultDTO<MemberDTO>>
+  getCurrentUser(): Promise<Either<AppError, MemberDTO | null>>
+  findById(id: string): Promise<Either<AppError, MemberDTO | null>>
+  findByCredentials(
+    login: string,
+    password: string,
+  ): Promise<Either<AppError, MemberDTO>>
+  findAll(
+    pagination?: PaginationOptionsDTO,
+  ): Promise<Either<AppError, PagedResultDTO<MemberDTO>>>
 }

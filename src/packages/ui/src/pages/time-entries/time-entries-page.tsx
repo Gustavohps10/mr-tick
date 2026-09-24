@@ -1,14 +1,12 @@
 'use client'
 
-import { useQueryClient } from '@tanstack/react-query'
 import { ExpandedState } from '@tanstack/react-table'
 import { format, isSameDay, parseISO } from 'date-fns'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { TaskLookup } from '@/components/task-lookup'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
-import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { TimeEntriesDayCard } from '@/pages/time-entries/components/time-entries-day-card'
 import { TimeEntriesHeader } from '@/pages/time-entries/components/time-entries-header'
 import { TimeEntriesSkeleton } from '@/pages/time-entries/components/time-entries-skeleton'
@@ -16,13 +14,11 @@ import { createTimeEntriesColumns } from '@/pages/time-entries/components/time-e
 import { useTimeEntriesData } from '@/pages/time-entries/hooks/use-time-entries-data'
 import { useTimeEntryMutations } from '@/pages/time-entries/hooks/use-time-entry-mutations'
 import {
-  hasNoTask,
+  extractPureTaskId,
   SuggestionRow,
 } from '@/pages/time-entries/lib/time-entries-utils'
 
 export function TimeEntries() {
-  const queryClient = useQueryClient()
-
   const {
     db,
     range,
@@ -32,7 +28,11 @@ export function TimeEntries() {
     isLoading,
     isSyncing,
     isPulling,
+    isPushing,
+    syncResult,
+    syncErrorMessage,
     activities,
+    tasksById,
     daysInRange,
     activeTimeEntry,
     setActive,
@@ -57,62 +57,61 @@ export function TimeEntries() {
     handleDirectUpdateRow,
     handleCancelEdit,
     handleDeleteEntry,
-    handleStartDuplicate,
+    handleDuplicateEntry,
     handleAddNewEntry,
     handleAcceptSuggestion,
     handleDismissSuggestion,
+    handleResolveConflict,
+    handleOpenConflictResolution,
   } = useTimeEntryMutations(db, memberIdsByConnection)
 
   const [isGrouped, setIsGrouped] = useState(true)
-  const [expandedRows, setExpandedRows] = useState<ExpandedState>({})
+  const [collapsedRows, setCollapsedRows] = useState<Record<string, boolean>>(
+    {},
+  )
 
-  // Expand ticket groups by default
-  useEffect(() => {
+  // Compute expanded rows synchronously: all groups expanded by default on frame zero,
+  // unless explicitly collapsed by user interaction.
+  const expandedRows = useMemo<ExpandedState>(() => {
     const allEntries = [...timeEntries, ...draftEntries]
-    if (allEntries.length > 0) {
-      setExpandedRows((prev) => {
-        const nextExpanded = { ...(typeof prev === 'object' ? prev : {}) }
-        daysInRange.forEach((day) => {
-          const dayKey = format(day, 'yyyy-MM-dd')
-          const entries = allEntries.filter(
-            (e) => e.startDate && isSameDay(parseISO(e.startDate), day),
-          )
-          const groupKeys = new Set(
-            entries.map(
-              (e) =>
-                `${dayKey}-${hasNoTask(e) ? 'sem-issue' : (e.task?.id ?? 'sem-issue')}`,
-            ),
-          )
-          groupKeys.forEach((key) => {
-            if (!(key in nextExpanded)) {
-              nextExpanded[key] = true
-            }
-          })
-        })
-        console.log('🔍 [TimeEntries] Auto-expanded row keys:', nextExpanded)
-        return nextExpanded
-      })
-    }
-  }, [timeEntries, draftEntries, daysInRange])
+    const state: Record<string, boolean> = {}
 
-  const handleTimeChangeDirect = useCallback(
-    async (id: string, updates: Partial<SyncTimeEntryRxDBDTO>) => {
-      if (!db) return
-      try {
-        const doc = await db.timeEntries.findOne(id).exec()
-        if (doc) {
-          await doc.patch({
-            ...updates,
-            updatedAt: new Date().toISOString(),
+    daysInRange.forEach((day) => {
+      const dayKey = format(day, 'yyyy-MM-dd')
+      const entries = allEntries.filter(
+        (e) => e.startDate && isSameDay(parseISO(e.startDate), day),
+      )
+      entries.forEach((e) => {
+        const pureId = extractPureTaskId(e.task?.id)
+        const groupKey = `${dayKey}-${pureId || 'no-task'}`
+        state[groupKey] = !collapsedRows[groupKey]
+      })
+    })
+
+    return state
+  }, [timeEntries, draftEntries, daysInRange, collapsedRows])
+
+  const handleExpandedChange: React.Dispatch<
+    React.SetStateAction<ExpandedState>
+  > = useCallback(
+    (updater) => {
+      setCollapsedRows((prev) => {
+        const nextCollapsed = { ...prev }
+        const currentExpanded =
+          typeof updater === 'function' ? updater(expandedRows) : updater
+        if (typeof currentExpanded === 'object' && currentExpanded !== null) {
+          Object.entries(currentExpanded).forEach(([key, isExpanded]) => {
+            if (isExpanded) {
+              delete nextCollapsed[key]
+              return
+            }
+            nextCollapsed[key] = true
           })
-          queryClient.invalidateQueries({ queryKey: ['time-entries-range'] })
-          toast.success('Tempo atualizado')
         }
-      } catch {
-        toast.error('Erro ao atualizar tempo')
-      }
+        return nextCollapsed
+      })
     },
-    [db, queryClient],
+    [expandedRows],
   )
 
   const handleAcceptAllSuggestions = useCallback(
@@ -120,22 +119,7 @@ export function TimeEntries() {
       if (!db || suggestions.length === 0) return
       try {
         for (const sug of suggestions) {
-          const docId = sug._id || sug.id
-          let doc = await db.timeEntries.findOne(docId).exec()
-          if (!doc) {
-            doc = await db.timeEntries
-              .findOne({
-                selector: {
-                  $or: [
-                    { id: sug.id },
-                    { _id: sug._id },
-                    { id: sug._id },
-                    { _id: sug.id },
-                  ],
-                },
-              })
-              .exec()
-          }
+          const doc = await db.timeEntries.findOne(sug.id).exec()
           if (doc) {
             await doc.patch({
               timeStatus: 'finished',
@@ -146,15 +130,12 @@ export function TimeEntries() {
         toast.success(
           `${suggestions.length} sugestões confirmadas com sucesso!`,
         )
-        await queryClient.invalidateQueries({
-          queryKey: ['time-entries-range'],
-        })
       } catch (err) {
         console.error('Erro ao aceitar todas sugestoes:', err)
         toast.error('Erro ao aceitar sugestões')
       }
     },
-    [db, queryClient],
+    [db],
   )
 
   const handleDismissAllSuggestions = useCallback(
@@ -162,63 +143,27 @@ export function TimeEntries() {
       if (!db || suggestions.length === 0) return
       try {
         for (const sug of suggestions) {
-          const docId = sug._id || sug.id
-          let doc = await db.timeEntries.findOne(docId).exec()
-          if (!doc) {
-            doc = await db.timeEntries
-              .findOne({
-                selector: {
-                  $or: [
-                    { id: sug.id },
-                    { _id: sug._id },
-                    { id: sug._id },
-                    { _id: sug.id },
-                  ],
-                },
-              })
-              .exec()
-          }
+          const doc = await db.timeEntries.findOne(sug.id).exec()
           if (doc) {
             await doc.remove()
           }
         }
         toast.info(`${suggestions.length} sugestões descartadas`)
-        await queryClient.invalidateQueries({
-          queryKey: ['time-entries-range'],
-        })
       } catch (err) {
         console.error('Erro ao descartar todas sugestoes:', err)
         toast.error('Erro ao descartar sugestões')
       }
     },
-    [db, queryClient],
+    [db],
   )
 
   const handlePauseTimer = useCallback(
     async (row: SuggestionRow) => {
       if (!db) return
-      const rowKey = row._id || row.id
-      let doc = await db.timeEntries.findOne(rowKey).exec()
-      if (!doc) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              $or: [
-                { id: rowKey },
-                { _id: rowKey },
-                { id: row.id },
-                { _id: row._id },
-              ],
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries.findOne(row.id).exec()
       if (doc) {
         setActive(doc.toMutableJSON())
-      } else if (
-        activeTimeEntry?._id !== rowKey &&
-        activeTimeEntry?.id !== rowKey
-      ) {
+      } else if (activeTimeEntry?.id !== row.id) {
         setActive(row)
       }
       await pauseCurrentTimeEntry(db)
@@ -229,28 +174,10 @@ export function TimeEntries() {
   const handleResumeTimer = useCallback(
     async (row: SuggestionRow) => {
       if (!db) return
-      const rowKey = row._id || row.id
-      let doc = await db.timeEntries.findOne(rowKey).exec()
-      if (!doc) {
-        doc = await db.timeEntries
-          .findOne({
-            selector: {
-              $or: [
-                { id: rowKey },
-                { _id: rowKey },
-                { id: row.id },
-                { _id: row._id },
-              ],
-            },
-          })
-          .exec()
-      }
+      const doc = await db.timeEntries.findOne(row.id).exec()
       if (doc) {
         setActive(doc.toMutableJSON())
-      } else if (
-        activeTimeEntry?._id !== rowKey &&
-        activeTimeEntry?.id !== rowKey
-      ) {
+      } else if (activeTimeEntry?.id !== row.id) {
         setActive(row)
       }
       await playCurrentTimeEntry(db)
@@ -262,28 +189,10 @@ export function TimeEntries() {
     async (row?: SuggestionRow) => {
       if (!db) return
       if (row) {
-        const rowKey = row._id || row.id
-        let doc = await db.timeEntries.findOne(rowKey).exec()
-        if (!doc) {
-          doc = await db.timeEntries
-            .findOne({
-              selector: {
-                $or: [
-                  { id: rowKey },
-                  { _id: rowKey },
-                  { id: row.id },
-                  { _id: row._id },
-                ],
-              },
-            })
-            .exec()
-        }
+        const doc = await db.timeEntries.findOne(row.id).exec()
         if (doc) {
           setActive(doc.toMutableJSON())
-        } else if (
-          activeTimeEntry?._id !== rowKey &&
-          activeTimeEntry?.id !== rowKey
-        ) {
+        } else if (activeTimeEntry?.id !== row.id) {
           setActive(row)
         }
       }
@@ -295,28 +204,33 @@ export function TimeEntries() {
   const columns = useMemo(() => {
     return createTimeEntriesColumns({
       activities,
+      tasksById,
       editingRows,
       getRowData,
       setEditingRows,
       setTempData,
+      tempData,
       setRowBeingEdited,
       setTaskLookupOpen,
       onSaveRow: handleSaveRow,
       onDirectUpdateRow: handleDirectUpdateRow,
       onCancelEdit: handleCancelEdit,
       onDeleteRow: handleDeleteEntry,
-      onDuplicateRow: handleStartDuplicate,
+      onDuplicateRow: handleDuplicateEntry,
       onAcceptSuggestion: handleAcceptSuggestion,
       onDismissSuggestion: handleDismissSuggestion,
-      onTimeChangeDirect: handleTimeChangeDirect,
+      onTimeChangeDirect: handleDirectUpdateRow,
       onPauseTimer: handlePauseTimer,
       onResumeTimer: handleResumeTimer,
       onStopTimer: handleStopTimer,
       isGrouped,
       onAddNewEntry: handleAddNewEntry,
+      onResolveConflict: handleResolveConflict,
+      onOpenConflict: handleOpenConflictResolution,
     })
   }, [
     activities,
+    tasksById,
     editingRows,
     getRowData,
     setEditingRows,
@@ -327,22 +241,22 @@ export function TimeEntries() {
     handleDirectUpdateRow,
     handleCancelEdit,
     handleDeleteEntry,
-    handleStartDuplicate,
+    handleDuplicateEntry,
     handleAcceptSuggestion,
     handleDismissSuggestion,
-    handleTimeChangeDirect,
     handlePauseTimer,
     handleResumeTimer,
     handleStopTimer,
     isGrouped,
     handleAddNewEntry,
+    handleResolveConflict,
+    handleOpenConflictResolution,
   ])
 
   const handleRowDoubleClick = useCallback((row: SuggestionRow) => {
-    const key = row._id || row.id
     setEditingRows((prev) => ({
       ...prev,
-      [key]: true,
+      [row.id]: true,
     }))
   }, [])
 
@@ -353,12 +267,21 @@ export function TimeEntries() {
         onRangeChange={handleRangeChange}
         isSyncing={isSyncing}
         isPulling={isPulling}
+        isPushing={isPushing}
+        syncResult={syncResult}
+        syncErrorMessage={syncErrorMessage}
         isGrouped={isGrouped}
         onToggleGrouped={setIsGrouped}
       />
 
-      {isLoading ? (
-        <TimeEntriesSkeleton />
+      {isLoading || (timeEntries.length === 0 && isPulling) ? (
+        <TimeEntriesSkeleton
+          message={
+            isPulling
+              ? 'Sincronizando apontamentos do período com as fontes remotas...'
+              : undefined
+          }
+        />
       ) : (
         <div className="flex flex-col gap-6">
           {daysInRange.map((day) => (
@@ -367,10 +290,12 @@ export function TimeEntries() {
               day={day}
               entries={timeEntries}
               draftEntries={draftEntries}
+              tempData={tempData}
               columns={columns}
               expandedRows={expandedRows}
-              onExpandedChange={setExpandedRows}
+              onExpandedChange={handleExpandedChange}
               isGrouped={isGrouped}
+              isPulling={isPulling}
               onAcceptAllSuggestions={handleAcceptAllSuggestions}
               onDismissAllSuggestions={handleDismissAllSuggestions}
               onAddNewEntry={handleAddNewEntry}

@@ -2,14 +2,7 @@
 
 import { ColumnDef } from '@tanstack/react-table'
 import { format, parseISO } from 'date-fns'
-import {
-  AlertCircle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  CloudOff,
-  RefreshCcw,
-} from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import {
@@ -94,52 +87,6 @@ export const columns: ColumnDef<Row>[] = [
               <p className="text-xs font-medium">{taskSubject}</p>
             </TooltipContent>
           )}
-        </Tooltip>
-      )
-    },
-  },
-  {
-    id: 'syncStatus',
-    header: 'Sinc',
-    size: 36,
-    cell: ({ row }) => {
-      const { syncedAt, conflicted, validationError } = row.original
-      if (conflicted)
-        return (
-          <Tooltip>
-            <TooltipTrigger>
-              <RefreshCcw
-                className="animate-spin-slow text-orange-500"
-                size={14}
-              />
-            </TooltipTrigger>
-            <TooltipContent>Conflito detectado</TooltipContent>
-          </Tooltip>
-        )
-      if (validationError)
-        return (
-          <Tooltip>
-            <TooltipTrigger>
-              <AlertCircle className="text-destructive" size={14} />
-            </TooltipTrigger>
-            <TooltipContent>Erro de validação</TooltipContent>
-          </Tooltip>
-        )
-      return syncedAt ? (
-        <Tooltip>
-          <TooltipTrigger>
-            <CheckCircle2 className="text-green-500" size={14} />
-          </TooltipTrigger>
-          <TooltipContent>
-            Sincronizado em {format(parseISO(syncedAt), 'HH:mm')}
-          </TooltipContent>
-        </Tooltip>
-      ) : (
-        <Tooltip>
-          <TooltipTrigger>
-            <CloudOff className="text-muted-foreground/50" size={14} />
-          </TooltipTrigger>
-          <TooltipContent>Aguardando sincronização</TooltipContent>
         </Tooltip>
       )
     },

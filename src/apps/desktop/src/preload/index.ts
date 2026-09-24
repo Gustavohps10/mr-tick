@@ -1,5 +1,5 @@
 import { electronAPI } from '@electron-toolkit/preload'
-import { IOpenAPI } from '@mr-tick/application'
+import { IHostBridge } from '@mr-tick/application'
 import { contextBridge, ipcRenderer } from 'electron'
 
 import {
@@ -15,35 +15,30 @@ import {
   workspacesInvoker,
 } from '@/main/invokers'
 
-const api: IOpenAPI = {
-  services: {
-    workspaces: workspacesInvoker,
-    session: sessionInvoker,
-    tasks: tasksInvoker,
-    timeEntries: timeEntriesInvoker,
-    metadata: metadataInvoker,
-  },
-  modules: {
-    headers: headersInvoker,
-    tokenStorage: tokenStorageInvoker,
-    system: systemInvoker,
-    updater: updaterInvoker,
-  },
-  integrations: {
-    addons: addonsInvoker,
-  },
+const api: IHostBridge = {
+  workspaces: workspacesInvoker,
+  session: sessionInvoker,
+  tasks: tasksInvoker,
+  timeEntries: timeEntriesInvoker,
+  metadata: metadataInvoker,
+  tokens: tokenStorageInvoker,
+  headers: headersInvoker,
+  system: systemInvoker,
+  updater: updaterInvoker,
+  addons: addonsInvoker,
+
   events: {
-    on: <T = unknown>(channel: string, handler: (data: T) => void) => {
+    on: <T = void>(channel: string, handler: (data: T) => void) => {
       const unsubscribe = electronAPI.ipcRenderer.on(
         channel,
-        (_event, data: T) => {
+        (event, data: T) => {
           handler(data)
         },
       )
 
       return unsubscribe
     },
-    emit: <T = unknown>(channel: string, data?: T) => {
+    emit: <T = void>(channel: string, data?: T) => {
       let workspaceId = 'default'
       if (typeof window !== 'undefined') {
         const match = window.location.hash.match(/#\/workspaces\/([^\/]+)/)

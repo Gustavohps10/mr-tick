@@ -23,7 +23,10 @@ build
 .yarn/install-state.gz
 .pnp.*
 logs/
+playwright-report/
+test-results/
+
+# Dev Addons
 src/dev-addons/*
-!src/dev-addons/README.md
-!src/dev-addons/desenvolvimento-e-debug-de-addons.md
-/dev-addons
+!src/dev-addons/*.md
+!src/dev-addons/datasource-fake/

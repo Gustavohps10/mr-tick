@@ -1,8 +1,9 @@
-﻿'use client'
+'use client'
 
 import { AddonPackageViewModel } from '@mr-tick/sdk'
+import { isApiVersionCompatible } from '@mr-tick/shared/helpers'
 import { IJobEvent } from '@mr-tick/shared/transport'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Check,
   CheckCircle2,
@@ -27,7 +28,7 @@ import {
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useOpenAPI } from '@/hooks/use-open-api'
+import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib'
 
 export interface AddonInstallTarget {
@@ -63,7 +64,7 @@ export function AddonInstallModal({
   onOpenChange,
   onSuccess,
 }: AddonInstallModalProps) {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
   const logEndRef = useRef<HTMLDivElement>(null)
 
@@ -75,6 +76,12 @@ export function AddonInstallModal({
   const [logs, setLogs] = useState<InstallationLogEntry[]>([])
   const [isExecutingJob, setIsExecutingJob] = useState<boolean>(false)
 
+  const { data: appVersion = '0.3.0' } = useQuery({
+    queryKey: ['appVersion'],
+    queryFn: () => bridge.system.getAppVersion(),
+    staleTime: Infinity,
+  })
+
   // Lista normalizada de pacotes/versões
   const availablePackages: AddonPackageViewModel[] = useMemo(() => {
     if (!addon) return []
@@ -85,9 +92,9 @@ export function AddonInstallModal({
 
     return [
       {
-        version: addon.version || '1.0.0',
+        version: addon.version || '0.1.0',
         downloadUrl: addon.downloadUrl || '',
-        requiredApiVersion: addon.requiredApiVersion || '>=1.0.0',
+        requiredApiVersion: addon.requiredApiVersion || '>=0.1.0',
         releaseDate:
           addon.releaseDate || new Date().toISOString().split('T')[0],
         changelog: addon.changelog || ['Versão de lançamento'],
@@ -95,15 +102,28 @@ export function AddonInstallModal({
     ]
   }, [addon])
 
-  // Pacote atualmente selecionado
+  // Pacote atualmente selecionado (prioriza primeira versão compatível)
   const selectedPackage = useMemo(() => {
-    if (!selectedVersion) return availablePackages[0] || null
-    const found = availablePackages.find(
-      (pkg) => pkg.version === selectedVersion,
+    if (selectedVersion) {
+      const found = availablePackages.find(
+        (pkg) => pkg.version === selectedVersion,
+      )
+      if (found) return found
+    }
+    const firstCompatible = availablePackages.find((pkg) =>
+      isApiVersionCompatible(pkg.requiredApiVersion, appVersion),
     )
-    if (found) return found
+    if (firstCompatible) return firstCompatible
     return availablePackages[0] || null
-  }, [availablePackages, selectedVersion])
+  }, [availablePackages, selectedVersion, appVersion])
+
+  const isSelectedPackageCompatible = useMemo(() => {
+    if (!selectedPackage) return false
+    return isApiVersionCompatible(
+      selectedPackage.requiredApiVersion,
+      appVersion,
+    )
+  }, [selectedPackage, appVersion])
 
   // Reset ao abrir ou trocar de addon
   useEffect(() => {
@@ -118,10 +138,16 @@ export function AddonInstallModal({
       return
     }
 
-    if (availablePackages.length > 0) {
-      setSelectedVersion(availablePackages[0].version)
+    const firstCompatible = availablePackages.find((pkg) =>
+      isApiVersionCompatible(pkg.requiredApiVersion, appVersion),
+    )
+    if (firstCompatible) {
+      setSelectedVersion(firstCompatible.version)
+      return
     }
-  }, [open, availablePackages])
+
+    setSelectedVersion('')
+  }, [open, availablePackages, appVersion])
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -141,6 +167,13 @@ export function AddonInstallModal({
       return
     }
 
+    if (!isSelectedPackageCompatible) {
+      toast.error(
+        `Versão incompatível com a versão atual do aplicativo (${appVersion})`,
+      )
+      return
+    }
+
     setCurrentStep('INSTALLING')
     setIsExecutingJob(true)
     setProgress(0)
@@ -156,7 +189,7 @@ export function AddonInstallModal({
       },
     ])
 
-    const installResponse = await openAPI.integrations.addons.install({
+    const installResponse = await bridge.addons.install({
       body: { downloadUrl: selectedPackage.downloadUrl },
     })
 
@@ -178,7 +211,7 @@ export function AddonInstallModal({
 
     const jobId = installResponse.data.jobId
 
-    const unsubscribeEvents = openAPI.events.on(
+    const unsubscribeEvents = bridge.events.on(
       jobId,
       (event: IJobEvent<string>) => {
         if (event.status === 'progress') {
@@ -280,12 +313,21 @@ export function AddonInstallModal({
                 <div className="space-y-2">
                   {availablePackages.map((pkg) => {
                     const isSelected = selectedPackage?.version === pkg.version
+                    const isCompatible = isApiVersionCompatible(
+                      pkg.requiredApiVersion,
+                      appVersion,
+                    )
                     return (
                       <Card
                         key={pkg.version}
-                        onClick={() => setSelectedVersion(pkg.version)}
+                        onClick={() =>
+                          isCompatible && setSelectedVersion(pkg.version)
+                        }
                         className={cn(
-                          'relative cursor-pointer border p-3 transition-all',
+                          'relative border p-3 transition-all',
+                          isCompatible
+                            ? 'cursor-pointer'
+                            : 'cursor-not-allowed opacity-50 grayscale',
                           isSelected
                             ? 'border-primary bg-primary/5 ring-primary/30 ring-1'
                             : 'border-border/60 hover:border-border hover:bg-muted/30',
@@ -302,6 +344,14 @@ export function AddonInstallModal({
                                 className="font-mono text-[10px]"
                               >
                                 API {pkg.requiredApiVersion}
+                              </Badge>
+                            )}
+                            {!isCompatible && (
+                              <Badge
+                                variant="destructive"
+                                className="text-[10px]"
+                              >
+                                Incompatível
                               </Badge>
                             )}
                           </div>
@@ -345,11 +395,18 @@ export function AddonInstallModal({
               </Button>
               <Button
                 onClick={handleStartInstallation}
-                disabled={!selectedPackage?.downloadUrl}
-                className="cursor-pointer gap-1.5 font-semibold"
+                disabled={
+                  !selectedPackage?.downloadUrl || !isSelectedPackageCompatible
+                }
+                className={cn(
+                  'gap-1.5 font-semibold',
+                  !selectedPackage?.downloadUrl || !isSelectedPackageCompatible
+                    ? 'cursor-not-allowed opacity-50'
+                    : 'cursor-pointer',
+                )}
               >
                 <Download className="h-4 w-4" />
-                Confirmar e Instalar (v{selectedPackage?.version || '1.0.0'})
+                Confirmar e Instalar (v{selectedPackage?.version || '0.1.0'})
               </Button>
             </DialogFooter>
           </div>

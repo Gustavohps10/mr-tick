@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import type {
   AddonManifest,
@@ -33,7 +33,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useDataSourceConnections } from '@/contexts/DataSourceConnectionsContext'
-import { useOpenAPI } from '@/hooks'
+import { useHostBridge } from '@/hooks'
 
 import type { AddonCapabilityType } from './components/addon-category-sidebar'
 import { ConnectionCard } from './components/addon-list'
@@ -54,7 +54,7 @@ function connectionMatchesAddon(
 }
 
 export function AddonsSettingsPage() {
-  const openAPI = useOpenAPI()
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
   const { workspaceId, capability = 'data-sources' } = useParams<{
     workspaceId?: string
@@ -80,7 +80,7 @@ export function AddonsSettingsPage() {
     queryKey: workspaceQueryKey,
     queryFn: async () => {
       if (!workspaceId) return null
-      const res = await openAPI.services.workspaces.getById({
+      const res = await bridge.workspaces.getById({
         body: { workspaceId },
       })
       return res.data ?? null
@@ -91,7 +91,7 @@ export function AddonsSettingsPage() {
   const { data: installedList = [] } = useQuery({
     queryKey: ['plugins', 'installed'],
     queryFn: async () => {
-      const res = await openAPI.integrations.addons.listInstalled()
+      const res = await bridge.addons.listInstalled()
       if (!res.isSuccess) {
         throw new Error(res.error ?? 'Falha ao listar plugins instalados')
       }
@@ -163,7 +163,7 @@ export function AddonsSettingsPage() {
       dataSourceId: string
       connectionInstanceId: string
     }) =>
-      openAPI.services.workspaces.linkDataSource({
+      bridge.workspaces.linkDataSource({
         body: { workspaceId: workspaceId!, ...input },
       }),
     onSuccess: () =>
@@ -173,7 +173,7 @@ export function AddonsSettingsPage() {
 
   const unlinkMutation = useMutation({
     mutationFn: (connectionInstanceId: string) =>
-      openAPI.services.workspaces.unlinkDataSource({
+      bridge.workspaces.unlinkDataSource({
         body: { workspaceId: workspaceId!, connectionInstanceId },
       }),
     onSuccess: () =>

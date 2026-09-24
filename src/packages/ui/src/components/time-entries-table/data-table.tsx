@@ -48,12 +48,12 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
     getCoreRowModel: getCoreRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     getSubRows: (row) => row.subRows,
-    getRowId: (row) => (row as { _id?: string })._id ?? row.id,
+    getRowId: (row) => row.id,
   })
 
   return (
     <div className="bg-background w-full overflow-x-auto rounded-md border shadow-sm">
-      <Table className="w-full min-w-0 table-fixed">
+      <Table className="w-full min-w-[820px] table-fixed">
         <TableHeader className="bg-muted/30">
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id} className="hover:bg-transparent">
@@ -83,6 +83,7 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
             table.getRowModel().rows.map((row) => (
               <TableRow
                 key={row.id}
+                data-testid="time-entry-row"
                 data-state={row.getIsExpanded() ? 'expanded' : 'collapsed'}
                 onDoubleClick={() => {
                   const isGroupMaster =
@@ -108,6 +109,10 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
                       cell.column.id === 'actions' ? 'px-0 pr-2' : 'px-2',
                       cell.column.id === 'createdAt' && 'hidden md:table-cell',
                       cell.column.id === 'syncStatus' && 'hidden sm:table-cell',
+                      cell.column.id === 'comments' &&
+                        'min-w-0 overflow-hidden',
+                      cell.column.id === 'hours' &&
+                        'shrink-0 whitespace-nowrap',
                     )}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
