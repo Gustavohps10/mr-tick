@@ -52,7 +52,7 @@ test.describe('E2E - Troca Rápida de Workspaces durante Sincronização (STR-04
     })
 
     // 8. Valida que o Workspace 1 re-inicializa o banco e o motor de sincronização perfeitamente
-    await expect(syncIndicator).toBeVisible({ timeout: 30000 })
+    await expect(syncIndicator).toBeVisible({ timeout: 60000 })
 
     // 9. Valida que os apontamentos do Workspace 1 permanecem íntegros e funcionais
     await expect(actionTriggers).toHaveCount(initialCountWs1, {

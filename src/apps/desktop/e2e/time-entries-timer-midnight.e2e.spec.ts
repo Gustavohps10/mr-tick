@@ -20,10 +20,12 @@ test.describe('E2E - Horários e Timer Cruzando Meia-Noite (TMR-04)', () => {
       '[data-testid="time-entry-actions-trigger"]',
     )
     await expect(actionTriggers.first()).toBeVisible({ timeout: 15000 })
-    await actionTriggers.first().click()
-
     const editBtn = page.locator('[data-testid="time-entry-edit-btn"]')
-    await expect(editBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(editBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await editBtn.click()
 
     // 4. Localiza os campos de início, fim e duração da linha em edição

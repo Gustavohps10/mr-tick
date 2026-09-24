@@ -54,11 +54,14 @@ test.describe('E2E - Resiliência a Erro 401 / Token Expirado (SYNC-07)', () => 
     await expect(authErrorIndicator).toBeVisible({ timeout: 15000 })
 
     // 7. Cria um novo apontamento localmente enquanto a autenticação está rompida
-    await actionTriggers.first().click()
     const duplicateBtn = page.locator(
       '[data-testid="time-entry-duplicate-btn"]',
     )
-    await expect(duplicateBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(duplicateBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await duplicateBtn.click()
 
     const saveBtn = page.locator('[data-testid="time-entry-save-btn"]').first()

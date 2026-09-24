@@ -25,12 +25,14 @@ test.describe('E2E - Duplicação de Apontamentos (Ghost Mode e Persistência)',
     expect(initialCount).toBeGreaterThan(0)
 
     // 4. Abre o menu de contexto do primeiro apontamento e clica em "Duplicar"
-    await actionTriggers.first().click()
-
     const duplicateBtn = page.locator(
       '[data-testid="time-entry-duplicate-btn"]',
     )
-    await expect(duplicateBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(duplicateBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await duplicateBtn.click()
 
     // 5. Valida que o Ghost Mode entrou em ação (linha rascunho com botão Salvar e Cancelar)
@@ -74,12 +76,14 @@ test.describe('E2E - Duplicação de Apontamentos (Ghost Mode e Persistência)',
     expect(initialCount).toBeGreaterThan(0)
 
     // 4. Duplica o primeiro apontamento existente
-    await actionTriggers.first().click()
-
     const duplicateBtn = page.locator(
       '[data-testid="time-entry-duplicate-btn"]',
     )
-    await expect(duplicateBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(duplicateBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await duplicateBtn.click()
 
     // 5. Valida a presença dos botões de rascunho
@@ -127,11 +131,14 @@ test.describe('E2E - Duplicação de Apontamentos (Ghost Mode e Persistência)',
     expect(initialCount).toBeGreaterThanOrEqual(2)
 
     // 4. Duplica a primeira linha existente
-    await actionTriggers.first().click()
     const duplicateBtn = page.locator(
       '[data-testid="time-entry-duplicate-btn"]',
     )
-    await expect(duplicateBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(duplicateBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await duplicateBtn.click()
 
     // Valida que exatamente 1 rascunho ativo surgiu

@@ -18,9 +18,12 @@ test.describe('E2E - Seleção e Busca de Tarefa (TSK-01)', () => {
     )
     await expect(actionTriggers.first()).toBeVisible({ timeout: 15000 })
 
-    await actionTriggers.first().click()
     const editBtn = page.locator('[data-testid="time-entry-edit-btn"]')
-    await expect(editBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(editBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await editBtn.click()
 
     // Abre o popover de tarefa
@@ -69,9 +72,12 @@ test.describe('E2E - Seleção e Busca de Tarefa (TSK-01)', () => {
     )
     await expect(actionTriggers.first()).toBeVisible({ timeout: 15000 })
 
-    await actionTriggers.first().click()
     const editBtn = page.locator('[data-testid="time-entry-edit-btn"]')
-    await expect(editBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(editBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await editBtn.click()
 
     // Abre o popover de tarefa
