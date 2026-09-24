@@ -14,7 +14,7 @@
   "workspaces": [
     "src/apps/*",
     "src/packages/*",
-    "src/dev-addons/*"
+    "src/dev-addons/datasource-fake"
   ],
   "scripts": {
     "test": "vitest run; yarn test:e2e",
