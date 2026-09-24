@@ -1,6 +1,7 @@
 id: mr-tick-datasource-fake
 name: DataSource Fake (Testes)
 version: 1.0.1
+requiredApiVersion: '>=0.3.0'
 categories:
   - dataSource
 author: Mr-tick

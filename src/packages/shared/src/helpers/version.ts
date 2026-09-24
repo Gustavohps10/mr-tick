@@ -49,9 +49,18 @@ function checkSingleConstraint(appVer: ParsedSemVer, clause: string): boolean {
   // Check operator prefix
   const operatorMatch = trimmed.match(/^([><=!~^]+)\s*(.*)$/)
   if (!operatorMatch) {
-    // Plain version without operator (e.g. "0.1.0" or "0.1") -> treat as minimum required version (>=)
+    // Plain version without operator (e.g. "0.3.0" or "0.3")
     const target = parseSemVer(trimmed)
     if (!target) return true
+
+    // In zero-major (0.y.z), breaking changes occur at every minor release.
+    if (appVer.major === 0 || target.major === 0) {
+      if (appVer.major !== target.major) return false
+      if (appVer.minor !== target.minor) return false
+      return appVer.patch >= target.patch
+    }
+
+    if (appVer.major !== target.major) return false
     return compareSemVer(appVer, target) >= 0
   }
 
@@ -61,18 +70,49 @@ function checkSingleConstraint(appVer: ParsedSemVer, clause: string): boolean {
   if (!target) return true
 
   if (op === '>=') {
+    // In zero-major (0.y.z), minor versions are breaking changes (Option A: minor lock).
+    // An addon built for >=0.1.x is NOT compatible with app 0.3.x.
+    // Within 0.3.x, >=0.3.0 is compatible with 0.3.0, 0.3.1, etc.
+    if (appVer.major === 0 || target.major === 0) {
+      if (appVer.major !== target.major) return false
+      if (appVer.minor !== target.minor) return false
+      return appVer.patch >= target.patch
+    }
+
+    if (appVer.major !== target.major) return false
     return compareSemVer(appVer, target) >= 0
   }
 
   if (op === '>') {
+    if (appVer.major === 0 || target.major === 0) {
+      if (appVer.major !== target.major) return false
+      if (appVer.minor !== target.minor) return false
+      return appVer.patch > target.patch
+    }
+
+    if (appVer.major !== target.major) return false
     return compareSemVer(appVer, target) > 0
   }
 
   if (op === '<=') {
+    if (appVer.major === 0 || target.major === 0) {
+      if (appVer.major !== target.major) return false
+      if (appVer.minor !== target.minor) return false
+      return appVer.patch <= target.patch
+    }
+
+    if (appVer.major !== target.major) return false
     return compareSemVer(appVer, target) <= 0
   }
 
   if (op === '<') {
+    if (appVer.major === 0 || target.major === 0) {
+      if (appVer.major !== target.major) return false
+      if (appVer.minor !== target.minor) return false
+      return appVer.patch < target.patch
+    }
+
+    if (appVer.major !== target.major) return false
     return compareSemVer(appVer, target) < 0
   }
 

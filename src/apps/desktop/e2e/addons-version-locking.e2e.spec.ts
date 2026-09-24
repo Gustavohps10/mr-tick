@@ -13,48 +13,58 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
         statusCode: 200,
         data: [
           {
-            id: 'test-incompatible-addon',
-            name: 'Plugin Incompatível E2E',
-            version: '2.0.0',
+            id: 'gustavohps10-redmine',
+            name: 'Redmine',
+            version: '0.1.1',
             categories: ['dataSource'],
-            author: 'E2E Tester',
+            author: 'Gustavo Henrique',
             description:
-              'Plugin exclusivo para versões futuras da API do Mr-tick (>=2.0.0)',
-            downloadUrl: 'https://example.com/future-2.0.0.tladdon',
-            requiredApiVersion: '>=2.0.0',
+              'Integration with Redmine to fetch projects, issues, users, and time entries',
+            downloadUrl:
+              'https://github.com/Gustavohps10/redmine-plugin/releases/download/v0.1.1/gustavohps10-redmine-0.1.1.tladdon',
+            requiredApiVersion: '>=0.1.1',
             packages: [
               {
-                version: '2.0.0',
-                requiredApiVersion: '>=2.0.0',
-                releaseDate: '2026-09-24',
-                downloadUrl: 'https://example.com/future-2.0.0.tladdon',
-                changelog: ['Versão incompatível que requer API >=2.0.0'],
+                version: '0.1.1',
+                requiredApiVersion: '>=0.1.1',
+                releaseDate: '2026-08-30',
+                downloadUrl:
+                  'https://github.com/Gustavohps10/redmine-plugin/releases/download/v0.1.1/gustavohps10-redmine-0.1.1.tladdon',
+                changelog: ['Release 0.1.1 legado com API 0.1.x'],
+              },
+              {
+                version: '0.1.0',
+                requiredApiVersion: '>=0.1.0',
+                releaseDate: '2026-08-29',
+                downloadUrl:
+                  'https://github.com/Gustavohps10/redmine-plugin/releases/download/v0.1.0/gustavohps10-redmine-0.1.0.tladdon',
+                changelog: ['Release 0.1.0 legado com API 0.1.x'],
               },
             ],
           },
           {
             id: 'test-multi-version-addon',
             name: 'Plugin Híbrido E2E',
-            version: '0.2.0',
+            version: '0.3.0',
             categories: ['dataSource'],
             author: 'E2E Tester',
-            description: 'Plugin com versões compatíveis e incompatíveis',
-            downloadUrl: 'https://example.com/hybrid-0.2.0.tladdon',
-            requiredApiVersion: '>=0.2.0',
+            description: 'Plugin com versões legadas e compatíveis',
+            downloadUrl: 'https://example.com/hybrid-0.3.0.tladdon',
+            requiredApiVersion: '>=0.3.0',
             packages: [
-              {
-                version: '2.0.0',
-                requiredApiVersion: '>=2.0.0',
-                releaseDate: '2026-09-24',
-                downloadUrl: 'https://example.com/hybrid-2.0.0.tladdon',
-                changelog: ['Versão que requer API futura >=2.0.0'],
-              },
               {
                 version: '0.1.0',
                 requiredApiVersion: '>=0.1.0',
-                releaseDate: '2026-09-20',
+                releaseDate: '2026-08-29',
                 downloadUrl: 'https://example.com/hybrid-0.1.0.tladdon',
-                changelog: ['Versão compatível com API atual (>=0.1.0)'],
+                changelog: ['Versão legada incompatível (>=0.1.0)'],
+              },
+              {
+                version: '0.3.0',
+                requiredApiVersion: '>=0.3.0',
+                releaseDate: '2026-09-24',
+                downloadUrl: 'https://example.com/hybrid-0.3.0.tladdon',
+                changelog: ['Versão compatível com API atual (>=0.3.0)'],
               },
             ],
           },
@@ -80,23 +90,21 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
     await expect(exploreTab).toBeVisible({ timeout: 10000 })
     await exploreTab.click()
 
-    // 5. Cenário 1: Addon que possui APENAS versão incompatível (>=2.0.0)
-    const incompatibleAddonCard = page.locator(
-      'button:has-text("Plugin Incompatível E2E")',
-    )
-    await expect(incompatibleAddonCard).toBeVisible({ timeout: 10000 })
-    await incompatibleAddonCard.click()
+    // 5. Cenário 1: Addon legado (Redmine antigo da era 0.1.x)
+    const redmineCard = page.locator('button:has-text("Redmine")')
+    await expect(redmineCard).toBeVisible({ timeout: 10000 })
+    await redmineCard.click()
 
     // Abre o modal de instalação
     const installBtn = page.locator('button:has-text("Instalar")')
     await expect(installBtn).toBeVisible({ timeout: 5000 })
     await installBtn.click()
 
-    // Valida que o pacote 2.0.0 exibe a badge "Incompatível"
+    // Valida que o pacote legado exibe a badge "Incompatível"
     const incompatibleBadge = page.getByText('Incompatível', { exact: true })
-    await expect(incompatibleBadge).toBeVisible({ timeout: 5000 })
+    await expect(incompatibleBadge.first()).toBeVisible({ timeout: 5000 })
 
-    // Valida que o botão "Confirmar e Instalar" está estritamente desabilitado
+    // Valida que o botão "Confirmar e Instalar" está estritamente desabilitado para o Redmine antigo
     const confirmInstallBtn = page.locator(
       'button:has-text("Confirmar e Instalar")',
     )
@@ -107,7 +115,7 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
     await cancelBtn.click()
     await expect(confirmInstallBtn).not.toBeVisible({ timeout: 5000 })
 
-    // 6. Cenário 2: Addon Híbrido (possui v2.0.0 incompatível e v0.1.0 compatível)
+    // 6. Cenário 2: Addon Híbrido (possui v0.1.0 legada incompatível e v0.3.0 compatível)
     const hybridAddonCard = page.locator(
       'button:has-text("Plugin Híbrido E2E")',
     )
@@ -120,21 +128,21 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
     await hybridInstallBtn.click()
     await expect(confirmInstallBtn).toBeVisible({ timeout: 5000 })
 
-    // Valida que o pacote incompatível (2.0.0) exibe a badge "Incompatível"
-    await expect(incompatibleBadge).toBeVisible({ timeout: 5000 })
+    // Valida que o pacote incompatível (v0.1.0) exibe a badge "Incompatível"
+    await expect(incompatibleBadge.first()).toBeVisible({ timeout: 5000 })
 
-    // Valida que a versão compatível (v0.1.0) está selecionada e o botão fica habilitado para ela
+    // Valida que a versão compatível (v0.3.0) foi selecionada automaticamente e o botão fica habilitado para ela
     await expect(confirmInstallBtn).toBeEnabled()
-    await expect(confirmInstallBtn).toContainText('v0.1.0')
+    await expect(confirmInstallBtn).toContainText('v0.3.0')
 
-    // Tenta clicar no card incompatível e garante que a seleção NÃO muda
+    // Tenta clicar no card incompatível (v0.1.0) e garante que a seleção NÃO muda
     const incompatibleCard = page.locator(
-      '.cursor-not-allowed:has-text("v2.0.0")',
+      '.cursor-not-allowed:has-text("v0.1.0")',
     )
     await expect(incompatibleCard).toBeVisible()
     await incompatibleCard.click({ force: true })
 
-    // O botão ainda deve manter v0.1.0 selecionado e não v2.0.0
-    await expect(confirmInstallBtn).toContainText('v0.1.0')
+    // O botão ainda deve manter v0.3.0 selecionado e não v0.1.0
+    await expect(confirmInstallBtn).toContainText('v0.3.0')
   })
 })
