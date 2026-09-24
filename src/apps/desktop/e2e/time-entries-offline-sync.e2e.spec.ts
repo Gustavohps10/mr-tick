@@ -35,11 +35,14 @@ test.describe('E2E - Sincronização e Resiliência Offline (SYNC-02)', () => {
     await page.context().setOffline(true)
 
     // 5. Realiza duplicação de um apontamento existente enquanto offline
-    await actionTriggers.first().click()
     const duplicateBtn = page.locator(
       '[data-testid="time-entry-duplicate-btn"]',
     )
-    await expect(duplicateBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(duplicateBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await duplicateBtn.click()
 
     // 6. Salva o rascunho localmente no RxDB/IndexedDB

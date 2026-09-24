@@ -25,12 +25,14 @@ test.describe('E2E - Cenários Extremos (Concorrência e Duplo Clique no Salvar)
     expect(initialCount).toBeGreaterThan(0)
 
     // 4. Duplica o primeiro apontamento para entrar em Ghost Mode
-    await actionTriggers.first().click()
-
     const duplicateBtn = page.locator(
       '[data-testid="time-entry-duplicate-btn"]',
     )
-    await expect(duplicateBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(duplicateBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await duplicateBtn.click()
 
     // 5. Localiza o botão Salvar da linha rascunho

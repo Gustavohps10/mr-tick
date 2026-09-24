@@ -130,6 +130,22 @@ export const dropAppStorage = async (dbName: string): Promise<void> => {
   }
 }
 
+export const getDatabaseName = (
+  workspaceId: string,
+  useMemoryStorage: boolean = false,
+): string => {
+  if (useMemoryStorage) return `db-memory-${workspaceId}`
+  return `db-${workspaceId}`
+}
+
+export const removeDatabaseFromCache = (
+  workspaceId: string,
+  useMemoryStorage: boolean = false,
+): void => {
+  const dbName = getDatabaseName(workspaceId, useMemoryStorage)
+  dbPromiseCache.delete(dbName)
+}
+
 // --- DATABASE CACHE (Singleton para evitar DB9) ---
 export const dbPromiseCache = new Map<string, Promise<AppDatabase>>()
 
@@ -138,9 +154,7 @@ export const getOrCreateDatabase = async (
   isDevelopment: boolean,
   useMemoryStorage: boolean = false,
 ): Promise<AppDatabase> => {
-  const dbName = useMemoryStorage
-    ? `db-memory-${workspaceId}`
-    : `db-${workspaceId}`
+  const dbName = getDatabaseName(workspaceId, useMemoryStorage)
 
   console.log('[SYNC][db] getOrCreateDatabase chamado', {
     dbName,
@@ -187,11 +201,13 @@ export const getOrCreateDatabase = async (
       useMemoryStorage,
     })
 
+    const isDevModeActive = isDevelopment ? true : shouldForceRxDBDebug()
+
     const db = await createRxDatabase<AppDatabase['collections']>({
       name: dbName,
       storage: createAppStorage(useMemoryStorage),
-      ignoreDuplicate: true,
-      closeDuplicates: false,
+      ignoreDuplicate: isDevModeActive,
+      closeDuplicates: true,
       multiInstance: !useMemoryStorage,
     })
 

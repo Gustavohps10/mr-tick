@@ -25,10 +25,12 @@ test.describe('E2E - Exclusão de Apontamentos (Remoção Local e Persistência)
     expect(initialCount).toBeGreaterThan(0)
 
     // 4. Abre o menu de contexto do primeiro apontamento e clica em "Excluir"
-    await actionTriggers.first().click()
-
     const deleteBtn = page.locator('[data-testid="time-entry-delete-btn"]')
-    await expect(deleteBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(deleteBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await deleteBtn.click()
 
     // 5. Valida que a quantidade total de apontamentos diminuiu em exatamente 1
@@ -68,9 +70,12 @@ test.describe('E2E - Exclusão de Apontamentos (Remoção Local e Persistência)
     expect(initialCount).toBeGreaterThanOrEqual(2)
 
     // 4. Executa a primeira exclusão
-    await actionTriggers.first().click()
     const deleteBtn = page.locator('[data-testid="time-entry-delete-btn"]')
-    await expect(deleteBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(deleteBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await deleteBtn.click()
 
     await expect(actionTriggers).toHaveCount(initialCount - 1, {
@@ -78,8 +83,11 @@ test.describe('E2E - Exclusão de Apontamentos (Remoção Local e Persistência)
     })
 
     // 5. Imediatamente executa a segunda exclusão no novo primeiro elemento
-    await actionTriggers.first().click()
-    await expect(deleteBtn).toBeVisible()
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(deleteBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
     await deleteBtn.click()
 
     await expect(actionTriggers).toHaveCount(initialCount - 2, {

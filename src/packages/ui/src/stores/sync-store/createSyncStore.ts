@@ -11,10 +11,11 @@ import {
   ReplicationModule,
 } from './module'
 import {
-  dbPromiseCache,
   dropAppStorage,
   ensurePlugins,
+  getDatabaseName,
   getOrCreateDatabase,
+  removeDatabaseFromCache,
 } from './storage'
 import { AppDatabase, ReplicationCheckpoint, SyncStore } from './types'
 
@@ -295,7 +296,6 @@ export const createSyncStore = (
         endDate.setDate(endDate.getDate() + 1)
         endDate.setHours(23, 59, 59, 999)
 
-        const since = startDate.toISOString()
         const localDocs = await timeEntriesCol
           .find({
             selector: {
@@ -370,9 +370,10 @@ export const createSyncStore = (
       if (!db) return
       await destroyAllModules()
 
-      dbPromiseCache.delete(`db-${workspaceId}`)
+      const dbName = getDatabaseName(workspaceId, useMemoryStorage)
+      removeDatabaseFromCache(workspaceId, useMemoryStorage)
       await db.remove()
-      await dropAppStorage(`db-${workspaceId}`)
+      await dropAppStorage(dbName)
 
       set({ db: null, isInitialized: false, statuses: {} })
     },
@@ -382,7 +383,7 @@ export const createSyncStore = (
       await destroyAllModules()
 
       if (db) {
-        dbPromiseCache.delete(`db-${workspaceId}`)
+        removeDatabaseFromCache(workspaceId, useMemoryStorage)
         await db.close()
       }
 
@@ -456,7 +457,7 @@ export const createSyncStore = (
         } else {
           console.error('[SYNC][init] Erro FATAL ao inicializar:', err)
         }
-        dbPromiseCache.delete(`db-${workspaceId}`)
+        removeDatabaseFromCache(workspaceId, useMemoryStorage)
         throw err
       }
     },
