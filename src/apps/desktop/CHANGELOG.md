@@ -1,5 +1,11 @@
 ﻿# @mr-tick/desktop
 
+## 0.4.2
+
+### Patch Changes
+
+- @mr-tick/ui@1.1.2
+
 ## 0.4.1
 
 ### Patch Changes

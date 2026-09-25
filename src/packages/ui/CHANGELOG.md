@@ -1,5 +1,12 @@
 ﻿# @mr-tick/ui
 
+## 1.1.2
+
+### Patch Changes
+
+- Updated dependencies [b6a306b]
+  - @mr-tick/sdk@0.4.1
+
 ## 1.1.1
 
 ### Patch Changes
