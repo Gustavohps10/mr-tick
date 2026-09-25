@@ -1,5 +1,11 @@
 ﻿# @mr-tick/ui
 
+## 1.1.1
+
+### Patch Changes
+
+- 250dbe7: fix: prevent fatal RxDB DB9 error in production database initialization and stabilize E2E test suites
+
 ## 1.1.0
 
 ### Minor Changes
