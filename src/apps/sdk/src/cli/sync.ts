@@ -33,6 +33,7 @@ export function syncManifest(addonDir = '.', options?: SyncManifestOptions) {
   const repo = options?.repo || extractRepo(rootDir)
   const branch = options?.branch || 'main'
   const existingManifest = readYaml<Record<string, any>>(manifestPath) || {}
+  const pkg = readPackageJson(rootDir)
 
   // 1. Scan /screenshots directory
   const screenshotsDir = path.join(rootDir, 'screenshots')
@@ -70,11 +71,18 @@ export function syncManifest(addonDir = '.', options?: SyncManifestOptions) {
     ? JSON.parse(JSON.stringify(existingManifest.packages))
     : undefined
 
+  const version = (
+    pkg.version ||
+    existingManifest.version ||
+    existingManifest.Version ||
+    '0.1.0'
+  ).trim()
+
   // 3. Mount Clean Manifest in standard order
   const cleanManifest: Record<string, any> = {
     id: existingManifest.id || existingManifest.AddonId || 'plugin',
     name: existingManifest.name || existingManifest.Name || 'Plugin',
-    version: existingManifest.version || existingManifest.Version || '0.1.0',
+    version,
     categories: existingManifest.categories ||
       existingManifest.Categories || ['dataSource'],
     author: existingManifest.author || existingManifest.Author || 'Author',
