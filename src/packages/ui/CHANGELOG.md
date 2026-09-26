@@ -1,5 +1,11 @@
 ﻿# @mr-tick/ui
 
+## 1.1.3
+
+### Patch Changes
+
+- 9b79109: Corrigir validação Ajv do RxDB permitindo comments e endDate nulos em time entries durante sincronização downstream (RC_PULL).
+
 ## 1.1.2
 
 ### Patch Changes
