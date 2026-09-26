@@ -38,7 +38,7 @@ export interface ConflictDataSnapshot {
   startDate?: string
   endDate?: string | null
   timeSpent?: number
-  comments?: string
+  comments?: string | null
   updatedAt?: string
   task?: { id: string }
   activity?: { id: string; name?: string }
@@ -84,7 +84,7 @@ export interface SyncTimeEntryRxDBDTO {
    */
   timeSpent: number
 
-  comments?: string
+  comments?: string | null
   createdAt: string
   updatedAt: string
   timeStatus?: 'running' | 'paused' | 'finished' | 'suggestion'
@@ -148,9 +148,9 @@ export const timeEntriesSyncSchema: RxJsonSchema<SyncTimeEntryRxDBDTO> = {
       required: ['id'],
     },
     startDate: { type: 'string', format: 'date-time', maxLength: 30 },
-    endDate: { type: 'string', format: 'date-time', maxLength: 30 },
+    endDate: { type: ['string', 'null'], format: 'date-time', maxLength: 30 },
     timeSpent: { type: 'number' },
-    comments: { type: 'string' },
+    comments: { type: ['string', 'null'] },
     createdAt: { type: 'string', format: 'date-time', maxLength: 30 },
     updatedAt: { type: 'string', format: 'date-time', maxLength: 30 },
     timeStatus: {

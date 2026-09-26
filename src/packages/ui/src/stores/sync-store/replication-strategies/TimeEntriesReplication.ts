@@ -240,7 +240,7 @@ export class TimeEntriesReplication implements IReplicationStrategy<
         activity: item.activity,
         user: item.user,
         timeSpent: resolvedTimeSpent,
-        comments: item.comments,
+        comments: typeof item.comments === 'string' ? item.comments : null,
         startDate: resolvedStartDate,
         endDate: endDateIso,
         createdAt: createdAtIso,
@@ -337,7 +337,7 @@ export class TimeEntriesReplication implements IReplicationStrategy<
           activity: { id: doc.activity.id, name: doc.activity.name },
           user: { id: doc.user.id, name: doc.user.name },
           timeSpent: doc.timeSpent,
-          comments: doc.comments,
+          comments: doc.comments ? doc.comments : undefined,
           startDate: doc.startDate ? new Date(doc.startDate) : undefined,
           endDate: doc.endDate ? new Date(doc.endDate) : undefined,
           createdAt: new Date(doc.createdAt),
@@ -372,7 +372,9 @@ export class TimeEntriesReplication implements IReplicationStrategy<
               serverConflictState.timeSpent !== undefined
                 ? serverConflictState.timeSpent
                 : doc.timeSpent,
-            comments: serverConflictState.comments,
+            comments: serverConflictState.comments
+              ? serverConflictState.comments
+              : undefined,
             startDate: serverConflictState.startDate
               ? new Date(serverConflictState.startDate)
               : undefined,
@@ -398,7 +400,7 @@ export class TimeEntriesReplication implements IReplicationStrategy<
             },
             user: { id: assumedState.user.id, name: assumedState.user.name },
             timeSpent: assumedState.timeSpent,
-            comments: assumedState.comments,
+            comments: assumedState.comments ? assumedState.comments : undefined,
             startDate: assumedState.startDate
               ? new Date(assumedState.startDate)
               : undefined,

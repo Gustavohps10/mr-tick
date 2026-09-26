@@ -438,10 +438,11 @@ export function useTimeEntryMutations(
             ).toISOString()
           }
 
-          let resolvedComments = ''
+          let resolvedComments: string | null = null
           if (changes.comments !== undefined) {
             resolvedComments = changes.comments
-          } else if (draft.comments !== undefined) {
+          }
+          if (changes.comments === undefined && draft.comments !== undefined) {
             resolvedComments = draft.comments
           }
 
