@@ -1,6 +1,6 @@
 {
   "name": "@mr-tick/sdk",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Toolkit para o ecossistema Mr-tick.",
   "repository": {
     "type": "git",

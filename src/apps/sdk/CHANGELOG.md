@@ -1,5 +1,11 @@
 # @mr-tick/sdk
 
+## 0.5.0
+
+### Minor Changes
+
+- 82f3d48: Adiciona suporte ao tipo de campo 'mapping' no schema de configurações de addons, interfaces de MappingFieldDefinition e método getMappingFields em IDataSource, além da remoção de testConnection em favor de autenticação canônica.
+
 ## 0.4.1
 
 ### Patch Changes
