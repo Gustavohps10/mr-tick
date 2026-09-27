@@ -368,6 +368,7 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
                     variant="ghost"
                     size="sm"
                     className="h-7 gap-1.5 text-xs"
+                    data-testid={`configure-mapping-instance-btn-${conn.id}`}
                     onClick={() => setMappingTargetId(conn.id)}
                   >
                     <SlidersHorizontal className="h-3.5 w-3.5" />
