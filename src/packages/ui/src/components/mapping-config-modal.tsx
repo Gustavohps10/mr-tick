@@ -55,7 +55,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib/utils'
@@ -201,7 +201,7 @@ export function MappingConfigModal({
   const [importError, setImportError] = useState<string | null>(null)
   const [isCopied, setIsCopied] = useState(false)
 
-  const { data: fetchedFields = [] } = useQuery({
+  const { data: fetchedFields = [], isLoading } = useQuery({
     queryKey: [
       'addon-mapping-fields',
       addonId,
@@ -220,11 +220,14 @@ export function MappingConfigModal({
     },
     enabled:
       open && Boolean(addonId) && (!propFields || propFields.length === 0),
+    staleTime: 1000 * 60 * 5,
   })
 
   let fields: MappingFieldDefinition[] = []
   if (fetchedFields) fields = fetchedFields
   if (propFields && propFields.length > 0) fields = propFields
+
+  const isQueryLoading = isLoading && (!propFields || propFields.length === 0)
 
   useEffect(() => {
     if (!open) return
@@ -368,11 +371,11 @@ export function MappingConfigModal({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="flex max-h-[85vh] w-[95vw] max-w-4xl flex-col overflow-hidden sm:max-w-4xl"
+          className="flex max-h-[85vh] w-[95vw] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
           data-testid="mapping-config-dialog"
         >
-          <DialogHeader className="shrink-0">
-            <div className="flex items-center justify-between pr-6">
+          <DialogHeader className="shrink-0 border-b px-6 py-4">
+            <div className="flex items-center justify-between pr-8">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal className="text-primary h-5 w-5" />
                 <DialogTitle>Configurar Mapeamento</DialogTitle>
@@ -412,15 +415,53 @@ export function MappingConfigModal({
             </DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="min-h-0 flex-1 pr-3">
-            {fields.length === 0 ? (
-              <div className="py-8 text-center">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            {isQueryLoading ? (
+              <div
+                className="space-y-6"
+                data-testid="mapping-config-loading-skeleton"
+              >
+                {[1, 2].map((groupIndex) => (
+                  <div key={groupIndex} className="space-y-2">
+                    <div className="flex items-center gap-2 px-1">
+                      <Skeleton className="h-3.5 w-24 rounded" />
+                      <Skeleton className="h-4 w-5 rounded-full" />
+                    </div>
+                    <div className="space-y-1.5">
+                      {[1, 2, 3].map((itemIndex) => (
+                        <div
+                          key={itemIndex}
+                          className="bg-card/40 flex items-center justify-between gap-3 rounded-md border px-3 py-1.5"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Skeleton className="h-3.5 w-32 rounded" />
+                            <Skeleton className="h-3 w-40 rounded opacity-60" />
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2.5">
+                            <Skeleton className="h-7 w-28 rounded-md" />
+                            <div className="flex items-center gap-1">
+                              {[...Array(10)].map((_, i) => (
+                                <Skeleton
+                                  key={i}
+                                  className="h-4 w-4 rounded-full"
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : fields.length === 0 ? (
+              <div className="py-12 text-center">
                 <p className="text-muted-foreground text-sm">
                   Nenhum campo requer mapeamento para este addon.
                 </p>
               </div>
             ) : (
-              <div className="space-y-4 py-1 pr-1">
+              <div className="space-y-4">
                 {groupedFields.map((group) => (
                   <div key={group.category} className="space-y-1.5">
                     <div className="flex items-center gap-2 px-1 pt-1">
@@ -554,9 +595,9 @@ export function MappingConfigModal({
                 ))}
               </div>
             )}
-          </ScrollArea>
+          </div>
 
-          <DialogFooter className="flex shrink-0 justify-end gap-2 pt-2">
+          <DialogFooter className="bg-muted/20 flex shrink-0 items-center justify-end gap-2 border-t px-6 py-3">
             <Button
               type="button"
               variant="ghost"

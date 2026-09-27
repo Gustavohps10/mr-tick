@@ -278,4 +278,23 @@ describe('MappingConfigModal', () => {
     })
     expect(parseMappingValue(validJson)).toEqual(validObj)
   })
+
+  it('deve exibir o esqueleto de carregamento (skeleton) enquanto busca campos remotos', async () => {
+    // Retorna uma Promise que nunca resolve imediatamente para verificar o skeleton
+    mockGetMappingFields.mockReturnValueOnce(new Promise(() => {}))
+
+    const handleSave = vi.fn()
+    const handleOpenChange = vi.fn()
+
+    renderWithClient(
+      <MappingConfigModal
+        open={true}
+        onOpenChange={handleOpenChange}
+        addonId="datasource-fake"
+        onSave={handleSave}
+      />,
+    )
+
+    expect(screen.getByTestId('mapping-config-loading-skeleton')).toBeTruthy()
+  })
 })
