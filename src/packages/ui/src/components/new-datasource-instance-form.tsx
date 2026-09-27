@@ -10,8 +10,10 @@ import { AlertCircle, Loader2, PlugZap, Settings } from 'lucide-react'
 import React from 'react'
 import { FormProvider, useForm } from 'react-hook-form'
 
-import { Button, Input, Label } from '@/components/ui'
+import { Button, Label } from '@/components/ui'
 import { useHostBridge } from '@/hooks'
+
+import { AddonFieldRenderer } from './addons-manager/addon-field-renderer'
 
 export type FieldPrimitiveValue = string | number | boolean
 
@@ -95,6 +97,34 @@ export function NewDataSourceInstanceForm({
       connectionInstanceId,
     },
   })
+
+  React.useEffect(() => {
+    if (!schema) return
+    for (const tab of schema) {
+      if (tab.groups) {
+        for (const group of tab.groups) {
+          for (const field of group.fields) {
+            if (
+              field.defaultValue !== undefined &&
+              methods.getValues(field.id) === undefined
+            ) {
+              methods.setValue(field.id, field.defaultValue)
+            }
+          }
+        }
+      }
+      if (tab.fields) {
+        for (const field of tab.fields) {
+          if (
+            field.defaultValue !== undefined &&
+            methods.getValues(field.id) === undefined
+          ) {
+            methods.setValue(field.id, field.defaultValue)
+          }
+        }
+      }
+    }
+  }, [schema, methods])
 
   const handleFormSubmit = (values: Record<string, FieldPrimitiveValue>) => {
     const rawPluginId = values.pluginId ?? pluginId
@@ -190,51 +220,52 @@ export function NewDataSourceInstanceForm({
                     </p>
                   )}
                   {group.fields.map((field) => (
-                    <div key={field.id} className="space-y-1.5">
-                      <Label
-                        htmlFor={`${tab.id}-${field.id}`}
-                        className="text-xs"
-                      >
-                        {field.label || field.id}
-                      </Label>
-                      <Input
-                        id={`${tab.id}-${field.id}`}
-                        type={field.type === 'password' ? 'password' : 'text'}
-                        placeholder={field.placeholder}
-                        {...methods.register(`${field.id}`, {
-                          required: field.required,
-                        })}
-                      />
-                      {field.description && (
-                        <p className="text-muted-foreground text-[10px]">
-                          {field.description}
-                        </p>
-                      )}
-                    </div>
+                    <AddonFieldRenderer
+                      key={field.id}
+                      field={field}
+                      addonId={pluginId}
+                      value={
+                        methods.watch(field.id) !== undefined
+                          ? methods.watch(field.id)
+                          : (field.defaultValue ?? '')
+                      }
+                      onChange={(fieldId, val) => {
+                        if (val === null) {
+                          methods.setValue(fieldId, '')
+                          return
+                        }
+                        methods.setValue(fieldId, val, {
+                          shouldValidate: true,
+                          shouldDirty: true,
+                        })
+                      }}
+                    />
                   ))}
                 </div>
               ))}
 
               {/* Se a tab tem campos diretos ao invés de grupos */}
               {tab.fields?.map((field) => (
-                <div key={field.id} className="space-y-1.5">
-                  <Label htmlFor={`${tab.id}-${field.id}`} className="text-xs">
-                    {field.label || field.id}
-                  </Label>
-                  <Input
-                    id={`${tab.id}-${field.id}`}
-                    type={field.type === 'password' ? 'password' : 'text'}
-                    placeholder={field.placeholder}
-                    {...methods.register(`${field.id}`, {
-                      required: field.required,
-                    })}
-                  />
-                  {field.description && (
-                    <p className="text-muted-foreground text-[10px]">
-                      {field.description}
-                    </p>
-                  )}
-                </div>
+                <AddonFieldRenderer
+                  key={field.id}
+                  field={field}
+                  addonId={pluginId}
+                  value={
+                    methods.watch(field.id) !== undefined
+                      ? methods.watch(field.id)
+                      : (field.defaultValue ?? '')
+                  }
+                  onChange={(fieldId, val) => {
+                    if (val === null) {
+                      methods.setValue(fieldId, '')
+                      return
+                    }
+                    methods.setValue(fieldId, val, {
+                      shouldValidate: true,
+                      shouldDirty: true,
+                    })
+                  }}
+                />
               ))}
             </div>
           </div>
