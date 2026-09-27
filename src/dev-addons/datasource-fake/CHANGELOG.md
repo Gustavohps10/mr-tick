@@ -1,5 +1,11 @@
 ﻿# @mr-tick/datasource-fake
 
+## 1.0.5
+
+### Patch Changes
+
+- c43679a: Sincroniza automaticamente a versão e requiredApiVersion do manifest de dev-addons com a versão do package.json do SDK e torna dinâmicas as asserções de testes E2E com a versão do aplicativo em runtime.
+
 ## 1.0.4
 
 ### Patch Changes
