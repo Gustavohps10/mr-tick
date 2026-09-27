@@ -3,8 +3,10 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -64,6 +66,64 @@ function ensureSeedWorkspaces(): void {
   copyFileSync(seedPath, targetWorkspacesFile)
 }
 
+function syncDevAddonManifest(addonDir: string): void {
+  const manifestPath = join(addonDir, 'manifest.yaml')
+  if (!existsSync(manifestPath)) return
+
+  const desktopPkgPath = resolve(desktopRoot, 'package.json')
+  const addonPkgPath = join(addonDir, 'package.json')
+
+  let appVersion: string | null = null
+  let addonVersion: string | null = null
+
+  if (existsSync(desktopPkgPath)) {
+    try {
+      const raw = readFileSync(desktopPkgPath, 'utf-8')
+      const match = raw.match(/"version"\s*:\s*"([^"]+)"/)
+      if (match && match[1]) appVersion = match[1].trim()
+    } catch {
+      // silencia
+    }
+  }
+
+  if (existsSync(addonPkgPath)) {
+    try {
+      const raw = readFileSync(addonPkgPath, 'utf-8')
+      const match = raw.match(/"version"\s*:\s*"([^"]+)"/)
+      if (match && match[1]) addonVersion = match[1].trim()
+    } catch {
+      // silencia
+    }
+  }
+
+  if (!appVersion && !addonVersion) return
+
+  try {
+    const content = readFileSync(manifestPath, 'utf-8')
+    let updatedContent = content
+
+    if (addonVersion) {
+      updatedContent = updatedContent.replace(
+        /(version:\s*)['"]?[^'"\r\n]+['"]?/,
+        `$1${addonVersion}`,
+      )
+    }
+
+    if (appVersion) {
+      updatedContent = updatedContent.replace(
+        /(requiredApiVersion:\s*)['"]?[^'"\r\n]+['"]?/,
+        `$1'>=${appVersion}'`,
+      )
+    }
+
+    if (updatedContent === content) return
+
+    writeFileSync(manifestPath, updatedContent, 'utf-8')
+  } catch {
+    // silencia
+  }
+}
+
 function ensureTestAddon(): void {
   const userDataPath = getElectronUserDataPath()
   const addonsDir = join(userDataPath, 'addons')
@@ -74,6 +134,8 @@ function ensureTestAddon(): void {
   )
 
   if (!existsSync(sourceAddonDir)) return
+
+  syncDevAddonManifest(sourceAddonDir)
 
   mkdirSync(addonsDir, { recursive: true })
 

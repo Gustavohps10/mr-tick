@@ -5,8 +5,13 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
     electronApp,
     page,
   }) => {
-    // 1. Sobrescreve o handler IPC no processo Main do Electron para retornar catálogo de teste
-    await electronApp.evaluate(({ ipcMain }) => {
+    // 1. Obtém a versão atual do app e sobrescreve o handler IPC no processo Main do Electron para retornar catálogo de teste
+    const currentAppVersion = await electronApp.evaluate(({ app }) =>
+      app.getVersion(),
+    )
+
+    await electronApp.evaluate(({ ipcMain, app }) => {
+      const currentVersion = app.getVersion()
       ipcMain.removeHandler('ADDONS_LIST_AVAILABLE')
       ipcMain.handle('ADDONS_LIST_AVAILABLE', async () => ({
         isSuccess: true,
@@ -45,12 +50,12 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
           {
             id: 'test-multi-version-addon',
             name: 'Plugin Híbrido E2E',
-            version: '0.4.0',
+            version: currentVersion,
             categories: ['dataSource'],
             author: 'E2E Tester',
             description: 'Plugin com versões legadas e compatíveis',
-            downloadUrl: 'https://example.com/hybrid-0.4.0.tladdon',
-            requiredApiVersion: '>=0.4.0',
+            downloadUrl: `https://example.com/hybrid-${currentVersion}.tladdon`,
+            requiredApiVersion: `>=${currentVersion}`,
             packages: [
               {
                 version: '0.1.0',
@@ -60,11 +65,13 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
                 changelog: ['Versão legada incompatível (>=0.1.0)'],
               },
               {
-                version: '0.4.0',
-                requiredApiVersion: '>=0.4.0',
+                version: currentVersion,
+                requiredApiVersion: `>=${currentVersion}`,
                 releaseDate: '2026-09-24',
-                downloadUrl: 'https://example.com/hybrid-0.4.0.tladdon',
-                changelog: ['Versão compatível com API atual (>=0.4.0)'],
+                downloadUrl: `https://example.com/hybrid-${currentVersion}.tladdon`,
+                changelog: [
+                  `Versão compatível com API atual (>=${currentVersion})`,
+                ],
               },
             ],
           },
@@ -140,9 +147,9 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
     // Valida que o pacote incompatível (v0.1.0) exibe a badge "Incompatível"
     await expect(incompatibleBadge.first()).toBeVisible({ timeout: 5000 })
 
-    // Valida que a versão compatível (v0.4.0) foi selecionada automaticamente e o botão fica habilitado para ela
+    // Valida que a versão compatível foi selecionada automaticamente e o botão fica habilitado para ela
     await expect(confirmInstallBtn).toBeEnabled()
-    await expect(confirmInstallBtn).toContainText('v0.4.0')
+    await expect(confirmInstallBtn).toContainText(`v${currentAppVersion}`)
 
     // Tenta clicar no card incompatível (v0.1.0) e garante que a seleção NÃO muda
     const incompatibleCard = page.locator(
@@ -151,7 +158,7 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
     await expect(incompatibleCard).toBeVisible()
     await incompatibleCard.click({ force: true })
 
-    // O botão ainda deve manter v0.4.0 selecionado e não v0.1.0
-    await expect(confirmInstallBtn).toContainText('v0.4.0')
+    // O botão ainda deve manter a versão compatível selecionada e não v0.1.0
+    await expect(confirmInstallBtn).toContainText(`v${currentAppVersion}`)
   })
 })

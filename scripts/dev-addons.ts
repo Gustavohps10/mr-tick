@@ -8,6 +8,7 @@ import {
   rmdirSync,
   symlinkSync,
   unlinkSync,
+  writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -110,21 +111,78 @@ function checkIsLinked(targetPath: string, expectedSource: string): boolean {
   }
 }
 
-export function scanDevAddons(): DevAddonInfo[] {
-  if (!existsSync(devAddonsDir)) {
-    return []
+function getPackageVersion(packageJsonPath: string): string | null {
+  if (!existsSync(packageJsonPath)) return null
+  try {
+    const raw = readFileSync(packageJsonPath, 'utf-8')
+    const match = raw.match(/"version"\s*:\s*"([^"]+)"/)
+    if (match && match[1]) return match[1].trim()
+    return null
+  } catch {
+    return null
   }
+}
+
+function getMonorepoSdkVersion(): string | null {
+  const sdkPkgPath = join(repoRoot, 'src', 'apps', 'sdk', 'package.json')
+  return getPackageVersion(sdkPkgPath)
+}
+
+export function syncDevAddonManifest(sourcePath: string): void {
+  const manifestPath = join(sourcePath, 'manifest.yaml')
+  if (!existsSync(manifestPath)) return
+
+  const pkgJsonPath = join(sourcePath, 'package.json')
+  const addonVersion = getPackageVersion(pkgJsonPath)
+  const sdkVersion = getMonorepoSdkVersion()
+
+  if (!sdkVersion && !addonVersion) return
+
+  try {
+    const content = readFileSync(manifestPath, 'utf-8')
+    let updatedContent = content
+
+    if (addonVersion) {
+      updatedContent = updatedContent.replace(
+        /(version:\s*)['"]?[^'"\r\n]+['"]?/,
+        `$1${addonVersion}`,
+      )
+    }
+
+    if (sdkVersion) {
+      updatedContent = updatedContent.replace(
+        /(requiredApiVersion:\s*)['"]?[^'"\r\n]+['"]?/,
+        `$1'>=${sdkVersion}'`,
+      )
+    }
+
+    if (updatedContent === content) return
+
+    writeFileSync(manifestPath, updatedContent, 'utf-8')
+    console.log(
+      `🔄 Manifesto sincronizado automaticamente em ${manifestPath} (version: ${addonVersion}, requiredApiVersion: >=${sdkVersion})`,
+    )
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.warn(
+      `⚠️ Não foi possível sincronizar o manifesto de ${sourcePath}:`,
+      message,
+    )
+  }
+}
+
+export function scanDevAddons(): DevAddonInfo[] {
+  if (!existsSync(devAddonsDir)) return []
 
   const addonsDir = resolveMrTickAddonsDir()
   const entries = readdirSync(devAddonsDir, { withFileTypes: true })
   const result: DevAddonInfo[] = []
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue
-    }
+    if (!entry.isDirectory()) continue
 
     const sourcePath = join(devAddonsDir, entry.name)
+    syncDevAddonManifest(sourcePath)
     const manifestPath = join(sourcePath, 'manifest.yaml')
     const manifest = parseManifest(manifestPath)
 
