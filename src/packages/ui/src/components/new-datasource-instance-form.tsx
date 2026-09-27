@@ -224,65 +224,73 @@ export function NewDataSourceInstanceForm({
 
             <div className="ml-2 grid gap-4 border-l-2 pl-4">
               {/* Se a tab tem grupos */}
-              {tab.groups?.map((group) => (
-                <div key={group.id} className="space-y-3">
-                  <div>
-                    <Label className="text-foreground/90 text-sm font-medium">
-                      {group.label}
-                    </Label>
-                    {group.description && (
-                      <p className="text-muted-foreground text-xs">
-                        {group.description}
-                      </p>
-                    )}
+              {tab.groups
+                ?.filter((group) =>
+                  group.fields.some((field) => field.type !== 'mapping'),
+                )
+                .map((group) => (
+                  <div key={group.id} className="space-y-3">
+                    <div>
+                      <Label className="text-foreground/90 text-sm font-medium">
+                        {group.label}
+                      </Label>
+                      {group.description && (
+                        <p className="text-muted-foreground text-xs">
+                          {group.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="grid gap-3">
+                      {group.fields
+                        .filter((field) => field.type !== 'mapping')
+                        .map((field) => (
+                          <AddonFieldRenderer
+                            key={field.id}
+                            field={field}
+                            addonId={pluginId}
+                            value={methods.watch(field.id)}
+                            onChange={(fieldId, val) => {
+                              const parsedVal =
+                                typeof val === 'string' ||
+                                typeof val === 'number' ||
+                                typeof val === 'boolean'
+                                  ? val
+                                  : ''
+                              methods.setValue(fieldId, parsedVal, {
+                                shouldValidate: true,
+                                shouldDirty: true,
+                              })
+                            }}
+                          />
+                        ))}
+                    </div>
                   </div>
-                  <div className="grid gap-3">
-                    {group.fields.map((field) => (
-                      <AddonFieldRenderer
-                        key={field.id}
-                        field={field}
-                        addonId={pluginId}
-                        value={methods.watch(field.id)}
-                        onChange={(fieldId, val) => {
-                          const parsedVal =
-                            typeof val === 'string' ||
-                            typeof val === 'number' ||
-                            typeof val === 'boolean'
-                              ? val
-                              : ''
-                          methods.setValue(fieldId, parsedVal, {
-                            shouldValidate: true,
-                            shouldDirty: true,
-                          })
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
+                ))}
 
               {/* Se a tab tem campos diretos sem grupo */}
-              {tab.fields?.map((field) => (
-                <div key={field.id}>
-                  <AddonFieldRenderer
-                    field={field}
-                    addonId={pluginId}
-                    value={methods.watch(field.id)}
-                    onChange={(fieldId, val) => {
-                      const parsedVal =
-                        typeof val === 'string' ||
-                        typeof val === 'number' ||
-                        typeof val === 'boolean'
-                          ? val
-                          : ''
-                      methods.setValue(fieldId, parsedVal, {
-                        shouldValidate: true,
-                        shouldDirty: true,
-                      })
-                    }}
-                  />
-                </div>
-              ))}
+              {tab.fields
+                ?.filter((field) => field.type !== 'mapping')
+                .map((field) => (
+                  <div key={field.id}>
+                    <AddonFieldRenderer
+                      field={field}
+                      addonId={pluginId}
+                      value={methods.watch(field.id)}
+                      onChange={(fieldId, val) => {
+                        const parsedVal =
+                          typeof val === 'string' ||
+                          typeof val === 'number' ||
+                          typeof val === 'boolean'
+                            ? val
+                            : ''
+                        methods.setValue(fieldId, parsedVal, {
+                          shouldValidate: true,
+                          shouldDirty: true,
+                        })
+                      }}
+                    />
+                  </div>
+                ))}
             </div>
           </div>
         ))}

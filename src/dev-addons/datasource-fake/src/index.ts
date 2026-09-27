@@ -14,7 +14,6 @@ import { FakeTimeEntryProvider } from './FakeTimeEntryProvider'
 
 const configFields: {
   credentials: AddonSettingsGroup[]
-  configuration: AddonSettingsGroup[]
 } = {
   credentials: [
     {
@@ -47,58 +46,6 @@ const configFields: {
       ],
     },
   ],
-  configuration: [
-    {
-      id: 'config_group',
-      label: 'Parâmetros de Teste',
-      description: 'Opções de comportamento da instância fake.',
-      fields: [
-        {
-          id: 'syncInterval',
-          type: 'number',
-          label: 'Intervalo de Sync (Minutos)',
-          placeholder: '5',
-          defaultValue: 5,
-        },
-      ],
-    },
-    {
-      id: 'mapping_group',
-      label: 'Mapeamento de Campos e Status',
-      description: 'Mapeamentos específicos da organização para sincronização.',
-      fields: [
-        {
-          id: 'defaultTaskStatus',
-          type: 'select',
-          label: 'Status Padrão de Tarefas',
-          placeholder: 'Selecione o status padrão',
-          defaultValue: 'in_progress',
-          options: [
-            { label: 'Novo', value: 'new' },
-            { label: 'Em Andamento', value: 'in_progress' },
-            { label: 'Concluído', value: 'done' },
-          ],
-        },
-        {
-          id: 'completedTaskStatus',
-          type: 'select',
-          label: 'Status de Tarefa Concluída',
-          placeholder: 'Selecione o status de conclusão',
-          defaultValue: 'done',
-          options: [
-            { label: 'Concluído', value: 'done' },
-            { label: 'Fechado', value: 'closed' },
-          ],
-        },
-        {
-          id: 'statusMapping',
-          type: 'mapping',
-          label: 'Mapeamento de Status e Cores',
-          description: 'Personalize os ícones e cores para cada status remoto.',
-        },
-      ],
-    },
-  ],
 }
 
 export const FakeDataSource: IDataSource = {
@@ -107,11 +54,6 @@ export const FakeDataSource: IDataSource = {
       id: 'credentials',
       label: 'Credenciais',
       groups: configFields.credentials,
-    },
-    {
-      id: 'configuration',
-      label: 'Configurações',
-      groups: configFields.configuration,
     },
   ],
   getMappingFields: async () => new FakeMetadataProvider().getMappingFields(),

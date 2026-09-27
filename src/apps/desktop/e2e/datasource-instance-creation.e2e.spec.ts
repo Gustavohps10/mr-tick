@@ -40,17 +40,17 @@ test.describe('E2E - Criação de Instâncias de Data Source com Schema Dinâmic
     await expect(addInstanceBtn).toBeVisible({ timeout: 10000 })
     await addInstanceBtn.click()
 
-    // 6. Valida renderização dinâmica do formulário baseada no schema do SDK
+    // 6. Valida renderização dinâmica do formulário: apenas credenciais essenciais de autenticação
     const credentialsGroupLabel = page.getByText('Autenticação Simulada (Fake)')
     await expect(credentialsGroupLabel).toBeVisible({ timeout: 10000 })
 
-    const configGroupLabel = page.getByText('Parâmetros de Teste')
-    await expect(configGroupLabel).toBeVisible({ timeout: 10000 })
+    // Valida que grupos de mapeamento e parâmetros desnecessários NÃO estão presentes
+    await expect(page.getByText('Parâmetros de Teste')).not.toBeVisible()
+    await expect(
+      page.getByText('Mapeamento de Campos e Status'),
+    ).not.toBeVisible()
 
-    const mappingGroupLabel = page.getByText('Mapeamento de Campos e Status')
-    await expect(mappingGroupLabel).toBeVisible({ timeout: 10000 })
-
-    // Valida que os campos gerados pelo AddonFieldRenderer existem com os tipos e defaults corretos
+    // Valida que apenas os campos de conexão existem com os tipos e defaults corretos
     const serverUrlInput = page.locator(
       '[data-testid="addon-field-input-serverUrl"]',
     )
@@ -70,115 +70,15 @@ test.describe('E2E - Criação de Instâncias de Data Source com Schema Dinâmic
     await expect(passwordInput).toHaveAttribute('type', 'password')
     await expect(passwordInput).toHaveValue('123')
 
-    const syncIntervalInput = page.locator(
-      '[data-testid="addon-field-input-syncInterval"]',
-    )
-    await expect(syncIntervalInput).toBeVisible({ timeout: 5000 })
-    await expect(syncIntervalInput).toHaveAttribute('type', 'number')
-    await expect(syncIntervalInput).toHaveValue('5')
-
-    // 7. Valida botão de configuração de mapeamento visual (field.type === 'mapping')
-    const configureMappingBtn = page.locator(
-      '[data-testid="configure-mapping-statusMapping-btn"]',
-    )
-    await expect(configureMappingBtn).toBeVisible({ timeout: 5000 })
-    await configureMappingBtn.click()
-
-    // 8. Valida abertura do Modal de Mapeamento com os campos do FakeMetadataProvider
-    const mappingDialog = page.locator('[data-testid="mapping-config-dialog"]')
-    await expect(mappingDialog).toBeVisible({ timeout: 5000 })
-
-    const backlogField = page.locator(
-      '[data-testid="mapping-field-item-backlog"]',
-    )
-    await expect(backlogField).toBeVisible({ timeout: 5000 })
+    // Valida que syncInterval e botões de mapeamento NÃO existem no modal de conexão
     await expect(
-      page.locator('[data-testid="mapping-field-item-in_progress"]'),
-    ).toBeVisible({ timeout: 5000 })
+      page.locator('[data-testid="addon-field-input-syncInterval"]'),
+    ).not.toBeVisible()
     await expect(
-      page.locator('[data-testid="mapping-field-item-done"]'),
-    ).toBeVisible({ timeout: 5000 })
+      page.locator('[data-testid="configure-mapping-statusMapping-btn"]'),
+    ).not.toBeVisible()
 
-    // 9. Seleciona cor visualmente para o status "backlog" (vermelho #ef4444)
-    const redColorBtn = page.locator(
-      '[data-testid="color-btn-backlog-#ef4444"]',
-    )
-    await expect(redColorBtn).toBeVisible({ timeout: 5000 })
-    await redColorBtn.click()
-
-    // 10. Testa fluxo de Exportar Preset JSON de dentro do Modal de Mapeamento
-    const modalExportBtn = page.locator(
-      '[data-testid="modal-export-preset-btn"]',
-    )
-    await expect(modalExportBtn).toBeVisible({ timeout: 5000 })
-    await modalExportBtn.click()
-
-    const exportPresetDialog = page.locator(
-      '[data-testid="modal-export-preset-dialog"]',
-    )
-    await expect(exportPresetDialog).toBeVisible({ timeout: 5000 })
-
-    const exportTextarea = page.locator(
-      '[data-testid="modal-export-preset-textarea"]',
-    )
-    await expect(exportTextarea).toBeVisible({ timeout: 5000 })
-    const exportedJson = await exportTextarea.inputValue()
-    expect(exportedJson).toContain('"backlog"')
-    expect(exportedJson).toContain('"#ef4444"')
-    // Credenciais sensíveis nunca devem estar presentes no preset
-    expect(exportedJson).not.toContain('123')
-    expect(exportedJson).not.toContain('Admin')
-
-    await page.getByRole('button', { name: 'Concluir' }).click()
-    await expect(exportPresetDialog).not.toBeVisible({ timeout: 5000 })
-
-    // 11. Testa fluxo de Importar Preset JSON de dentro do Modal de Mapeamento
-    const modalImportBtn = page.locator(
-      '[data-testid="modal-import-preset-btn"]',
-    )
-    await expect(modalImportBtn).toBeVisible({ timeout: 5000 })
-    await modalImportBtn.click()
-
-    const importPresetDialog = page.locator(
-      '[data-testid="modal-import-preset-dialog"]',
-    )
-    await expect(importPresetDialog).toBeVisible({ timeout: 5000 })
-
-    const importTextarea = page.locator(
-      '[data-testid="modal-import-preset-textarea"]',
-    )
-    await expect(importTextarea).toBeVisible({ timeout: 5000 })
-
-    const teamSharedMapping = JSON.stringify({
-      mapping: {
-        backlog: { icon: 'Clock', color: '#ec4899' },
-        in_progress: { icon: 'Zap', color: '#3b82f6' },
-        done: { icon: 'CheckCircle2', color: '#22c55e' },
-      },
-    })
-
-    await importTextarea.fill(teamSharedMapping)
-    const applyPresetBtn = page.locator(
-      '[data-testid="modal-apply-preset-btn"]',
-    )
-    await applyPresetBtn.click()
-    await expect(importPresetDialog).not.toBeVisible({ timeout: 5000 })
-
-    // 12. Salva o mapeamento configurado no modal
-    const saveMappingBtn = page.locator(
-      '[data-testid="modal-save-mapping-btn"]',
-    )
-    await expect(saveMappingBtn).toBeVisible({ timeout: 5000 })
-    await saveMappingBtn.click()
-    await expect(mappingDialog).not.toBeVisible({ timeout: 5000 })
-
-    // Valida que o badge de campos mapeados aparece
-    const mappingBadge = page.locator(
-      '[data-testid="mapping-badge-statusMapping"]',
-    )
-    await expect(mappingBadge).toBeVisible({ timeout: 5000 })
-
-    // 13. Clica no botão determinístico "Conectar" gerado pelo form
+    // 8. Clica no botão determinístico "Conectar" gerado pelo form
     const connectSubmitBtn = page.locator(
       '[data-testid="datasource-instance-connect-btn"]',
     )
@@ -186,7 +86,7 @@ test.describe('E2E - Criação de Instâncias de Data Source com Schema Dinâmic
     await connectSubmitBtn.scrollIntoViewIfNeeded()
     await connectSubmitBtn.click()
 
-    // 14. Valida fechamento do modal e persistência da instância conectada
+    // 9. Valida fechamento do modal e persistência da instância conectada
     await expect(serverUrlInput).not.toBeVisible({ timeout: 15000 })
 
     const connectedMemberLogin = page

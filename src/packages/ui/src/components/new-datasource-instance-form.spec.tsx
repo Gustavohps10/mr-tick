@@ -439,12 +439,17 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din�
     }
   })
 
-  it('deve renderizar campo do tipo mapping e permitir abrir modal de mapeamento', async () => {
+  it('deve omitir campos do tipo mapping para manter o modal de conexao focado em credenciais', async () => {
     const schemaWithMapping: AddonSettingsTab[] = [
       {
         id: 'configuration',
         label: 'Configurações',
         fields: [
+          {
+            id: 'serverUrl',
+            type: 'text',
+            label: 'URL do Servidor',
+          },
           {
             id: 'statusMapping',
             type: 'mapping',
@@ -473,17 +478,13 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din�
     )
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId('configure-mapping-statusMapping-btn'),
-      ).toBeTruthy()
-      expect(screen.getByText('Mapeamento de Status e Cores')).toBeTruthy()
+      expect(screen.getByText('URL do Servidor')).toBeTruthy()
     })
 
-    // Clica no botão Configurar Mapeamento
-    fireEvent.click(screen.getByTestId('configure-mapping-statusMapping-btn'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('mapping-config-dialog')).toBeTruthy()
-    })
+    // Campo de mapping nunca deve estar presente no formulário de conexão
+    expect(
+      screen.queryByTestId('configure-mapping-statusMapping-btn'),
+    ).toBeNull()
+    expect(screen.queryByText('Mapeamento de Status e Cores')).toBeNull()
   })
 })
