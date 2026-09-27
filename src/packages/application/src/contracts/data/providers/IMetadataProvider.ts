@@ -5,7 +5,8 @@ import { MetadataDTO } from '@/dtos'
 export interface MappingFieldDefinition {
   id: string
   name: string
-  category: 'status' | 'activity' | 'priority' | 'tracker' | 'custom'
+  category: string
+  categoryLabel?: string
   defaultIcon?: string
   defaultColor?: string
   description?: string

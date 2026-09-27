@@ -38,7 +38,7 @@ import {
   XCircle,
   Zap,
 } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -232,6 +232,46 @@ export function MappingConfigModal({
     setMappings(initialMappings)
   }, [open, value])
 
+  const groupedFields = useMemo(() => {
+    const groupMap = new Map<
+      string,
+      { label: string; fields: MappingFieldDefinition[] }
+    >()
+
+    for (const field of fields) {
+      const categoryKey = field.category || 'outros'
+      const existing = groupMap.get(categoryKey)
+      if (existing) {
+        existing.fields.push(field)
+        if (!existing.label && field.categoryLabel) {
+          existing.label = field.categoryLabel
+        }
+      } else {
+        const initialLabel = field.categoryLabel || categoryKey
+        groupMap.set(categoryKey, {
+          label: initialLabel,
+          fields: [field],
+        })
+      }
+    }
+
+    const groups: {
+      category: string
+      label: string
+      fields: MappingFieldDefinition[]
+    }[] = []
+
+    for (const [categoryKey, data] of groupMap.entries()) {
+      groups.push({
+        category: categoryKey,
+        label: data.label,
+        fields: data.fields,
+      })
+    }
+
+    return groups
+  }, [fields])
+
   const getResolvedFieldMapping = (
     field: MappingFieldDefinition,
   ): ConfiguredFieldMapping => {
@@ -380,125 +420,138 @@ export function MappingConfigModal({
                 </p>
               </div>
             ) : (
-              <div className="space-y-3 py-2">
-                {fields.map((field) => {
-                  const currentMapping = getResolvedFieldMapping(field)
-
-                  return (
-                    <div
-                      key={field.id}
-                      data-testid={`mapping-field-item-${field.id}`}
-                      className="bg-card/50 flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">
-                            {field.name}
-                          </span>
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px] font-normal uppercase"
-                          >
-                            {field.category}
-                          </Badge>
-                        </div>
-                        {field.description && (
-                          <p className="text-muted-foreground text-xs">
-                            {field.description}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-4">
-                        {/* Seletor Visual de Ícones */}
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              data-testid={`mapping-icon-picker-${field.id}`}
-                              className="h-8 gap-2 px-2.5 text-xs"
-                            >
-                              <DynamicIcon
-                                name={currentMapping.icon}
-                                className="h-4 w-4"
-                                color={currentMapping.color}
-                              />
-                              <span className="font-mono text-[11px]">
-                                {currentMapping.icon}
-                              </span>
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="w-64 p-2"
-                            data-testid={`mapping-icon-popover-${field.id}`}
-                          >
-                            <p className="text-muted-foreground mb-2 text-xs font-medium">
-                              Selecione um ícone:
-                            </p>
-                            <div className="grid grid-cols-6 gap-1">
-                              {Object.keys(AVAILABLE_ICONS).map((iconName) => (
-                                <Button
-                                  key={iconName}
-                                  type="button"
-                                  variant={
-                                    currentMapping.icon === iconName
-                                      ? 'secondary'
-                                      : 'ghost'
-                                  }
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  data-testid={`icon-option-${field.id}-${iconName}`}
-                                  onClick={() =>
-                                    handleUpdateIcon(field.id, iconName)
-                                  }
-                                >
-                                  <DynamicIcon
-                                    name={iconName}
-                                    className="h-4 w-4"
-                                    color={currentMapping.color}
-                                  />
-                                </Button>
-                              ))}
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-
-                        {/* Paleta Visual de Cores */}
-                        <div
-                          className="flex items-center gap-1.5"
-                          data-testid={`mapping-color-palette-${field.id}`}
-                        >
-                          {AVAILABLE_COLORS.map((c) => {
-                            const isSelected = currentMapping.color === c.value
-                            return (
-                              <button
-                                key={c.value}
-                                type="button"
-                                title={c.label}
-                                data-testid={`color-btn-${field.id}-${c.value}`}
-                                onClick={() =>
-                                  handleUpdateColor(field.id, c.value)
-                                }
-                                className={cn(
-                                  'flex h-5 w-5 items-center justify-center rounded-full transition-transform hover:scale-110',
-                                  isSelected &&
-                                    'ring-primary ring-2 ring-offset-2',
-                                )}
-                                style={{ backgroundColor: c.value }}
-                              >
-                                {isSelected && (
-                                  <Check className="h-3 w-3 text-white drop-shadow" />
-                                )}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
+              <div className="space-y-4 py-1">
+                {groupedFields.map((group) => (
+                  <div key={group.category} className="space-y-1.5">
+                    <div className="flex items-center gap-2 px-1 pt-1">
+                      <span className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
+                        {group.label}
+                      </span>
+                      <Badge
+                        variant="secondary"
+                        className="h-4 px-1.5 text-[10px] font-normal"
+                      >
+                        {group.fields.length}
+                      </Badge>
                     </div>
-                  )
-                })}
+
+                    <div className="space-y-1">
+                      {group.fields.map((field) => {
+                        const currentMapping = getResolvedFieldMapping(field)
+
+                        return (
+                          <div
+                            key={field.id}
+                            data-testid={`mapping-field-item-${field.id}`}
+                            className="bg-card/40 hover:bg-card/70 flex items-center justify-between gap-3 rounded-md border px-3 py-1.5 transition-colors"
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="text-foreground truncate text-xs font-medium">
+                                {field.name}
+                              </span>
+                              {field.description && (
+                                <span className="text-muted-foreground/70 hidden truncate text-[11px] sm:inline">
+                                  — {field.description}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex shrink-0 items-center gap-2.5">
+                              {/* Seletor Visual de Ícones */}
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    data-testid={`mapping-icon-picker-${field.id}`}
+                                    className="h-7 gap-1.5 px-2 text-xs"
+                                  >
+                                    <DynamicIcon
+                                      name={currentMapping.icon}
+                                      className="h-3.5 w-3.5"
+                                      color={currentMapping.color}
+                                    />
+                                    <span className="text-muted-foreground font-mono text-[10px]">
+                                      {currentMapping.icon}
+                                    </span>
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  className="w-64 p-2"
+                                  data-testid={`mapping-icon-popover-${field.id}`}
+                                >
+                                  <p className="text-muted-foreground mb-2 text-xs font-medium">
+                                    Selecione um ícone:
+                                  </p>
+                                  <div className="grid grid-cols-6 gap-1">
+                                    {Object.keys(AVAILABLE_ICONS).map(
+                                      (iconName) => (
+                                        <Button
+                                          key={iconName}
+                                          type="button"
+                                          variant={
+                                            currentMapping.icon === iconName
+                                              ? 'secondary'
+                                              : 'ghost'
+                                          }
+                                          size="icon"
+                                          className="h-8 w-8"
+                                          data-testid={`icon-option-${field.id}-${iconName}`}
+                                          onClick={() =>
+                                            handleUpdateIcon(field.id, iconName)
+                                          }
+                                        >
+                                          <DynamicIcon
+                                            name={iconName}
+                                            className="h-4 w-4"
+                                            color={currentMapping.color}
+                                          />
+                                        </Button>
+                                      ),
+                                    )}
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+
+                              {/* Paleta Visual de Cores */}
+                              <div
+                                className="flex items-center gap-1"
+                                data-testid={`mapping-color-palette-${field.id}`}
+                              >
+                                {AVAILABLE_COLORS.map((c) => {
+                                  const isSelected =
+                                    currentMapping.color === c.value
+                                  return (
+                                    <button
+                                      key={c.value}
+                                      type="button"
+                                      title={c.label}
+                                      data-testid={`color-btn-${field.id}-${c.value}`}
+                                      onClick={() =>
+                                        handleUpdateColor(field.id, c.value)
+                                      }
+                                      className={cn(
+                                        'flex h-4 w-4 items-center justify-center rounded-full transition-transform hover:scale-125',
+                                        isSelected &&
+                                          'ring-primary ring-1.5 ring-offset-1',
+                                      )}
+                                      style={{ backgroundColor: c.value }}
+                                    >
+                                      {isSelected && (
+                                        <Check className="h-2.5 w-2.5 text-white drop-shadow" />
+                                      )}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </ScrollArea>
