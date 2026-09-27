@@ -1,5 +1,11 @@
 ﻿# @mr-tick/desktop
 
+## 0.5.1
+
+### Patch Changes
+
+- c43679a: Sincroniza automaticamente a versão e requiredApiVersion do manifest de dev-addons com a versão do package.json do SDK e torna dinâmicas as asserções de testes E2E com a versão do aplicativo em runtime.
+
 ## 0.5.0
 
 ### Minor Changes
