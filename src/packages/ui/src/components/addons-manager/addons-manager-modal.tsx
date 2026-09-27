@@ -272,6 +272,7 @@ export function AddonsManagerModal({
     const isSelected = activeSection === id && !activeCategory
     return (
       <button
+        data-testid={`addons-manager-tab-${id}`}
         onClick={() => handleSelectSection(id)}
         className={cn(
           'flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-colors',
@@ -292,6 +293,7 @@ export function AddonsManagerModal({
     return (
       <button
         key={categoryItem.id}
+        data-testid={`addons-manager-category-${categoryItem.id}`}
         onClick={() => handleSelectSection('settings', categoryItem.id)}
         className={cn(
           'flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-colors',
@@ -392,6 +394,7 @@ export function AddonsManagerModal({
                 return (
                   <button
                     key={addon.id}
+                    data-testid={`addon-browse-card-${addon.id}`}
                     onClick={() => setSelectedAddonId(addon.id)}
                     className={cn(
                       'flex w-full cursor-pointer items-start gap-3 rounded-lg border p-3 text-left transition-all',
@@ -561,6 +564,7 @@ export function AddonsManagerModal({
                       </div>
                     ) : (
                       <Button
+                        data-testid="addon-details-install-btn"
                         size="sm"
                         onClick={() => handleOpenInstall(activeBrowseAddon)}
                         className="cursor-pointer gap-1.5 px-4 font-semibold"
@@ -660,6 +664,7 @@ export function AddonsManagerModal({
               {addonsInCat.map((addon) => (
                 <button
                   key={addon.id}
+                  data-testid={`addon-settings-item-${addon.id}`}
                   onClick={() => setSelectedAddonId(addon.id)}
                   className={cn(
                     'flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors',

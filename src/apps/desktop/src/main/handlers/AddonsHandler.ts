@@ -3,6 +3,7 @@ import {
   FileData,
   IAddonsFacade,
   IImportAddonUseCase,
+  type MappingFieldDefinition,
 } from '@mr-tick/application'
 import {
   AddonActionResponse,
@@ -191,6 +192,58 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     } catch (e) {
       const error =
         e instanceof Error ? e.message : 'FAILED_TO_GET_CONNECTION_SCHEMA'
+      return { isSuccess: false, statusCode: 500, error }
+    }
+  }
+
+  public async getMappingFields(
+    event: IpcMainInvokeEvent,
+    { body }: IRequest<{ addonId: string }>,
+  ): Promise<ViewModel<MappingFieldDefinition[]>> {
+    if (!this.addonLoader) {
+      return { isSuccess: true, statusCode: 200, data: [] }
+    }
+    try {
+      if (body?.addonId && !this.addonLoader.hasActiveAddon(body.addonId)) {
+        const installedResult = await this.addonsFacade.getInstalledById(
+          body.addonId,
+        )
+        if (installedResult.isSuccess() && installedResult.success.path) {
+          await this.addonLoader.loadAndActivateFromDisk(
+            body.addonId,
+            installedResult.success.path,
+          )
+        }
+      }
+
+      const ds = this.addonLoader.getDataSource(body.addonId)
+      if (!ds) {
+        return { isSuccess: true, statusCode: 200, data: [] }
+      }
+
+      if (ds.getMappingFields) {
+        const mappingResult = await ds.getMappingFields()
+        if (Array.isArray(mappingResult)) {
+          return { isSuccess: true, statusCode: 200, data: mappingResult }
+        }
+        if (mappingResult.isSuccess()) {
+          return {
+            isSuccess: true,
+            statusCode: 200,
+            data: mappingResult.success,
+          }
+        }
+        return {
+          isSuccess: false,
+          statusCode: mappingResult.failure.statusCode,
+          error: mappingResult.failure.messageKey,
+        }
+      }
+
+      return { isSuccess: true, statusCode: 200, data: [] }
+    } catch (e) {
+      const error =
+        e instanceof Error ? e.message : 'FAILED_TO_GET_MAPPING_FIELDS'
       return { isSuccess: false, statusCode: 500, error }
     }
   }

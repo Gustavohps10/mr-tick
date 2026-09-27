@@ -66,6 +66,7 @@ export const IpcChannels = {
   ADDONS_DISMISS_TOAST: 'addons:dismiss-toast',
   ADDON_GET_SCHEMA: 'addon:get-schema',
   ADDON_GET_CONNECTION_SCHEMA: 'addon:get-connection-schema',
+  ADDON_GET_MAPPING_FIELDS: 'addon:get-mapping-fields',
   ADDON_GET_SETTINGS: 'addon:get-settings',
   ADDON_SAVE_SETTINGS: 'addon:save-settings',
   ADDON_EXECUTE_ACTION: 'addon:execute-action',

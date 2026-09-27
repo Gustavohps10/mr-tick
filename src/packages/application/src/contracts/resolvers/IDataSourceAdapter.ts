@@ -7,7 +7,7 @@ import {
   ITimeEntryProvider,
 } from '@/contracts/data'
 import { IAuthenticationStrategy } from '@/contracts/strategies'
-import { ConnectionHealthDTO, MemberDTO } from '@/dtos'
+import { MemberDTO } from '@/dtos'
 
 export interface IDataSourceAdapter {
   getAuthenticatedMemberData(): Either<AppError, MemberDTO>
@@ -17,5 +17,4 @@ export interface IDataSourceAdapter {
   readonly timeEntriesProvider: ITimeEntryProvider
   readonly membersProvider: IMemberProvider
   readonly metadataProvider: IMetadataProvider
-  readonly testConnection?: () => Promise<Either<AppError, ConnectionHealthDTO>>
 }

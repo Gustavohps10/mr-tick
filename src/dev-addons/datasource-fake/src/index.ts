@@ -1,7 +1,6 @@
 import {
   type AddonContext,
   type AddonSettingsGroup,
-  Either,
   type IAddon,
   type IDataSource,
 } from '@mr-tick/sdk'
@@ -63,6 +62,42 @@ const configFields: {
         },
       ],
     },
+    {
+      id: 'mapping_group',
+      label: 'Mapeamento de Campos e Status',
+      description: 'Mapeamentos específicos da organização para sincronização.',
+      fields: [
+        {
+          id: 'defaultTaskStatus',
+          type: 'select',
+          label: 'Status Padrão de Tarefas',
+          placeholder: 'Selecione o status padrão',
+          defaultValue: 'in_progress',
+          options: [
+            { label: 'Novo', value: 'new' },
+            { label: 'Em Andamento', value: 'in_progress' },
+            { label: 'Concluído', value: 'done' },
+          ],
+        },
+        {
+          id: 'completedTaskStatus',
+          type: 'select',
+          label: 'Status de Tarefa Concluída',
+          placeholder: 'Selecione o status de conclusão',
+          defaultValue: 'done',
+          options: [
+            { label: 'Concluído', value: 'done' },
+            { label: 'Fechado', value: 'closed' },
+          ],
+        },
+        {
+          id: 'statusMapping',
+          type: 'mapping',
+          label: 'Mapeamento de Status e Cores',
+          description: 'Personalize os ícones e cores para cada status remoto.',
+        },
+      ],
+    },
   ],
 }
 
@@ -79,18 +114,13 @@ export const FakeDataSource: IDataSource = {
       groups: configFields.configuration,
     },
   ],
+  getMappingFields: async () => new FakeMetadataProvider().getMappingFields(),
   createInstance: (context) => ({
     authStrategy: new FakeAuthenticationStrategy(),
     tasksProvider: new FakeTaskProvider(context),
     timeEntriesProvider: new FakeTimeEntryProvider(context),
     membersProvider: new FakeMemberProvider(context),
     metadataProvider: new FakeMetadataProvider(context),
-    testConnection: async () =>
-      Either.success({
-        ok: true,
-        message: 'Conexão simulada com sucesso',
-        latencyMs: 120,
-      }),
   }),
 }
 

@@ -42,7 +42,6 @@ export function NewDataSourceInstanceForm({
 }: NewDataSourceInstanceFormProps) {
   const bridge = useHostBridge()
 
-  // 2. Busca dinâmica de campos baseada no pluginId
   const {
     data: schema,
     isLoading,
@@ -62,7 +61,6 @@ export function NewDataSourceInstanceForm({
           !('groups' in rawSchema[0]) &&
           !('fields' in rawSchema[0])
         ) {
-          // Schema is a flat array of fields. Convert to a default tab.
           const flatFields: AddonSettingsField[] = []
           for (const item of rawSchema) {
             if ('type' in item) {
@@ -86,17 +84,44 @@ export function NewDataSourceInstanceForm({
         }
         return tabs
       }
+
       return []
     },
   })
 
-  // 3. Setup do Formulário
   const methods = useForm<Record<string, FieldPrimitiveValue>>({
     defaultValues: {
       pluginId,
       connectionInstanceId,
     },
   })
+
+  const fieldScopeMap = React.useMemo(() => {
+    const scopeMap = new Map<string, AddonSettingsFieldScope>()
+    if (!schema) return scopeMap
+    for (const tab of schema) {
+      const isCredentialTab = tab.id === 'credentials'
+      if (tab.groups) {
+        for (const group of tab.groups) {
+          for (const field of group.fields) {
+            let scope: AddonSettingsFieldScope = 'configuration'
+            if (field.scope) scope = field.scope
+            if (!field.scope && isCredentialTab) scope = 'credential'
+            scopeMap.set(field.id, scope)
+          }
+        }
+      }
+      if (tab.fields) {
+        for (const field of tab.fields) {
+          let scope: AddonSettingsFieldScope = 'configuration'
+          if (field.scope) scope = field.scope
+          if (!field.scope && isCredentialTab) scope = 'credential'
+          scopeMap.set(field.id, scope)
+        }
+      }
+    }
+    return scopeMap
+  }, [schema])
 
   React.useEffect(() => {
     if (!schema) return
@@ -108,7 +133,11 @@ export function NewDataSourceInstanceForm({
               field.defaultValue !== undefined &&
               methods.getValues(field.id) === undefined
             ) {
-              methods.setValue(field.id, field.defaultValue)
+              const defaultVal =
+                typeof field.defaultValue === 'object'
+                  ? JSON.stringify(field.defaultValue)
+                  : field.defaultValue
+              methods.setValue(field.id, defaultVal)
             }
           }
         }
@@ -119,7 +148,11 @@ export function NewDataSourceInstanceForm({
             field.defaultValue !== undefined &&
             methods.getValues(field.id) === undefined
           ) {
-            methods.setValue(field.id, field.defaultValue)
+            const defaultVal =
+              typeof field.defaultValue === 'object'
+                ? JSON.stringify(field.defaultValue)
+                : field.defaultValue
+            methods.setValue(field.id, defaultVal)
           }
         }
       }
@@ -133,24 +166,6 @@ export function NewDataSourceInstanceForm({
 
     const credentials: Record<string, FieldPrimitiveValue> = {}
     const configuration: Record<string, FieldPrimitiveValue> = {}
-
-    const fieldScopeMap = new Map<string, AddonSettingsFieldScope>()
-    if (schema) {
-      for (const tab of schema) {
-        if (tab.groups) {
-          for (const group of tab.groups) {
-            for (const field of group.fields) {
-              fieldScopeMap.set(field.id, field.scope ?? 'configuration')
-            }
-          }
-        }
-        if (tab.fields) {
-          for (const field of tab.fields) {
-            fieldScopeMap.set(field.id, field.scope ?? 'configuration')
-          }
-        }
-      }
-    }
 
     for (const [key, value] of Object.entries(values)) {
       if (key === 'pluginId' || key === 'connectionInstanceId') {
@@ -211,61 +226,62 @@ export function NewDataSourceInstanceForm({
               {/* Se a tab tem grupos */}
               {tab.groups?.map((group) => (
                 <div key={group.id} className="space-y-3">
-                  <Label className="text-muted-foreground text-[11px] tracking-wider">
-                    {group.label}
-                  </Label>
-                  {group.description && (
-                    <p className="text-muted-foreground mb-2 text-xs">
-                      {group.description}
-                    </p>
-                  )}
-                  {group.fields.map((field) => (
-                    <AddonFieldRenderer
-                      key={field.id}
-                      field={field}
-                      addonId={pluginId}
-                      value={
-                        methods.watch(field.id) !== undefined
-                          ? methods.watch(field.id)
-                          : (field.defaultValue ?? '')
-                      }
-                      onChange={(fieldId, val) => {
-                        if (val === null) {
-                          methods.setValue(fieldId, '')
-                          return
-                        }
-                        methods.setValue(fieldId, val, {
-                          shouldValidate: true,
-                          shouldDirty: true,
-                        })
-                      }}
-                    />
-                  ))}
+                  <div>
+                    <Label className="text-foreground/90 text-sm font-medium">
+                      {group.label}
+                    </Label>
+                    {group.description && (
+                      <p className="text-muted-foreground text-xs">
+                        {group.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid gap-3">
+                    {group.fields.map((field) => (
+                      <AddonFieldRenderer
+                        key={field.id}
+                        field={field}
+                        addonId={pluginId}
+                        value={methods.watch(field.id)}
+                        onChange={(fieldId, val) => {
+                          const parsedVal =
+                            typeof val === 'string' ||
+                            typeof val === 'number' ||
+                            typeof val === 'boolean'
+                              ? val
+                              : ''
+                          methods.setValue(fieldId, parsedVal, {
+                            shouldValidate: true,
+                            shouldDirty: true,
+                          })
+                        }}
+                      />
+                    ))}
+                  </div>
                 </div>
               ))}
 
-              {/* Se a tab tem campos diretos ao invés de grupos */}
+              {/* Se a tab tem campos diretos sem grupo */}
               {tab.fields?.map((field) => (
-                <AddonFieldRenderer
-                  key={field.id}
-                  field={field}
-                  addonId={pluginId}
-                  value={
-                    methods.watch(field.id) !== undefined
-                      ? methods.watch(field.id)
-                      : (field.defaultValue ?? '')
-                  }
-                  onChange={(fieldId, val) => {
-                    if (val === null) {
-                      methods.setValue(fieldId, '')
-                      return
-                    }
-                    methods.setValue(fieldId, val, {
-                      shouldValidate: true,
-                      shouldDirty: true,
-                    })
-                  }}
-                />
+                <div key={field.id}>
+                  <AddonFieldRenderer
+                    field={field}
+                    addonId={pluginId}
+                    value={methods.watch(field.id)}
+                    onChange={(fieldId, val) => {
+                      const parsedVal =
+                        typeof val === 'string' ||
+                        typeof val === 'number' ||
+                        typeof val === 'boolean'
+                          ? val
+                          : ''
+                      methods.setValue(fieldId, parsedVal, {
+                        shouldValidate: true,
+                        shouldDirty: true,
+                      })
+                    }}
+                  />
+                </div>
               ))}
             </div>
           </div>
@@ -274,14 +290,14 @@ export function NewDataSourceInstanceForm({
         {!hideSubmitButton && (
           <div className="flex justify-end">
             <Button
+              data-testid="datasource-instance-connect-btn"
               onClick={methods.handleSubmit(handleFormSubmit)}
               disabled={isSubmitting}
               size="sm"
-              variant="secondary"
-              className="w-full"
+              className="px-6 shadow-sm"
             >
               {isSubmitting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-2 animate-spin" />
               ) : (
                 <PlugZap className="mr-2" />
               )}

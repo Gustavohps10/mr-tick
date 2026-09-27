@@ -1,5 +1,8 @@
 export type AddonSettingsFieldType =
   | 'text'
+  | 'textarea'
+  | 'json'
+  | 'mapping'
   | 'password'
   | 'number'
   | 'boolean'
@@ -17,13 +20,29 @@ export interface AddonSettingsOption {
 
 export type AddonSettingsFieldScope = 'credential' | 'configuration'
 
+export interface ConfiguredFieldMapping {
+  icon: string
+  color: string
+  customValue?: string
+}
+
+export type AddonMappingPreset = Record<string, ConfiguredFieldMapping>
+
+export interface DataSourceConfigPreset {
+  pluginId?: string
+  version?: string
+  name?: string
+  configuration: Record<string, string | number | boolean>
+  mapping?: AddonMappingPreset
+}
+
 export interface AddonSettingsField {
   id: string
   type: AddonSettingsFieldType
   label: string
   scope?: AddonSettingsFieldScope
   required?: boolean
-  defaultValue?: string | number | boolean
+  defaultValue?: string | number | boolean | AddonMappingPreset
   description?: string
   placeholder?: string
   options?: AddonSettingsOption[] // For select

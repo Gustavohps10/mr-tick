@@ -192,6 +192,9 @@ export function openIpcRoutes(
   IpcHandler.register('ADDON_GET_CONNECTION_SCHEMA', (e, req) =>
     addonsHandler.getConnectionSchema(e, req),
   )
+  IpcHandler.register('ADDON_GET_MAPPING_FIELDS', (e, req) =>
+    addonsHandler.getMappingFields(e, req),
+  )
   IpcHandler.register('ADDON_GET_SETTINGS', (e, req) =>
     addonsHandler.getSettings(e, req),
   )

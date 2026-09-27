@@ -137,7 +137,10 @@ export function ConnectionCard({
                     <User2 size={8} className="text-muted-foreground" />
                   )}
                 </div>
-                <p className="text-muted-foreground truncate text-[10px]">
+                <p
+                  data-testid="connection-member-login"
+                  className="text-muted-foreground truncate text-[10px]"
+                >
                   {member.name ?? member.login}
                 </p>
               </div>

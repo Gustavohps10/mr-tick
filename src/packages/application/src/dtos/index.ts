@@ -1,7 +1,6 @@
 export * from './AddonInstallerDTO'
 export * from './AddonManifestDTO'
 export * from './AuthenticationDTO'
-export * from './ConnectionHealthDTO'
 export * from './CreateTimeEntryDTO'
 export * from './MemberDTO'
 export * from './MetadataDTO'

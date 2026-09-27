@@ -98,6 +98,24 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
     saveMutation.mutate(formValues)
   }
 
+  const { data: installedList = [] } = useQuery({
+    queryKey: ['plugins', 'installed'],
+    queryFn: async () => {
+      const res = await bridge.addons.listInstalled()
+      if (!res.isSuccess) throw new Error(res.error)
+      return res.data ?? []
+    },
+  })
+
+  const currentAddon = installedList.find((a) => a.id === addonId)
+  const isDataSource =
+    Boolean(
+      currentAddon?.categories?.some(
+        (c) =>
+          c.toLowerCase() === 'datasource' || c.toLowerCase() === 'datasources',
+      ),
+    ) || currentAddon?.category?.toLowerCase() === 'datasource'
+
   if (isLoadingSchema || isLoadingSettings) {
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -107,6 +125,24 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
   }
 
   if (!schema || (Array.isArray(schema) && schema.length === 0)) {
+    if (isDataSource) {
+      return (
+        <div className="bg-card/50 flex h-full flex-1 flex-col">
+          <div className="border-b p-4">
+            <h2 className="text-lg font-semibold">
+              {currentAddon?.name || addonId}
+            </h2>
+            <p className="text-muted-foreground text-sm">
+              Gerencie as instâncias de conexão deste DataSource
+            </p>
+          </div>
+          <div className="flex-1 overflow-auto p-4">
+            <DataSourceInstancesManager addonId={addonId} />
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
         Este addon não possui configurações disponíveis.
@@ -289,7 +325,10 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
     }))
 
   return (
-    <div className="space-y-4 py-2">
+    <div
+      data-testid={`addon-setting-card-${addonId}`}
+      className="space-y-4 py-2"
+    >
       <div className="flex items-center justify-between border-b pb-2">
         <div>
           <h3 className="text-sm font-medium">Instâncias Conectadas</h3>
@@ -297,7 +336,12 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
             Gerencie múltiplas conexões para este DataSource.
           </p>
         </div>
-        <Button size="sm" onClick={handleAddConnection} className="gap-1.5">
+        <Button
+          data-testid={`add-instance-btn-${addonId}`}
+          size="sm"
+          onClick={handleAddConnection}
+          className="gap-1.5"
+        >
           <Plus className="h-4 w-4" />
           Nova Instância
         </Button>
@@ -327,14 +371,14 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
         open={connectionDialogOpen}
         onOpenChange={setConnectionDialogOpen}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Conectar Instância</DialogTitle>
             <DialogDescription>
               Preencha as configurações de conexão para esta instância.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-2">
+          <div className="flex-1 overflow-y-auto py-2 pr-1">
             {connectionTargetId && (
               <NewDataSourceInstanceForm
                 pluginId={addonId}

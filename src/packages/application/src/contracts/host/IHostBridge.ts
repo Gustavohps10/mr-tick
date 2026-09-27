@@ -28,6 +28,8 @@ import {
 } from '@mr-tick/shared/view-models'
 
 import { StartTimerDTO, TimerResumeDTO } from '../../dtos'
+import type { MappingFieldDefinition } from '../data/providers/IMetadataProvider'
+export type { MappingFieldDefinition } from '../data/providers/IMetadataProvider'
 import { FileData } from '../infra'
 import {
   PushTimeEntriesInput,
@@ -266,6 +268,9 @@ export type AddonTimerbarMenuItem =
 
 export type AddonSettingsFieldType =
   | 'text'
+  | 'textarea'
+  | 'json'
+  | 'mapping'
   | 'password'
   | 'number'
   | 'boolean'
@@ -283,13 +288,21 @@ export interface AddonSettingsOption {
 
 export type AddonSettingsFieldScope = 'credential' | 'configuration'
 
+export interface ConfiguredFieldMapping {
+  icon: string
+  color: string
+  customValue?: string
+}
+
+export type AddonMappingPreset = Record<string, ConfiguredFieldMapping>
+
 export interface AddonSettingsField {
   id: string
   type: AddonSettingsFieldType
   label: string
   scope?: AddonSettingsFieldScope
   required?: boolean
-  defaultValue?: string | number | boolean
+  defaultValue?: string | number | boolean | AddonMappingPreset
   description?: string
   placeholder?: string
   options?: AddonSettingsOption[]
@@ -393,6 +406,9 @@ export interface IAddonsAPI {
   getConnectionSchema(
     payload: IRequest<{ addonId: string }>,
   ): Promise<ViewModel<AddonSettingsSchema>>
+  getMappingFields(
+    payload: IRequest<{ addonId: string }>,
+  ): Promise<ViewModel<MappingFieldDefinition[]>>
   getSettings(
     payload: IRequest<{ addonId: string }>,
   ): Promise<ViewModel<Record<string, string | number | boolean | null>>>

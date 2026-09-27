@@ -86,47 +86,56 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
     await addonsButton.first().click()
 
     // 4. Clica em "Explorar" para ver o catálogo de addons disponíveis
-    const exploreTab = page.locator('button:has-text("Explorar")')
+    const exploreTab = page.locator('[data-testid="addons-manager-tab-browse"]')
     await expect(exploreTab).toBeVisible({ timeout: 10000 })
     await exploreTab.click()
 
     // 5. Cenário 1: Addon legado (Redmine antigo da era 0.1.x)
-    const redmineCard = page.locator('button:has-text("Redmine")')
+    const redmineCard = page.locator(
+      '[data-testid="addon-browse-card-gustavohps10-redmine"]',
+    )
     await expect(redmineCard).toBeVisible({ timeout: 10000 })
     await redmineCard.click()
 
     // Abre o modal de instalação
-    const installBtn = page.locator('button:has-text("Instalar")')
+    const installBtn = page.locator('[data-testid="addon-details-install-btn"]')
     await expect(installBtn).toBeVisible({ timeout: 5000 })
     await installBtn.click()
 
+    // Valida que o modal de instalação abriu
+    const modalContent = page.locator(
+      '[data-testid="addon-install-modal-content"]',
+    )
+    await expect(modalContent).toBeVisible({ timeout: 5000 })
+
     // Valida que o pacote legado exibe a badge "Incompatível"
-    const incompatibleBadge = page.getByText('Incompatível', { exact: true })
+    const incompatibleBadge = page.locator(
+      '[data-testid="addon-incompatible-badge"]',
+    )
     await expect(incompatibleBadge.first()).toBeVisible({ timeout: 5000 })
 
     // Valida que o botão "Confirmar e Instalar" está estritamente desabilitado para o Redmine antigo
     const confirmInstallBtn = page.locator(
-      'button:has-text("Confirmar e Instalar")',
+      '[data-testid="addon-confirm-install-btn"]',
     )
     await expect(confirmInstallBtn).toBeDisabled()
 
     // Fecha o modal de instalação do cenário 1
-    const cancelBtn = page.locator('button:has-text("Cancelar")')
+    const cancelBtn = page.locator('[data-testid="addon-cancel-install-btn"]')
     await cancelBtn.click()
-    await expect(confirmInstallBtn).not.toBeVisible({ timeout: 5000 })
+    await expect(modalContent).not.toBeVisible({ timeout: 5000 })
 
-    // 6. Cenário 2: Addon Híbrido (possui v0.1.0 legada incompatível e v0.3.0 compatível)
+    // 6. Cenário 2: Addon Híbrido (possui v0.1.0 legada incompatível e v0.4.0 compatível)
     const hybridAddonCard = page.locator(
-      'button:has-text("Plugin Híbrido E2E")',
+      '[data-testid="addon-browse-card-test-multi-version-addon"]',
     )
     await expect(hybridAddonCard).toBeVisible({ timeout: 5000 })
     await hybridAddonCard.click()
 
     // Abre o modal de instalação do plugin híbrido
-    const hybridInstallBtn = page.locator('button:has-text("Instalar")')
-    await expect(hybridInstallBtn).toBeVisible({ timeout: 5000 })
-    await hybridInstallBtn.click()
-    await expect(confirmInstallBtn).toBeVisible({ timeout: 5000 })
+    await expect(installBtn).toBeVisible({ timeout: 5000 })
+    await installBtn.click()
+    await expect(modalContent).toBeVisible({ timeout: 5000 })
 
     // Valida que o pacote incompatível (v0.1.0) exibe a badge "Incompatível"
     await expect(incompatibleBadge.first()).toBeVisible({ timeout: 5000 })
@@ -137,7 +146,7 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
 
     // Tenta clicar no card incompatível (v0.1.0) e garante que a seleção NÃO muda
     const incompatibleCard = page.locator(
-      '.cursor-not-allowed:has-text("v0.1.0")',
+      '[data-testid="addon-version-card-0.1.0"]',
     )
     await expect(incompatibleCard).toBeVisible()
     await incompatibleCard.click({ force: true })

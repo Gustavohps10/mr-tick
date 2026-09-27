@@ -5,6 +5,7 @@ export {
   DataSourceContext,
   IDataSource,
   IDataSourceInstance,
+  type MappingFieldDefinition,
 } from './data-source'
 export * from './utils/MarkupConverter'
 export * from './utils/pkce'
@@ -16,7 +17,6 @@ export type {
   AddonTimerbarPopoverSubItem,
   AuthenticationDTO,
   AuthenticationResult,
-  ConnectionHealthDTO,
   CreatedTaskResult,
   CreatedTimeEntryResult,
   IAuthenticationStrategy,

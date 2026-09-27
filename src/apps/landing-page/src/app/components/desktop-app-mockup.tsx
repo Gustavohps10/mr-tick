@@ -199,6 +199,7 @@ const mockBridgeClient: IHostBridge = {
     dismissToast: async () => mockSuccess(undefined),
     getSchema: async () => mockSuccess([]),
     getConnectionSchema: async () => mockSuccess([]),
+    getMappingFields: async () => mockSuccess([]),
     getSettings: async () => mockSuccess({}),
     saveSettings: async () => mockSuccess(undefined),
     executeAction: async () => mockSuccess({ isSuccess: true }),

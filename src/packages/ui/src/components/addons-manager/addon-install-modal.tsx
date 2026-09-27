@@ -276,6 +276,7 @@ export function AddonInstallModal({
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent
+        data-testid="addon-install-modal-content"
         className="overflow-hidden border-none p-0 shadow-2xl sm:max-w-lg"
         onPointerDownOutside={(event) => {
           if (currentStep === 'INSTALLING' && !isDone) event.preventDefault()
@@ -320,6 +321,7 @@ export function AddonInstallModal({
                     return (
                       <Card
                         key={pkg.version}
+                        data-testid={`addon-version-card-${pkg.version}`}
                         onClick={() =>
                           isCompatible && setSelectedVersion(pkg.version)
                         }
@@ -348,6 +350,7 @@ export function AddonInstallModal({
                             )}
                             {!isCompatible && (
                               <Badge
+                                data-testid="addon-incompatible-badge"
                                 variant="destructive"
                                 className="text-[10px]"
                               >
@@ -387,6 +390,7 @@ export function AddonInstallModal({
 
             <DialogFooter className="mt-6 flex justify-end gap-2 border-t pt-4">
               <Button
+                data-testid="addon-cancel-install-btn"
                 variant="ghost"
                 onClick={handleClose}
                 className="cursor-pointer"
@@ -394,6 +398,7 @@ export function AddonInstallModal({
                 Cancelar
               </Button>
               <Button
+                data-testid="addon-confirm-install-btn"
                 onClick={handleStartInstallation}
                 disabled={
                   !selectedPackage?.downloadUrl || !isSelectedPackageCompatible

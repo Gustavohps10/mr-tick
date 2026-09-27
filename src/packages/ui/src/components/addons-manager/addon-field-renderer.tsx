@@ -1,8 +1,18 @@
-import { AddonActionResponse, AddonSettingsField } from '@mr-tick/application'
+import {
+  AddonActionResponse,
+  type AddonMappingPreset,
+  AddonSettingsField,
+  type ConfiguredFieldMapping,
+} from '@mr-tick/application'
 import { useQueryClient } from '@tanstack/react-query'
-import { Folder, Loader2 } from 'lucide-react'
+import { Folder, Loader2, SlidersHorizontal } from 'lucide-react'
 import { ReactNode, useState } from 'react'
 
+import {
+  MappingConfigModal,
+  parseMappingValue,
+} from '@/components/mapping-config-modal'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -20,7 +30,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { useHostBridge } from '@/hooks/use-host-bridge'
+import { cn } from '@/lib/utils'
 
 export interface AddonFieldRendererProps {
   field: AddonSettingsField
@@ -231,6 +243,7 @@ export function AddonFieldRenderer({
           )}
         </div>
         <Switch
+          data-testid={`addon-field-input-${field.id}`}
           checked={Boolean(fieldValue)}
           disabled={disabled}
           onCheckedChange={(checked) => onChange(field.id, checked)}
@@ -314,6 +327,44 @@ export function AddonFieldRenderer({
     )
   }
 
+  if (field.type === 'mapping') {
+    return (
+      <MappingFieldItem
+        field={field}
+        addonId={addonId}
+        value={fieldValue}
+        onChange={(val) => onChange(field.id, val)}
+        disabled={disabled}
+      />
+    )
+  }
+
+  if (field.type === 'textarea' || field.type === 'json') {
+    return (
+      <div className="flex flex-col gap-1.5 py-2">
+        <label className="text-sm font-medium">{field.label}</label>
+        <Textarea
+          disabled={disabled}
+          value={
+            fieldValue !== undefined && fieldValue !== null
+              ? String(fieldValue)
+              : ''
+          }
+          onChange={(e) => onChange(field.id, e.target.value)}
+          placeholder={field.placeholder}
+          className={cn(
+            'min-h-[80px]',
+            field.type === 'json' && 'font-mono text-xs',
+          )}
+          data-testid={`addon-field-input-${field.id}`}
+        />
+        {field.description && (
+          <p className="text-muted-foreground text-xs">{field.description}</p>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-1.5 py-2">
       <label className="text-sm font-medium">{field.label}</label>
@@ -345,6 +396,73 @@ export function AddonFieldRenderer({
       {field.description && (
         <p className="text-muted-foreground text-xs">{field.description}</p>
       )}
+    </div>
+  )
+}
+
+function MappingFieldItem({
+  field,
+  addonId,
+  value,
+  onChange,
+  disabled,
+}: {
+  field: AddonSettingsField
+  addonId: string
+  value: string | number | boolean | AddonMappingPreset | null | undefined
+  onChange: (val: string) => void
+  disabled?: boolean
+}) {
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  let stringOrObjValue: string | Record<string, ConfiguredFieldMapping> = ''
+  if (typeof value === 'string') stringOrObjValue = value
+  if (value && typeof value === 'object') stringOrObjValue = value
+  const parsedMappings = parseMappingValue(stringOrObjValue)
+  const configuredCount = Object.keys(parsedMappings).length
+
+  return (
+    <div className="flex flex-col gap-2 py-2">
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <label className="text-sm font-medium">{field.label}</label>
+          {field.description && (
+            <p className="text-muted-foreground text-xs">{field.description}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {configuredCount > 0 && (
+            <Badge
+              variant="outline"
+              className="text-xs"
+              data-testid={`mapping-badge-${field.id}`}
+            >
+              {configuredCount} mapeados
+            </Badge>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled}
+            className="h-8 gap-1.5 text-xs"
+            data-testid={`configure-mapping-${field.id}-btn`}
+            onClick={() => setIsModalOpen(true)}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Configurar Mapeamento
+          </Button>
+        </div>
+      </div>
+
+      <MappingConfigModal
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        addonId={addonId}
+        value={parsedMappings}
+        onSave={(newMappings) => {
+          onChange(JSON.stringify(newMappings))
+        }}
+      />
     </div>
   )
 }

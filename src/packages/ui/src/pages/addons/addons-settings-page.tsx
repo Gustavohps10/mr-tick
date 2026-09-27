@@ -332,6 +332,7 @@ export function AddonsSettingsPage() {
           {sectionAddons.map((addon) => (
             <div
               key={addon.id}
+              data-testid={`addon-setting-card-${addon.id}`}
               className="bg-card border-border space-y-3 rounded-lg border p-4"
             >
               <div className="flex items-center justify-between">
@@ -356,6 +357,7 @@ export function AddonsSettingsPage() {
                 </div>
 
                 <Button
+                  data-testid={`add-instance-btn-${addon.id}`}
                   size="sm"
                   variant="outline"
                   onClick={() => handleAddConnection(addon)}
@@ -535,7 +537,7 @@ export function AddonsSettingsPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
               {selectedAddon?.logo && (
@@ -555,7 +557,7 @@ export function AddonsSettingsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-2">
+          <div className="flex-1 overflow-y-auto py-2 pr-1">
             {selectedAddon && connectionTargetId && (
               <NewDataSourceInstanceForm
                 pluginId={selectedAddon.id}
