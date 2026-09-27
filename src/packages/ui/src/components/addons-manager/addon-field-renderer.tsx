@@ -41,6 +41,8 @@ export interface AddonFieldRendererProps {
   onChange: (fieldId: string, value: string | number | boolean | null) => void
   disabled?: boolean
   renderDataSourceInstances?: (addonId: string) => ReactNode
+  workspaceId?: string
+  connectionInstanceId?: string
 }
 
 export function AddonFieldRenderer({
@@ -50,6 +52,8 @@ export function AddonFieldRenderer({
   onChange,
   disabled = false,
   renderDataSourceInstances,
+  workspaceId,
+  connectionInstanceId,
 }: AddonFieldRendererProps) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
@@ -335,6 +339,8 @@ export function AddonFieldRenderer({
         value={fieldValue}
         onChange={(val) => onChange(field.id, val)}
         disabled={disabled}
+        workspaceId={workspaceId}
+        connectionInstanceId={connectionInstanceId}
       />
     )
   }
@@ -406,12 +412,16 @@ function MappingFieldItem({
   value,
   onChange,
   disabled,
+  workspaceId,
+  connectionInstanceId,
 }: {
   field: AddonSettingsField
   addonId: string
   value: string | number | boolean | AddonMappingPreset | null | undefined
   onChange: (val: string) => void
   disabled?: boolean
+  workspaceId?: string
+  connectionInstanceId?: string
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   let stringOrObjValue: string | Record<string, ConfiguredFieldMapping> = ''
@@ -458,6 +468,8 @@ function MappingFieldItem({
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
         addonId={addonId}
+        workspaceId={workspaceId}
+        connectionInstanceId={connectionInstanceId}
         value={parsedMappings}
         onSave={(newMappings) => {
           onChange(JSON.stringify(newMappings))

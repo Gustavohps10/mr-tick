@@ -33,6 +33,7 @@ beforeAll(() => {
 
 const mockConnectionsValue: DataSourceConnectionsContextType = {
   isLoading: false,
+  workspaceId: undefined,
   connections: [],
   workspaceConnections: [],
   installedPlugins: [],

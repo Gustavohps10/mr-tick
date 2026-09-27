@@ -29,6 +29,7 @@ const TEST_ACTIVITIES = [
 
 const mockConnectionsValue: DataSourceConnectionsContextType = {
   isLoading: false,
+  workspaceId: undefined,
   connections: [],
   workspaceConnections: [],
   installedPlugins: [],

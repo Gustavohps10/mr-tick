@@ -1,10 +1,10 @@
 import { AddonSettingsField, AddonSettingsTab } from '@mr-tick/application'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2 } from 'lucide-react'
-import { Plus } from 'lucide-react'
+import { Loader2, Plus, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import { MappingConfigModal } from '@/components/mapping-config-modal'
 import {
   DataSourceInstanceFormData,
   NewDataSourceInstanceForm,
@@ -258,6 +258,7 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
   const queryClient = useQueryClient()
   const connectionsCtx = useDataSourceConnections()
   const {
+    workspaceId,
     connections: connectionState,
     disconnect,
     link,
@@ -268,6 +269,7 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
   const [connectionTargetId, setConnectionTargetId] = useState<string | null>(
     null,
   )
+  const [mappingTargetId, setMappingTargetId] = useState<string | null>(null)
 
   const unlinkMutation = useMutation({
     mutationFn: (connectionInstanceId: string) =>
@@ -349,16 +351,31 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
       <div className="space-y-3">
         {myConnections.length > 0 ? (
           myConnections.map((conn) => (
-            <ConnectionCard
-              key={conn.id}
-              connection={conn}
-              onOpenSettings={(c) => {
-                setConnectionTargetId(c.id)
-                setConnectionDialogOpen(true)
-              }}
-              onDisconnect={(c) => disconnect(c.id)}
-              onUninstall={(c) => unlinkMutation.mutate(c.id)}
-            />
+            <div key={conn.id} className="space-y-1">
+              <ConnectionCard
+                connection={conn}
+                onOpenSettings={(c) => {
+                  setConnectionTargetId(c.id)
+                  setConnectionDialogOpen(true)
+                }}
+                onDisconnect={(c) => disconnect(c.id)}
+                onUninstall={(c) => unlinkMutation.mutate(c.id)}
+              />
+              {conn.status === 'connected' && workspaceId && (
+                <div className="flex justify-end px-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 text-xs"
+                    onClick={() => setMappingTargetId(conn.id)}
+                  >
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    Configurar Mapeamento
+                  </Button>
+                </div>
+              )}
+            </div>
           ))
         ) : (
           <div className="text-muted-foreground border-border/50 bg-muted/20 rounded-lg border border-dashed py-8 text-center text-sm">
@@ -366,6 +383,19 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
           </div>
         )}
       </div>
+
+      {workspaceId && mappingTargetId && (
+        <MappingConfigModal
+          open={Boolean(mappingTargetId)}
+          onOpenChange={(open) => {
+            if (!open) setMappingTargetId(null)
+          }}
+          addonId={addonId}
+          workspaceId={workspaceId}
+          connectionInstanceId={mappingTargetId}
+          onSave={() => setMappingTargetId(null)}
+        />
+      )}
 
       <Dialog
         open={connectionDialogOpen}

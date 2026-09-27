@@ -35,6 +35,8 @@ export interface AddonConnectionView {
 export interface DataSourceConnectionsContextType {
   isLoading: boolean
 
+  workspaceId: string | undefined
+
   connections: AddonConnectionView[]
 
   workspaceConnections: WorkspaceViewModel['dataSourceConnections']
@@ -308,6 +310,7 @@ export function DataSourceConnectionsProvider({
   const value = useMemo<DataSourceConnectionsContextType>(
     () => ({
       isLoading: false,
+      workspaceId,
       connections,
       workspaceConnections,
       installedPlugins,
@@ -319,6 +322,7 @@ export function DataSourceConnectionsProvider({
       isConnected,
     }),
     [
+      workspaceId,
       connections,
       workspaceConnections,
       installedPlugins,

@@ -122,6 +122,7 @@ describe('TimeEntries Row Observability & Flicker Tests', () => {
 
       const mockConnectionsValue: DataSourceConnectionsContextType = {
         isLoading: false,
+        workspaceId: undefined,
         connections: [],
         workspaceConnections: [],
         installedPlugins: [],
@@ -353,6 +354,7 @@ describe('TimeEntries Row Observability & Flicker Tests', () => {
 
       const mockConnectionsValue: DataSourceConnectionsContextType = {
         isLoading: false,
+        workspaceId: undefined,
         connections: [],
         workspaceConnections: [],
         installedPlugins: [],

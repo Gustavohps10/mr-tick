@@ -174,6 +174,8 @@ export interface MappingConfigModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   addonId: string
+  workspaceId?: string
+  connectionInstanceId?: string
   fields?: MappingFieldDefinition[]
   value?: string | Record<string, ConfiguredFieldMapping> | null
   onSave: (value: Record<string, ConfiguredFieldMapping>) => void
@@ -183,6 +185,8 @@ export function MappingConfigModal({
   open,
   onOpenChange,
   addonId,
+  workspaceId,
+  connectionInstanceId,
   fields: propFields,
   value,
   onSave,
@@ -198,12 +202,17 @@ export function MappingConfigModal({
   const [isCopied, setIsCopied] = useState(false)
 
   const { data: fetchedFields = [] } = useQuery({
-    queryKey: ['addon-mapping-fields', addonId],
+    queryKey: [
+      'addon-mapping-fields',
+      addonId,
+      workspaceId,
+      connectionInstanceId,
+    ],
     queryFn: async (): Promise<MappingFieldDefinition[]> => {
       if (!addonId) return []
       if (!bridge?.addons?.getMappingFields) return []
       const response = await bridge.addons.getMappingFields({
-        body: { addonId },
+        body: { addonId, workspaceId, connectionInstanceId },
       })
       if (!response.isSuccess) return []
       if (!response.data) return []

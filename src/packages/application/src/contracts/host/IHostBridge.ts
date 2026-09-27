@@ -407,7 +407,11 @@ export interface IAddonsAPI {
     payload: IRequest<{ addonId: string }>,
   ): Promise<ViewModel<AddonSettingsSchema>>
   getMappingFields(
-    payload: IRequest<{ addonId: string }>,
+    payload: IRequest<{
+      addonId: string
+      workspaceId?: string
+      connectionInstanceId?: string
+    }>,
   ): Promise<ViewModel<MappingFieldDefinition[]>>
   getSettings(
     payload: IRequest<{ addonId: string }>,

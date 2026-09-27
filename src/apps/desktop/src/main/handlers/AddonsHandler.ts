@@ -2,6 +2,7 @@ import {
   AddonManifest,
   FileData,
   IAddonsFacade,
+  IDataSourceResolver,
   IImportAddonUseCase,
   type MappingFieldDefinition,
 } from '@mr-tick/application'
@@ -37,6 +38,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     private readonly importAddonService: IImportAddonUseCase,
     private readonly addonsFacade: IAddonsFacade,
     private readonly jobEmitter: IEventEmitter<IJobEvents>,
+    private readonly dataSourceResolver: IDataSourceResolver,
     private readonly addonLoader?: AddonLoader,
   ) {}
 
@@ -198,11 +200,16 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
 
   public async getMappingFields(
     event: IpcMainInvokeEvent,
-    { body }: IRequest<{ addonId: string }>,
+    {
+      body,
+    }: IRequest<{
+      addonId: string
+      workspaceId?: string
+      connectionInstanceId?: string
+    }>,
   ): Promise<ViewModel<MappingFieldDefinition[]>> {
-    if (!this.addonLoader) {
-      return { isSuccess: true, statusCode: 200, data: [] }
-    }
+    if (!this.addonLoader) return { isSuccess: true, statusCode: 200, data: [] }
+
     try {
       if (body?.addonId && !this.addonLoader.hasActiveAddon(body.addonId)) {
         const installedResult = await this.addonsFacade.getInstalledById(
@@ -216,23 +223,38 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         }
       }
 
-      const ds = this.addonLoader.getDataSource(body.addonId)
-      if (!ds) {
+      if (body?.workspaceId && body?.connectionInstanceId) {
+        const adapter = await this.dataSourceResolver.getDataSource(
+          body.workspaceId,
+          body.connectionInstanceId,
+        )
+        const provider = adapter.metadataProvider
+        if (provider?.getMappingFields) {
+          const result = await provider.getMappingFields()
+          if (result.isSuccess())
+            return { isSuccess: true, statusCode: 200, data: result.success }
+          return {
+            isSuccess: false,
+            statusCode: result.failure.statusCode,
+            error: result.failure.messageKey,
+          }
+        }
         return { isSuccess: true, statusCode: 200, data: [] }
       }
 
+      const ds = this.addonLoader.getDataSource(body.addonId)
+      if (!ds) return { isSuccess: true, statusCode: 200, data: [] }
+
       if (ds.getMappingFields) {
         const mappingResult = await ds.getMappingFields()
-        if (Array.isArray(mappingResult)) {
+        if (Array.isArray(mappingResult))
           return { isSuccess: true, statusCode: 200, data: mappingResult }
-        }
-        if (mappingResult.isSuccess()) {
+        if (mappingResult.isSuccess())
           return {
             isSuccess: true,
             statusCode: 200,
             data: mappingResult.success,
           }
-        }
         return {
           isSuccess: false,
           statusCode: mappingResult.failure.statusCode,
