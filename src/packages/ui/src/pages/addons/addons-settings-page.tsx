@@ -537,8 +537,8 @@ export function AddonsSettingsPage() {
           }
         }}
       >
-        <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-3">
               {selectedAddon?.logo && (
                 <span className="bg-secondary flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border">
@@ -557,7 +557,7 @@ export function AddonsSettingsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto py-2 pr-1">
+          <div className="min-h-0 flex-1 overflow-y-auto py-2 pr-1">
             {selectedAddon && connectionTargetId && (
               <NewDataSourceInstanceForm
                 pluginId={selectedAddon.id}

@@ -371,7 +371,7 @@ export function MappingConfigModal({
           className="flex max-h-[85vh] w-[95vw] max-w-4xl flex-col overflow-hidden sm:max-w-4xl"
           data-testid="mapping-config-dialog"
         >
-          <DialogHeader>
+          <DialogHeader className="shrink-0">
             <div className="flex items-center justify-between pr-6">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal className="text-primary h-5 w-5" />
@@ -412,7 +412,7 @@ export function MappingConfigModal({
             </DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="max-h-[60vh] pr-3">
+          <ScrollArea className="min-h-0 flex-1 pr-3">
             {fields.length === 0 ? (
               <div className="py-8 text-center">
                 <p className="text-muted-foreground text-sm">
@@ -420,7 +420,7 @@ export function MappingConfigModal({
                 </p>
               </div>
             ) : (
-              <div className="space-y-4 py-1">
+              <div className="space-y-4 py-1 pr-1">
                 {groupedFields.map((group) => (
                   <div key={group.category} className="space-y-1.5">
                     <div className="flex items-center gap-2 px-1 pt-1">
@@ -556,7 +556,7 @@ export function MappingConfigModal({
             )}
           </ScrollArea>
 
-          <DialogFooter className="flex justify-end gap-2 pt-2">
+          <DialogFooter className="flex shrink-0 justify-end gap-2 pt-2">
             <Button
               type="button"
               variant="ghost"
