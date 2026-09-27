@@ -368,7 +368,7 @@ export function MappingConfigModal({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="max-h-[90vh] sm:max-w-2xl"
+          className="flex max-h-[85vh] w-[95vw] max-w-4xl flex-col overflow-hidden sm:max-w-4xl"
           data-testid="mapping-config-dialog"
         >
           <DialogHeader>
@@ -445,7 +445,7 @@ export function MappingConfigModal({
                             data-testid={`mapping-field-item-${field.id}`}
                             className="bg-card/40 hover:bg-card/70 flex items-center justify-between gap-3 rounded-md border px-3 py-1.5 transition-colors"
                           >
-                            <div className="flex min-w-0 items-center gap-2">
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
                               <span className="text-foreground truncate text-xs font-medium">
                                 {field.name}
                               </span>
@@ -456,7 +456,7 @@ export function MappingConfigModal({
                               )}
                             </div>
 
-                            <div className="flex shrink-0 items-center gap-2.5">
+                            <div className="flex shrink-0 items-center gap-3">
                               {/* Seletor Visual de Ícones */}
                               <Popover>
                                 <PopoverTrigger asChild>
