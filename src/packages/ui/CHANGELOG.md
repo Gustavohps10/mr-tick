@@ -1,5 +1,17 @@
 ﻿# @mr-tick/ui
 
+## 1.2.0
+
+### Minor Changes
+
+- 82f3d48: Adiciona MappingConfigModal com seleção interativa de ícones Lucide, paleta de cores e importação/exportação de presets JSON para equipes, integrando AddonFieldRenderer aos canais IPC do Electron.
+
+### Patch Changes
+
+- 909bcc6: Centraliza a renderização de campos de schema em AddonFieldRenderer reutilizável, elimina duplicidade de código de formulários e adiciona testes E2E com FakeDataSource.
+- Updated dependencies [82f3d48]
+  - @mr-tick/sdk@0.5.0
+
 ## 1.1.3
 
 ### Patch Changes
