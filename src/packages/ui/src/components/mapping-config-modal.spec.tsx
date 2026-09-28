@@ -297,4 +297,45 @@ describe('MappingConfigModal', () => {
 
     expect(screen.getByTestId('mapping-config-loading-skeleton')).toBeTruthy()
   })
+
+  it('deve permitir buscar e selecionar qualquer ícone do catálogo Lucide no Popover', async () => {
+    const handleSave = vi.fn()
+    const handleOpenChange = vi.fn()
+
+    renderWithClient(
+      <MappingConfigModal
+        open={true}
+        onOpenChange={handleOpenChange}
+        addonId="datasource-fake"
+        fields={sampleFields}
+        onSave={handleSave}
+      />,
+    )
+
+    // Abre o popover de ícones para o campo backlog
+    const iconPickerBtn = screen.getByTestId('mapping-icon-picker-backlog')
+    fireEvent.click(iconPickerBtn)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mapping-icon-search-backlog')).toBeTruthy()
+    })
+
+    // Busca por um ícone específico do Lucide
+    const searchInput = screen.getByTestId('mapping-icon-search-backlog')
+    fireEvent.change(searchInput, { target: { value: 'Shield' } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('icon-option-backlog-Shield')).toBeTruthy()
+    })
+
+    // Clica no ícone Shield encontrado
+    fireEvent.click(screen.getByTestId('icon-option-backlog-Shield'))
+
+    // Salva o mapeamento
+    fireEvent.click(screen.getByTestId('modal-save-mapping-btn'))
+
+    expect(handleSave).toHaveBeenCalledTimes(1)
+    const saved = handleSave.mock.calls[0][0]
+    expect(saved.backlog.icon).toBe('Shield')
+  })
 })

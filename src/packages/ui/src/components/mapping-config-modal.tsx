@@ -6,37 +6,14 @@ import type {
 } from '@mr-tick/sdk'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Activity,
-  AlertOctagon,
-  AlertTriangle,
-  ArrowRightCircle,
-  Bookmark,
-  Calendar,
   Check,
-  CheckCircle2,
-  CheckSquare,
-  Circle,
-  Clock,
-  Code,
   Copy,
   Download,
-  Eye,
-  FileText,
-  Flame,
-  HelpCircle,
-  Inbox,
-  Layers,
+  icons,
   type LucideIcon,
-  MinusCircle,
-  PauseCircle,
-  PlayCircle,
-  RotateCw,
+  Search,
   SlidersHorizontal,
-  Sparkles,
-  Tag,
   Upload,
-  XCircle,
-  Zap,
 } from 'lucide-react'
 import React, { useEffect, useMemo, useState } from 'react'
 
@@ -50,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import {
   Popover,
   PopoverContent,
@@ -60,34 +38,42 @@ import { Textarea } from '@/components/ui/textarea'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib/utils'
 
-export const AVAILABLE_ICONS: Record<string, LucideIcon> = {
-  PlayCircle,
-  CheckCircle2,
-  Clock,
-  AlertOctagon,
-  Inbox,
-  Eye,
-  Flame,
-  Bookmark,
-  Tag,
-  HelpCircle,
-  Zap,
-  Calendar,
-  Code,
-  FileText,
-  Check,
-  MinusCircle,
-  PauseCircle,
-  Layers,
-  Activity,
-  CheckSquare,
-  XCircle,
-  AlertTriangle,
-  Circle,
-  RotateCw,
-  ArrowRightCircle,
-  Sparkles,
-}
+const AVAILABLE_ICONS: Record<string, LucideIcon> = Object.fromEntries(
+  Object.entries(icons),
+)
+
+const POPULAR_ICON_NAMES: string[] = [
+  'PlayCircle',
+  'CheckCircle2',
+  'Clock',
+  'AlertOctagon',
+  'Inbox',
+  'Eye',
+  'Flame',
+  'Bookmark',
+  'Tag',
+  'HelpCircle',
+  'Zap',
+  'Calendar',
+  'Code',
+  'FileText',
+  'Check',
+  'MinusCircle',
+  'PauseCircle',
+  'Layers',
+  'Activity',
+  'CheckSquare',
+  'XCircle',
+  'AlertTriangle',
+  'Circle',
+  'RotateCw',
+  'ArrowRightCircle',
+  'Sparkles',
+]
+
+const ALL_ICON_NAMES: string[] = Array.from(
+  new Set([...POPULAR_ICON_NAMES, ...Object.keys(AVAILABLE_ICONS)]),
+)
 
 export const AVAILABLE_COLORS: { label: string; value: string }[] = [
   { label: 'Slate', value: '#64748b' },
@@ -115,7 +101,142 @@ export function DynamicIcon({
   if (IconComponent) {
     return <IconComponent className={className} style={{ color }} />
   }
-  return <Circle className={className} style={{ color }} />
+  const Fallback = AVAILABLE_ICONS.Circle
+  if (Fallback) {
+    return <Fallback className={className} style={{ color }} />
+  }
+  return null
+}
+
+export interface MappingIconPickerProps {
+  fieldId: string
+  currentIcon: string
+  color?: string
+  onSelectIcon: (iconName: string) => void
+}
+
+export function MappingIconPicker({
+  fieldId,
+  currentIcon,
+  color,
+  onSelectIcon,
+}: MappingIconPickerProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [displayLimit, setDisplayLimit] = useState(120)
+
+  const filteredIcons = useMemo(() => {
+    const query = searchTerm.toLowerCase().trim()
+    if (!query) return ALL_ICON_NAMES
+    return ALL_ICON_NAMES.filter((name) => name.toLowerCase().includes(query))
+  }, [searchTerm])
+
+  const displayedIcons = useMemo(
+    () => filteredIcons.slice(0, displayLimit),
+    [filteredIcons, displayLimit],
+  )
+
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open)
+    if (!open) {
+      setSearchTerm('')
+      setDisplayLimit(120)
+    }
+  }
+
+  return (
+    <Popover open={isOpen} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid={`mapping-icon-picker-${fieldId}`}
+          className="h-7 gap-1.5 px-2 text-xs"
+        >
+          <DynamicIcon
+            name={currentIcon}
+            className="h-3.5 w-3.5"
+            color={color}
+          />
+          <span className="text-muted-foreground font-mono text-[10px]">
+            {currentIcon}
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-80 p-3"
+        data-testid={`mapping-icon-popover-${fieldId}`}
+      >
+        <p className="text-muted-foreground mb-2 text-xs font-medium">
+          Selecione um ícone ({filteredIcons.length} disponíveis):
+        </p>
+
+        <div className="relative mb-2">
+          <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-3.5 w-3.5" />
+          <Input
+            placeholder="Buscar ícone (ex: bug, check, tag)..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value)
+              setDisplayLimit(120)
+            }}
+            className="h-8 pl-8 text-xs"
+            data-testid={`mapping-icon-search-${fieldId}`}
+          />
+        </div>
+
+        <div className="h-64 overflow-y-auto pr-1">
+          {displayedIcons.length === 0 ? (
+            <div className="py-8 text-center">
+              <p className="text-muted-foreground text-xs">
+                Nenhum ícone encontrado para &quot;{searchTerm}&quot;.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-6 gap-1">
+              {displayedIcons.map((iconName) => (
+                <Button
+                  key={iconName}
+                  type="button"
+                  title={iconName}
+                  variant={currentIcon === iconName ? 'secondary' : 'ghost'}
+                  size="icon"
+                  className="h-8 w-8"
+                  data-testid={`icon-option-${fieldId}-${iconName}`}
+                  onClick={() => {
+                    onSelectIcon(iconName)
+                    setIsOpen(false)
+                  }}
+                >
+                  <DynamicIcon
+                    name={iconName}
+                    className="h-4 w-4"
+                    color={color}
+                  />
+                </Button>
+              ))}
+            </div>
+          )}
+
+          {filteredIcons.length > displayedIcons.length && (
+            <div className="pt-2 text-center">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground h-7 w-full text-xs"
+                onClick={() => setDisplayLimit((prev) => prev + 120)}
+              >
+                Carregar mais ({filteredIcons.length - displayedIcons.length}{' '}
+                restantes)
+              </Button>
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 export function parseMappingValue(
@@ -498,62 +619,15 @@ export function MappingConfigModal({
                             </div>
 
                             <div className="flex shrink-0 items-center gap-3">
-                              {/* Seletor Visual de Ícones */}
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    data-testid={`mapping-icon-picker-${field.id}`}
-                                    className="h-7 gap-1.5 px-2 text-xs"
-                                  >
-                                    <DynamicIcon
-                                      name={currentMapping.icon}
-                                      className="h-3.5 w-3.5"
-                                      color={currentMapping.color}
-                                    />
-                                    <span className="text-muted-foreground font-mono text-[10px]">
-                                      {currentMapping.icon}
-                                    </span>
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent
-                                  className="w-64 p-2"
-                                  data-testid={`mapping-icon-popover-${field.id}`}
-                                >
-                                  <p className="text-muted-foreground mb-2 text-xs font-medium">
-                                    Selecione um ícone:
-                                  </p>
-                                  <div className="grid grid-cols-6 gap-1">
-                                    {Object.keys(AVAILABLE_ICONS).map(
-                                      (iconName) => (
-                                        <Button
-                                          key={iconName}
-                                          type="button"
-                                          variant={
-                                            currentMapping.icon === iconName
-                                              ? 'secondary'
-                                              : 'ghost'
-                                          }
-                                          size="icon"
-                                          className="h-8 w-8"
-                                          data-testid={`icon-option-${field.id}-${iconName}`}
-                                          onClick={() =>
-                                            handleUpdateIcon(field.id, iconName)
-                                          }
-                                        >
-                                          <DynamicIcon
-                                            name={iconName}
-                                            className="h-4 w-4"
-                                            color={currentMapping.color}
-                                          />
-                                        </Button>
-                                      ),
-                                    )}
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
+                              {/* Seletor Visual de Ícones com todos os ícones do Lucide e busca com scroll */}
+                              <MappingIconPicker
+                                fieldId={field.id}
+                                currentIcon={currentMapping.icon}
+                                color={currentMapping.color}
+                                onSelectIcon={(iconName) =>
+                                  handleUpdateIcon(field.id, iconName)
+                                }
+                              />
 
                               {/* Paleta Visual de Cores */}
                               <div
