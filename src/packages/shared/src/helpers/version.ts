@@ -44,7 +44,8 @@ export function compareSemVer(a: ParsedSemVer, b: ParsedSemVer): number {
 
 function checkSingleConstraint(appVer: ParsedSemVer, clause: string): boolean {
   const trimmed = clause.trim()
-  if (!trimmed) return true
+  if (!trimmed || trimmed === '-1' || trimmed === '*' || trimmed === '>=-1')
+    return true
 
   // Check operator prefix
   const operatorMatch = trimmed.match(/^([><=!~^]+)\s*(.*)$/)
@@ -155,13 +156,18 @@ export function isApiVersionCompatible(
   requiredApiVersion: string | undefined | null,
   currentAppVersion: string,
 ): boolean {
-  const appVer = parseSemVer(currentAppVersion)
+  const cleanAppVer = currentAppVersion.trim()
+  if (cleanAppVer === '-1' || cleanAppVer === '*') return true
+
+  const trimmedReq = requiredApiVersion ? requiredApiVersion.trim() : ''
+  if (trimmedReq === '-1' || trimmedReq === '*' || trimmedReq === '>=-1')
+    return true
+
+  const appVer = parseSemVer(cleanAppVer)
   if (!appVer) return false
 
   const effectiveRequired =
-    requiredApiVersion && requiredApiVersion.trim().length > 0
-      ? requiredApiVersion.trim()
-      : `>=${DEFAULT_MIN_API_VERSION}`
+    trimmedReq.length > 0 ? trimmedReq : `>=${DEFAULT_MIN_API_VERSION}`
 
   // Support multiple space-separated constraints, e.g. ">=0.1.0 <0.4.0"
   const clauses = effectiveRequired.split(/\s+/)

@@ -110,5 +110,20 @@ describe('Version Locking & SemVer Compatibility', () => {
     it('deve retornar false se a versão do app for inválida', () => {
       expect(isApiVersionCompatible('>=0.3.0', 'invalid-version')).toBe(false)
     })
+
+    it('deve retornar true quando requiredApiVersion for -1 ou * (addon universal de teste/mock)', () => {
+      expect(isApiVersionCompatible('-1', '0.4.0')).toBe(true)
+      expect(isApiVersionCompatible('-1', '0.6.0')).toBe(true)
+      expect(isApiVersionCompatible('-1', '1.0.0')).toBe(true)
+      expect(isApiVersionCompatible('*', '0.6.0')).toBe(true)
+      expect(isApiVersionCompatible('>=-1', '0.6.0')).toBe(true)
+    })
+
+    it('deve retornar true quando a versão do app for -1 ou * (ambiente de teste/E2E com bypass de versão)', () => {
+      expect(isApiVersionCompatible('>=0.1.0', '-1')).toBe(true)
+      expect(isApiVersionCompatible('>=0.5.0', '-1')).toBe(true)
+      expect(isApiVersionCompatible('>=1.0.0', '-1')).toBe(true)
+      expect(isApiVersionCompatible('>=0.5.0', '*')).toBe(true)
+    })
   })
 })

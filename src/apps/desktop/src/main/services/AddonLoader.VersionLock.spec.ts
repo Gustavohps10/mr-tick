@@ -134,4 +134,51 @@ requiredApiVersion: '>=0.4.0'
     expect(loaded).toBe(true)
     expect(addonLoader.hasActiveAddon('test-compatible-addon')).toBe(true)
   })
+
+  it('deve carregar com sucesso addon com requiredApiVersion "-1" mesmo no app 0.4.0', async () => {
+    const manifestContent = `
+id: test-universal-addon
+name: Universal Addon
+version: 1.0.0
+requiredApiVersion: '-1'
+`
+    writeFileSync(join(testAddonDir, 'manifest.yaml'), manifestContent)
+
+    const loaded = await addonLoader.loadAndActivateFromDisk(
+      'test-universal-addon',
+      testAddonDir,
+    )
+
+    expect(loaded).toBe(true)
+    expect(addonLoader.hasActiveAddon('test-universal-addon')).toBe(true)
+  })
+
+  it('deve carregar com sucesso qualquer addon quando executando em ambiente E2E (PLAYWRIGHT_TEST=1)', async () => {
+    const originalEnv = process.env.PLAYWRIGHT_TEST
+    process.env.PLAYWRIGHT_TEST = '1'
+
+    try {
+      const manifestContent = `
+id: test-future-addon-in-e2e
+name: Future Addon In E2E
+version: 1.0.0
+requiredApiVersion: '>=0.9.0'
+`
+      writeFileSync(join(testAddonDir, 'manifest.yaml'), manifestContent)
+
+      const loaded = await addonLoader.loadAndActivateFromDisk(
+        'test-future-addon-in-e2e',
+        testAddonDir,
+      )
+
+      expect(loaded).toBe(true)
+      expect(addonLoader.hasActiveAddon('test-future-addon-in-e2e')).toBe(true)
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.PLAYWRIGHT_TEST
+      } else {
+        process.env.PLAYWRIGHT_TEST = originalEnv
+      }
+    }
+  })
 })

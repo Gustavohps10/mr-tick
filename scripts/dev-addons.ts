@@ -149,7 +149,12 @@ export function syncDevAddonManifest(sourcePath: string): void {
       )
     }
 
-    if (sdkVersion) {
+    const hasUniversalApiVersion =
+      /(?:requiredApiVersion|RequiredApiVersion)\s*:\s*['"]?(-1|\*)['"]?/.test(
+        content,
+      )
+
+    if (sdkVersion && !hasUniversalApiVersion) {
       updatedContent = updatedContent.replace(
         /(requiredApiVersion:\s*)['"]?[^'"\r\n]+['"]?/,
         `$1'>=${sdkVersion}'`,

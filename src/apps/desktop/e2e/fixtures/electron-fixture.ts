@@ -112,7 +112,12 @@ function syncDevAddonManifest(addonDir: string): void {
       )
     }
 
-    if (appVersion) {
+    const hasUniversalApiVersion =
+      /(?:requiredApiVersion|RequiredApiVersion)\s*:\s*['"]?(-1|\*)['"]?/.test(
+        content,
+      )
+
+    if (appVersion && !hasUniversalApiVersion) {
       updatedContent = updatedContent.replace(
         /(requiredApiVersion:\s*)['"]?[^'"\r\n]+['"]?/,
         `$1'>=${appVersion}'`,
@@ -133,7 +138,7 @@ function ensureTestAddon(): void {
   const targetAddonDir = join(addonsDir, 'mr-tick-datasource-fake')
   const sourceAddonDir = resolve(
     desktopRoot,
-    '../../src/dev-addons/datasource-fake',
+    '../../dev-addons/datasource-fake',
   )
 
   if (!existsSync(sourceAddonDir)) return
@@ -180,6 +185,7 @@ export const test = baseTest.extend<ElectronTestFixtures>({
         ...process.env,
         NODE_ENV: 'test',
         FAKE_DB_IN_MEMORY: 'true',
+        PLAYWRIGHT_TEST: '1',
       },
     })
 

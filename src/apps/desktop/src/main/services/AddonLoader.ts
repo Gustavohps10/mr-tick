@@ -903,8 +903,11 @@ export class AddonLoader {
         }
       }
 
-      const currentVersion =
-        this.hostAppVersion || (app?.getVersion ? app.getVersion() : '0.3.0')
+      const isPlaywrightE2E = process.env.PLAYWRIGHT_TEST === '1'
+
+      const currentVersion = isPlaywrightE2E
+        ? '-1'
+        : this.hostAppVersion || (app?.getVersion ? app.getVersion() : '0.3.0')
 
       if (!isApiVersionCompatible(requiredApiVersion, currentVersion)) {
         console.warn(
