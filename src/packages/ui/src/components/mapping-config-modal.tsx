@@ -166,7 +166,9 @@ export function MappingIconPicker({
       </PopoverTrigger>
       <PopoverContent
         className="w-80 p-3"
+        portal={false}
         data-testid={`mapping-icon-popover-${fieldId}`}
+        onWheel={(e) => e.stopPropagation()}
       >
         <p className="text-muted-foreground mb-2 text-xs font-medium">
           Selecione um ícone ({filteredIcons.length} disponíveis):
@@ -186,7 +188,12 @@ export function MappingIconPicker({
           />
         </div>
 
-        <div className="h-64 overflow-y-auto pr-1">
+        <div
+          className="h-64 overflow-y-auto overscroll-contain pr-1"
+          data-testid={`mapping-icon-scroll-${fieldId}`}
+          data-radix-scroll-lock-ignore="true"
+          onWheel={(e) => e.stopPropagation()}
+        >
           {displayedIcons.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-muted-foreground text-xs">
@@ -696,24 +703,23 @@ export function MappingConfigModal({
       {/* Modal Interno de Importar Preset */}
       <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
         <DialogContent
-          className="sm:max-w-md"
+          className="flex max-h-[85vh] w-[95vw] max-w-lg flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
           data-testid="modal-import-preset-dialog"
         >
-          <DialogHeader>
+          <DialogHeader className="shrink-0 border-b px-6 py-4">
             <DialogTitle>Importar Preset de Mapeamento</DialogTitle>
             <DialogDescription>
               Cole o JSON compartilhado pelo Tech Lead para carregar as cores e
               ícones de uma só vez.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
             <Textarea
               data-testid="modal-import-preset-textarea"
               placeholder={
                 '{\n  "mapping": {\n    "in_progress": {\n      "icon": "PlayCircle",\n      "color": "#3b82f6"\n    }\n  }\n}'
               }
-              rows={8}
-              className="font-mono text-xs"
+              className="[field-sizing:fixed] h-64 max-h-[45vh] resize-none overflow-y-auto font-mono text-xs"
               value={importJsonText}
               onChange={(e) => {
                 setImportJsonText(e.target.value)
@@ -723,13 +729,13 @@ export function MappingConfigModal({
             {importError && (
               <p
                 data-testid="modal-import-preset-error"
-                className="text-destructive text-xs"
+                className="text-destructive mt-2 text-xs"
               >
                 {importError}
               </p>
             )}
           </div>
-          <DialogFooter className="flex justify-end gap-2">
+          <DialogFooter className="bg-muted/20 flex shrink-0 items-center justify-end gap-2 border-t px-6 py-3">
             <Button
               type="button"
               variant="ghost"
@@ -753,21 +759,20 @@ export function MappingConfigModal({
       {/* Modal Interno de Exportar Preset */}
       <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
         <DialogContent
-          className="sm:max-w-md"
+          className="flex max-h-[85vh] w-[95vw] max-w-lg flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
           data-testid="modal-export-preset-dialog"
         >
-          <DialogHeader>
+          <DialogHeader className="shrink-0 border-b px-6 py-4">
             <DialogTitle>Exportar Preset de Mapeamento</DialogTitle>
             <DialogDescription>
               Copie o JSON abaixo para compartilhar com a equipe.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
             <Textarea
               readOnly
               data-testid="modal-export-preset-textarea"
-              rows={8}
-              className="font-mono text-xs"
+              className="[field-sizing:fixed] h-64 max-h-[45vh] resize-none overflow-y-auto font-mono text-xs"
               value={(() => {
                 const finalMappings: Record<string, ConfiguredFieldMapping> = {}
                 for (const field of fields) {
@@ -777,7 +782,7 @@ export function MappingConfigModal({
               })()}
             />
           </div>
-          <DialogFooter className="flex justify-end gap-2">
+          <DialogFooter className="bg-muted/20 flex shrink-0 items-center justify-end gap-2 border-t px-6 py-3">
             <Button
               type="button"
               variant="secondary"

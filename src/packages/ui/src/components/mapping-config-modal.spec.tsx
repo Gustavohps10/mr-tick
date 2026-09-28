@@ -338,4 +338,69 @@ describe('MappingConfigModal', () => {
     const saved = handleSave.mock.calls[0][0]
     expect(saved.backlog.icon).toBe('Shield')
   })
+
+  it('deve possuir container com suporte a scroll de mouse (wheel) e ignorar bloqueio de scroll no Popover', async () => {
+    const handleSave = vi.fn()
+    const handleOpenChange = vi.fn()
+
+    renderWithClient(
+      <MappingConfigModal
+        open={true}
+        onOpenChange={handleOpenChange}
+        addonId="datasource-fake"
+        fields={sampleFields}
+        onSave={handleSave}
+      />,
+    )
+
+    const iconPickerBtn = screen.getByTestId('mapping-icon-picker-backlog')
+    fireEvent.click(iconPickerBtn)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mapping-icon-scroll-backlog')).toBeTruthy()
+    })
+
+    const scrollContainer = screen.getByTestId('mapping-icon-scroll-backlog')
+    expect(scrollContainer.getAttribute('data-radix-scroll-lock-ignore')).toBe(
+      'true',
+    )
+
+    // Dispara evento de rolagem do mouse (wheel)
+    const wheelEvent = new WheelEvent('wheel', {
+      deltaY: 100,
+      bubbles: true,
+      cancelable: true,
+    })
+    fireEvent(scrollContainer, wheelEvent)
+    expect(wheelEvent.defaultPrevented).toBe(false)
+  })
+
+  it('deve abrir modal de exportar preset com layout confinado que não estoura a tela', async () => {
+    const handleSave = vi.fn()
+    const handleOpenChange = vi.fn()
+
+    renderWithClient(
+      <MappingConfigModal
+        open={true}
+        onOpenChange={handleOpenChange}
+        addonId="datasource-fake"
+        fields={sampleFields}
+        onSave={handleSave}
+      />,
+    )
+
+    fireEvent.click(screen.getByTestId('modal-export-preset-btn'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('modal-export-preset-dialog')).toBeTruthy()
+    })
+
+    const exportDialog = screen.getByTestId('modal-export-preset-dialog')
+    expect(exportDialog.className).toContain('max-h-[85vh]')
+    expect(exportDialog.className).toContain('overflow-hidden')
+
+    const textarea = screen.getByTestId('modal-export-preset-textarea')
+    expect(textarea).toBeTruthy()
+    expect(textarea.className).toContain('overflow-y-auto')
+  })
 })
