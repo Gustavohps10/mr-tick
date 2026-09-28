@@ -20,6 +20,8 @@ import { MetadataHandler } from '@/main/handlers/MetadataHandler'
 import { WorkspacesHandler } from '@/main/handlers/WorkspacesHandler'
 import { getSettings, saveSettings } from '@/main/settings'
 
+import sdkPkg from '../../../sdk/package.json'
+
 function getWindowByType(
   event: Electron.IpcMainInvokeEvent,
   windowType?: string,
@@ -66,6 +68,9 @@ export function openIpcRoutes(
   )
 
   IpcHandler.register('SYSTEM_VERSION', () => Promise.resolve(app.getVersion()))
+  IpcHandler.register('SYSTEM_SDK_VERSION', () =>
+    Promise.resolve(sdkPkg.version),
+  )
   IpcHandler.register('SYSTEM_GET_ENVIRONMENT', () => {
     let isPortable = false
     let installPath = ''

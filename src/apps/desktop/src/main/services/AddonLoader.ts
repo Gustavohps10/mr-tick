@@ -41,9 +41,11 @@ import {
   isApiVersionCompatible,
 } from '@mr-tick/shared/helpers'
 import { ISystemEvents } from '@mr-tick/shared/transport'
-import { app, BrowserWindow, shell } from 'electron'
+import { BrowserWindow, shell } from 'electron'
 
 import { getSettings, saveSettings } from '@/main/settings'
+
+import sdkPkg from '../../../../sdk/package.json'
 
 export class MemoryRegistry<T extends { id?: string }> implements IRegistry<T> {
   private items = new Map<string, T>()
@@ -197,7 +199,7 @@ export class AddonLoader {
 
   constructor(
     private credentialsStorage: ICredentialsStorage,
-    private hostAppVersion?: string,
+    private hostSdkVersion?: string,
   ) {
     this.registerThemeCommands()
     this.restoreActiveTheme()
@@ -907,11 +909,11 @@ export class AddonLoader {
 
       const currentVersion = isPlaywrightE2E
         ? '-1'
-        : this.hostAppVersion || (app?.getVersion ? app.getVersion() : '0.3.0')
+        : this.hostSdkVersion || sdkPkg.version
 
       if (!isApiVersionCompatible(requiredApiVersion, currentVersion)) {
         console.warn(
-          `⚠️ [AddonLoader] Addon "${addonId}" ignorado: requer API ${requiredApiVersion ?? 'desconhecida'}, mas o aplicativo está na versão ${currentVersion}`,
+          `⚠️ [AddonLoader] Addon "${addonId}" ignorado: requer API ${requiredApiVersion ?? 'desconhecida'}, mas o aplicativo suporta a API ${currentVersion}`,
         )
         return false
       }

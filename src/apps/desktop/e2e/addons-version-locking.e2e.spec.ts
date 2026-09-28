@@ -1,17 +1,22 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { expect, test } from './fixtures/electron-fixture'
+
+const currentFilePath = fileURLToPath(import.meta.url)
+const sdkPkgPath = resolve(dirname(currentFilePath), '../../sdk/package.json')
+const sdkPkg = JSON.parse(readFileSync(sdkPkgPath, 'utf-8'))
 
 test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () => {
   test('deve bloquear a seleção e instalação de pacotes com API incompatível na UI', async ({
     electronApp,
     page,
   }) => {
-    // 1. Obtém a versão atual do app e sobrescreve o handler IPC no processo Main do Electron para retornar catálogo de teste
-    const currentAppVersion = await electronApp.evaluate(({ app }) =>
-      app.getVersion(),
-    )
+    // 1. Obtém a versão suportada da SDK e sobrescreve o handler IPC no processo Main do Electron para retornar catálogo de teste
+    const currentSdkVersion = sdkPkg.version
 
-    await electronApp.evaluate(({ ipcMain, app }) => {
-      const currentVersion = app.getVersion()
+    await electronApp.evaluate(({ ipcMain }, sdkVersion) => {
       ipcMain.removeHandler('ADDONS_LIST_AVAILABLE')
       ipcMain.handle('ADDONS_LIST_AVAILABLE', async () => ({
         isSuccess: true,
@@ -50,12 +55,12 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
           {
             id: 'test-multi-version-addon',
             name: 'Plugin Híbrido E2E',
-            version: currentVersion,
+            version: sdkVersion,
             categories: ['dataSource'],
             author: 'E2E Tester',
             description: 'Plugin com versões legadas e compatíveis',
-            downloadUrl: `https://example.com/hybrid-${currentVersion}.tladdon`,
-            requiredApiVersion: `>=${currentVersion}`,
+            downloadUrl: `https://example.com/hybrid-${sdkVersion}.tladdon`,
+            requiredApiVersion: `>=${sdkVersion}`,
             packages: [
               {
                 version: '0.1.0',
@@ -65,12 +70,12 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
                 changelog: ['Versão legada incompatível (>=0.1.0)'],
               },
               {
-                version: currentVersion,
-                requiredApiVersion: `>=${currentVersion}`,
+                version: sdkVersion,
+                requiredApiVersion: `>=${sdkVersion}`,
                 releaseDate: '2026-09-24',
-                downloadUrl: `https://example.com/hybrid-${currentVersion}.tladdon`,
+                downloadUrl: `https://example.com/hybrid-${sdkVersion}.tladdon`,
                 changelog: [
-                  `Versão compatível com API atual (>=${currentVersion})`,
+                  `Versão compatível com API atual (>=${sdkVersion})`,
                 ],
               },
             ],
@@ -80,7 +85,7 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
         totalPages: 1,
         currentPage: 1,
       }))
-    })
+    }, currentSdkVersion)
 
     // 2. Acessa o workspace padrão
     const workspaceLinks = page.locator('nav a[href*="/workspaces/"]')
@@ -149,7 +154,7 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
 
     // Valida que a versão compatível foi selecionada automaticamente e o botão fica habilitado para ela
     await expect(confirmInstallBtn).toBeEnabled()
-    await expect(confirmInstallBtn).toContainText(`v${currentAppVersion}`)
+    await expect(confirmInstallBtn).toContainText(`v${currentSdkVersion}`)
 
     // Tenta clicar no card incompatível (v0.1.0) e garante que a seleção NÃO muda
     const incompatibleCard = page.locator(
@@ -159,6 +164,6 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
     await incompatibleCard.click({ force: true })
 
     // O botão ainda deve manter a versão compatível selecionada e não v0.1.0
-    await expect(confirmInstallBtn).toContainText(`v${currentAppVersion}`)
+    await expect(confirmInstallBtn).toContainText(`v${currentSdkVersion}`)
   })
 })

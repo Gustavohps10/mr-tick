@@ -76,9 +76,9 @@ export function AddonInstallModal({
   const [logs, setLogs] = useState<InstallationLogEntry[]>([])
   const [isExecutingJob, setIsExecutingJob] = useState<boolean>(false)
 
-  const { data: appVersion = '0.3.0' } = useQuery({
-    queryKey: ['appVersion'],
-    queryFn: () => bridge.system.getAppVersion(),
+  const { data: sdkVersion = '0.5.0' } = useQuery({
+    queryKey: ['sdkVersion'],
+    queryFn: () => bridge.system.getSdkVersion(),
     staleTime: Infinity,
   })
 
@@ -111,19 +111,19 @@ export function AddonInstallModal({
       if (found) return found
     }
     const firstCompatible = availablePackages.find((pkg) =>
-      isApiVersionCompatible(pkg.requiredApiVersion, appVersion),
+      isApiVersionCompatible(pkg.requiredApiVersion, sdkVersion),
     )
     if (firstCompatible) return firstCompatible
     return availablePackages[0] || null
-  }, [availablePackages, selectedVersion, appVersion])
+  }, [availablePackages, selectedVersion, sdkVersion])
 
   const isSelectedPackageCompatible = useMemo(() => {
     if (!selectedPackage) return false
     return isApiVersionCompatible(
       selectedPackage.requiredApiVersion,
-      appVersion,
+      sdkVersion,
     )
-  }, [selectedPackage, appVersion])
+  }, [selectedPackage, sdkVersion])
 
   // Reset ao abrir ou trocar de addon
   useEffect(() => {
@@ -139,7 +139,7 @@ export function AddonInstallModal({
     }
 
     const firstCompatible = availablePackages.find((pkg) =>
-      isApiVersionCompatible(pkg.requiredApiVersion, appVersion),
+      isApiVersionCompatible(pkg.requiredApiVersion, sdkVersion),
     )
     if (firstCompatible) {
       setSelectedVersion(firstCompatible.version)
@@ -147,7 +147,7 @@ export function AddonInstallModal({
     }
 
     setSelectedVersion('')
-  }, [open, availablePackages, appVersion])
+  }, [open, availablePackages, sdkVersion])
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -169,7 +169,7 @@ export function AddonInstallModal({
 
     if (!isSelectedPackageCompatible) {
       toast.error(
-        `Versão incompatível com a versão atual do aplicativo (${appVersion})`,
+        `Versão incompatível com a versão atual da API do aplicativo (${sdkVersion})`,
       )
       return
     }
@@ -316,7 +316,7 @@ export function AddonInstallModal({
                     const isSelected = selectedPackage?.version === pkg.version
                     const isCompatible = isApiVersionCompatible(
                       pkg.requiredApiVersion,
-                      appVersion,
+                      sdkVersion,
                     )
                     return (
                       <Card

@@ -1,9 +1,10 @@
-﻿import { AppSettings, ISystemAPI } from '@mr-tick/application'
+import { AppSettings, ISystemAPI } from '@mr-tick/application'
 
 import { IpcInvoker } from '@/main/adapters/IpcInvoker'
 
 export const systemInvoker: ISystemAPI = {
   getAppVersion: () => IpcInvoker.invoke('SYSTEM_VERSION'),
+  getSdkVersion: () => IpcInvoker.invoke('SYSTEM_SDK_VERSION'),
   getEnvironment: () => IpcInvoker.invoke('SYSTEM_GET_ENVIRONMENT'),
   setIgnoreMouseEvents: (payload) =>
     IpcInvoker.invoke('WIDGET_SET_IGNORE_MOUSE', payload),

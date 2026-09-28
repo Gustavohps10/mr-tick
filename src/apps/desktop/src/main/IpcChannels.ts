@@ -5,6 +5,7 @@ export const IpcChannels = {
   WIDGET_START_KEY_CAPTURE: 'widget:start-key-capture',
   WIDGET_STOP_KEY_CAPTURE: 'widget:stop-key-capture',
   SYSTEM_VERSION: 'system:version',
+  SYSTEM_SDK_VERSION: 'system:sdk-version',
   SYSTEM_GET_ENVIRONMENT: 'system:get-environment',
   SYSTEM_GET_DISPLAYS: 'system:get-displays',
   SYSTEM_MOVE_TO_DISPLAY: 'system:move-to-display',

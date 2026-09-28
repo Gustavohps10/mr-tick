@@ -93,9 +93,9 @@ export function DataSourceList({
     Record<string, InstallationState>
   >({})
 
-  const { data: appVersion } = useQuery({
-    queryKey: ['appVersion'],
-    queryFn: () => bridge.system.getAppVersion(),
+  const { data: sdkVersion } = useQuery({
+    queryKey: ['sdkVersion'],
+    queryFn: () => bridge.system.getSdkVersion(),
     staleTime: Infinity,
   })
 
@@ -149,9 +149,9 @@ export function DataSourceList({
         toast.error(response.error ?? 'Falha ao carregar pacotes de instalação')
 
       setInstallerData(response.data ?? null)
-      const currentAppVer = appVersion || '0.3.0'
+      const currentSdkVer = sdkVersion || '0.5.0'
       const firstCompatible = response.data?.packages.find((pkg) =>
-        isApiVersionCompatible(pkg.requiredApiVersion, currentAppVer),
+        isApiVersionCompatible(pkg.requiredApiVersion, currentSdkVer),
       )
       if (firstCompatible) setSelectedVersion(firstCompatible.version)
     } finally {
@@ -166,10 +166,10 @@ export function DataSourceList({
     )
     if (!pkg) return
 
-    const currentAppVer = appVersion || '0.3.0'
-    if (!isApiVersionCompatible(pkg.requiredApiVersion, currentAppVer)) {
+    const currentSdkVer = sdkVersion || '0.5.0'
+    if (!isApiVersionCompatible(pkg.requiredApiVersion, currentSdkVer)) {
       toast.error(
-        `Versão incompatível com a versão atual do app (${currentAppVer})`,
+        `Versão incompatível com a versão atual da API do aplicativo (${currentSdkVer})`,
       )
       return
     }
@@ -439,10 +439,10 @@ export function DataSourceList({
             <ScrollArea className="max-h-64 pr-3">
               <div className="flex flex-col gap-2">
                 {installerData?.packages.map((pkg) => {
-                  const currentAppVer = appVersion || '0.3.0'
+                  const currentSdkVer = sdkVersion || '0.5.0'
                   const isCompatible = isApiVersionCompatible(
                     pkg.requiredApiVersion,
-                    currentAppVer,
+                    currentSdkVer,
                   )
                   const isSelected = selectedVersion === pkg.version
                   return (

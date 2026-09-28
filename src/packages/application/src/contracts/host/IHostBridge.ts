@@ -470,6 +470,7 @@ export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface ISystemAPI {
   getAppVersion(): Promise<string>
+  getSdkVersion(): Promise<string>
   getEnvironment(): Promise<EnvironmentInfo>
   setIgnoreMouseEvents(
     payload: IRequest<{ ignore: boolean; forward: boolean }>,

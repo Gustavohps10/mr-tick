@@ -1,4 +1,4 @@
-﻿{
+{
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "../../",
@@ -20,7 +20,8 @@
     "src/preload/**/*",
     "src/renderer/**/*",
     "src/renderer/@types",
-    "../../packages/IoC.ts"
+    "../../packages/IoC.ts",
+    "../sdk/package.json"
   ],
   "references": [
     { "path": "../../packages/application" },

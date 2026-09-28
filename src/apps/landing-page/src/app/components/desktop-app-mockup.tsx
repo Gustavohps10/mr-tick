@@ -210,6 +210,7 @@ const mockBridgeClient: IHostBridge = {
   system: {
     getEnvironment: async () => mockEnvironment,
     getAppVersion: async () => '0.1.1',
+    getSdkVersion: async () => '0.5.0',
     getSettings: async () => ({}),
     saveSettings: async () => {},
     getDisplays: async () => [],
