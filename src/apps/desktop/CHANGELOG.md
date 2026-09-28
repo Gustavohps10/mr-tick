@@ -1,5 +1,12 @@
 ﻿# @mr-tick/desktop
 
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies [2e336c8]
+  - @mr-tick/ui@1.3.2
+
 ## 0.6.1
 
 ### Patch Changes
