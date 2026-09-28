@@ -106,7 +106,8 @@ const mockActivities: Array<{
 ]
 
 const STORAGE_KEY = 'mr-tick:widget:block-order'
-const FREE_DRAG_STORAGE_KEY = 'mr-tick:widget:free-offset'
+const WIDGET_FREE_DRAG_STORAGE_KEY = 'mr-tick:widget:free-offset'
+const WORKSPACE_DOCK_DRAG_STORAGE_KEY = 'mr-tick:workspace:dock-offset'
 
 type WidgetPosition = 'top' | 'bottom' | 'left' | 'right'
 type FreeOffset = { x: number; y: number }
@@ -119,10 +120,13 @@ const DEFAULT_FREE_OFFSETS: FreeOffsets = {
   right: { x: 0, y: 0 },
 }
 
-function loadFreeOffsets(): FreeOffsets {
+function loadFreeOffsets(isWidget: boolean): FreeOffsets {
   if (typeof window === 'undefined') return DEFAULT_FREE_OFFSETS
+  const storageKey = isWidget
+    ? WIDGET_FREE_DRAG_STORAGE_KEY
+    : WORKSPACE_DOCK_DRAG_STORAGE_KEY
   try {
-    const raw = window.localStorage.getItem(FREE_DRAG_STORAGE_KEY)
+    const raw = window.localStorage.getItem(storageKey)
     const parsed = raw ? JSON.parse(raw) : null
     if (parsed && typeof parsed === 'object') {
       return { ...DEFAULT_FREE_OFFSETS, ...parsed }
@@ -143,16 +147,19 @@ const clamp = (val: number, min: number, max: number) => {
 
 // ---------------------------------------------------------------------------
 // 1. CONTEXT API
-// ---------------------------------------------------------------------------
-type UltimateTimeTrackerContextType = {
+export type ConnectionWithSync = ReturnType<
+  typeof useConnectionsWithSync
+>[number]
+
+export interface UltimateTimeTrackerContextType {
   isVertical: boolean
-  widgetPosition: WidgetPosition
+  widgetPosition: string
   isExpanded: boolean
   setIsExpanded: React.Dispatch<React.SetStateAction<boolean>>
   widgetHandleRef: React.RefObject<HTMLDivElement | null>
 
   taskId: string
-  setTaskId: React.Dispatch<React.SetStateAction<string>>
+  setTaskId: (taskId: string) => void | Promise<void>
   selectedTask: SyncTaskRxDBDTO | null
   setSelectedTask: React.Dispatch<React.SetStateAction<SyncTaskRxDBDTO | null>>
   isTaskLookupOpen: boolean
@@ -160,9 +167,9 @@ type UltimateTimeTrackerContextType = {
   activities: Array<{ id: string; name: string; icon: React.ElementType }>
   handleSelectTask: (task: SyncTaskRxDBDTO) => void
   description: string
-  setDescription: React.Dispatch<React.SetStateAction<string>>
+  setDescription: (description: string) => void | Promise<void>
   selectedActivity: string
-  setSelectedActivity: React.Dispatch<React.SetStateAction<string>>
+  setSelectedActivity: (activityId: string) => void | Promise<void>
   manualInitialSeconds: number
   setManualInitialSeconds: React.Dispatch<React.SetStateAction<number>>
 
@@ -178,8 +185,8 @@ type UltimateTimeTrackerContextType = {
   handleDirectLog: () => void
 
   selectedConnectionId: string
-  setSelectedConnectionId: React.Dispatch<React.SetStateAction<string>>
-  syncConnections: any[]
+  setSelectedConnectionId: (connectionId: string) => void | Promise<void>
+  syncConnections: ConnectionWithSync[]
   dbTodaySeconds: number
 
   timerError: string | null
@@ -239,6 +246,8 @@ export const UltimateTimeTracker = ({
     useState<FreeOffsets>(DEFAULT_FREE_OFFSETS)
 
   const { timerDirection, setTimerDirection } = useTimerSettings()
+  const isWidgetWindow =
+    typeof window !== 'undefined' && window.location.hash.includes('/widgets/')
   const [widgetPosition] = useCurrentWidgetPosition()
   const db = useSyncStore((s) => s.db)
   const bridge = useHostBridge()
@@ -443,8 +452,8 @@ export const UltimateTimeTracker = ({
   const createNewTimeEntry = useTimeEntryStore((s) => s.createNewTimeEntry)
 
   useEffect(() => {
-    setFreeOffsets(loadFreeOffsets())
-  }, [])
+    setFreeOffsets(loadFreeOffsets(isWidgetWindow))
+  }, [isWidgetWindow])
 
   const prevActiveRef = useRef(activeEntry)
 
@@ -492,68 +501,65 @@ export const UltimateTimeTracker = ({
     const isWidgetWindow = window.location.hash.includes('/widgets/')
     if (!isWidgetWindow) return
 
-    let isCurrentlyIgnored = true
+    let isCurrentlyIgnored: boolean | null = null
 
     const setIgnoreState = (shouldIgnore: boolean) => {
       if (shouldIgnore === isCurrentlyIgnored) return
       isCurrentlyIgnored = shouldIgnore
 
-      // Passar sempre { forward: true } quando for ignorar para o Chromium continuar recebendo o mousemove
       bridge.system.setIgnoreMouseEvents({
         body: { ignore: shouldIgnore, forward: true },
       })
     }
 
-    const handlePointerEnter = (e: PointerEvent) => {
-      if (isDraggingWidgetRef.current) return
-      setIgnoreState(false)
-    }
-
-    const handlePointerLeave = (e: PointerEvent) => {
-      if (isDraggingWidgetRef.current) return
-
-      // Verifica se o cursor realmente saiu para o espaço vazio e não para um popover/portal
-      const related = e.relatedTarget as HTMLElement | null
-      const isMovingToInteractiveUI = Boolean(
-        related?.closest(
-          '[data-widget-card], [data-radix-popper-content-wrapper], [role="dialog"], [role="menu"], [role="tooltip"]',
+    const isInteractiveElement = (target: EventTarget | null): boolean => {
+      if (!target || !(target instanceof Element)) return false
+      return Boolean(
+        target.closest(
+          '[data-widget-card], [data-widget-interactive], [data-radix-popper-content-wrapper], [role="dialog"], [role="menu"], [role="tooltip"], [data-radix-portal]',
         ),
       )
+    }
 
-      if (!isMovingToInteractiveUI) {
+    const onGlobalPointerMove = (e: PointerEvent) => {
+      if (isDraggingWidgetRef.current) return
+      const isInteractive = isInteractiveElement(e.target)
+      setIgnoreState(!isInteractive)
+    }
+
+    const onWindowLeaveOrBlur = () => {
+      if (isDraggingWidgetRef.current) return
+      setIgnoreState(true)
+    }
+
+    window.addEventListener('pointermove', onGlobalPointerMove, {
+      passive: true,
+    })
+    window.addEventListener('pointerleave', onWindowLeaveOrBlur)
+    window.addEventListener('blur', onWindowLeaveOrBlur)
+
+    // Monitora portals do Radix UI (Popovers/Tooltips/Dialogs) abertos ou fechados no body
+    const observer = new MutationObserver(() => {
+      const hasOpenOverlays = Boolean(
+        document.querySelector(
+          '[data-radix-popper-content-wrapper], [role="dialog"], [role="menu"]',
+        ),
+      )
+      const isCardHovered = cardRef.current?.matches(':hover')
+      if (!hasOpenOverlays && !isCardHovered && !isDraggingWidgetRef.current) {
         setIgnoreState(true)
       }
-    }
-
-    const cardElement = cardRef.current
-    if (cardElement) {
-      cardElement.addEventListener('pointerenter', handlePointerEnter)
-      cardElement.addEventListener('pointerleave', handlePointerLeave)
-    }
-
-    // Monitora portals do Radix UI (Popovers/Tooltips) abertos dinamicamente no body
-    const observer = new MutationObserver(() => {
-      const overlays = document.querySelectorAll(
-        '[data-radix-popper-content-wrapper], [role="dialog"], [role="menu"], [role="tooltip"]',
-      )
-      overlays.forEach((el) => {
-        el.removeEventListener('pointerenter', handlePointerEnter as any)
-        el.removeEventListener('pointerleave', handlePointerLeave as any)
-        el.addEventListener('pointerenter', handlePointerEnter as any)
-        el.addEventListener('pointerleave', handlePointerLeave as any)
-      })
     })
 
     observer.observe(document.body, { childList: true, subtree: true })
 
-    // Estado inicial: janela ignora cliques até o mouse entrar
+    // Estado inicial: janela ignora cliques até o mouse entrar em elemento interativo
     setIgnoreState(true)
 
     return () => {
-      if (cardElement) {
-        cardElement.removeEventListener('pointerenter', handlePointerEnter)
-        cardElement.removeEventListener('pointerleave', handlePointerLeave)
-      }
+      window.removeEventListener('pointermove', onGlobalPointerMove)
+      window.removeEventListener('pointerleave', onWindowLeaveOrBlur)
+      window.removeEventListener('blur', onWindowLeaveOrBlur)
       observer.disconnect()
     }
   }, [])
@@ -582,11 +588,11 @@ export const UltimateTimeTracker = ({
       x: 0,
       y: 0,
     }
-    const newX = isVertical ? 0 : offset.x
-    const newY = isVertical ? offset.y : 0
+    const newX = isWidgetWindow ? offset.x : isVertical ? 0 : offset.x
+    const newY = isWidgetWindow ? offset.y : isVertical ? offset.y : 0
 
     element.style.transform = `translate3d(${newX}px, ${newY}px, 0)`
-  }, [freeOffsets, widgetPosition, isVertical])
+  }, [freeOffsets, widgetPosition, isVertical, isWidgetWindow])
 
   useEffect(() => {
     const element = cardRef.current
@@ -646,9 +652,20 @@ export const UltimateTimeTracker = ({
       )
 
       const currentOffset = currentOffsetRef.current
-      const nextOffset: FreeOffset = isVertical
-        ? { x: 0, y: currentOffset.y + dy }
-        : { x: currentOffset.x + dx, y: 0 }
+      const nextOffset: FreeOffset = isWidgetWindow
+        ? {
+            x: currentOffset.x + dx,
+            y: currentOffset.y + dy,
+          }
+        : isVertical
+          ? {
+              x: 0,
+              y: currentOffset.y + dy,
+            }
+          : {
+              x: currentOffset.x + dx,
+              y: 0,
+            }
 
       scheduleTransform(nextOffset)
     }
@@ -689,9 +706,20 @@ export const UltimateTimeTracker = ({
       )
 
       const previousOffset = currentOffsetRef.current
-      const nextOffset: FreeOffset = isVertical
-        ? { x: 0, y: previousOffset.y + dy }
-        : { x: previousOffset.x + dx, y: 0 }
+      const nextOffset: FreeOffset = isWidgetWindow
+        ? {
+            x: previousOffset.x + dx,
+            y: previousOffset.y + dy,
+          }
+        : isVertical
+          ? {
+              x: 0,
+              y: previousOffset.y + dy,
+            }
+          : {
+              x: previousOffset.x + dx,
+              y: 0,
+            }
 
       const nextOffsets: FreeOffsets = {
         ...freeOffsetsRef.current,
@@ -708,18 +736,30 @@ export const UltimateTimeTracker = ({
       dragStateRef.current = null
       isDraggingWidgetRef.current = false
 
-      if (!element.matches(':hover')) {
-        bridge.system.setIgnoreMouseEvents({
-          body: { ignore: true, forward: true },
-        })
+      if (isWidgetWindow) {
+        const finalTarget =
+          typeof document.elementFromPoint === 'function'
+            ? document.elementFromPoint(event.clientX, event.clientY)
+            : null
+        const isStillInteractive = Boolean(
+          finalTarget?.closest(
+            '[data-widget-card], [data-widget-interactive], [data-radix-popper-content-wrapper], [role="dialog"], [role="menu"]',
+          ),
+        )
+        if (!isStillInteractive) {
+          bridge.system.setIgnoreMouseEvents({
+            body: { ignore: true, forward: true },
+          })
+        }
       }
 
       setFreeOffsets(nextOffsets)
 
-      window.localStorage.setItem(
-        FREE_DRAG_STORAGE_KEY,
-        JSON.stringify(nextOffsets),
-      )
+      const storageKey = isWidgetWindow
+        ? WIDGET_FREE_DRAG_STORAGE_KEY
+        : WORKSPACE_DOCK_DRAG_STORAGE_KEY
+
+      window.localStorage.setItem(storageKey, JSON.stringify(nextOffsets))
     }
 
     const onPointerDown = (event: PointerEvent) => {
@@ -781,7 +821,7 @@ export const UltimateTimeTracker = ({
       dragStateRef.current = null
       isDraggingWidgetRef.current = false
     }
-  }, [isVertical, widgetPosition])
+  }, [isVertical, widgetPosition, isWidgetWindow])
 
   useEffect(() => {
     const element = cardRef.current
@@ -809,10 +849,15 @@ export const UltimateTimeTracker = ({
       const minY = pRect.top - baseTop
       const maxY = pRect.bottom - (baseTop + rect.height)
 
-      const nextOffset: FreeOffset = {
-        x: isVertical ? 0 : clamp(current.x, minX, maxX),
-        y: isVertical ? clamp(current.y, minY, maxY) : 0,
-      }
+      const nextOffset: FreeOffset = isWidgetWindow
+        ? {
+            x: clamp(current.x, minX, maxX),
+            y: clamp(current.y, minY, maxY),
+          }
+        : {
+            x: isVertical ? 0 : clamp(current.x, minX, maxX),
+            y: isVertical ? clamp(current.y, minY, maxY) : 0,
+          }
 
       if (nextOffset.x === current.x && nextOffset.y === current.y) {
         return
@@ -828,10 +873,11 @@ export const UltimateTimeTracker = ({
 
       setFreeOffsets(nextOffsets)
 
-      window.localStorage.setItem(
-        FREE_DRAG_STORAGE_KEY,
-        JSON.stringify(nextOffsets),
-      )
+      const storageKey = isWidgetWindow
+        ? WIDGET_FREE_DRAG_STORAGE_KEY
+        : WORKSPACE_DOCK_DRAG_STORAGE_KEY
+
+      window.localStorage.setItem(storageKey, JSON.stringify(nextOffsets))
     }
 
     let timeoutId: ReturnType<typeof setTimeout>
@@ -858,7 +904,7 @@ export const UltimateTimeTracker = ({
         cancelAnimationFrame(animationFrameId)
       }
     }
-  }, [isVertical, widgetPosition])
+  }, [isVertical, widgetPosition, isWidgetWindow])
 
   const handleSelectTask = useCallback(
     async (task: SyncTaskRxDBDTO) => {
@@ -1214,7 +1260,7 @@ export const UltimateTimeTracker = ({
     setIsExpanded,
     widgetHandleRef,
     taskId,
-    setTaskId: handleTaskIdChange as any,
+    setTaskId: handleTaskIdChange,
     selectedTask,
     setSelectedTask,
     isTaskLookupOpen,
@@ -1222,9 +1268,9 @@ export const UltimateTimeTracker = ({
     activities,
     handleSelectTask,
     description,
-    setDescription: handleDescriptionChange as any,
+    setDescription: handleDescriptionChange,
     selectedActivity,
-    setSelectedActivity: handleActivityChange as any,
+    setSelectedActivity: handleActivityChange,
     manualInitialSeconds,
     setManualInitialSeconds,
     isEditingVertical,
@@ -1237,7 +1283,7 @@ export const UltimateTimeTracker = ({
     handleStop,
     handleDirectLog,
     selectedConnectionId,
-    setSelectedConnectionId: handleConnectionChange as any,
+    setSelectedConnectionId: handleConnectionChange,
     syncConnections,
     dbTodaySeconds,
     timerError,
@@ -1287,6 +1333,7 @@ UltimateTimeTracker.Handle = function TrackerHandle() {
   return (
     <div
       ref={widgetHandleRef}
+      data-widget-handle="true"
       className={cn(
         'text-muted-foreground/30 hover:text-muted-foreground global-drag-handle flex shrink-0 cursor-grab touch-none items-center justify-center transition-colors select-none active:cursor-grabbing',
         isVertical ? 'w-full py-1.5' : 'h-full px-2',

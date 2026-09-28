@@ -5,6 +5,7 @@ import {
   Clock3,
   ClockArrowDown,
   ClockArrowUp,
+  Columns,
   Eye,
   EyeOff,
   Gamepad2,
@@ -15,6 +16,7 @@ import {
   MonitorPlay,
   Moon,
   Puzzle,
+  Rows,
   Settings2Icon,
   X,
 } from 'lucide-react'
@@ -178,6 +180,8 @@ export const TimerSettings = memo(() => {
   }, [bridge, setStartMinimized])
 
   useEffect(() => {
+    if (!isWidgetWindow) return
+
     bridge.system.getDisplays().then((list) => {
       setDisplays(list)
 
@@ -225,6 +229,7 @@ export const TimerSettings = memo(() => {
         <Button
           variant="ghost"
           size="icon"
+          aria-label="Configurações"
           className="text-muted-foreground hover:bg-muted/50 hover:text-foreground h-[18px] w-[18px] rounded p-0 transition-colors"
         >
           <Settings2Icon className="h-3 w-3" />
@@ -345,18 +350,62 @@ export const TimerSettings = memo(() => {
             </div>
           </div>
 
-          <div className="bg-muted/30 border-border/50 rounded-lg border p-2">
-            <div className="mb-2 flex items-center gap-1.5">
-              <LayoutTemplate className="text-muted-foreground h-3.5 w-3.5" />
-              <span className="text-foreground/90 text-xs font-semibold">
-                Ancoragem
-              </span>
+          {isWidgetWindow ? (
+            <div
+              className="bg-muted/30 border-border/50 rounded-lg border p-2"
+              data-testid="widget-orientation-section"
+            >
+              <div className="mb-2 flex items-center gap-1.5">
+                <Columns className="text-muted-foreground h-3.5 w-3.5" />
+                <span className="text-foreground/90 text-xs font-semibold">
+                  Orientação da Barra
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  data-testid="orientation-horizontal-btn"
+                  onClick={() => setWidgetPosition('bottom')}
+                  className={cn(
+                    'flex items-center justify-center gap-2 rounded-md border p-2 text-xs font-medium transition-all',
+                    widgetPosition === 'bottom' || widgetPosition === 'top'
+                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                      : 'border-border/50 bg-background/50 text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                  )}
+                >
+                  <Rows className="h-4 w-4" />
+                  Horizontal
+                </button>
+                <button
+                  type="button"
+                  data-testid="orientation-vertical-btn"
+                  onClick={() => setWidgetPosition('left')}
+                  className={cn(
+                    'flex items-center justify-center gap-2 rounded-md border p-2 text-xs font-medium transition-all',
+                    widgetPosition === 'left' || widgetPosition === 'right'
+                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                      : 'border-border/50 bg-background/50 text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                  )}
+                >
+                  <Columns className="h-4 w-4" />
+                  Vertical
+                </button>
+              </div>
             </div>
-            <PositionCompass
-              value={widgetPosition as WidgetPosition}
-              onChange={setWidgetPosition}
-            />
-          </div>
+          ) : (
+            <div className="bg-muted/30 border-border/50 rounded-lg border p-2">
+              <div className="mb-2 flex items-center gap-1.5">
+                <LayoutTemplate className="text-muted-foreground h-3.5 w-3.5" />
+                <span className="text-foreground/90 text-xs font-semibold">
+                  Ancoragem
+                </span>
+              </div>
+              <PositionCompass
+                value={widgetPosition as WidgetPosition}
+                onChange={setWidgetPosition}
+              />
+            </div>
+          )}
 
           <div className="bg-muted/30 border-border/50 rounded-lg border p-2">
             <div className="mb-2 flex items-center gap-1.5">

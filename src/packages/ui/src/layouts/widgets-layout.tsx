@@ -30,24 +30,6 @@ export function WidgetLayout() {
     return () => unsub?.()
   }, [bridge, navigate, workspaceId, setSelectedWorkspaceId])
 
-  const handleMouseEnter = () => {
-    bridge.system.setIgnoreMouseEvents({
-      body: {
-        ignore: false,
-        forward: true,
-      },
-    })
-  }
-
-  const handleMouseLeave = () => {
-    bridge.system.setIgnoreMouseEvents({
-      body: {
-        ignore: true,
-        forward: true,
-      },
-    })
-  }
-
   return (
     <WorkspaceProvider workspaceId={workspaceId}>
       <DataSourceConnectionsProvider>
@@ -76,11 +58,7 @@ export function WidgetLayout() {
                   'flex-row items-center justify-end',
               )}
             >
-              <div
-                className="pointer-events-auto relative shrink-0"
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-              >
+              <div className="pointer-events-auto relative shrink-0">
                 <Outlet />
               </div>
             </div>
