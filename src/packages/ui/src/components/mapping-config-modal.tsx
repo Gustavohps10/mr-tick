@@ -4,7 +4,7 @@ import type {
   ConfiguredFieldMapping,
   MappingFieldDefinition,
 } from '@mr-tick/sdk'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Check,
   Copy,
@@ -35,6 +35,11 @@ import {
 } from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  getFieldMappingsStorageKey,
+  getStoredFieldMappings,
+  saveStoredFieldMappings,
+} from '@/hooks/use-field-mappings'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib/utils'
 
@@ -42,38 +47,93 @@ const AVAILABLE_ICONS: Record<string, LucideIcon> = Object.fromEntries(
   Object.entries(icons),
 )
 
+const LUCIDE_LEGACY_MAP: Record<string, string> = {
+  PlayCircle: 'CirclePlay',
+  CheckCircle: 'CircleCheck',
+  CheckCircle2: 'CircleCheck',
+  AlertOctagon: 'OctagonAlert',
+  AlertTriangle: 'TriangleAlert',
+  HelpCircle: 'CircleHelp',
+  MinusCircle: 'CircleMinus',
+  PauseCircle: 'CirclePause',
+  CheckSquare: 'SquareCheck',
+  XCircle: 'CircleX',
+  ArrowRightCircle: 'CircleArrowRight',
+  ArrowLeftCircle: 'CircleArrowLeft',
+  ArrowUpCircle: 'CircleArrowUp',
+  ArrowDownCircle: 'CircleArrowDown',
+  StopCircle: 'CircleStop',
+}
+
+export function resolveLucideIcon(
+  name?: string | null,
+): LucideIcon | undefined {
+  if (!name || name === 'none' || name.trim() === '') return undefined
+  const clean = name.trim()
+  if (AVAILABLE_ICONS[clean]) return AVAILABLE_ICONS[clean]
+
+  const legacy = LUCIDE_LEGACY_MAP[clean]
+  if (legacy && AVAILABLE_ICONS[legacy]) return AVAILABLE_ICONS[legacy]
+
+  const pascal = clean
+    .split(/[-_\s]+/)
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase())
+    .join('')
+  if (AVAILABLE_ICONS[pascal]) return AVAILABLE_ICONS[pascal]
+  const legacyPascal = LUCIDE_LEGACY_MAP[pascal]
+  if (legacyPascal && AVAILABLE_ICONS[legacyPascal])
+    return AVAILABLE_ICONS[legacyPascal]
+
+  return undefined
+}
+
 const POPULAR_ICON_NAMES: string[] = [
-  'PlayCircle',
-  'CheckCircle2',
+  'CirclePlay',
+  'CircleCheck',
   'Clock',
-  'AlertOctagon',
+  'OctagonAlert',
   'Inbox',
   'Eye',
   'Flame',
   'Bookmark',
   'Tag',
-  'HelpCircle',
+  'CircleHelp',
   'Zap',
   'Calendar',
   'Code',
   'FileText',
   'Check',
-  'MinusCircle',
-  'PauseCircle',
+  'CircleMinus',
+  'CirclePause',
   'Layers',
   'Activity',
-  'CheckSquare',
-  'XCircle',
-  'AlertTriangle',
+  'SquareCheck',
+  'CircleX',
+  'TriangleAlert',
   'Circle',
   'RotateCw',
-  'ArrowRightCircle',
+  'CircleArrowRight',
   'Sparkles',
-]
+  'Bug',
+  'Terminal',
+  'Users',
+  'Briefcase',
+  'Wrench',
+  'Palette',
+  'Folder',
+  'GitMerge',
+  'Shield',
+  'Lock',
+].filter((name) => Boolean(AVAILABLE_ICONS[name]))
 
 const ALL_ICON_NAMES: string[] = Array.from(
-  new Set([...POPULAR_ICON_NAMES, ...Object.keys(AVAILABLE_ICONS)]),
-)
+  new Set([
+    ...POPULAR_ICON_NAMES,
+    ...Object.keys(AVAILABLE_ICONS)
+      .filter((k) => Boolean(AVAILABLE_ICONS[k]))
+      .sort(),
+  ]),
+).filter((name) => Boolean(AVAILABLE_ICONS[name]))
 
 export const AVAILABLE_COLORS: { label: string; value: string }[] = [
   { label: 'Slate', value: '#64748b' },
@@ -93,24 +153,18 @@ export function DynamicIcon({
   className,
   color,
 }: {
-  name: string
+  name?: string | null
   className?: string
   color?: string
 }) {
-  const IconComponent = AVAILABLE_ICONS[name]
-  if (IconComponent) {
-    return <IconComponent className={className} style={{ color }} />
-  }
-  const Fallback = AVAILABLE_ICONS.Circle
-  if (Fallback) {
-    return <Fallback className={className} style={{ color }} />
-  }
-  return null
+  const IconComponent = resolveLucideIcon(name)
+  if (!IconComponent) return null
+  return <IconComponent className={className} style={{ color }} />
 }
 
 export interface MappingIconPickerProps {
   fieldId: string
-  currentIcon: string
+  currentIcon?: string | null
   color?: string
   onSelectIcon: (iconName: string) => void
 }
@@ -124,6 +178,10 @@ export function MappingIconPicker({
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [displayLimit, setDisplayLimit] = useState(120)
+
+  const hasIcon = Boolean(
+    currentIcon && currentIcon !== 'none' && currentIcon.trim() !== '',
+  )
 
   const filteredIcons = useMemo(() => {
     const query = searchTerm.toLowerCase().trim()
@@ -154,14 +212,22 @@ export function MappingIconPicker({
           data-testid={`mapping-icon-picker-${fieldId}`}
           className="h-7 gap-1.5 px-2 text-xs"
         >
-          <DynamicIcon
-            name={currentIcon}
-            className="h-3.5 w-3.5"
-            color={color}
-          />
-          <span className="text-muted-foreground font-mono text-[10px]">
-            {currentIcon}
-          </span>
+          {hasIcon && currentIcon ? (
+            <>
+              <DynamicIcon
+                name={currentIcon}
+                className="h-3.5 w-3.5"
+                color={color}
+              />
+              <span className="text-muted-foreground font-mono text-[10px]">
+                {currentIcon}
+              </span>
+            </>
+          ) : (
+            <span className="text-muted-foreground text-xs font-normal">
+              Selecione
+            </span>
+          )}
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -170,9 +236,22 @@ export function MappingIconPicker({
         data-testid={`mapping-icon-popover-${fieldId}`}
         onWheel={(e) => e.stopPropagation()}
       >
-        <p className="text-muted-foreground mb-2 text-xs font-medium">
-          Selecione um ícone ({filteredIcons.length} disponíveis):
-        </p>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-muted-foreground text-xs font-medium">
+            Selecione um ícone ({filteredIcons.length}):
+          </p>
+          <button
+            type="button"
+            data-testid={`mapping-icon-option-none-${fieldId}`}
+            onClick={() => {
+              onSelectIcon('')
+              setIsOpen(false)
+            }}
+            className="text-muted-foreground hover:text-foreground cursor-pointer text-[11px] hover:underline"
+          >
+            Sem ícone (Neutro)
+          </button>
+        </div>
 
         <div className="relative mb-2">
           <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-3.5 w-3.5" />
@@ -253,10 +332,14 @@ export function parseMappingValue(
   if (typeof value === 'object') {
     const recordResult: Record<string, ConfiguredFieldMapping> = {}
     for (const [key, item] of Object.entries(value)) {
-      if (typeof item.icon === 'string' && typeof item.color === 'string') {
+      if (
+        item &&
+        typeof item === 'object' &&
+        (typeof item.icon === 'string' || typeof item.color === 'string')
+      ) {
         recordResult[key] = {
-          icon: item.icon,
-          color: item.color,
+          icon: typeof item.icon === 'string' ? item.icon : '',
+          color: typeof item.color === 'string' ? item.color : '',
           customValue:
             typeof item.customValue === 'string' ? item.customValue : undefined,
         }
@@ -278,7 +361,12 @@ export function parseMappingValue(
 
     const result: Record<string, ConfiguredFieldMapping> = {}
     for (const [key, item] of Object.entries(target)) {
-      if (item && typeof item === 'object' && !Array.isArray(item)) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        !Array.isArray(item) &&
+        ('icon' in item || 'color' in item || 'customValue' in item)
+      ) {
         const icon =
           'icon' in item && typeof item.icon === 'string' ? item.icon : ''
         const color =
@@ -287,9 +375,8 @@ export function parseMappingValue(
           'customValue' in item && typeof item.customValue === 'string'
             ? item.customValue
             : undefined
-        if (icon && color) {
-          result[key] = { icon, color, customValue }
-        }
+
+        result[key] = { icon, color, customValue }
       }
     }
     return result
@@ -306,7 +393,7 @@ export interface MappingConfigModalProps {
   connectionInstanceId?: string
   fields?: MappingFieldDefinition[]
   value?: string | Record<string, ConfiguredFieldMapping> | null
-  onSave: (value: Record<string, ConfiguredFieldMapping>) => void
+  onSave?: (value: Record<string, ConfiguredFieldMapping>) => void
 }
 
 export function MappingConfigModal({
@@ -320,6 +407,7 @@ export function MappingConfigModal({
   onSave,
 }: MappingConfigModalProps) {
   const bridge = useHostBridge()
+  const queryClient = useQueryClient()
   const [mappings, setMappings] = useState<
     Record<string, ConfiguredFieldMapping>
   >({})
@@ -360,8 +448,18 @@ export function MappingConfigModal({
   useEffect(() => {
     if (!open) return
     const initialMappings = parseMappingValue(value)
-    setMappings(initialMappings)
-  }, [open, value])
+    if (Object.keys(initialMappings).length > 0) {
+      setMappings(initialMappings)
+      return
+    }
+    const targetKey = connectionInstanceId || addonId
+    const stored = getStoredFieldMappings(targetKey)
+    if (Object.keys(stored).length > 0) {
+      setMappings(stored)
+      return
+    }
+    setMappings({})
+  }, [open, value, connectionInstanceId, addonId])
 
   const groupedFields = useMemo(() => {
     const groupMap = new Map<
@@ -409,21 +507,13 @@ export function MappingConfigModal({
     const existing = mappings[field.id]
     if (existing) return existing
 
-    let icon = 'Circle'
-    if (field.defaultIcon) icon = field.defaultIcon
-
-    let color = '#64748b'
-    if (field.defaultColor) color = field.defaultColor
-
-    return { icon, color }
+    return { icon: '', color: '' }
   }
 
   const handleUpdateIcon = (fieldId: string, iconName: string) => {
     setMappings((prev) => {
       const current = prev[fieldId]
-      const currentColor = current?.color
-        ? current.color
-        : (fields.find((f) => f.id === fieldId)?.defaultColor ?? '#64748b')
+      const currentColor = current?.color || ''
       return {
         ...prev,
         [fieldId]: {
@@ -438,14 +528,13 @@ export function MappingConfigModal({
   const handleUpdateColor = (fieldId: string, colorHex: string) => {
     setMappings((prev) => {
       const current = prev[fieldId]
-      const currentIcon = current?.icon
-        ? current.icon
-        : (fields.find((f) => f.id === fieldId)?.defaultIcon ?? 'Circle')
+      const currentIcon = current?.icon || ''
+      const nextColor = current?.color === colorHex ? '' : colorHex
       return {
         ...prev,
         [fieldId]: {
           icon: currentIcon,
-          color: colorHex,
+          color: nextColor,
           customValue: current?.customValue,
         },
       }
@@ -474,15 +563,7 @@ export function MappingConfigModal({
   }
 
   const handleExportJson = () => {
-    const finalMappings: Record<string, ConfiguredFieldMapping> = {}
-    for (const field of fields) {
-      finalMappings[field.id] = getResolvedFieldMapping(field)
-    }
-    const jsonOutput = JSON.stringify({ mapping: finalMappings }, null, 2)
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(jsonOutput).catch(() => {})
-      setIsCopied(true)
-    }
+    setIsCopied(false)
     setIsExportOpen(true)
   }
 
@@ -491,7 +572,19 @@ export function MappingConfigModal({
     for (const field of fields) {
       finalMappings[field.id] = getResolvedFieldMapping(field)
     }
-    onSave(finalMappings)
+    const targetKey = connectionInstanceId || addonId
+    saveStoredFieldMappings(targetKey, finalMappings)
+    queryClient.setQueryData(
+      ['field-mappings', getFieldMappingsStorageKey(targetKey)],
+      finalMappings,
+    )
+    queryClient.invalidateQueries({ queryKey: ['field-mappings'] })
+    queryClient.invalidateQueries({ queryKey: ['activities'] })
+    queryClient.invalidateQueries({ queryKey: ['task-lookup'] })
+    queryClient.invalidateQueries({ queryKey: ['time-entries'] })
+    if (onSave) {
+      onSave(finalMappings)
+    }
     onOpenChange(false)
   }
 
@@ -641,6 +734,23 @@ export function MappingConfigModal({
                                 className="flex items-center gap-1"
                                 data-testid={`mapping-color-palette-${field.id}`}
                               >
+                                <button
+                                  type="button"
+                                  title="Neutro / Sem cor"
+                                  data-testid={`color-btn-${field.id}-neutral`}
+                                  onClick={() =>
+                                    handleUpdateColor(field.id, '')
+                                  }
+                                  className={cn(
+                                    'border-border/70 bg-muted/40 hover:border-primary flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border border-dashed transition-transform hover:scale-125',
+                                    !currentMapping.color &&
+                                      'ring-primary ring-1.5 ring-offset-1',
+                                  )}
+                                >
+                                  {!currentMapping.color && (
+                                    <Check className="text-foreground h-2.5 w-2.5 drop-shadow" />
+                                  )}
+                                </button>
                                 {AVAILABLE_COLORS.map((c) => {
                                   const isSelected =
                                     currentMapping.color === c.value
@@ -800,8 +910,8 @@ export function MappingConfigModal({
                 )
                 if (typeof navigator !== 'undefined' && navigator.clipboard) {
                   navigator.clipboard.writeText(jsonOutput).catch(() => {})
-                  setIsCopied(true)
                 }
+                setIsCopied(true)
               }}
             >
               {isCopied ? (

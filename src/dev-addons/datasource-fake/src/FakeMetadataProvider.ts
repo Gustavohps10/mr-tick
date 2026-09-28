@@ -27,53 +27,48 @@ export class FakeMetadataProvider implements IMetadataProvider {
   async getMappingFields(): Promise<
     Either<AppError, MappingFieldDefinition[]>
   > {
-    const fields: MappingFieldDefinition[] = [
-      {
-        id: 'backlog',
-        name: 'Backlog',
+    const metadata = this.store.getMetadata()
+    const fields: MappingFieldDefinition[] = []
+
+    metadata.trackStatuses?.forEach((t) => {
+      fields.push({
+        id: t.id,
+        name: t.name,
+        category: 'tracker',
+        categoryLabel: 'Tipos de Tarefa / Rastreadores',
+        description: `Tipo de tarefa: ${t.name}`,
+      })
+    })
+
+    metadata.activities?.forEach((a) => {
+      fields.push({
+        id: a.id,
+        name: a.name,
+        category: 'activity',
+        categoryLabel: 'Atividades',
+        description: `Atividade: ${a.name}`,
+      })
+    })
+
+    metadata.taskStatuses?.forEach((s) => {
+      fields.push({
+        id: s.id,
+        name: s.name,
         category: 'status',
         categoryLabel: 'Status de Tarefas',
-        defaultIcon: 'Inbox',
-        defaultColor: '#64748b',
-        description: 'Tarefas não iniciadas no backlog.',
-      },
-      {
-        id: 'in_progress',
-        name: 'Em Andamento',
-        category: 'status',
-        categoryLabel: 'Status de Tarefas',
-        defaultIcon: 'PlayCircle',
-        defaultColor: '#3b82f6',
-        description: 'Tarefas em desenvolvimento ativo.',
-      },
-      {
-        id: 'review',
-        name: 'Em Revisão',
-        category: 'status',
-        categoryLabel: 'Status de Tarefas',
-        defaultIcon: 'Eye',
-        defaultColor: '#eab308',
-        description: 'Tarefas aguardando code review ou validação.',
-      },
-      {
-        id: 'done',
-        name: 'Concluído',
-        category: 'status',
-        categoryLabel: 'Status de Tarefas',
-        defaultIcon: 'CheckCircle2',
-        defaultColor: '#22c55e',
-        description: 'Tarefas finalizadas e entregues.',
-      },
-      {
-        id: 'blocked',
-        name: 'Bloqueado',
-        category: 'status',
-        categoryLabel: 'Status de Tarefas',
-        defaultIcon: 'AlertOctagon',
-        defaultColor: '#ef4444',
-        description: 'Tarefas com impedimentos.',
-      },
-    ]
+        description: `Status: ${s.name}`,
+      })
+    })
+
+    metadata.taskPriorities?.forEach((p) => {
+      fields.push({
+        id: p.id,
+        name: p.name,
+        category: 'priority',
+        categoryLabel: 'Prioridades',
+        description: `Prioridade: ${p.name}`,
+      })
+    })
 
     return Either.success(fields)
   }

@@ -39,6 +39,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useFieldMappings } from '@/hooks/use-field-mappings'
 import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
@@ -56,11 +57,13 @@ const WEEK_DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
 
 export function TimeEntriesCalendarView() {
   const queryClient = useQueryClient()
+  const { mappings } = useFieldMappings()
   const {
     db,
     memberIdsByConnection,
     timeEntries,
     activities,
+
     activeTimeEntry,
     setActive,
     pauseCurrentTimeEntry,
@@ -241,6 +244,7 @@ export function TimeEntriesCalendarView() {
   const columns = React.useMemo(() => {
     return createTimeEntriesColumns({
       activities,
+      mappings,
       editingRows,
       getRowData,
       setEditingRows,
@@ -266,7 +270,9 @@ export function TimeEntriesCalendarView() {
     })
   }, [
     activities,
+    mappings,
     editingRows,
+
     getRowData,
     setEditingRows,
     setTempData,

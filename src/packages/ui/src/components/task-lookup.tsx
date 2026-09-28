@@ -46,8 +46,15 @@ import {
 } from '@/components/ui/select'
 import { useDataSourceConnections } from '@/contexts/DataSourceConnectionsContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import {
+  resolveEntityMapping,
+  useFieldMappings,
+} from '@/hooks/use-field-mappings'
 import { cn } from '@/lib/utils'
-import { SyncMetadataRxDBDTO } from '@/local-db/schemas/metadata-sync-schema'
+import {
+  SyncMetadataItem,
+  SyncMetadataRxDBDTO,
+} from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
 
@@ -63,6 +70,8 @@ interface TaskLookupModalProps {
 const PAGE_SIZE = 50
 const ROW_HEIGHT = 48
 
+const lucideCatalog: Record<string, ElementType> = LucideIcons.icons
+
 const DynamicIcon = ({
   name,
   color,
@@ -72,8 +81,8 @@ const DynamicIcon = ({
   color?: string
   className?: string
 }) => {
-  if (!name) return null
-  const Icon = (LucideIcons as any)[name] as ElementType
+  if (!name || name === 'none' || name.trim() === '') return null
+  const Icon = lucideCatalog[name]
   if (!Icon) return null
   return <Icon className={className} style={{ color }} />
 }
@@ -86,6 +95,7 @@ export function TaskLookup({
   currentUserId = 'me',
   memberIdsByConnection: propMemberIdsByConnection,
 }: TaskLookupModalProps) {
+  const { mappings } = useFieldMappings()
   const db = useSyncStore((s) => s.db)
   const syncConnections = useConnectionsWithSync()
 
@@ -132,9 +142,9 @@ export function TaskLookup({
   })
 
   const metaLookup = useMemo(() => {
-    const statuses = new Map<string, any>()
-    const priorities = new Map<string, any>()
-    const roles = new Map<string, any>()
+    const statuses = new Map<string, SyncMetadataItem>()
+    const priorities = new Map<string, SyncMetadataItem>()
+    const roles = new Map<string, SyncMetadataItem>()
     metadata?.taskStatuses?.forEach((s) => statuses.set(s.id, s))
     metadata?.taskPriorities?.forEach((p) => priorities.set(p.id, p))
     metadata?.participantRoles?.forEach((r) => roles.set(r.id, r))
@@ -509,7 +519,9 @@ export function TaskLookup({
 
                 <Select
                   value={sortOrder}
-                  onValueChange={(v: any) => setSortOrder(v)}
+                  onValueChange={(v) => {
+                    if (v === 'desc' || v === 'asc') setSortOrder(v)
+                  }}
                 >
                   <SelectTrigger className="bg-background/60 border-border/40 h-6 w-fit border px-2 text-[10px] font-semibold shadow-none focus:ring-0">
                     <div className="flex items-center gap-1.5">
@@ -570,13 +582,26 @@ export function TaskLookup({
 
                   if (!isLoaderRow && !task) return null
 
-                  const pMeta = isLoaderRow
-                    ? null
-                    : metaLookup.priorities.get(task?.priority?.id ?? '')
+                  const pMeta = task?.priority?.id
+                    ? metaLookup.priorities.get(task.priority.id)
+                    : undefined
+
+                  const pResolved = isLoaderRow
+                    ? {}
+                    : resolveEntityMapping(task?.priority, 'priority', mappings)
+                  const sResolved = isLoaderRow
+                    ? {}
+                    : resolveEntityMapping(task?.status, 'status', mappings)
+                  const tResolved = isLoaderRow
+                    ? {}
+                    : resolveEntityMapping(task?.tracker, 'tracker', mappings)
+
+                  const priorityIcon = pResolved.icon
+                  const priorityColor = pResolved.badgeColor
                   const statusColor = isLoaderRow
                     ? 'transparent'
-                    : metaLookup.statuses.get(task?.status?.id)?.colors
-                        ?.badge || '#888888'
+                    : sResolved.badgeColor || '#888888'
+                  const trackerIcon = tResolved.icon
 
                   const connObj = isLoaderRow
                     ? undefined
@@ -613,10 +638,10 @@ export function TaskLookup({
                         <>
                           {/* Priority Icon / Status Indicator */}
                           <div className="flex w-6 shrink-0 items-center justify-center">
-                            {pMeta?.icon ? (
+                            {priorityIcon ? (
                               <DynamicIcon
-                                name={pMeta.icon}
-                                color={pMeta.colors?.badge}
+                                name={priorityIcon}
+                                color={priorityColor}
                                 className="h-4 w-4"
                               />
                             ) : (
@@ -630,8 +655,15 @@ export function TaskLookup({
                           {/* Task Information */}
                           <div className="min-w-0 flex-1 py-1">
                             <div className="mb-0.5 flex items-center gap-1.5">
-                              <span className="bg-muted/70 text-foreground/80 border-border/30 rounded border px-1.5 py-0.5 font-mono text-[9px] font-semibold">
-                                {task.id}
+                              <span className="bg-muted/70 text-foreground/80 border-border/30 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] font-semibold">
+                                {trackerIcon && (
+                                  <DynamicIcon
+                                    name={trackerIcon}
+                                    color={tResolved.badgeColor}
+                                    className="h-3 w-3 shrink-0"
+                                  />
+                                )}
+                                <span>{task.id}</span>
                               </span>
                               <h4
                                 className="text-foreground truncate text-xs font-medium tracking-tight opacity-90"
@@ -651,10 +683,18 @@ export function TaskLookup({
 
                               {task.status?.name && (
                                 <span className="text-foreground/80 inline-flex items-center gap-1 font-semibold">
-                                  <Circle
-                                    className="h-2 w-2 fill-current"
-                                    style={{ color: statusColor }}
-                                  />
+                                  {sResolved.icon ? (
+                                    <DynamicIcon
+                                      name={sResolved.icon}
+                                      color={statusColor}
+                                      className="h-3 w-3 shrink-0"
+                                    />
+                                  ) : (
+                                    <Circle
+                                      className="h-2 w-2 fill-current"
+                                      style={{ color: statusColor }}
+                                    />
+                                  )}
                                   {task.status.name}
                                 </span>
                               )}

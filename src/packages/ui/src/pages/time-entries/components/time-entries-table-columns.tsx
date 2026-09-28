@@ -1,3 +1,4 @@
+import type { ConfiguredFieldMapping } from '@mr-tick/sdk'
 import { ColumnDef, Row as TanStackRow } from '@tanstack/react-table'
 import { parseISO } from 'date-fns'
 import {
@@ -32,6 +33,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { resolveEntityMapping } from '@/hooks/use-field-mappings'
 import { cn } from '@/lib'
 import { SyncMetadataItem } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
@@ -50,7 +52,9 @@ import { SyncStatusCell } from './sync-status-cell'
 export interface CreateColumnsOptions {
   activities: SyncMetadataItem[]
   tasksById?: Record<string, SyncTaskRxDBDTO>
+  mappings?: Record<string, ConfiguredFieldMapping>
   editingRows: Record<string, boolean>
+
   getRowData: (id: string) => Partial<SyncTimeEntryRxDBDTO> | undefined
   setEditingRows: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
   setTempData: React.Dispatch<
@@ -239,6 +243,7 @@ export function createTimeEntriesColumns(
   const {
     activities,
     tasksById,
+    mappings = {},
     editingRows,
     getRowData,
     setEditingRows,
@@ -428,6 +433,17 @@ export function createTimeEntriesColumns(
           (cleanId && tasksById ? tasksById[cleanId]?.title : '') ||
           ''
 
+        const associatedTask =
+          (cleanId && tasksById ? tasksById[cleanId] : undefined) ||
+          mergedRow.taskData
+        const trackerObj = associatedTask?.tracker
+        const resolvedTracker = resolveEntityMapping(
+          trackerObj,
+          'tracker',
+          mappings,
+        )
+        const TrackerIconComponent = getActivityIcon(resolvedTracker.icon)
+
         if (isEditing) {
           const isRemote = Boolean(
             (mergedRow.remoteId &&
@@ -442,7 +458,6 @@ export function createTimeEntriesColumns(
           const formattedActivities = activities.map((act) => ({
             id: act.id,
             name: act.name,
-            icon: getActivityIcon(act.icon),
           }))
 
           const hasSelectedTask = Boolean(cleanId && cleanId !== '')
@@ -510,13 +525,22 @@ export function createTimeEntriesColumns(
                   >
                     <div className="flex min-w-0 items-center gap-1.5 truncate">
                       {hasSelectedTask ? (
-                        <DataSourceLogo
-                          connectionInstanceId={currentConnectionId}
-                          className="h-3.5 w-3.5 shrink-0 rounded-xs"
-                          fallback={
-                            <MessageSquareDiff className="text-primary h-3.5 w-3.5 shrink-0" />
-                          }
-                        />
+                        <>
+                          <DataSourceLogo
+                            connectionInstanceId={currentConnectionId}
+                            className="h-3.5 w-3.5 shrink-0 rounded-xs"
+                            fallback={
+                              <MessageSquareDiff className="text-primary h-3.5 w-3.5 shrink-0" />
+                            }
+                          />
+                          {TrackerIconComponent && (
+                            <TrackerIconComponent
+                              size={12}
+                              className="shrink-0"
+                              style={{ color: resolvedTracker.badgeColor }}
+                            />
+                          )}
+                        </>
                       ) : (
                         <Plus className="text-primary h-3.5 w-3.5 shrink-0" />
                       )}
@@ -550,6 +574,13 @@ export function createTimeEntriesColumns(
                       dataSourceId={original.dataSourceId}
                       className="h-3.5 w-3.5 shrink-0 rounded-xs"
                     />
+                    {TrackerIconComponent && (
+                      <TrackerIconComponent
+                        size={12}
+                        className="shrink-0"
+                        style={{ color: resolvedTracker.badgeColor }}
+                      />
+                    )}
                     <span className="shrink-0 font-mono font-bold">{`#${cleanId}`}</span>
                     {taskTitle && (
                       <>
@@ -617,6 +648,13 @@ export function createTimeEntriesColumns(
                     dataSourceId={original.dataSourceId}
                     className="h-3.5 w-3.5 shrink-0 rounded-xs"
                   />
+                  {TrackerIconComponent && (
+                    <TrackerIconComponent
+                      size={12}
+                      className="shrink-0"
+                      style={{ color: resolvedTracker.badgeColor }}
+                    />
+                  )}
                   <span className="shrink-0 font-mono font-bold">{`#${cleanId}`}</span>
                   {taskTitle && (
                     <>
@@ -767,11 +805,19 @@ export function createTimeEntriesColumns(
                   </SelectItem>
                 )}
                 {activities.map((a) => {
-                  const SelectIcon = getActivityIcon(a.icon)
+                  const resolved = resolveEntityMapping(a, 'activity', mappings)
+                  const SelectIcon = resolved.icon
+                    ? getActivityIcon(resolved.icon)
+                    : undefined
                   return (
                     <SelectItem key={a.id} value={a.id}>
                       <div className="flex items-center gap-1.5">
-                        {SelectIcon && <SelectIcon size={12} />}
+                        {SelectIcon && (
+                          <SelectIcon
+                            size={12}
+                            style={{ color: resolved.badgeColor }}
+                          />
+                        )}
                         <span>{a.name}</span>
                       </div>
                     </SelectItem>
@@ -807,21 +853,39 @@ export function createTimeEntriesColumns(
             <div className="relative flex h-8 w-full min-w-0 items-center">
               <div className="relative h-6 w-full">
                 {groupActivities.slice(0, 3).map((act, i) => {
-                  const IconComponent = getActivityIcon(act.icon)
+                  const resolved = resolveEntityMapping(
+                    act,
+                    'activity',
+                    mappings,
+                  )
+                  const IconComponent = resolved.icon
+                    ? getActivityIcon(resolved.icon)
+                    : undefined
+                  const badgeColor = resolved.badgeColor
+                  const backgroundColor = resolved.backgroundColor
+                  const textColor = resolved.textColor
+                  const isNeutral = !badgeColor
+
                   return (
                     <div
                       key={act.id}
                       className={cn(
                         'absolute flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm transition-all',
+                        isNeutral &&
+                          'border-border/60 bg-secondary text-foreground',
                         i === 0 && 'top-0 left-0 z-3',
                         i === 1 && 'z-2 translate-x-2 translate-y-1',
                         i === 2 && 'z-1 translate-x-4 translate-y-2',
                       )}
-                      style={{
-                        backgroundColor: act.colors?.background,
-                        color: act.colors?.text,
-                        borderColor: act.colors?.badge,
-                      }}
+                      style={
+                        !isNeutral
+                          ? {
+                              backgroundColor,
+                              color: textColor,
+                              borderColor: badgeColor,
+                            }
+                          : undefined
+                      }
                     >
                       {IconComponent && <IconComponent size={12} />}
                       <span className="max-w-[80px] truncate md:max-w-[120px]">
@@ -844,17 +908,11 @@ export function createTimeEntriesColumns(
           (a) => a.id === original.activity?.id,
         )
 
-        if (!foundActivity) {
-          if (original.activity?.name) {
-            return (
-              <div className="border-border/60 bg-secondary/70 inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs">
-                <span className="max-w-[120px] truncate">
-                  {original.activity.name}
-                </span>
-              </div>
-            )
-          }
+        const activityId = original.activity?.id
+        const activityName =
+          foundActivity?.name || original.activity?.name || ''
 
+        if (!activityId && !activityName) {
           return (
             <div className="flex w-full justify-start pl-1">
               <Tooltip>
@@ -879,19 +937,39 @@ export function createTimeEntriesColumns(
           )
         }
 
-        const SingleIconComponent = getActivityIcon(foundActivity.icon)
+        const resolved = resolveEntityMapping(
+          { id: activityId, name: activityName },
+          'activity',
+          mappings,
+        )
+        const SingleIconComponent = resolved.icon
+          ? getActivityIcon(resolved.icon)
+          : undefined
+        const badgeColor = resolved.badgeColor
+        const backgroundColor = resolved.backgroundColor
+        const textColor = resolved.textColor
+        const isNeutral = !badgeColor
+
+        if (!isNeutral) {
+          return (
+            <div
+              className="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-all"
+              style={{
+                backgroundColor,
+                color: textColor,
+                borderColor: badgeColor,
+              }}
+            >
+              {SingleIconComponent && <SingleIconComponent size={12} />}
+              <span className="max-w-[120px] truncate">{activityName}</span>
+            </div>
+          )
+        }
 
         return (
-          <div
-            className="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-all"
-            style={{
-              backgroundColor: foundActivity.colors?.background,
-              color: foundActivity.colors?.text,
-              borderColor: foundActivity.colors?.badge,
-            }}
-          >
+          <div className="border-border/60 bg-secondary inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs">
             {SingleIconComponent && <SingleIconComponent size={12} />}
-            <span className="max-w-[120px] truncate">{foundActivity.name}</span>
+            <span className="max-w-[120px] truncate">{activityName}</span>
           </div>
         )
       },

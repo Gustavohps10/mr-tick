@@ -38,6 +38,7 @@ import {
   Hash,
   HelpCircle,
   History,
+  icons,
   Inbox,
   Laptop,
   Layers,
@@ -179,14 +180,17 @@ export const activityIconMap: Record<string, ElementType> = {
   Zap,
 }
 
+const lucideIconsCatalog: Record<string, ElementType> = icons
+
 export function getActivityIcon(
   iconName?: string | null,
 ): ElementType | undefined {
-  if (!iconName) return undefined
-  if (activityIconMap[iconName]) return activityIconMap[iconName]
+  if (!iconName || iconName === 'none' || iconName.trim() === '')
+    return undefined
 
   const normalized = iconName.trim()
   if (activityIconMap[normalized]) return activityIconMap[normalized]
+  if (lucideIconsCatalog[normalized]) return lucideIconsCatalog[normalized]
 
   const pascalName = normalized
     .split(/[-_\s]+/)
@@ -197,6 +201,7 @@ export function getActivityIcon(
     .join('')
 
   if (activityIconMap[pascalName]) return activityIconMap[pascalName]
+  if (lucideIconsCatalog[pascalName]) return lucideIconsCatalog[pascalName]
 
   const lowerIcon = normalized.toLowerCase()
   const matchedKey = Object.keys(activityIconMap).find(
@@ -204,6 +209,12 @@ export function getActivityIcon(
   )
   if (matchedKey && activityIconMap[matchedKey])
     return activityIconMap[matchedKey]
+
+  const matchedLucideKey = Object.keys(lucideIconsCatalog).find(
+    (key) => key.toLowerCase() === lowerIcon,
+  )
+  if (matchedLucideKey && lucideIconsCatalog[matchedLucideKey])
+    return lucideIconsCatalog[matchedLucideKey]
 
   return undefined
 }

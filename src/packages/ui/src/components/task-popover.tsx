@@ -3,13 +3,10 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   CircleDashed,
-  Code,
   ExternalLink,
   MessageSquareDiff,
-  Palette,
   Pin,
   PinOff,
-  Wrench,
   X,
 } from 'lucide-react'
 import * as LucideIcons from 'lucide-react'
@@ -19,6 +16,7 @@ import { toast } from 'sonner'
 import { useDebounce } from 'use-debounce'
 
 import { LookupInput } from '@/components/lookup-input'
+import { DynamicIcon } from '@/components/mapping-config-modal'
 import { TaskLookup } from '@/components/task-lookup'
 import { useOptionalTrackerContext } from '@/components/time-bar/ultimate-entry-bar'
 import { Button } from '@/components/ui/button'
@@ -36,6 +34,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { AddonConnectionView } from '@/contexts/DataSourceConnectionsContext'
+import {
+  resolveEntityMapping,
+  useFieldMappings,
+} from '@/hooks/use-field-mappings'
 import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { extractPureTaskId } from '@/pages/time-entries/lib/time-entries-utils'
@@ -46,9 +48,9 @@ const DEFAULT_ACTIVITIES: Array<{
   name: string
   icon?: React.ElementType
 }> = [
-  { id: 'dev', name: 'Desenvolvimento', icon: Code },
-  { id: 'design', name: 'Design', icon: Palette },
-  { id: 'fix', name: 'Correção', icon: Wrench },
+  { id: 'dev', name: 'Desenvolvimento' },
+  { id: 'design', name: 'Design' },
+  { id: 'fix', name: 'Correção' },
 ]
 
 const PINNED_TASKS_STORAGE_KEY = 'mr-tick:pinned-task-ids'
@@ -121,6 +123,7 @@ export function TaskPopover({
 }: TaskPopoverProps) {
   const trackerContext = useOptionalTrackerContext()
   const defaultSyncConnections = useConnectionsWithSync()
+  const { mappings } = useFieldMappings()
 
   const isRemote = propIsRemote ?? trackerContext?.isRemote ?? false
 
@@ -476,23 +479,31 @@ export function TaskPopover({
                       </span>
                     </SelectItem>
                   )}
-                  {activities.map(({ id, name, icon: Icon }) => (
-                    <SelectItem key={id} value={id} className="text-xs">
-                      <span className="flex items-center gap-2">
-                        {Icon && (
-                          <Icon
-                            className={cn(
-                              'h-3.5 w-3.5',
-                              id === selectedActivity
-                                ? 'text-primary'
-                                : 'text-muted-foreground',
-                            )}
-                          />
-                        )}
-                        {name}
-                      </span>
-                    </SelectItem>
-                  ))}
+                  {activities.map((act) => {
+                    const resolved = resolveEntityMapping(
+                      act,
+                      'activity',
+                      mappings,
+                    )
+                    return (
+                      <SelectItem
+                        key={act.id}
+                        value={act.id}
+                        className="text-xs"
+                      >
+                        <span className="flex items-center gap-2">
+                          {resolved.icon && (
+                            <DynamicIcon
+                              name={resolved.icon}
+                              color={resolved.badgeColor}
+                              className="h-3.5 w-3.5"
+                            />
+                          )}
+                          {act.name}
+                        </span>
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
 
@@ -630,6 +641,16 @@ export function TaskPopover({
                     const isPinned = pinnedIds.includes(t.id)
                     const isSelected = taskId === t.id
                     const ticketId = /^\d+$/.test(t.id) ? `#${t.id}` : t.id
+                    const trackerMapping = resolveEntityMapping(
+                      t.tracker,
+                      'tracker',
+                      mappings,
+                    )
+                    const priorityMapping = resolveEntityMapping(
+                      t.priority,
+                      'priority',
+                      mappings,
+                    )
 
                     return (
                       <div
@@ -645,6 +666,13 @@ export function TaskPopover({
                         )}
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                          {trackerMapping.icon && (
+                            <DynamicIcon
+                              name={trackerMapping.icon}
+                              color={trackerMapping.badgeColor}
+                              className="h-3 w-3 shrink-0"
+                            />
+                          )}
                           <span className="shrink-0 font-mono text-[10px] font-bold opacity-80">
                             {ticketId}
                           </span>
@@ -654,6 +682,13 @@ export function TaskPopover({
                         </div>
 
                         <div className="flex shrink-0 items-center gap-1">
+                          {priorityMapping.icon && (
+                            <DynamicIcon
+                              name={priorityMapping.icon}
+                              color={priorityMapping.badgeColor}
+                              className="h-3 w-3 shrink-0"
+                            />
+                          )}
                           {t.assignedTo?.name && (
                             <span className="bg-muted text-muted-foreground max-w-[50px] truncate rounded px-1 text-[9px]">
                               {t.assignedTo.name.split(' ')[0]}

@@ -119,7 +119,7 @@ describe('MappingConfigModal', () => {
     expect(handleSave).toHaveBeenCalledTimes(1)
     const saved = handleSave.mock.calls[0][0]
     expect(saved.backlog.color).toBe('#ef4444')
-    expect(saved.backlog.icon).toBe('Inbox')
+    expect(saved.backlog.icon).toBe('')
   })
 
   it('deve permitir selecionar um ícone visualmente via popover', async () => {
@@ -180,9 +180,17 @@ describe('MappingConfigModal', () => {
     const textarea = screen.getByTestId('modal-export-preset-textarea')
     if (textarea instanceof HTMLTextAreaElement) {
       expect(textarea.value).toContain('"in_progress"')
-      expect(textarea.value).toContain('"PlayCircle"')
-      expect(textarea.value).toContain('"#3b82f6"')
+      expect(textarea.value).toContain('"backlog"')
+      expect(textarea.value).toContain('"done"')
     }
+
+    // O botão deve iniciar com "Copiar JSON" e NÃO com "Copiado!"
+    const copyBtn = screen.getByTestId('modal-copy-preset-btn')
+    expect(copyBtn.textContent).toContain('Copiar JSON')
+    expect(copyBtn.textContent).not.toContain('Copiado!')
+
+    fireEvent.click(copyBtn)
+    expect(copyBtn.textContent).toContain('Copiado!')
   })
 
   it('deve importar preset JSON e atualizar todos os mapeamentos', async () => {
@@ -229,6 +237,51 @@ describe('MappingConfigModal', () => {
     expect(saved.backlog.color).toBe('#ec4899')
     expect(saved.done.icon).toBe('Zap')
     expect(saved.done.color).toBe('#06b6d4')
+  })
+
+  it('deve importar preset JSON contendo campos com ícone mas sem cor (cor vazia)', async () => {
+    const handleSave = vi.fn()
+    const handleOpenChange = vi.fn()
+
+    renderWithClient(
+      <MappingConfigModal
+        open={true}
+        onOpenChange={handleOpenChange}
+        addonId="datasource-fake"
+        fields={sampleFields}
+        onSave={handleSave}
+      />,
+    )
+
+    fireEvent.click(screen.getByTestId('modal-import-preset-btn'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('modal-import-preset-dialog')).toBeTruthy()
+    })
+
+    const userJson = JSON.stringify({
+      mapping: {
+        backlog: { icon: 'Gem', color: '' },
+        in_progress: { icon: 'Layers', color: '' },
+        done: { icon: '', color: '' },
+      },
+    })
+
+    const textarea = screen.getByTestId('modal-import-preset-textarea')
+    fireEvent.change(textarea, { target: { value: userJson } })
+
+    fireEvent.click(screen.getByTestId('modal-apply-preset-btn'))
+
+    expect(screen.queryByTestId('modal-import-preset-error')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('modal-save-mapping-btn'))
+
+    expect(handleSave).toHaveBeenCalledTimes(1)
+    const saved = handleSave.mock.calls[0][0]
+    expect(saved.backlog.icon).toBe('Gem')
+    expect(saved.backlog.color).toBe('')
+    expect(saved.in_progress.icon).toBe('Layers')
+    expect(saved.in_progress.color).toBe('')
   })
 
   it('deve exibir erro ao tentar importar preset com JSON inválido', async () => {
@@ -402,5 +455,119 @@ describe('MappingConfigModal', () => {
     const textarea = screen.getByTestId('modal-export-preset-textarea')
     expect(textarea).toBeTruthy()
     expect(textarea.className).toContain('overflow-y-auto')
+  })
+
+  it('deve exibir "Selecione" (neutro) por padrão quando o campo não possui ícone configurado nem defaultIcon', async () => {
+    const unmappedFields: MappingFieldDefinition[] = [
+      {
+        id: 'coding',
+        name: 'Desenvolvimento',
+        category: 'activity',
+        description: 'Atividade de dev.',
+      },
+    ]
+
+    const handleSave = vi.fn()
+    const handleOpenChange = vi.fn()
+
+    renderWithClient(
+      <MappingConfigModal
+        open={true}
+        onOpenChange={handleOpenChange}
+        addonId="datasource-fake"
+        fields={unmappedFields}
+        onSave={handleSave}
+      />,
+    )
+
+    const iconPickerBtn = screen.getByTestId('mapping-icon-picker-coding')
+    expect(iconPickerBtn.textContent).toContain('Selecione')
+  })
+
+  it('deve permitir selecionar "Sem ícone (Neutro)" limpando o ícone do campo', async () => {
+    const handleSave = vi.fn()
+    const handleOpenChange = vi.fn()
+
+    renderWithClient(
+      <MappingConfigModal
+        open={true}
+        onOpenChange={handleOpenChange}
+        addonId="datasource-fake"
+        fields={sampleFields}
+        onSave={handleSave}
+      />,
+    )
+
+    const iconPickerBtn = screen.getByTestId('mapping-icon-picker-backlog')
+    fireEvent.click(iconPickerBtn)
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('mapping-icon-option-none-backlog'),
+      ).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByTestId('mapping-icon-option-none-backlog'))
+
+    fireEvent.click(screen.getByTestId('modal-save-mapping-btn'))
+
+    expect(handleSave).toHaveBeenCalledTimes(1)
+    const saved = handleSave.mock.calls[0][0]
+    expect(saved.backlog.icon).toBe('')
+  })
+
+  it('deve permitir selecionar a opção de cor neutra limpando a cor do campo', async () => {
+    const handleSave = vi.fn()
+    const handleOpenChange = vi.fn()
+
+    renderWithClient(
+      <MappingConfigModal
+        open={true}
+        onOpenChange={handleOpenChange}
+        addonId="datasource-fake"
+        fields={sampleFields}
+        onSave={handleSave}
+      />,
+    )
+
+    const neutralColorBtn = screen.getByTestId('color-btn-backlog-neutral')
+    fireEvent.click(neutralColorBtn)
+
+    fireEvent.click(screen.getByTestId('modal-save-mapping-btn'))
+
+    expect(handleSave).toHaveBeenCalledTimes(1)
+    const saved = handleSave.mock.calls[0][0]
+    expect(saved.backlog.color).toBe('')
+  })
+
+  it('deve persistir no localStorage e notificar quando salva o mapeamento', async () => {
+    const handleSave = vi.fn()
+    const handleOpenChange = vi.fn()
+
+    renderWithClient(
+      <MappingConfigModal
+        open={true}
+        onOpenChange={handleOpenChange}
+        addonId="test-addon"
+        connectionInstanceId="test-conn-1"
+        fields={sampleFields}
+        onSave={handleSave}
+      />,
+    )
+
+    const iconPickerBtn = screen.getByTestId('mapping-icon-picker-backlog')
+    fireEvent.click(iconPickerBtn)
+    await waitFor(() => {
+      expect(screen.getByTestId('icon-option-backlog-Flame')).toBeTruthy()
+    })
+    fireEvent.click(screen.getByTestId('icon-option-backlog-Flame'))
+
+    fireEvent.click(screen.getByTestId('modal-save-mapping-btn'))
+
+    expect(handleSave).toHaveBeenCalledTimes(1)
+    const stored = window.localStorage.getItem('metric_mappings_test-conn-1')
+    expect(stored).toBeTruthy()
+    const parsed = JSON.parse(stored || '{}')
+    expect(parsed.backlog.icon).toBe('Flame')
   })
 })

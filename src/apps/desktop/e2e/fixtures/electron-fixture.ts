@@ -45,16 +45,19 @@ function getElectronUserDataPath(): string {
   }
 }
 
-function cleanTestStorage(): void {
-  const userDataPath = getElectronUserDataPath()
-  const indexedDbPath = join(userDataPath, 'IndexedDB')
-  if (!existsSync(indexedDbPath)) return
-
+function cleanDirectoryIfExists(dirPath: string): void {
+  if (!existsSync(dirPath)) return
   try {
-    rmSync(indexedDbPath, { recursive: true, force: true })
+    rmSync(dirPath, { recursive: true, force: true })
   } catch {
     // Silencia se o diretório estiver em uso
   }
+}
+
+function cleanTestStorage(): void {
+  const userDataPath = getElectronUserDataPath()
+  cleanDirectoryIfExists(join(userDataPath, 'IndexedDB'))
+  cleanDirectoryIfExists(join(userDataPath, 'Local Storage'))
 }
 
 function ensureSeedWorkspaces(): void {

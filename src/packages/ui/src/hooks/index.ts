@@ -1,6 +1,7 @@
 export * from './use-data-source-connections'
 export * from './use-drag-to-scroll'
 export * from './use-environment'
+export * from './use-field-mappings'
 export * from './use-host-bridge'
 export * from './use-mobile'
 export * from './use-timer-settings'

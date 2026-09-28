@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { TaskLookup } from '@/components/task-lookup'
+import { useFieldMappings } from '@/hooks/use-field-mappings'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { TimeEntriesDayCard } from '@/pages/time-entries/components/time-entries-day-card'
 import { TimeEntriesHeader } from '@/pages/time-entries/components/time-entries-header'
@@ -19,10 +20,12 @@ import {
 } from '@/pages/time-entries/lib/time-entries-utils'
 
 export function TimeEntries() {
+  const { mappings } = useFieldMappings()
   const {
     db,
     range,
     handleRangeChange,
+
     memberIdsByConnection,
     timeEntries,
     isLoading,
@@ -205,6 +208,7 @@ export function TimeEntries() {
     return createTimeEntriesColumns({
       activities,
       tasksById,
+      mappings,
       editingRows,
       getRowData,
       setEditingRows,
@@ -231,7 +235,9 @@ export function TimeEntries() {
   }, [
     activities,
     tasksById,
+    mappings,
     editingRows,
+
     getRowData,
     setEditingRows,
     setTempData,
