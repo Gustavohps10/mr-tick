@@ -1,5 +1,12 @@
 ﻿# @mr-tick/ui
 
+## 1.3.1
+
+### Patch Changes
+
+- fca1bd6: Desacopla a verificação de compatibilidade de addons da versão do executável Desktop, introduzindo a rota `bridge.system.getSdkVersion()` que resolve dinamicamente a versão da API suportada a partir do `@mr-tick/sdk`.
+  - @mr-tick/sdk@0.5.0
+
 ## 1.3.0
 
 ### Minor Changes
