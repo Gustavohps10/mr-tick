@@ -315,38 +315,40 @@ export const TimerSettings = memo(() => {
               </div>
             </div>
 
-            {/* Subgrupo: Tamanho da Barra */}
-            <div className="border-border/40 space-y-1.5 border-t pt-2">
-              <span className="text-muted-foreground block text-[11px] font-medium">
-                Tamanho da barra
-              </span>
-              <div className="grid grid-cols-2 gap-1.5">
-                <Button
-                  type="button"
-                  data-testid="barsize-normal-btn"
-                  variant={barSize === 'normal' ? 'secondary' : 'ghost'}
-                  className={cn(
-                    'h-6 justify-start gap-1.5 px-2 text-[11px]',
-                    barSize === 'normal' && 'font-semibold',
-                  )}
-                  onClick={() => setBarSize('normal')}
-                >
-                  <Maximize2 className="h-3 w-3" /> Padrão
-                </Button>
-                <Button
-                  type="button"
-                  data-testid="barsize-mini-btn"
-                  variant={barSize === 'mini' ? 'secondary' : 'ghost'}
-                  className={cn(
-                    'h-6 justify-start gap-1.5 px-2 text-[11px]',
-                    barSize === 'mini' && 'font-semibold',
-                  )}
-                  onClick={() => setBarSize('mini')}
-                >
-                  <Minimize2 className="h-3 w-3" /> Mini
-                </Button>
+            {/* Subgrupo: Tamanho da Barra (apenas em modo Widget) */}
+            {isWidgetWindow && (
+              <div className="border-border/40 space-y-1.5 border-t pt-2">
+                <span className="text-muted-foreground block text-[11px] font-medium">
+                  Tamanho da barra
+                </span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <Button
+                    type="button"
+                    data-testid="barsize-normal-btn"
+                    variant={barSize === 'normal' ? 'secondary' : 'ghost'}
+                    className={cn(
+                      'h-6 justify-start gap-1.5 px-2 text-[11px]',
+                      barSize === 'normal' && 'font-semibold',
+                    )}
+                    onClick={() => setBarSize('normal')}
+                  >
+                    <Maximize2 className="h-3 w-3" /> Padrão
+                  </Button>
+                  <Button
+                    type="button"
+                    data-testid="barsize-mini-btn"
+                    variant={barSize === 'mini' ? 'secondary' : 'ghost'}
+                    className={cn(
+                      'h-6 justify-start gap-1.5 px-2 text-[11px]',
+                      barSize === 'mini' && 'font-semibold',
+                    )}
+                    onClick={() => setBarSize('mini')}
+                  >
+                    <Minimize2 className="h-3 w-3" /> Mini
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Subgrupo 2: Opções de Apontamento */}
             <div className="border-border/40 space-y-1.5 border-t pt-2">

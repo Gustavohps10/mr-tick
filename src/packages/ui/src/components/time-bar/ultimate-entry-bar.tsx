@@ -40,9 +40,7 @@ import {
   GripHorizontal,
   GripVertical,
   Info,
-  Maximize2,
   MessageSquareDiff,
-  Minimize2,
   Pause,
   PenTool,
   Play,
@@ -261,9 +259,9 @@ export const UltimateTimeTracker = ({
     setBarSize,
     toggleBarSize,
   } = useTimerSettings()
-  const isMini = barSize === 'mini'
   const isWidgetWindow =
     typeof window !== 'undefined' && window.location.hash.includes('/widgets/')
+  const isMini = isWidgetWindow && barSize === 'mini'
   const [widgetPosition] = useCurrentWidgetPosition()
   const db = useSyncStore((s) => s.db)
   const bridge = useHostBridge()
@@ -1319,17 +1317,17 @@ export const UltimateTimeTracker = ({
         ref={cardRef}
         data-widget-card="true"
         data-orientation={isVertical ? 'vertical' : 'horizontal'}
-        data-size={barSize}
+        data-size={isMini ? 'mini' : 'normal'}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         className={cn(
-          'group border-border/60 bg-card pointer-events-auto relative inline-flex w-fit items-center border shadow-md transition-all duration-200 ease-out select-none',
+          'group border-border/60 bg-card pointer-events-auto relative inline-flex w-fit items-center rounded-lg border shadow-md select-none',
           isMini
             ? isVertical
-              ? 'h-fit w-12 flex-col items-center gap-1 rounded-xl p-1.5'
-              : 'h-10 flex-row items-center gap-1.5 rounded-full px-2 py-1'
+              ? 'h-fit w-11 flex-col items-center gap-1 p-1 transition-all duration-200 ease-out'
+              : 'h-8 flex-row items-center gap-1.5 px-2 py-0.5 transition-all duration-200 ease-out'
             : isVertical
-              ? 'h-fit w-16 flex-col items-center gap-1 rounded-lg'
-              : 'h-fit flex-row items-center rounded-lg',
+              ? 'h-fit w-16 flex-col items-center gap-1 transition-transform duration-150 ease-out'
+              : 'h-fit flex-row items-center transition-transform duration-150 ease-out',
         )}
       >
         <CardContent
@@ -1337,7 +1335,7 @@ export const UltimateTimeTracker = ({
             'flex w-full transition-all',
             isMini
               ? isVertical
-                ? 'min-h-0 flex-col items-center justify-start gap-1.5 p-0'
+                ? 'min-h-0 flex-col items-center justify-start gap-1 p-0'
                 : 'flex-row items-center justify-center gap-1.5 p-0'
               : isVertical
                 ? 'h-full min-h-0 [scrollbar-width:none] flex-col items-center justify-start gap-3 overflow-x-hidden overflow-y-auto px-0 pt-2 pb-8 [&::-webkit-scrollbar]:hidden'
@@ -1370,7 +1368,6 @@ UltimateTimeTracker.MiniLayout = function MiniLayout() {
     handleStop,
     selectedTask,
     setIsTaskLookupOpen,
-    setBarSize,
     widgetHandleRef,
   } = useTrackerContext()
 
@@ -1379,9 +1376,7 @@ UltimateTimeTracker.MiniLayout = function MiniLayout() {
       data-testid="minimode-layout"
       className={cn(
         'flex items-center justify-between select-none',
-        isVertical
-          ? 'w-full flex-col gap-1.5 py-0.5'
-          : 'flex-row gap-1.5 px-0.5',
+        isVertical ? 'w-full flex-col gap-1 py-0.5' : 'flex-row gap-1.5 px-0.5',
       )}
     >
       {/* 1. Header: Drag Handle + Status Indicator Dot */}
@@ -1444,12 +1439,12 @@ UltimateTimeTracker.MiniLayout = function MiniLayout() {
           <Button
             variant="default"
             size="icon"
-            className="h-6 w-6 rounded-md p-0 shadow-sm transition-transform active:scale-95"
+            className="h-5 w-5 rounded p-0 shadow-sm transition-transform active:scale-95"
             onClick={handleStart}
             title="Iniciar timer"
             data-testid="minimode-start-btn"
           >
-            <Play className="ml-0.5 h-3 w-3 fill-current" />
+            <Play className="ml-0.5 h-2.5 w-2.5 fill-current" />
           </Button>
         ) : (
           <div
@@ -1461,21 +1456,21 @@ UltimateTimeTracker.MiniLayout = function MiniLayout() {
             <Button
               variant={isRunning ? 'secondary' : 'default'}
               size="icon"
-              className="h-6 w-6 rounded-md p-0 shadow-sm transition-transform active:scale-95"
+              className="h-5 w-5 rounded p-0 shadow-sm transition-transform active:scale-95"
               onClick={isRunning ? handlePause : handleStart}
               title={isRunning ? 'Pausar' : 'Retomar'}
               data-testid="minimode-pause-btn"
             >
               {isRunning ? (
-                <Pause className="text-primary h-3 w-3 fill-current" />
+                <Pause className="text-primary h-2.5 w-2.5 fill-current" />
               ) : (
-                <Play className="text-primary ml-0.5 h-3 w-3 fill-current" />
+                <Play className="text-primary ml-0.5 h-2.5 w-2.5 fill-current" />
               )}
             </Button>
             <Button
               variant="destructive"
               size="icon"
-              className="h-5 w-5 rounded-md p-0 opacity-80 transition-transform hover:opacity-100 active:scale-95"
+              className="h-4 w-4 rounded p-0 opacity-80 transition-transform hover:opacity-100 active:scale-95"
               onClick={handleStop}
               title="Finalizar e registrar"
               data-testid="minimode-stop-btn"
@@ -1497,7 +1492,7 @@ UltimateTimeTracker.MiniLayout = function MiniLayout() {
         <UltimateTimeTracker.TimerBlock />
       </div>
 
-      {/* 4. Footer: Task Indicator & Settings/Expand */}
+      {/* 4. Footer: Task Indicator & Settings Popover */}
       <div
         data-no-drag
         className={cn(
@@ -1512,13 +1507,13 @@ UltimateTimeTracker.MiniLayout = function MiniLayout() {
                 variant="ghost"
                 size="icon"
                 data-testid="minimode-task-btn"
-                className="text-muted-foreground hover:text-foreground h-5 w-5 rounded p-0"
+                className="text-muted-foreground hover:text-foreground h-[18px] w-[18px] rounded p-0"
                 onClick={() => setIsTaskLookupOpen(true)}
               >
                 {selectedTask ? (
-                  <CheckCircle2 className="text-primary h-3 w-3" />
+                  <CheckCircle2 className="text-primary h-2.5 w-2.5" />
                 ) : (
-                  <Ticket className="h-3 w-3 opacity-60" />
+                  <Ticket className="h-2.5 w-2.5 opacity-60" />
                 )}
               </Button>
             </TooltipTrigger>
@@ -1533,26 +1528,6 @@ UltimateTimeTracker.MiniLayout = function MiniLayout() {
         </TooltipProvider>
 
         <TimerSettings />
-
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                data-testid="minimode-expand-btn"
-                aria-label="Voltar para modo padrão"
-                className="text-muted-foreground hover:text-foreground h-5 w-5 rounded p-0 transition-colors"
-                onClick={() => setBarSize('normal')}
-              >
-                <Maximize2 className="h-3 w-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side={isVertical ? 'right' : 'bottom'}>
-              <p className="text-xs">Voltar para modo padrão</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
     </div>
   )
@@ -2566,7 +2541,7 @@ export function useAddonBlocks() {
 }
 
 UltimateTimeTracker.ToolsBlock = function ToolsBlock() {
-  const { isVertical, setBarSize } = useTrackerContext()
+  const { isVertical } = useTrackerContext()
   return (
     <div
       data-no-drag
@@ -2587,25 +2562,6 @@ UltimateTimeTracker.ToolsBlock = function ToolsBlock() {
       >
         <TimerHistory />
         <TimerSettings />
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                data-testid="normalmode-minimize-btn"
-                aria-label="Modo Mini"
-                className="text-muted-foreground hover:bg-muted/50 hover:text-foreground h-[18px] w-[18px] rounded p-0 transition-colors"
-                onClick={() => setBarSize('mini')}
-              >
-                <Minimize2 className="h-3 w-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side={isVertical ? 'right' : 'bottom'}>
-              <p className="text-xs">Modo Mini</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
         <SystemAddonsButton isVertical={isVertical} />
       </div>
     </div>
