@@ -122,7 +122,11 @@ function PositionCompass({
   )
 }
 
-export const TimerSettings = memo(() => {
+export interface TimerSettingsProps {
+  isMini?: boolean
+}
+
+export const TimerSettings = memo(({ isMini }: TimerSettingsProps) => {
   const bridge = useHostBridge()
   const isWidgetWindow =
     typeof window !== 'undefined' && window.location.hash.includes('/widgets/')
@@ -232,9 +236,12 @@ export const TimerSettings = memo(() => {
           variant="ghost"
           size="icon"
           aria-label="Configurações"
-          className="text-muted-foreground hover:bg-muted/50 hover:text-foreground h-[18px] w-[18px] rounded p-0 transition-colors"
+          className={cn(
+            'text-muted-foreground hover:bg-muted/50 hover:text-foreground p-0 transition-colors',
+            isMini ? 'h-4 w-4 rounded-[3px]' : 'h-[18px] w-[18px] rounded',
+          )}
         >
-          <Settings2Icon className="h-3 w-3" />
+          <Settings2Icon className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3 w-3')} />
         </Button>
       </PopoverTrigger>
       <PopoverContent

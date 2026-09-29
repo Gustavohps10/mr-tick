@@ -716,7 +716,7 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       expect(useTimerSettings.getState().miniMode).toBe(true)
 
       const card = container.querySelector('[data-widget-card="true"]')
-      expect(card?.className).toContain('w-14')
+      expect(card?.className).toContain('w-12')
     })
 
     it('allows typing into timer input in vertical orientation when idle', async () => {

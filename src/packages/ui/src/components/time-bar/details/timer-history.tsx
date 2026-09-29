@@ -36,6 +36,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { useHostBridge } from '@/hooks'
 import { cn } from '@/lib/utils'
+import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { useSyncStore } from '@/stores/syncStore'
 import { JournalEntry, useTimeEntryStore } from '@/stores/timeEntryStore'
 
@@ -74,12 +75,13 @@ function applyTimeToDate(dateString: string, timeString: string): string {
 }
 
 export interface TimerHistoryProps {
-  entry?: any | null
+  entry?: SyncTimeEntryRxDBDTO | null
   trigger?: React.ReactNode
+  isMini?: boolean
 }
 
 export const TimerHistory = memo(
-  ({ entry: propEntry, trigger }: TimerHistoryProps = {}) => {
+  ({ entry: propEntry, trigger, isMini }: TimerHistoryProps = {}) => {
     const bridge = useHostBridge()
     const db = useSyncStore((s) => s.db)
     const storeActiveEntry = useTimeEntryStore((s) => s.active)
@@ -799,11 +801,12 @@ export const TimerHistory = memo(
               size="icon"
               disabled={!activeEntry}
               className={cn(
-                'text-muted-foreground hover:bg-muted/50 hover:text-foreground h-[18px] w-[18px] rounded p-0 transition-colors',
+                'text-muted-foreground hover:bg-muted/50 hover:text-foreground p-0 transition-colors',
+                isMini ? 'h-4 w-4 rounded-[3px]' : 'h-[18px] w-[18px] rounded',
                 !activeEntry && 'cursor-not-allowed opacity-50',
               )}
             >
-              <History className="h-3 w-3" />
+              <History className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3 w-3')} />
             </Button>
           )}
         </PopoverTrigger>
