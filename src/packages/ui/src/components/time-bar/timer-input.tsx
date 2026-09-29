@@ -116,7 +116,7 @@ export function TimerInput({
         onError?.(null)
       }}
       onKeyDown={handleKeyDown}
-      style={{ width: orientation === 'vertical' ? '6.5ch' : '8ch' }}
+      style={{ width: orientation === 'vertical' ? '7ch' : '8ch' }}
       className={cn(
         // Base — fixed width, never expands
         'bg-transparent text-center font-mono tabular-nums outline-none',

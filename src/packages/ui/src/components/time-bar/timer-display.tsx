@@ -116,8 +116,7 @@ export function TimerDisplay({
     [onInitialSecondsChange],
   )
 
-  const canEdit =
-    editable && resolvedStatus === 'idle' && orientation !== 'vertical'
+  const canEdit = editable && resolvedStatus === 'idle'
 
   return (
     <span
@@ -159,7 +158,9 @@ export function TimerDisplay({
           min={min}
           max={max}
           className={cn(
-            'text-[18px] font-semibold tracking-tight',
+            orientation === 'vertical'
+              ? 'w-full max-w-[48px] px-0.5 text-[11px] font-bold tracking-tight'
+              : 'text-[18px] font-semibold tracking-tight',
             resolvedStatus === 'idle' &&
               !hasError &&
               'text-muted-foreground/40',

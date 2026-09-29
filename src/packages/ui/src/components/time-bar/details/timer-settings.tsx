@@ -145,6 +145,8 @@ export const TimerSettings = memo(() => {
     toggleAddonVisibility,
     startMinimized,
     setStartMinimized,
+    miniMode,
+    setMiniMode,
   } = useTimerSettings()
   const [widgetPosition, setWidgetPosition] = useCurrentWidgetPosition()
 
@@ -391,6 +393,28 @@ export const TimerSettings = memo(() => {
                   Vertical
                 </button>
               </div>
+
+              <div className="border-border/40 mt-2.5 border-t pt-2">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label
+                      htmlFor="minimode-switch"
+                      className="text-foreground/90 cursor-pointer text-xs font-medium"
+                    >
+                      Modo Mini
+                    </Label>
+                    <p className="text-muted-foreground text-[10px]">
+                      Exibe o widget com tamanho compacto
+                    </p>
+                  </div>
+                  <Switch
+                    id="minimode-switch"
+                    data-testid="minimode-switch"
+                    checked={miniMode}
+                    onCheckedChange={setMiniMode}
+                  />
+                </div>
+              </div>
             </div>
           ) : (
             <div className="bg-muted/30 border-border/50 rounded-lg border p-2">
@@ -404,6 +428,27 @@ export const TimerSettings = memo(() => {
                 value={widgetPosition as WidgetPosition}
                 onChange={setWidgetPosition}
               />
+              <div className="border-border/40 mt-2.5 border-t pt-2">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label
+                      htmlFor="minimode-switch-main"
+                      className="text-foreground/90 cursor-pointer text-xs font-medium"
+                    >
+                      Modo Mini (Widget)
+                    </Label>
+                    <p className="text-muted-foreground text-[10px]">
+                      Exibe o widget com tamanho compacto
+                    </p>
+                  </div>
+                  <Switch
+                    id="minimode-switch-main"
+                    data-testid="minimode-switch"
+                    checked={miniMode}
+                    onCheckedChange={setMiniMode}
+                  />
+                </div>
+              </div>
             </div>
           )}
 

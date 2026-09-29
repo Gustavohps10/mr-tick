@@ -17,6 +17,7 @@ interface TimerSettingsState {
   enabledAddonIds: string[]
   startMinimized: boolean
   mainWindowWidgetPosition: WidgetPosition
+  miniMode: boolean
 
   setTimerDirection: (val: 'up' | 'down') => void
   setLogOption: (val: LogOption) => void
@@ -28,6 +29,7 @@ interface TimerSettingsState {
   setAntiBurnout: (val: boolean) => void
   setActiveWindowTracking: (val: boolean) => void
   setStartMinimized: (val: boolean) => void
+  setMiniMode: (val: boolean) => void
   toggleHiddenBlock: (id: string) => void
   toggleAddonVisibility: (id: string) => void
 }
@@ -47,6 +49,7 @@ export const useTimerSettings = create<TimerSettingsState>()(
       enabledAddonIds: [],
       startMinimized: false,
       mainWindowWidgetPosition: 'bottom',
+      miniMode: false,
 
       setTimerDirection: (val) => set({ timerDirection: val }),
       setLogOption: (val) => set({ logOption: val }),
@@ -59,6 +62,7 @@ export const useTimerSettings = create<TimerSettingsState>()(
       setAntiBurnout: (val) => set({ antiBurnout: val }),
       setActiveWindowTracking: (val) => set({ activeWindowTracking: val }),
       setStartMinimized: (val) => set({ startMinimized: val }),
+      setMiniMode: (val) => set({ miniMode: val }),
 
       toggleHiddenBlock: (id) =>
         set((state) => ({

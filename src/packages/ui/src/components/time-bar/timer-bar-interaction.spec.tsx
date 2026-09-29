@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 import {
   afterEach,
@@ -691,6 +691,64 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
         'mr-tick:widget:free-offset',
       )
       expect(widgetSaved).toBeNull()
+    })
+  })
+
+  describe('Suite 4: Mini Mode, Vertical Editing & Expander Visuals', () => {
+    it('allows toggling miniMode in preferences and applies compact sizing in widget mode', async () => {
+      window.location.hash = '#/workspaces/ws-1/widgets/timer'
+      useTimerSettings.setState({ miniMode: false, widgetPosition: 'left' })
+
+      const { container } = renderWithProviders(<UltimateTimeTracker />)
+      const settingsBtn = screen.getByRole('button', { name: 'Configurações' })
+
+      await act(async () => {
+        fireEvent.click(settingsBtn)
+      })
+
+      const miniModeSwitch = screen.getByTestId('minimode-switch')
+      expect(miniModeSwitch).toBeTruthy()
+
+      await act(async () => {
+        fireEvent.click(miniModeSwitch)
+      })
+
+      expect(useTimerSettings.getState().miniMode).toBe(true)
+
+      const card = container.querySelector('[data-widget-card="true"]')
+      expect(card?.className).toContain('w-14')
+    })
+
+    it('allows typing into timer input in vertical orientation when idle', async () => {
+      window.location.hash = '#/workspaces/ws-1/widgets/timer'
+      useTimerSettings.setState({ widgetPosition: 'left' })
+
+      renderWithProviders(<UltimateTimeTracker />)
+
+      const timerInput = screen.getByLabelText(/Timer value/i)
+      expect(timerInput).toBeTruthy()
+
+      fireEvent.focus(timerInput)
+      fireEvent.change(timerInput, { target: { value: '1h' } })
+      fireEvent.blur(timerInput)
+
+      expect(screen.getByDisplayValue('01:00:00')).toBeTruthy()
+    })
+
+    it('ensures expander button has no border, margin, or padding classes', async () => {
+      window.location.hash = '#/workspaces/ws-1/widgets/timer'
+      useTimerSettings.setState({
+        widgetPosition: 'bottom',
+        hiddenBlocks: ['tools'],
+      })
+
+      const { container } = renderWithProviders(<UltimateTimeTracker />)
+      const expander = container.querySelector('[title="Expandir itens"]')
+      expect(expander).toBeTruthy()
+      expect(expander?.className).not.toContain('border-')
+      expect(expander?.className).not.toContain('mt-')
+      expect(expander?.className).not.toContain('ml-')
+      expect(expander?.className).not.toContain('pt-')
     })
   })
 })
