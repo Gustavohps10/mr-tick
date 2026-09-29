@@ -1934,9 +1934,14 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
         logOption === 'none' ? (
           <Button
             variant="default"
+            size="icon"
             className={cn(
-              'shrink-0 rounded-lg p-0 shadow-md transition-transform active:scale-95',
-              isMini ? 'h-7 w-7' : isVertical ? 'h-8 w-8' : 'h-10 w-10',
+              'shrink-0 rounded-md p-0 shadow-xs transition-transform active:scale-95',
+              isMini
+                ? 'h-[24px] w-[24px]'
+                : isVertical
+                  ? 'h-8 w-8'
+                  : 'h-10 w-10',
             )}
             onClick={handleStart}
             title="Iniciar cronômetro ao vivo"
@@ -1945,7 +1950,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             <Play
               className={cn(
                 isMini ? 'h-2.5 w-2.5' : isVertical ? 'h-3.5 w-3.5' : 'h-4 w-4',
-                'fill-current',
+                'shrink-0 fill-current',
               )}
             />
           </Button>
@@ -1954,7 +1959,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             className={cn(
               'flex shrink-0 items-center justify-center gap-[1px]',
               isMini
-                ? 'h-7 w-[28px]'
+                ? 'h-[24px] w-[24px]'
                 : isVertical
                   ? 'h-8 w-[34px]'
                   : 'h-10 w-[42px]',
@@ -1962,10 +1967,11 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
           >
             <Button
               variant="default"
+              size="icon"
               className={cn(
-                'shrink-0 rounded-l-lg rounded-r-none p-0 shadow-md transition-transform active:scale-95',
+                'shrink-0 rounded-l-md rounded-r-none p-0 shadow-xs transition-transform active:scale-95',
                 isMini
-                  ? 'h-7 w-[21px]'
+                  ? 'h-[24px] w-[15px]'
                   : isVertical
                     ? 'h-8 w-[25px]'
                     : 'h-10 w-[31px]',
@@ -1976,9 +1982,9 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             >
               <Play
                 className={cn(
-                  'fill-current',
+                  'shrink-0 fill-current',
                   isMini
-                    ? 'ml-[1px] h-2.5 w-2.5'
+                    ? 'ml-[0.5px] h-2.5 w-2.5'
                     : isVertical
                       ? 'ml-[2px] h-3.5 w-3.5'
                       : 'ml-[6px] h-4 w-4',
@@ -1987,11 +1993,11 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             </Button>
             <Button
               variant="default"
-              style={{ padding: '5px' }}
+              size="icon"
               className={cn(
-                'bg-primary/90 hover:bg-primary/80 flex shrink-0 items-center justify-center rounded-l-none rounded-r-lg opacity-90 shadow-md transition-transform hover:opacity-100 active:scale-95',
+                'bg-primary/90 hover:bg-primary/80 flex shrink-0 items-center justify-center rounded-l-none rounded-r-md p-0 opacity-90 shadow-xs transition-transform hover:opacity-100 active:scale-95',
                 isMini
-                  ? 'h-7 w-[6px]'
+                  ? 'h-[24px] w-[8px]'
                   : isVertical
                     ? 'h-8 w-[8px]'
                     : 'h-10 w-[10px]',
@@ -2000,11 +2006,10 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
               title="Apontamento Manual"
             >
               <ChevronRight
-                style={{ width: isMini ? '7px' : isVertical ? '10px' : '12px' }}
                 className={cn(
-                  'stroke-[2.5] opacity-50',
+                  'shrink-0 stroke-[2.5] opacity-50',
                   isMini
-                    ? 'h-[4px] w-[4px]'
+                    ? 'h-[5px] w-[4px]'
                     : isVertical
                       ? 'h-[6px] w-[6px]'
                       : 'h-[7px] w-[7px]',
@@ -2017,7 +2022,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             className={cn(
               'flex shrink-0 items-center justify-center gap-[1px]',
               isMini
-                ? 'h-7 w-[28px]'
+                ? 'h-[24px] w-[24px]'
                 : isVertical
                   ? 'h-8 w-[34px]'
                   : 'h-10 w-[42px]',
@@ -2025,10 +2030,11 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
           >
             <Button
               variant="default"
+              size="icon"
               className={cn(
-                'shrink-0 rounded-l-lg rounded-r-none p-0 shadow-md transition-transform active:scale-95',
+                'shrink-0 rounded-l-md rounded-r-none p-0 shadow-xs transition-transform active:scale-95',
                 isMini
-                  ? 'h-7 w-[21px]'
+                  ? 'h-[24px] w-[15px]'
                   : isVertical
                     ? 'h-8 w-[25px]'
                     : 'h-10 w-[31px]',
@@ -2039,9 +2045,9 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             >
               <Play
                 className={cn(
-                  'fill-current',
+                  'shrink-0 fill-current',
                   isMini
-                    ? 'ml-[1px] h-2.5 w-2.5'
+                    ? 'ml-[0.5px] h-2.5 w-2.5'
                     : isVertical
                       ? 'ml-[2px] h-3.5 w-3.5'
                       : 'ml-[6px] h-4 w-4',
@@ -2053,11 +2059,11 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
               <PopoverTrigger asChild>
                 <Button
                   variant="default"
-                  style={{ padding: '5px' }}
+                  size="icon"
                   className={cn(
-                    'bg-primary/90 hover:bg-primary/80 flex shrink-0 items-center justify-center rounded-l-none rounded-r-lg opacity-90 shadow-md transition-transform hover:opacity-100 active:scale-95',
+                    'bg-primary/90 hover:bg-primary/80 flex shrink-0 items-center justify-center rounded-l-none rounded-r-md p-0 opacity-90 shadow-xs transition-transform hover:opacity-100 active:scale-95',
                     isMini
-                      ? 'h-7 w-[6px]'
+                      ? 'h-[24px] w-[8px]'
                       : isVertical
                         ? 'h-8 w-[8px]'
                         : 'h-10 w-[10px]',
@@ -2065,13 +2071,10 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                   title="Mais opções"
                 >
                   <ChevronRight
-                    style={{
-                      width: isMini ? '7px' : isVertical ? '10px' : '12px',
-                    }}
                     className={cn(
-                      'stroke-[2.5] opacity-50',
+                      'shrink-0 stroke-[2.5] opacity-50',
                       isMini
-                        ? 'h-[4px] w-[4px]'
+                        ? 'h-[5px] w-[4px]'
                         : isVertical
                           ? 'h-[6px] w-[6px]'
                           : 'h-[7px] w-[7px]',
@@ -2121,9 +2124,14 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
         >
           <Button
             variant={isRunning ? 'outline' : 'default'}
+            size="icon"
             className={cn(
-              'shrink-0 rounded-lg p-0 shadow-sm transition-transform active:scale-95',
-              isMini ? 'h-7 w-7' : isVertical ? 'h-8 w-8' : 'h-10 w-10',
+              'shrink-0 rounded-md p-0 shadow-xs transition-transform active:scale-95',
+              isMini
+                ? 'h-[24px] w-[24px]'
+                : isVertical
+                  ? 'h-8 w-8'
+                  : 'h-10 w-10',
             )}
             onClick={isRunning ? handlePause : handleStart}
             data-testid={
@@ -2133,7 +2141,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             {isRunning ? (
               <Pause
                 className={cn(
-                  'text-primary fill-current',
+                  'text-primary shrink-0 fill-current',
                   isMini
                     ? 'h-2.5 w-2.5'
                     : isVertical
@@ -2144,7 +2152,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             ) : (
               <Play
                 className={cn(
-                  'ml-0.5 fill-current',
+                  'ml-0.5 shrink-0 fill-current',
                   isMini || isVertical
                     ? 'text-primary-foreground'
                     : 'text-primary',
@@ -2159,27 +2167,22 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
           </Button>
           <Button
             variant="destructive"
+            size="icon"
             className={cn(
-              'shrink-0 transition-transform active:scale-95',
+              'shrink-0 rounded-md p-0 shadow-xs transition-transform active:scale-95',
               isMini
-                ? isVertical
-                  ? 'h-5 w-5 rounded-md p-0 opacity-90 hover:opacity-100'
-                  : 'h-6 w-6 rounded-md p-0'
+                ? 'h-[24px] w-[24px] opacity-90 hover:opacity-100'
                 : isVertical
-                  ? 'h-6 w-6 rounded-md p-0 opacity-90 hover:opacity-100'
-                  : 'h-10 w-10 rounded-lg p-0',
+                  ? 'h-6 w-6 opacity-90 hover:opacity-100'
+                  : 'h-10 w-10 rounded-lg',
             )}
             onClick={handleStop}
             data-testid="timerbar-stop-btn"
           >
             <Square
               className={cn(
-                'fill-current',
-                isMini
-                  ? 'h-1.5 w-1.5'
-                  : isVertical
-                    ? 'h-2.5 w-2.5'
-                    : 'h-3.5 w-3.5',
+                'shrink-0 fill-current',
+                isMini ? 'h-2 w-2' : isVertical ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5',
               )}
             />
           </Button>
