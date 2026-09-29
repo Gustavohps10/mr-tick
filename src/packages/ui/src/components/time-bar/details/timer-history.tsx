@@ -435,9 +435,14 @@ export const TimerHistory = memo(
         }
       }
 
+      const nowIso = new Date().toISOString()
       newJournal.push({
+        id: crypto.randomUUID(),
+        action: 'adjust',
+        timestamp: nowIso,
+        secondsAtMoment: adjDelta,
         event: 'adjusted',
-        at: new Date().toISOString(),
+        at: nowIso,
         secondsAtEvent: adjDelta,
         note: addNote || (isAdd ? 'Tempo adicionado' : 'Tempo removido'),
       })

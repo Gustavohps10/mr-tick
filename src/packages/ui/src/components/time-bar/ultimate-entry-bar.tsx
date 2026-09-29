@@ -3,6 +3,8 @@
 import {
   closestCenter,
   DndContext,
+  DraggableAttributes,
+  DraggableSyntheticListeners,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -293,7 +295,10 @@ export const UltimateTimeTracker = ({
           const json = doc.toMutableJSON ? doc.toMutableJSON() : doc
           json.activities?.forEach((act: any) => {
             if (!loaded.some((a) => a.id === act.id)) {
-              const IconComp = (LucideIcons as any)[act.icon] || Code2Icon
+              const lucideMap: Record<string, React.ElementType> =
+                LucideIcons.icons
+              const IconComp =
+                (act.icon ? lucideMap[act.icon] : undefined) || Code2Icon
               loaded.push({
                 id: act.id,
                 name: act.name,
@@ -1361,15 +1366,23 @@ UltimateTimeTracker.Handle = function TrackerHandle() {
       title="Arraste para mover"
     >
       {isVertical ? (
-        <GripHorizontal className={cn(isMini ? 'h-3 w-3' : 'h-4 w-4')} />
+        <GripHorizontal className={cn(isMini ? 'h-2.5 w-2.5' : 'h-4 w-4')} />
       ) : (
-        <GripVertical className={cn(isMini ? 'h-3 w-3' : 'h-4 w-4')} />
+        <GripVertical className={cn(isMini ? 'h-2.5 w-2.5' : 'h-4 w-4')} />
       )}
     </div>
   )
 }
 
-function DragHandle({ isVertical, listeners, attributes }: any) {
+function DragHandle({
+  isVertical,
+  listeners,
+  attributes,
+}: {
+  isVertical: boolean
+  listeners?: DraggableSyntheticListeners
+  attributes?: DraggableAttributes
+}) {
   return (
     <div
       {...listeners}
@@ -1581,14 +1594,14 @@ UltimateTimeTracker.Expander = function Expander() {
     >
       {isVertical ? (
         isExpanded ? (
-          <ChevronUp className={cn(isMini ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+          <ChevronUp className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')} />
         ) : (
-          <ChevronDown className={cn(isMini ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+          <ChevronDown className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')} />
         )
       ) : isExpanded ? (
-        <ChevronLeft className={cn(isMini ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+        <ChevronLeft className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')} />
       ) : (
-        <ChevronRight className={cn(isMini ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+        <ChevronRight className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')} />
       )}
     </div>
   )
@@ -1693,10 +1706,10 @@ UltimateTimeTracker.TaskBlock = function TaskBlock() {
               title={formattedLabel?.full || 'Detalhes da Tarefa'}
             >
               {isEditingVertical ? (
-                <X className={cn(isMini ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+                <X className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')} />
               ) : (
                 <MessageSquareDiff
-                  className={cn(isMini ? 'h-3 w-3' : 'h-3.5 w-3.5')}
+                  className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')}
                 />
               )}
             </Button>
@@ -1923,13 +1936,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             variant="default"
             className={cn(
               'shrink-0 rounded-lg p-0 shadow-md transition-transform active:scale-95',
-              isMini
-                ? isVertical
-                  ? 'h-6 w-6'
-                  : 'h-7 w-7'
-                : isVertical
-                  ? 'h-8 w-8'
-                  : 'h-10 w-10',
+              isMini ? 'h-7 w-7' : isVertical ? 'h-8 w-8' : 'h-10 w-10',
             )}
             onClick={handleStart}
             title="Iniciar cronômetro ao vivo"
@@ -1937,7 +1944,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
           >
             <Play
               className={cn(
-                isMini ? 'h-3 w-3' : isVertical ? 'h-3.5 w-3.5' : 'h-4 w-4',
+                isMini ? 'h-2.5 w-2.5' : isVertical ? 'h-3.5 w-3.5' : 'h-4 w-4',
                 'fill-current',
               )}
             />
@@ -1947,9 +1954,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             className={cn(
               'flex shrink-0 items-center justify-center gap-[1px]',
               isMini
-                ? isVertical
-                  ? 'h-6 w-[28px]'
-                  : 'h-7 w-[32px]'
+                ? 'h-7 w-[28px]'
                 : isVertical
                   ? 'h-8 w-[34px]'
                   : 'h-10 w-[42px]',
@@ -1960,9 +1965,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
               className={cn(
                 'shrink-0 rounded-l-lg rounded-r-none p-0 shadow-md transition-transform active:scale-95',
                 isMini
-                  ? isVertical
-                    ? 'h-6 w-[21px]'
-                    : 'h-7 w-[24px]'
+                  ? 'h-7 w-[21px]'
                   : isVertical
                     ? 'h-8 w-[25px]'
                     : 'h-10 w-[31px]',
@@ -1975,7 +1978,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                 className={cn(
                   'fill-current',
                   isMini
-                    ? 'ml-[1px] h-3 w-3'
+                    ? 'ml-[1px] h-2.5 w-2.5'
                     : isVertical
                       ? 'ml-[2px] h-3.5 w-3.5'
                       : 'ml-[6px] h-4 w-4',
@@ -1988,9 +1991,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
               className={cn(
                 'bg-primary/90 hover:bg-primary/80 flex shrink-0 items-center justify-center rounded-l-none rounded-r-lg opacity-90 shadow-md transition-transform hover:opacity-100 active:scale-95',
                 isMini
-                  ? isVertical
-                    ? 'h-6 w-[6px]'
-                    : 'h-7 w-[7px]'
+                  ? 'h-7 w-[6px]'
                   : isVertical
                     ? 'h-8 w-[8px]'
                     : 'h-10 w-[10px]',
@@ -1999,11 +2000,11 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
               title="Apontamento Manual"
             >
               <ChevronRight
-                style={{ width: isMini ? '8px' : isVertical ? '10px' : '12px' }}
+                style={{ width: isMini ? '7px' : isVertical ? '10px' : '12px' }}
                 className={cn(
                   'stroke-[2.5] opacity-50',
                   isMini
-                    ? 'h-[5px] w-[5px]'
+                    ? 'h-[4px] w-[4px]'
                     : isVertical
                       ? 'h-[6px] w-[6px]'
                       : 'h-[7px] w-[7px]',
@@ -2016,9 +2017,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             className={cn(
               'flex shrink-0 items-center justify-center gap-[1px]',
               isMini
-                ? isVertical
-                  ? 'h-6 w-[28px]'
-                  : 'h-7 w-[32px]'
+                ? 'h-7 w-[28px]'
                 : isVertical
                   ? 'h-8 w-[34px]'
                   : 'h-10 w-[42px]',
@@ -2029,9 +2028,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
               className={cn(
                 'shrink-0 rounded-l-lg rounded-r-none p-0 shadow-md transition-transform active:scale-95',
                 isMini
-                  ? isVertical
-                    ? 'h-6 w-[21px]'
-                    : 'h-7 w-[24px]'
+                  ? 'h-7 w-[21px]'
                   : isVertical
                     ? 'h-8 w-[25px]'
                     : 'h-10 w-[31px]',
@@ -2044,7 +2041,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                 className={cn(
                   'fill-current',
                   isMini
-                    ? 'ml-[1px] h-3 w-3'
+                    ? 'ml-[1px] h-2.5 w-2.5'
                     : isVertical
                       ? 'ml-[2px] h-3.5 w-3.5'
                       : 'ml-[6px] h-4 w-4',
@@ -2060,9 +2057,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                   className={cn(
                     'bg-primary/90 hover:bg-primary/80 flex shrink-0 items-center justify-center rounded-l-none rounded-r-lg opacity-90 shadow-md transition-transform hover:opacity-100 active:scale-95',
                     isMini
-                      ? isVertical
-                        ? 'h-6 w-[6px]'
-                        : 'h-7 w-[7px]'
+                      ? 'h-7 w-[6px]'
                       : isVertical
                         ? 'h-8 w-[8px]'
                         : 'h-10 w-[10px]',
@@ -2071,12 +2066,12 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                 >
                   <ChevronRight
                     style={{
-                      width: isMini ? '8px' : isVertical ? '10px' : '12px',
+                      width: isMini ? '7px' : isVertical ? '10px' : '12px',
                     }}
                     className={cn(
                       'stroke-[2.5] opacity-50',
                       isMini
-                        ? 'h-[5px] w-[5px]'
+                        ? 'h-[4px] w-[4px]'
                         : isVertical
                           ? 'h-[6px] w-[6px]'
                           : 'h-[7px] w-[7px]',
@@ -2128,13 +2123,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             variant={isRunning ? 'outline' : 'default'}
             className={cn(
               'shrink-0 rounded-lg p-0 shadow-sm transition-transform active:scale-95',
-              isMini
-                ? isVertical
-                  ? 'h-6 w-6'
-                  : 'h-7 w-7'
-                : isVertical
-                  ? 'h-8 w-8'
-                  : 'h-10 w-10',
+              isMini ? 'h-7 w-7' : isVertical ? 'h-8 w-8' : 'h-10 w-10',
             )}
             onClick={isRunning ? handlePause : handleStart}
             data-testid={
@@ -2145,7 +2134,11 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
               <Pause
                 className={cn(
                   'text-primary fill-current',
-                  isMini ? 'h-3 w-3' : isVertical ? 'h-3.5 w-3.5' : 'h-4 w-4',
+                  isMini
+                    ? 'h-2.5 w-2.5'
+                    : isVertical
+                      ? 'h-3.5 w-3.5'
+                      : 'h-4 w-4',
                 )}
               />
             ) : (
@@ -2155,7 +2148,11 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                   isMini || isVertical
                     ? 'text-primary-foreground'
                     : 'text-primary',
-                  isMini ? 'h-3 w-3' : isVertical ? 'h-3.5 w-3.5' : 'h-4 w-4',
+                  isMini
+                    ? 'h-2.5 w-2.5'
+                    : isVertical
+                      ? 'h-3.5 w-3.5'
+                      : 'h-4 w-4',
                 )}
               />
             )}
@@ -2178,7 +2175,11 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
             <Square
               className={cn(
                 'fill-current',
-                isMini ? 'h-2 w-2' : isVertical ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5',
+                isMini
+                  ? 'h-1.5 w-1.5'
+                  : isVertical
+                    ? 'h-2.5 w-2.5'
+                    : 'h-3.5 w-3.5',
               )}
             />
           </Button>
@@ -2191,10 +2192,15 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
 function renderAddonIcon(
   icon?: string,
   fallbackIcon: React.ElementType = LucideIcons.Puzzle,
+  isMini?: boolean,
 ) {
   if (!icon) {
     const Fallback = fallbackIcon
-    return <Fallback className="h-3.5 w-3.5 shrink-0" />
+    return (
+      <Fallback
+        className={cn('shrink-0', isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')}
+      />
+    )
   }
 
   if (
@@ -2207,19 +2213,30 @@ function renderAddonIcon(
       <img
         src={icon}
         alt=""
-        className="h-3.5 w-3.5 shrink-0 rounded-sm object-contain"
+        className={cn(
+          'shrink-0 rounded-sm object-contain',
+          isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5',
+        )}
       />
     )
   }
 
-  const iconRecord = LucideIcons as unknown as Record<string, React.ElementType>
+  const iconRecord: Record<string, React.ElementType> = LucideIcons.icons
   if (iconRecord[icon]) {
     const LucideComp = iconRecord[icon]
-    return <LucideComp className="h-3.5 w-3.5 shrink-0" />
+    return (
+      <LucideComp
+        className={cn('shrink-0', isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')}
+      />
+    )
   }
 
   const Fallback = fallbackIcon
-  return <Fallback className="h-3.5 w-3.5 shrink-0" />
+  return (
+    <Fallback
+      className={cn('shrink-0', isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')}
+    />
+  )
 }
 
 function SystemAddonsButton({
@@ -2411,7 +2428,7 @@ function SystemAddonsButton({
 }
 
 function AddonSingleTool({ menu }: { menu: AddonTimerbarMenuItem }) {
-  const { isVertical } = useTrackerContext()
+  const { isVertical, isMini } = useTrackerContext()
   const bridge = useHostBridge()
 
   const handleCommandExecute = async (commandId: string, label: string) => {
@@ -2436,12 +2453,14 @@ function AddonSingleTool({ menu }: { menu: AddonTimerbarMenuItem }) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 rounded-md p-0"
+              className={cn(
+                isMini ? 'h-4 w-4 rounded-[3px] p-0' : 'h-7 w-7 rounded-md p-0',
+              )}
               onClick={() =>
                 handleCommandExecute(menu.id, menu.label ?? menu.id)
               }
             >
-              {renderAddonIcon(menu.icon)}
+              {renderAddonIcon(menu.icon, LucideIcons.Puzzle, isMini)}
             </Button>
           </TooltipTrigger>
           <TooltipContent side={isVertical ? 'right' : 'bottom'}>
@@ -2462,9 +2481,13 @@ function AddonSingleTool({ menu }: { menu: AddonTimerbarMenuItem }) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 rounded-md p-0"
+                  className={cn(
+                    isMini
+                      ? 'h-4 w-4 rounded-[3px] p-0'
+                      : 'h-7 w-7 rounded-md p-0',
+                  )}
                 >
-                  {renderAddonIcon(menu.icon)}
+                  {renderAddonIcon(menu.icon, LucideIcons.Puzzle, isMini)}
                 </Button>
               </PopoverTrigger>
             </TooltipTrigger>
