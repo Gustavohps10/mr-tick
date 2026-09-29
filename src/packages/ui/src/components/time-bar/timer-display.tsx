@@ -116,7 +116,8 @@ export function TimerDisplay({
     [onInitialSecondsChange],
   )
 
-  const canEdit = editable && resolvedStatus === 'idle'
+  const canEdit =
+    editable && resolvedStatus === 'idle' && orientation !== 'vertical'
 
   return (
     <span
@@ -127,7 +128,7 @@ export function TimerDisplay({
       className={cn(
         'inline-flex items-center justify-center font-semibold tracking-tight tabular-nums transition-all duration-300',
         orientation === 'vertical'
-          ? 'w-full flex-col gap-0.5 font-mono text-[14px] leading-[1.15] whitespace-nowrap'
+          ? 'w-full flex-col gap-0.5 font-mono text-[13px] leading-[1.15] whitespace-nowrap'
           : 'font-mono text-[18px] leading-none',
         resolvedStatus === 'idle' && !hasError && 'text-muted-foreground/40',
         hasError && [
@@ -158,10 +159,7 @@ export function TimerDisplay({
           min={min}
           max={max}
           className={cn(
-            'font-semibold tracking-tight',
-            orientation === 'vertical'
-              ? 'w-12 py-0.5 text-center text-[13px] font-bold'
-              : 'text-[18px]',
+            'text-[18px] font-semibold tracking-tight',
             resolvedStatus === 'idle' &&
               !hasError &&
               'text-muted-foreground/40',
@@ -169,19 +167,19 @@ export function TimerDisplay({
           )}
         />
       ) : orientation === 'vertical' ? (
-        <div className="grid grid-cols-[2ch_auto] items-baseline gap-x-0.5 gap-y-0.5 font-mono text-[14px] leading-none font-bold tracking-tight">
+        <div className="grid grid-cols-[2ch_auto] items-baseline justify-center gap-x-0.5 gap-y-0.5 font-mono text-[13px] leading-none font-bold tracking-tight">
           <span>{isNeg ? `-${h}` : h}</span>
-          <span className="text-muted-foreground font-mono text-[12px] font-medium">
+          <span className="text-muted-foreground font-mono text-[10px] font-medium">
             h
           </span>
 
           <span>{m}</span>
-          <span className="text-muted-foreground font-mono text-[12px] font-medium">
+          <span className="text-muted-foreground font-mono text-[10px] font-medium">
             m
           </span>
 
           <span className="opacity-85">{s}</span>
-          <span className="text-muted-foreground font-mono text-[12px] font-medium">
+          <span className="text-muted-foreground font-mono text-[10px] font-medium">
             s
           </span>
         </div>

@@ -3,7 +3,6 @@ import { persist } from 'zustand/middleware'
 
 export type WidgetPosition = 'top' | 'bottom' | 'left' | 'right'
 export type LogOption = 'none' | 'manual' | 'ask'
-export type BarSize = 'normal' | 'mini'
 
 interface TimerSettingsState {
   timerDirection: 'up' | 'down'
@@ -18,7 +17,6 @@ interface TimerSettingsState {
   enabledAddonIds: string[]
   startMinimized: boolean
   mainWindowWidgetPosition: WidgetPosition
-  barSize: BarSize
 
   setTimerDirection: (val: 'up' | 'down') => void
   setLogOption: (val: LogOption) => void
@@ -32,8 +30,6 @@ interface TimerSettingsState {
   setStartMinimized: (val: boolean) => void
   toggleHiddenBlock: (id: string) => void
   toggleAddonVisibility: (id: string) => void
-  setBarSize: (val: BarSize) => void
-  toggleBarSize: () => void
 }
 
 export const useTimerSettings = create<TimerSettingsState>()(
@@ -51,7 +47,6 @@ export const useTimerSettings = create<TimerSettingsState>()(
       enabledAddonIds: [],
       startMinimized: false,
       mainWindowWidgetPosition: 'bottom',
-      barSize: 'normal',
 
       setTimerDirection: (val) => set({ timerDirection: val }),
       setLogOption: (val) => set({ logOption: val }),
@@ -64,11 +59,6 @@ export const useTimerSettings = create<TimerSettingsState>()(
       setAntiBurnout: (val) => set({ antiBurnout: val }),
       setActiveWindowTracking: (val) => set({ activeWindowTracking: val }),
       setStartMinimized: (val) => set({ startMinimized: val }),
-      setBarSize: (val) => set({ barSize: val }),
-      toggleBarSize: () =>
-        set((state) => ({
-          barSize: state.barSize === 'normal' ? 'mini' : 'normal',
-        })),
 
       toggleHiddenBlock: (id) =>
         set((state) => ({
@@ -91,10 +81,7 @@ export const useTimerSettings = create<TimerSettingsState>()(
   ),
 )
 
-export const useCurrentWidgetPosition = (): [
-  WidgetPosition,
-  (val: WidgetPosition) => void,
-] => {
+export const useCurrentWidgetPosition = () => {
   const isWidgetWindow =
     typeof window !== 'undefined' && window.location.hash.includes('/widgets/')
   const widgetPosition = useTimerSettings((s) =>
@@ -103,5 +90,5 @@ export const useCurrentWidgetPosition = (): [
   const setWidgetPosition = useTimerSettings((s) =>
     isWidgetWindow ? s.setWidgetPosition : s.setMainWindowWidgetPosition,
   )
-  return [widgetPosition, setWidgetPosition]
+  return [widgetPosition, setWidgetPosition] as const
 }

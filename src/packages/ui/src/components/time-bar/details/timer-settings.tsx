@@ -11,8 +11,6 @@ import {
   Gamepad2,
   LayoutTemplate,
   LockIcon,
-  Maximize2,
-  Minimize2,
   Minus,
   Monitor,
   MonitorPlay,
@@ -35,7 +33,6 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { useHostBridge } from '@/hooks'
 import {
-  LogOption,
   useCurrentWidgetPosition,
   useTimerSettings,
 } from '@/hooks/use-timer-settings'
@@ -50,12 +47,6 @@ const POSITION_LABEL: Record<WidgetPosition, string> = {
   left: 'Esquerda',
   right: 'Direita',
 }
-
-const LOG_OPTIONS: Array<{ id: LogOption; label: string }> = [
-  { id: 'none', label: 'Não exibir' },
-  { id: 'manual', label: 'Apontar direto' },
-  { id: 'ask', label: 'Escolher ação' },
-]
 
 function PositionCompass({
   value,
@@ -154,8 +145,6 @@ export const TimerSettings = memo(() => {
     toggleAddonVisibility,
     startMinimized,
     setStartMinimized,
-    barSize,
-    setBarSize,
   } = useTimerSettings()
   const [widgetPosition, setWidgetPosition] = useCurrentWidgetPosition()
 
@@ -315,54 +304,25 @@ export const TimerSettings = memo(() => {
               </div>
             </div>
 
-            {/* Subgrupo: Tamanho da Barra (apenas em modo Widget) */}
-            {isWidgetWindow && (
-              <div className="border-border/40 space-y-1.5 border-t pt-2">
-                <span className="text-muted-foreground block text-[11px] font-medium">
-                  Tamanho da barra
-                </span>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <Button
-                    type="button"
-                    data-testid="barsize-normal-btn"
-                    variant={barSize === 'normal' ? 'secondary' : 'ghost'}
-                    className={cn(
-                      'h-6 justify-start gap-1.5 px-2 text-[11px]',
-                      barSize === 'normal' && 'font-semibold',
-                    )}
-                    onClick={() => setBarSize('normal')}
-                  >
-                    <Maximize2 className="h-3 w-3" /> Padrão
-                  </Button>
-                  <Button
-                    type="button"
-                    data-testid="barsize-mini-btn"
-                    variant={barSize === 'mini' ? 'secondary' : 'ghost'}
-                    className={cn(
-                      'h-6 justify-start gap-1.5 px-2 text-[11px]',
-                      barSize === 'mini' && 'font-semibold',
-                    )}
-                    onClick={() => setBarSize('mini')}
-                  >
-                    <Minimize2 className="h-3 w-3" /> Mini
-                  </Button>
-                </div>
-              </div>
-            )}
-
             {/* Subgrupo 2: Opções de Apontamento */}
             <div className="border-border/40 space-y-1.5 border-t pt-2">
               <span className="text-muted-foreground block text-[11px] font-medium">
                 Botão extra do timer
               </span>
               <div className="space-y-1">
-                {LOG_OPTIONS.map((option) => {
+                {[
+                  { id: 'none', label: 'Não exibir' },
+                  { id: 'manual', label: 'Apontar direto' },
+                  { id: 'ask', label: 'Escolher ação' },
+                ].map((option) => {
                   const isSelected = logOption === option.id
                   return (
                     <button
                       key={option.id}
                       type="button"
-                      onClick={() => setLogOption(option.id)}
+                      onClick={() =>
+                        setLogOption(option.id as 'none' | 'manual' | 'ask')
+                      }
                       className={cn(
                         'flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-colors',
                         isSelected
@@ -441,7 +401,7 @@ export const TimerSettings = memo(() => {
                 </span>
               </div>
               <PositionCompass
-                value={widgetPosition}
+                value={widgetPosition as WidgetPosition}
                 onChange={setWidgetPosition}
               />
             </div>
