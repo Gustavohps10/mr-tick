@@ -693,4 +693,88 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       expect(widgetSaved).toBeNull()
     })
   })
+
+  describe('Suite 4: Mini Mode (Densidade Compacta & Transição Elegante)', () => {
+    it('toggles bar size between normal and mini in TimerSettings', async () => {
+      window.location.hash = '#/workspace/default'
+      useTimerSettings.setState({ barSize: 'normal' })
+
+      renderWithProviders(<UltimateTimeTracker />)
+
+      const settingsBtn = screen.getByLabelText('Configurações')
+      fireEvent.click(settingsBtn)
+
+      const miniBtn = await screen.findByTestId('barsize-mini-btn')
+      expect(miniBtn).toBeDefined()
+
+      fireEvent.click(miniBtn)
+      expect(useTimerSettings.getState().barSize).toBe('mini')
+
+      const settingsBtnMini = screen.getByLabelText('Configurações')
+      fireEvent.click(settingsBtnMini)
+
+      const normalBtn = await screen.findByTestId('barsize-normal-btn')
+      fireEvent.click(normalBtn)
+      expect(useTimerSettings.getState().barSize).toBe('normal')
+    })
+
+    it('switches to mini mode when clicking the minimize button on the standard bar', async () => {
+      window.location.hash = '#/workspace/default'
+      useTimerSettings.setState({ barSize: 'normal' })
+
+      renderWithProviders(<UltimateTimeTracker />)
+
+      const minimizeBtn = screen.getByTestId('normalmode-minimize-btn')
+      expect(minimizeBtn).toBeDefined()
+
+      fireEvent.click(minimizeBtn)
+      expect(useTimerSettings.getState().barSize).toBe('mini')
+
+      await waitFor(() => {
+        expect(screen.getByTestId('minimode-layout')).toBeDefined()
+      })
+    })
+
+    it('renders MiniLayout with compact elements and returns to normal mode on expand', async () => {
+      window.location.hash = '#/workspace/default'
+      useTimerSettings.setState({ barSize: 'mini' })
+
+      renderWithProviders(<UltimateTimeTracker />)
+
+      expect(screen.getByTestId('minimode-layout')).toBeDefined()
+      expect(screen.getByTestId('minimode-status-dot')).toBeDefined()
+      expect(screen.getByTestId('minimode-start-btn')).toBeDefined()
+      expect(screen.getByTestId('minimode-task-btn')).toBeDefined()
+
+      const card = screen
+        .getByTestId('minimode-layout')
+        .closest('[data-widget-card="true"]')
+      expect(card?.getAttribute('data-size')).toBe('mini')
+
+      const expandBtn = screen.getByTestId('minimode-expand-btn')
+      fireEvent.click(expandBtn)
+
+      expect(useTimerSettings.getState().barSize).toBe('normal')
+      await waitFor(() => {
+        expect(screen.getByTestId('normalmode-minimize-btn')).toBeDefined()
+      })
+    })
+
+    it('renders MiniLayout in vertical orientation with compact styling', async () => {
+      window.location.hash = '#/widgets/timer'
+      useTimerSettings.setState({
+        widgetPosition: 'left',
+        barSize: 'mini',
+      })
+
+      renderWithProviders(<UltimateTimeTracker />)
+
+      const miniLayout = screen.getByTestId('minimode-layout')
+      expect(miniLayout).toBeDefined()
+
+      const card = miniLayout.closest('[data-widget-card="true"]')
+      expect(card?.getAttribute('data-orientation')).toBe('vertical')
+      expect(card?.getAttribute('data-size')).toBe('mini')
+    })
+  })
 })
