@@ -736,7 +736,7 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       expect(screen.getAllByDisplayValue('00')).toHaveLength(2)
     })
 
-    it('ensures expander button has no border, margin, or padding classes', async () => {
+    it('ensures expander button is flush with borders with no border, margin, or padding classes', async () => {
       window.location.hash = '#/workspaces/ws-1/widgets/timer'
       useTimerSettings.setState({
         widgetPosition: 'bottom',
@@ -746,10 +746,52 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       const { container } = renderWithProviders(<UltimateTimeTracker />)
       const expander = container.querySelector('[title="Expandir itens"]')
       expect(expander).toBeTruthy()
+      expect(expander?.className).toContain('self-stretch')
+      expect(expander?.className).toContain('p-0')
+      expect(expander?.className).toContain('m-0')
       expect(expander?.className).not.toContain('border-')
       expect(expander?.className).not.toContain('mt-')
       expect(expander?.className).not.toContain('ml-')
       expect(expander?.className).not.toContain('pt-')
+
+      // Sibling to CardContent directly inside Card
+      expect(expander?.parentElement?.getAttribute('data-slot')).toBe('card')
+
+      // Click to toggle
+      fireEvent.click(expander!)
+      expect(container.querySelector('[title="Recolher itens"]')).toBeTruthy()
+    })
+
+    it('renders expander as a full-width flush footer in vertical mode', async () => {
+      window.location.hash = '#/workspaces/ws-1/widgets/timer'
+      useTimerSettings.setState({
+        widgetPosition: 'left',
+        hiddenBlocks: ['tools'],
+      })
+
+      const { container } = renderWithProviders(<UltimateTimeTracker />)
+      const expander = container.querySelector('[title="Expandir itens"]')
+      expect(expander).toBeTruthy()
+      expect(expander?.className).toContain('w-full')
+      expect(expander?.className).toContain('p-0')
+      expect(expander?.className).toContain('m-0')
+      expect(expander?.parentElement?.getAttribute('data-slot')).toBe('card')
+
+      // Click to toggle
+      fireEvent.click(expander!)
+      expect(container.querySelector('[title="Recolher itens"]')).toBeTruthy()
+    })
+
+    it('does not render expander when hiddenBlocks is empty', async () => {
+      window.location.hash = '#/workspaces/ws-1/widgets/timer'
+      useTimerSettings.setState({
+        widgetPosition: 'bottom',
+        hiddenBlocks: [],
+      })
+
+      const { container } = renderWithProviders(<UltimateTimeTracker />)
+      const expander = container.querySelector('[title="Expandir itens"]')
+      expect(expander).toBeNull()
     })
   })
 })

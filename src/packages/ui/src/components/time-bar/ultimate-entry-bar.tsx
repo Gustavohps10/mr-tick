@@ -51,7 +51,9 @@ import {
 } from 'lucide-react'
 import * as LucideIcons from 'lucide-react'
 import React, {
+  Children,
   createContext,
+  isValidElement,
   useCallback,
   useContext,
   useEffect,
@@ -1229,7 +1231,7 @@ export const UltimateTimeTracker = ({
 
   const addonBlocks = useAddonBlocks()
 
-  const content = children || (
+  const defaultContent = (
     <>
       <UltimateTimeTracker.Handle />
       <UltimateTimeTracker.Blocks>
@@ -1256,9 +1258,15 @@ export const UltimateTimeTracker = ({
         {addonBlocks}
       </UltimateTimeTracker.Blocks>
       <UltimateTimeTracker.InlineInput />
-      <UltimateTimeTracker.Expander />
     </>
   )
+
+  const content = children
+    ? Children.toArray(children).filter((child) => {
+        if (!isValidElement(child)) return true
+        return child.type !== UltimateTimeTracker.Expander
+      })
+    : defaultContent
 
   const contextValue: UltimateTimeTrackerContextType = {
     isVertical,
@@ -1307,30 +1315,32 @@ export const UltimateTimeTracker = ({
         data-orientation={isVertical ? 'vertical' : 'horizontal'}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         className={cn(
-          'group border-border/60 bg-card pointer-events-auto relative inline-flex w-fit items-center rounded-lg border shadow-md transition-transform duration-150 ease-out select-none',
+          'group border-border/60 bg-card pointer-events-auto relative inline-flex w-fit items-stretch gap-0 overflow-hidden rounded-lg border p-0 shadow-md transition-transform duration-150 ease-out select-none',
           isVertical
             ? isMini
-              ? 'h-fit w-12 flex-col items-center gap-0.5'
-              : 'h-fit w-16 flex-col items-center gap-1'
+              ? 'h-fit w-12 flex-col'
+              : 'h-fit w-16 flex-col'
             : isMini
-              ? 'h-fit'
-              : ' ',
+              ? 'h-fit flex-row'
+              : 'h-fit flex-row',
         )}
       >
         <CardContent
           className={cn(
-            'flex w-full transition-all',
+            'flex transition-all',
             isVertical
               ? isMini
-                ? 'h-full min-h-0 [scrollbar-width:none] flex-col items-center justify-start gap-1 overflow-x-hidden overflow-y-auto px-0.5 py-1 [&::-webkit-scrollbar]:hidden'
-                : 'h-full min-h-0 [scrollbar-width:none] flex-col items-center justify-start gap-3 overflow-x-hidden overflow-y-auto px-1 py-2 [&::-webkit-scrollbar]:hidden'
+                ? 'min-h-0 w-full [scrollbar-width:none] flex-col items-center justify-start gap-1 overflow-x-hidden overflow-y-auto px-0.5 pt-1 pb-1 [&::-webkit-scrollbar]:hidden'
+                : 'min-h-0 w-full [scrollbar-width:none] flex-col items-center justify-start gap-3 overflow-x-hidden overflow-y-auto px-1 pt-2 pb-2 [&::-webkit-scrollbar]:hidden'
               : isMini
                 ? 'flex-row items-center gap-1 py-0.5 pr-1.5 pl-0.5'
-                : 'flex-row items-center gap-2 py-2 pl-1',
+                : 'flex-row items-center gap-2 py-2 pr-2 pl-1',
           )}
         >
           {content}
         </CardContent>
+
+        <UltimateTimeTracker.Expander />
       </Card>
       <TaskLookup
         open={isTaskLookupOpen}
@@ -1579,29 +1589,26 @@ UltimateTimeTracker.Expander = function Expander() {
   return (
     <div
       data-no-drag
+      data-testid="timerbar-expander"
       onClick={() => setIsExpanded(!isExpanded)}
       className={cn(
-        'bg-muted/40 hover:bg-muted/80 text-muted-foreground hover:text-foreground z-10 flex shrink-0 cursor-pointer items-center justify-center transition-all active:scale-95',
-        isMini
-          ? isVertical
-            ? 'h-4 w-full'
-            : 'h-full w-4'
-          : isVertical
-            ? 'h-5 w-full'
-            : 'h-full w-5',
+        'bg-muted/20 hover:bg-muted/70 text-muted-foreground hover:text-foreground z-10 m-0 flex shrink-0 cursor-pointer items-center justify-center p-0 transition-colors',
+        isVertical
+          ? cn('w-full', isMini ? 'h-3' : 'h-4')
+          : cn('self-stretch', isMini ? 'w-3' : 'w-4'),
       )}
       title={isExpanded ? 'Recolher itens' : 'Expandir itens'}
     >
       {isVertical ? (
         isExpanded ? (
-          <ChevronUp className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')} />
+          <ChevronUp className={cn(isMini ? 'h-2 w-2' : 'h-3 w-3')} />
         ) : (
-          <ChevronDown className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')} />
+          <ChevronDown className={cn(isMini ? 'h-2 w-2' : 'h-3 w-3')} />
         )
       ) : isExpanded ? (
-        <ChevronLeft className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')} />
+        <ChevronLeft className={cn(isMini ? 'h-2 w-2' : 'h-3 w-3')} />
       ) : (
-        <ChevronRight className={cn(isMini ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5')} />
+        <ChevronRight className={cn(isMini ? 'h-2 w-2' : 'h-3 w-3')} />
       )}
     </div>
   )
