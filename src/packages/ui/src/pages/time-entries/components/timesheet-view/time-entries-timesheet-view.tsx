@@ -101,6 +101,24 @@ export function TimeEntriesTimesheetView({
 }: TimeEntriesTimesheetViewProps = {}) {
   const queryClient = useQueryClient()
   const { mappings } = useFieldMappings()
+  const [currentWeekDate, setCurrentWeekDate] = React.useState<Date>(
+    () => new Date(),
+  )
+
+  // 7 days interval of the active week (Segunda a Domingo)
+  const weekDays = React.useMemo(() => {
+    const start = startOfWeek(currentWeekDate, { weekStartsOn: 1 })
+    const end = endOfWeek(start, { weekStartsOn: 1 })
+    return eachDayOfInterval({ start, end })
+  }, [currentWeekDate])
+
+  const weekRange = React.useMemo(() => {
+    return {
+      from: weekDays[0],
+      to: weekDays[weekDays.length - 1],
+    }
+  }, [weekDays])
+
   const {
     db,
     memberIdsByConnection,
@@ -112,7 +130,11 @@ export function TimeEntriesTimesheetView({
     pauseCurrentTimeEntry,
     playCurrentTimeEntry,
     stopCurrentTimeEntry,
-  } = useTimeEntriesData()
+  } = useTimeEntriesData({
+    from: weekRange.from,
+    to: weekRange.to,
+    ignoreUrlRange: true,
+  })
 
   const {
     draftEntries,
@@ -137,21 +159,11 @@ export function TimeEntriesTimesheetView({
     handleOpenConflictResolution,
   } = useTimeEntryMutations(db, memberIdsByConnection)
 
-  const [currentWeekDate, setCurrentWeekDate] = React.useState<Date>(
-    () => new Date(),
-  )
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
   const [selectedTaskFocus, setSelectedTaskFocus] =
     React.useState<SelectedTaskFocus | null>(null)
   const [dayDetailsOpen, setDayDetailsOpen] = React.useState(false)
   const [expandedRows, setExpandedRows] = React.useState<ExpandedState>({})
-
-  // 7 days interval of the active week (Segunda a Domingo)
-  const weekDays = React.useMemo(() => {
-    const start = startOfWeek(currentWeekDate, { weekStartsOn: 1 })
-    const end = endOfWeek(start, { weekStartsOn: 1 })
-    return eachDayOfInterval({ start, end })
-  }, [currentWeekDate])
 
   const handlePrevWeek = () => setCurrentWeekDate((prev) => subWeeks(prev, 1))
   const handleNextWeek = () => setCurrentWeekDate((prev) => addWeeks(prev, 1))
@@ -449,6 +461,7 @@ export function TimeEntriesTimesheetView({
   const columns = React.useMemo(() => {
     return createTimeEntriesColumns({
       activities,
+      tasksById,
       mappings,
       editingRows,
       getRowData,
@@ -476,6 +489,7 @@ export function TimeEntriesTimesheetView({
     })
   }, [
     activities,
+    tasksById,
     mappings,
     editingRows,
     compact,

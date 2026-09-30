@@ -48,6 +48,8 @@ import { createTimeEntriesColumns } from '@/pages/time-entries/components/time-e
 import { useTimeEntriesData } from '@/pages/time-entries/hooks/use-time-entries-data'
 import { useTimeEntryMutations } from '@/pages/time-entries/hooks/use-time-entry-mutations'
 import {
+  cleanTaskId,
+  extractPureTaskId,
   formatHours,
   hasNoTask,
   SuggestionRow,
@@ -66,18 +68,41 @@ export function TimeEntriesCalendarView({
 }: TimeEntriesCalendarViewProps = {}) {
   const queryClient = useQueryClient()
   const { mappings } = useFieldMappings()
+  const [currentMonth, setCurrentMonth] = React.useState<Date>(() => new Date())
+
+  // Calculate days matrix for the visible calendar
+  const calendarDays = React.useMemo(() => {
+    const monthStart = startOfMonth(currentMonth)
+    const monthEnd = endOfMonth(monthStart)
+    const startDate = startOfWeek(monthStart, { weekStartsOn: 1 })
+    const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 })
+
+    return eachDayOfInterval({ start: startDate, end: endDate })
+  }, [currentMonth])
+
+  const calendarRange = React.useMemo(() => {
+    return {
+      from: calendarDays[0],
+      to: calendarDays[calendarDays.length - 1],
+    }
+  }, [calendarDays])
+
   const {
     db,
     memberIdsByConnection,
     timeEntries,
     activities,
-
+    tasksById,
     activeTimeEntry,
     setActive,
     pauseCurrentTimeEntry,
     playCurrentTimeEntry,
     stopCurrentTimeEntry,
-  } = useTimeEntriesData()
+  } = useTimeEntriesData({
+    from: calendarRange.from,
+    to: calendarRange.to,
+    ignoreUrlRange: true,
+  })
 
   const {
     draftEntries,
@@ -102,20 +127,9 @@ export function TimeEntriesCalendarView({
     handleOpenConflictResolution,
   } = useTimeEntryMutations(db, memberIdsByConnection)
 
-  const [currentMonth, setCurrentMonth] = React.useState<Date>(() => new Date())
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
   const [dayDetailsOpen, setDayDetailsOpen] = React.useState(false)
   const [expandedRows, setExpandedRows] = React.useState<ExpandedState>({})
-
-  // Calculate days matrix for the visible calendar
-  const calendarDays = React.useMemo(() => {
-    const monthStart = startOfMonth(currentMonth)
-    const monthEnd = endOfMonth(monthStart)
-    const startDate = startOfWeek(monthStart, { weekStartsOn: 1 })
-    const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 })
-
-    return eachDayOfInterval({ start: startDate, end: endDate })
-  }, [currentMonth])
 
   // Group entries by date string (yyyy-MM-dd)
   const entriesByDate = React.useMemo(() => {
@@ -252,6 +266,7 @@ export function TimeEntriesCalendarView({
   const columns = React.useMemo(() => {
     return createTimeEntriesColumns({
       activities,
+      tasksById,
       mappings,
       editingRows,
       getRowData,
@@ -279,6 +294,7 @@ export function TimeEntriesCalendarView({
     })
   }, [
     activities,
+    tasksById,
     mappings,
     editingRows,
     compact,
@@ -432,7 +448,7 @@ export function TimeEntriesCalendarView({
           <div
             className={cn(
               'divide-border/40 grid min-h-[580px] auto-rows-fr grid-cols-7 divide-x divide-y',
-              compact && 'min-h-[350px]',
+              compact && 'min-h-[420px]',
             )}
           >
             {calendarDays.map((day) => {
@@ -446,23 +462,28 @@ export function TimeEntriesCalendarView({
                 0,
               )
 
+              const maxVisibleEntries = compact ? 2 : 3
+              const visibleEntries = dayEntries.slice(0, maxVisibleEntries)
+              const remainingCount = dayEntries.length - visibleEntries.length
+
               return (
                 <div
                   key={dayKey}
                   onClick={() => handleDayClick(day)}
                   className={cn(
-                    'group relative flex min-h-[105px] cursor-pointer flex-col p-2 transition-colors',
-                    compact && 'min-h-[58px] p-1',
+                    'group relative flex min-h-[105px] cursor-pointer flex-col p-2 transition-all select-none',
+                    compact && 'min-h-[72px] p-1.5',
                     isCurrentMonth ? 'bg-card/20' : 'bg-muted/10 opacity-40',
                     isDayToday && 'bg-primary/5 ring-primary/30 inset-0 ring-1',
-                    'hover:bg-muted/40',
+                    'hover:bg-muted/40 hover:border-primary/40',
                   )}
+                  title={`Ver apontamentos de ${format(day, "dd 'de' MMMM", { locale: ptBR })}`}
                 >
                   {/* Top Day Header */}
                   <div
                     className={cn(
-                      'mb-1.5 flex items-center justify-between',
-                      compact && 'mb-0.5',
+                      'mb-1 flex items-center justify-between',
+                      compact && 'mb-1',
                     )}
                   >
                     <span
@@ -482,7 +503,7 @@ export function TimeEntriesCalendarView({
                     {dayHours > 0 && (
                       <span
                         className={cn(
-                          'rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-emerald-500',
+                          'rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-emerald-500 shadow-xs',
                           compact && 'px-1.5 py-0.5 text-[10px]',
                         )}
                       >
@@ -494,28 +515,61 @@ export function TimeEntriesCalendarView({
                   {/* Day Entry Chips */}
                   <div
                     className={cn(
-                      'no-scrollbar flex max-h-[85px] flex-col gap-1 overflow-y-auto',
-                      compact && 'max-h-[34px] gap-1',
+                      'no-scrollbar flex flex-1 flex-col gap-1 overflow-hidden',
+                      compact && 'gap-1',
                     )}
                   >
-                    {dayEntries.slice(0, 3).map((entry) => {
+                    {visibleEntries.map((entry) => {
                       const activity = activities.find(
                         (a) => a.id === entry.activity?.id,
                       )
                       const activityColor =
                         activity?.colors?.background || '#3b82f6'
                       const isNoTask = hasNoTask(entry)
-                      const title = isNoTask
-                        ? entry.comments || 'Sem tarefa'
-                        : entry.taskData?.title || entry.task?.id || 'Tarefa'
+                      const pureTaskId = isNoTask
+                        ? undefined
+                        : extractPureTaskId(entry.task?.id)
+                      const taskDoc = pureTaskId
+                        ? tasksById?.[pureTaskId] ||
+                          (entry.task?.id
+                            ? tasksById?.[entry.task.id]
+                            : undefined)
+                        : undefined
+                      const cleanId = pureTaskId
+                        ? cleanTaskId(pureTaskId)
+                        : undefined
+                      const rawTitle = taskDoc?.title || entry.taskData?.title
+
+                      let displayLabel = 'Apontamento'
+                      if (isNoTask) {
+                        displayLabel = entry.comments || 'Sem tarefa'
+                      }
+                      if (
+                        !isNoTask &&
+                        cleanId &&
+                        rawTitle &&
+                        rawTitle !== cleanId
+                      ) {
+                        displayLabel = `#${cleanId} ${rawTitle}`
+                      }
+                      if (
+                        !isNoTask &&
+                        cleanId &&
+                        (!rawTitle || rawTitle === cleanId)
+                      ) {
+                        displayLabel = `#${cleanId}`
+                      }
+                      if (!isNoTask && !cleanId && rawTitle) {
+                        displayLabel = rawTitle
+                      }
 
                       return (
                         <Tooltip key={entry.id}>
                           <TooltipTrigger asChild>
                             <div
                               className={cn(
-                                'bg-muted/60 hover:bg-muted border-border/40 flex items-center gap-1 truncate rounded border px-1.5 py-0.5 text-[11px] transition-colors',
-                                compact && 'px-1.5 py-0.5 text-[10px]',
+                                'bg-muted/60 hover:bg-muted border-border/40 flex items-center gap-1.5 truncate rounded border px-1.5 py-0.5 text-xs transition-colors',
+                                compact && 'gap-1 px-1 py-0.5 text-[10px]',
                               )}
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -529,12 +583,12 @@ export function TimeEntriesCalendarView({
                                 )}
                                 style={{ backgroundColor: activityColor }}
                               />
-                              <span className="text-foreground/90 truncate font-medium">
-                                {title}
+                              <span className="text-foreground/90 min-w-0 flex-1 truncate font-medium">
+                                {displayLabel}
                               </span>
                               <span
                                 className={cn(
-                                  'text-muted-foreground ml-auto shrink-0 font-mono text-[10px]',
+                                  'text-muted-foreground shrink-0 font-mono text-[10px] font-semibold',
                                   compact && 'text-[9px]',
                                 )}
                               >
@@ -544,15 +598,15 @@ export function TimeEntriesCalendarView({
                           </TooltipTrigger>
                           <TooltipContent
                             side="top"
-                            className="max-w-xs text-xs"
+                            className="max-w-xs space-y-1 p-2 text-xs"
                           >
-                            <p className="font-bold">{title}</p>
+                            <p className="font-bold">{displayLabel}</p>
                             {entry.comments && (
-                              <p className="text-muted-foreground mt-0.5 text-[11px]">
+                              <p className="text-muted-foreground text-[11px]">
                                 {entry.comments}
                               </p>
                             )}
-                            <div className="text-primary mt-1 flex items-center gap-2 font-mono text-[10px]">
+                            <div className="text-primary flex items-center gap-2 font-mono text-[10px]">
                               <span>{formatHours(entry.timeSpent || 0)}</span>
                               {activity && <span>&bull; {activity.name}</span>}
                             </div>
@@ -561,14 +615,14 @@ export function TimeEntriesCalendarView({
                       )
                     })}
 
-                    {dayEntries.length > 3 && (
+                    {remainingCount > 0 && (
                       <span
                         className={cn(
-                          'text-muted-foreground/70 pl-1 font-mono text-[10px] font-semibold',
-                          compact && 'pl-0.5 text-[8px]',
+                          'text-muted-foreground/80 pl-1 font-mono text-[10px] font-semibold',
+                          compact && 'pl-0.5 text-[9px]',
                         )}
                       >
-                        +{dayEntries.length - 3} mais
+                        +{remainingCount} mais
                       </span>
                     )}
                   </div>

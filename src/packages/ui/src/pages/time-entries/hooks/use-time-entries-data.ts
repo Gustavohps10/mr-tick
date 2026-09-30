@@ -13,7 +13,13 @@ import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { useSyncStore } from '@/stores/syncStore'
 import { useTimeEntryStore } from '@/stores/timeEntryStore'
 
-export function useTimeEntriesData() {
+export interface UseTimeEntriesDataOptions {
+  from?: Date
+  to?: Date
+  ignoreUrlRange?: boolean
+}
+
+export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
   const db = useSyncStore((state) => state?.db)
   const { connections } = useDataSourceConnections()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -29,6 +35,13 @@ export function useTimeEntriesData() {
   }, [connections])
 
   const range = useMemo(() => {
+    if (options?.ignoreUrlRange && options.from && options.to) {
+      return { from: options.from, to: options.to }
+    }
+    if (options?.from && options.to) {
+      return { from: options.from, to: options.to }
+    }
+
     const from = searchParams.get('from')
     const to = searchParams.get('to')
     const parsedFrom = from ? parseISO(from) : null
@@ -42,9 +55,10 @@ export function useTimeEntriesData() {
       from: subDays(new Date(), 6),
       to: new Date(),
     }
-  }, [searchParams])
+  }, [options?.ignoreUrlRange, options?.from, options?.to, searchParams])
 
   const handleRangeChange = (newRange: DateRange | undefined) => {
+    if (options?.ignoreUrlRange) return
     if (newRange?.from && newRange.to) {
       setSearchParams({
         from: newRange.from.toISOString(),
