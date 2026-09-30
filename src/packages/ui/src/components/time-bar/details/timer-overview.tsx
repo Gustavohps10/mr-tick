@@ -27,12 +27,12 @@ type OverviewViewMode = 'list' | 'weekly' | 'monthly'
 function renderOverviewContent(view: OverviewViewMode) {
   switch (view) {
     case 'weekly':
-      return <TimeEntriesTimesheetView compact className="gap-3 px-1 py-1" />
+      return <TimeEntriesTimesheetView compact className="gap-2 p-0" />
     case 'monthly':
-      return <TimeEntriesCalendarView compact className="gap-3 px-1 py-1" />
+      return <TimeEntriesCalendarView compact className="gap-2 p-0" />
     case 'list':
     default:
-      return <TimeEntries compact className="gap-3 px-1 py-1" />
+      return <TimeEntries compact className="gap-2 p-0" />
   }
 }
 
@@ -78,31 +78,31 @@ export const TimerOverview = memo(function TimerOverview({
         align="center"
         side={side}
         sideOffset={8}
-        className="border-border/80 bg-card text-card-foreground flex max-h-[68vh] w-[95vw] max-w-[680px] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-2xl sm:w-[660px]"
+        className="border-border/80 bg-card text-card-foreground flex h-[480px] max-h-[85vh] w-[95vw] max-w-[620px] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-2xl sm:w-[620px]"
       >
-        <div className="border-border/60 bg-muted/20 flex shrink-0 items-center justify-between gap-3 border-b px-3.5 py-2.5 select-none">
-          <div className="flex items-center gap-2">
-            <div className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-lg">
-              <CalendarDays className="size-3.5" />
+        <div className="border-border/60 bg-muted/20 flex shrink-0 items-center justify-between gap-2 border-b px-3 py-1.5 select-none">
+          <div className="flex items-center gap-1.5">
+            <div className="bg-primary/10 text-primary flex size-6 items-center justify-center rounded-md">
+              <CalendarDays className="size-3" />
             </div>
             <div className="flex flex-col">
-              <span className="text-foreground text-xs leading-tight font-semibold sm:text-sm">
+              <span className="text-foreground text-xs leading-none font-bold">
                 Apontamentos de Horas
               </span>
-              <span className="text-muted-foreground hidden text-[11px] sm:inline">
-                Controle em lista, semanal e mensal
+              <span className="text-muted-foreground hidden text-[10px] leading-none sm:inline">
+                Lista, semanal e mensal
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="border-border/60 bg-muted/40 flex items-center rounded-lg border p-0.5">
+          <div className="flex items-center gap-1.5">
+            <div className="border-border/60 bg-muted/40 flex items-center rounded-md border p-0.5">
               <button
                 type="button"
                 data-testid="overview-tab-list"
                 onClick={() => setView('list')}
                 className={cn(
-                  'flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                  'flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors',
                   view === 'list'
                     ? 'bg-primary text-primary-foreground shadow-xs'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
@@ -117,7 +117,7 @@ export const TimerOverview = memo(function TimerOverview({
                 data-testid="overview-tab-weekly"
                 onClick={() => setView('weekly')}
                 className={cn(
-                  'flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                  'flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors',
                   view === 'weekly'
                     ? 'bg-primary text-primary-foreground shadow-xs'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
@@ -132,7 +132,7 @@ export const TimerOverview = memo(function TimerOverview({
                 data-testid="overview-tab-monthly"
                 onClick={() => setView('monthly')}
                 className={cn(
-                  'flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                  'flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors',
                   view === 'monthly'
                     ? 'bg-primary text-primary-foreground shadow-xs'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
@@ -146,16 +146,16 @@ export const TimerOverview = memo(function TimerOverview({
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground hover:text-foreground size-7 rounded-md"
+              className="text-muted-foreground hover:text-foreground size-6 rounded-md"
               onClick={() => setOpen(false)}
               title="Fechar"
             >
-              <X className="size-3.5" />
+              <X className="size-3" />
             </Button>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-2 sm:p-3">
+        <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto p-1.5">
           {renderOverviewContent(view)}
         </div>
       </PopoverContent>

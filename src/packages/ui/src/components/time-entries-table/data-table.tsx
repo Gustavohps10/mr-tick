@@ -58,33 +58,44 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
       <Table
         className={cn(
           'w-full table-fixed',
-          compact ? 'min-w-[620px]' : 'min-w-[820px]',
+          compact ? 'min-w-[480px]' : 'min-w-[820px]',
         )}
       >
         <TableHeader className="bg-muted/30">
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id} className="hover:bg-transparent">
-              {headerGroup.headers.map((header) => (
-                <TableHead
-                  key={header.id}
-                  style={{ width: header.getSize() }}
-                  className={cn(
-                    'text-muted-foreground font-bold tracking-wider uppercase',
-                    compact
-                      ? 'px-1.5 py-1.5 text-[9px]'
-                      : 'px-2 py-3 text-[10px]',
-                    header.id === 'createdAt' && 'hidden md:table-cell',
-                    header.id === 'syncStatus' && 'hidden sm:table-cell',
-                  )}
-                >
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )}
-                </TableHead>
-              ))}
+              {headerGroup.headers.map((header) => {
+                const isHiddenOnCompact =
+                  compact &&
+                  (header.id === 'createdAt' || header.id === 'syncStatus')
+
+                return (
+                  <TableHead
+                    key={header.id}
+                    style={{ width: header.getSize() }}
+                    className={cn(
+                      'text-muted-foreground font-bold tracking-wider uppercase',
+                      compact
+                        ? 'px-1 py-1 text-[9px]'
+                        : 'px-2 py-3 text-[10px]',
+                      isHiddenOnCompact && 'hidden',
+                      !compact &&
+                        header.id === 'createdAt' &&
+                        'hidden md:table-cell',
+                      !compact &&
+                        header.id === 'syncStatus' &&
+                        'hidden sm:table-cell',
+                    )}
+                  >
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                  </TableHead>
+                )
+              })}
             </TableRow>
           ))}
         </TableHeader>
@@ -110,25 +121,40 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
                   getRowClassName?.(row.original, row.depth),
                 )}
               >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell
-                    key={cell.id}
-                    style={{ width: cell.column.getSize() }}
-                    className={cn(
-                      'border-border/40 border-b',
-                      compact ? 'py-1 text-xs' : 'py-2 text-sm',
-                      cell.column.id === 'actions' ? 'px-0 pr-2' : 'px-2',
-                      cell.column.id === 'createdAt' && 'hidden md:table-cell',
-                      cell.column.id === 'syncStatus' && 'hidden sm:table-cell',
-                      cell.column.id === 'comments' &&
-                        'min-w-0 overflow-hidden',
-                      cell.column.id === 'hours' &&
-                        'shrink-0 whitespace-nowrap',
-                    )}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
+                {row.getVisibleCells().map((cell) => {
+                  const isHiddenOnCompact =
+                    compact &&
+                    (cell.column.id === 'createdAt' ||
+                      cell.column.id === 'syncStatus')
+
+                  return (
+                    <TableCell
+                      key={cell.id}
+                      style={{ width: cell.column.getSize() }}
+                      className={cn(
+                        'border-border/40 border-b',
+                        compact ? 'py-0.5 text-[11px]' : 'py-2 text-sm',
+                        cell.column.id === 'actions' ? 'px-0 pr-1' : 'px-1.5',
+                        isHiddenOnCompact && 'hidden',
+                        !compact &&
+                          cell.column.id === 'createdAt' &&
+                          'hidden md:table-cell',
+                        !compact &&
+                          cell.column.id === 'syncStatus' &&
+                          'hidden sm:table-cell',
+                        cell.column.id === 'comments' &&
+                          'min-w-0 overflow-hidden',
+                        cell.column.id === 'hours' &&
+                          'shrink-0 whitespace-nowrap',
+                      )}
+                    >
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                    </TableCell>
+                  )
+                })}
               </TableRow>
             ))
           ) : (

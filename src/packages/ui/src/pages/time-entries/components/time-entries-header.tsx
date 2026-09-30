@@ -3,6 +3,7 @@ import { DateRange } from 'react-day-picker'
 import { DatePickerWithRange } from '@/components'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 import { TimeEntriesSyncIndicator } from '@/pages/time-entries/components/time-entries-sync-indicator'
 
 interface TimeEntriesHeaderProps {
@@ -15,6 +16,7 @@ interface TimeEntriesHeaderProps {
   syncErrorMessage?: string | null
   isGrouped?: boolean
   onToggleGrouped?: (grouped: boolean) => void
+  compact?: boolean
 }
 
 export function TimeEntriesHeader({
@@ -27,22 +29,36 @@ export function TimeEntriesHeader({
   syncErrorMessage = null,
   isGrouped = true,
   onToggleGrouped,
+  compact = false,
 }: TimeEntriesHeaderProps) {
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-end gap-2.5">
+    <div
+      className={cn(
+        'mb-4 flex flex-wrap items-center justify-end gap-2.5',
+        compact && 'mb-1 gap-1.5',
+      )}
+    >
       {onToggleGrouped && (
-        <div className="border-border/60 bg-background/50 flex h-8 items-center gap-2 rounded-md border px-2.5 shadow-2xs">
+        <div
+          className={cn(
+            'border-border/60 bg-background/50 flex h-8 items-center gap-2 rounded-md border px-2.5 shadow-2xs',
+            compact && 'h-6 gap-1 px-1.5',
+          )}
+        >
           <Switch
             id="group-by-task-switch"
             checked={isGrouped}
             onCheckedChange={onToggleGrouped}
-            className="scale-75"
+            className={compact ? 'scale-60' : 'scale-75'}
           />
           <Label
             htmlFor="group-by-task-switch"
-            className="text-muted-foreground hover:text-foreground cursor-pointer text-xs font-medium select-none"
+            className={cn(
+              'text-muted-foreground hover:text-foreground cursor-pointer text-xs font-medium select-none',
+              compact && 'text-[10px]',
+            )}
           >
-            Agrupar por tarefa
+            {compact ? 'Agrupar' : 'Agrupar por tarefa'}
           </Label>
         </div>
       )}
@@ -58,6 +74,7 @@ export function TimeEntriesHeader({
       <DatePickerWithRange
         date={{ from: range.from, to: range.to }}
         setDate={onRangeChange}
+        className={compact ? 'origin-right scale-90' : undefined}
       />
     </div>
   )

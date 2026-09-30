@@ -290,6 +290,7 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
         syncErrorMessage={syncErrorMessage}
         isGrouped={isGrouped}
         onToggleGrouped={setIsGrouped}
+        compact={compact}
       />
 
       {isLoading || (timeEntries.length === 0 && isPulling) ? (

@@ -493,7 +493,7 @@ export function TimeEntriesTimesheetView({
       <div
         className={cn(
           'flex h-full flex-col gap-5 px-6',
-          compact && 'gap-3 px-2',
+          compact && 'gap-2 px-1',
           className,
         )}
       >
@@ -501,24 +501,24 @@ export function TimeEntriesTimesheetView({
         <div
           className={cn(
             'border-border/60 bg-card/60 flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4 shadow-xs backdrop-blur-sm',
-            compact && 'gap-2 p-2.5',
+            compact && 'gap-1.5 px-2 py-1',
           )}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <div
               className={cn(
                 'bg-primary/10 text-primary flex size-9.5 items-center justify-center rounded-lg',
-                compact && 'size-7',
+                compact && 'size-6',
               )}
             >
-              <CalendarRange className={cn('size-5', compact && 'size-3.5')} />
+              <CalendarRange className={cn('size-5', compact && 'size-3')} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <h2
                   className={cn(
                     'text-foreground text-lg font-bold',
-                    compact && 'text-sm font-semibold',
+                    compact && 'text-xs font-semibold',
                   )}
                 >
                   Semana de{' '}
@@ -529,7 +529,7 @@ export function TimeEntriesTimesheetView({
                   variant="outline"
                   className={cn(
                     'font-mono text-xs',
-                    compact && 'h-4 px-1 text-[10px]',
+                    compact && 'h-3.5 px-1 text-[9px]',
                   )}
                 >
                   Semana {format(weekDays[0], 'w')}
@@ -543,15 +543,17 @@ export function TimeEntriesTimesheetView({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Total Week Badge */}
             <div
               className={cn(
                 'border-border/60 bg-muted/40 text-foreground/90 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold',
-                compact && 'px-2 py-1 text-xs',
+                compact && 'px-1.5 py-0.5 text-[10px]',
               )}
             >
-              <Clock className="text-primary size-3.5" />
+              <Clock
+                className={cn('text-primary size-3.5', compact && 'size-2.5')}
+              />
               <span>Total:</span>
               <span className="text-primary font-bold">
                 {formatHours(totalWeekHours)}
@@ -585,11 +587,11 @@ export function TimeEntriesTimesheetView({
               size="sm"
               className={cn(
                 'h-8 gap-1.5 px-3 text-xs font-semibold shadow-xs',
-                compact && 'h-7 px-2 text-xs',
+                compact && 'h-6 gap-1 px-1.5 text-[10px]',
               )}
               onClick={handleOpenAddEntry}
             >
-              <Plus className="size-3.5" />
+              <Plus className={cn('size-3.5', compact && 'size-2.5')} />
               <span>Novo Apontamento</span>
             </Button>
 
@@ -598,18 +600,18 @@ export function TimeEntriesTimesheetView({
               <Button
                 variant="ghost"
                 size="icon"
-                className={cn('size-8 rounded-md', compact && 'size-7')}
+                className={cn('size-8 rounded-md', compact && 'size-6')}
                 onClick={handlePrevWeek}
                 title="Semana anterior"
               >
-                <ChevronLeft className="size-4" />
+                <ChevronLeft className={cn('size-4', compact && 'size-3')} />
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 className={cn(
                   'h-8 px-3 text-xs font-semibold',
-                  compact && 'h-7 px-2 text-xs',
+                  compact && 'h-6 px-1.5 text-[10px]',
                 )}
                 onClick={handleCurrentWeek}
               >
@@ -618,11 +620,11 @@ export function TimeEntriesTimesheetView({
               <Button
                 variant="ghost"
                 size="icon"
-                className={cn('size-8 rounded-md', compact && 'size-7')}
+                className={cn('size-8 rounded-md', compact && 'size-6')}
                 onClick={handleNextWeek}
                 title="Próxima semana"
               >
-                <ChevronRight className="size-4" />
+                <ChevronRight className={cn('size-4', compact && 'size-3')} />
               </Button>
             </div>
           </div>
@@ -636,7 +638,7 @@ export function TimeEntriesTimesheetView({
                 <TableHead
                   className={cn(
                     'text-muted-foreground w-[360px] pl-4 text-xs font-bold',
-                    compact && 'w-[200px] pl-2',
+                    compact && 'w-[150px] pl-1.5 text-[10px]',
                   )}
                 >
                   Tarefa / Atividade
@@ -648,7 +650,7 @@ export function TimeEntriesTimesheetView({
                       key={day.toISOString()}
                       className={cn(
                         'text-muted-foreground w-[110px] text-center text-xs font-bold transition-colors',
-                        compact && 'w-[70px]',
+                        compact && 'w-[52px]',
                         isDayToday &&
                           'bg-primary/10 text-primary font-extrabold',
                       )}
@@ -658,10 +660,20 @@ export function TimeEntriesTimesheetView({
                         onClick={() => handleDayHeaderClick(day)}
                         title="Ver apontamentos deste dia"
                       >
-                        <span className="text-[10px] tracking-wider uppercase">
+                        <span
+                          className={cn(
+                            'tracking-wider uppercase',
+                            compact ? 'text-[9px]' : 'text-[10px]',
+                          )}
+                        >
                           {format(day, 'EEE', { locale: ptBR })}
                         </span>
-                        <span className="font-mono text-xs">
+                        <span
+                          className={cn(
+                            'font-mono',
+                            compact ? 'text-[10px]' : 'text-xs',
+                          )}
+                        >
                           {format(day, 'dd/MM')}
                         </span>
                       </div>
@@ -671,7 +683,7 @@ export function TimeEntriesTimesheetView({
                 <TableHead
                   className={cn(
                     'text-muted-foreground w-[130px] pr-4 text-center font-mono text-xs font-bold',
-                    compact && 'w-[75px] pr-2',
+                    compact && 'w-[56px] pr-1.5 text-[10px]',
                   )}
                 >
                   Total
@@ -731,29 +743,50 @@ export function TimeEntriesTimesheetView({
                       <TableCell
                         className={cn(
                           'py-3 pl-4 text-xs font-medium',
-                          compact && 'py-1 pl-2',
+                          compact && 'py-0.5 pl-1.5',
                         )}
                       >
-                        <div className="flex items-center gap-2.5">
+                        <div
+                          className={cn(
+                            'flex items-center gap-2.5',
+                            compact && 'gap-1.5',
+                          )}
+                        >
                           <span
-                            className="size-2 shrink-0 rounded-full"
+                            className={cn(
+                              'size-2 shrink-0 rounded-full',
+                              compact && 'size-1.5',
+                            )}
                             style={{ backgroundColor: row.activityColor }}
                           />
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1">
                               {row.taskId && (
-                                <span className="text-primary bg-primary/10 shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold">
+                                <span
+                                  className={cn(
+                                    'text-primary bg-primary/10 shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold',
+                                    compact && 'px-1 py-0 text-[9px]',
+                                  )}
+                                >
                                   #{row.taskId}
                                 </span>
                               )}
                               <span
-                                className="text-foreground truncate text-xs font-bold"
+                                className={cn(
+                                  'text-foreground truncate text-xs font-bold',
+                                  compact && 'text-[11px]',
+                                )}
                                 title={row.taskTitle}
                               >
                                 {row.taskTitle}
                               </span>
                             </div>
-                            <div className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-[10px]">
+                            <div
+                              className={cn(
+                                'text-muted-foreground mt-0.5 flex items-center gap-1.5 text-[10px]',
+                                compact && 'mt-0 text-[9px]',
+                              )}
+                            >
                               <span>{row.activityName}</span>
                               {row.dataSourceId && (
                                 <span className="font-mono uppercase opacity-70">
@@ -777,7 +810,7 @@ export function TimeEntriesTimesheetView({
                             onClick={() => handleCellClick(day, row)}
                             className={cn(
                               'group relative cursor-pointer px-1 py-2 text-center font-mono text-xs transition-all',
-                              compact && 'px-0.5 py-1',
+                              compact && 'px-0.5 py-0.5',
                               isDayToday && 'bg-primary/5',
                               'hover:bg-primary/10 hover:shadow-inner',
                             )}
@@ -786,7 +819,7 @@ export function TimeEntriesTimesheetView({
                             <div
                               className={cn(
                                 'relative flex min-h-[38px] items-center justify-center rounded-md px-1.5 py-1',
-                                compact && 'min-h-[26px] px-0.5 py-0.5',
+                                compact && 'min-h-[20px] px-0.5 py-0',
                               )}
                             >
                               {/* Hover Pencil Action in Top-Right Corner */}
@@ -806,7 +839,7 @@ export function TimeEntriesTimesheetView({
                                     <div
                                       className={cn(
                                         'bg-muted/70 group-hover:bg-primary/20 text-foreground group-hover:text-primary border-border/40 group-hover:border-primary/40 inline-flex items-center justify-center rounded border px-2.5 py-1 font-bold shadow-xs transition-colors',
-                                        compact && 'px-1.5 py-0.5 text-[11px]',
+                                        compact && 'px-1 py-0 text-[10px]',
                                       )}
                                     >
                                       {formatHours(hours)}
@@ -861,13 +894,13 @@ export function TimeEntriesTimesheetView({
                       <TableCell
                         className={cn(
                           'text-primary bg-primary/5 py-3 pr-4 text-center font-mono text-xs font-bold',
-                          compact && 'py-1 pr-2',
+                          compact && 'py-0.5 pr-1.5 text-[10px]',
                         )}
                       >
                         <span
                           className={cn(
                             'bg-primary/10 rounded px-2.5 py-1 font-extrabold',
-                            compact && 'px-1.5 py-0.5 text-[11px]',
+                            compact && 'px-1 py-0 text-[10px]',
                           )}
                         >
                           {formatHours(row.totalHours)}
@@ -884,7 +917,7 @@ export function TimeEntriesTimesheetView({
                   <TableCell
                     className={cn(
                       'text-muted-foreground py-3.5 pl-4 text-xs font-bold tracking-wider uppercase',
-                      compact && 'py-1.5 pl-2 text-[10px]',
+                      compact && 'py-1 pl-1.5 text-[9px]',
                     )}
                   >
                     Total do Dia
@@ -894,7 +927,7 @@ export function TimeEntriesTimesheetView({
                       key={idx}
                       className={cn(
                         'py-3.5 text-center font-mono text-xs font-bold',
-                        compact && 'py-1.5 text-[11px]',
+                        compact && 'py-1 text-[10px]',
                         colHours > 0
                           ? 'font-extrabold text-emerald-500'
                           : 'text-muted-foreground/40',
@@ -904,7 +937,7 @@ export function TimeEntriesTimesheetView({
                         <span
                           className={cn(
                             'rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5',
-                            compact && 'px-1 py-0.5',
+                            compact && 'px-1 py-0 text-[9px]',
                           )}
                         >
                           {formatHours(colHours)}
@@ -917,13 +950,13 @@ export function TimeEntriesTimesheetView({
                   <TableCell
                     className={cn(
                       'text-primary bg-primary/10 py-3.5 pr-4 text-center font-mono text-xs font-extrabold',
-                      compact && 'py-1.5 pr-2',
+                      compact && 'py-1 pr-1.5',
                     )}
                   >
                     <span
                       className={cn(
                         'bg-primary text-primary-foreground rounded px-2.5 py-1 shadow-xs',
-                        compact && 'px-1.5 py-0.5 text-[11px]',
+                        compact && 'px-1.5 py-0 text-[10px]',
                       )}
                     >
                       {formatHours(totalWeekHours)}

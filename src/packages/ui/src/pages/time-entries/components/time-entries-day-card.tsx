@@ -111,18 +111,18 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
   }, [day])
 
   return (
-    <div className={cn('flex flex-col', compact ? 'gap-2' : 'gap-3')}>
+    <div className={cn('flex flex-col', compact ? 'gap-1' : 'gap-3')}>
       <div
         className={cn(
           'flex flex-wrap items-center justify-between border-b',
-          compact ? 'gap-1.5 pb-1.5' : 'gap-2 pb-3',
+          compact ? 'gap-1 pb-1' : 'gap-2 pb-3',
         )}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <h3
             className={cn(
               'font-semibold tracking-tight',
-              compact ? 'text-xs' : 'text-sm',
+              compact ? 'text-[11px] font-bold' : 'text-sm',
             )}
           >
             {formattedDayTitle}
@@ -130,7 +130,7 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
           <span
             className={cn(
               'text-muted-foreground font-mono',
-              compact ? 'text-[11px]' : 'text-xs',
+              compact ? 'text-[10px]' : 'text-xs',
             )}
           >
             {format(day, 'dd/MM/yyyy')}
@@ -146,12 +146,12 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {onAddNewEntry && (
             <Button
               variant="link"
               size="sm"
-              className={cn(compact && 'h-6 px-1.5 text-xs')}
+              className={cn(compact && 'h-5 px-1 text-[11px]')}
               onClick={() => onAddNewEntry(day)}
               title="Adicionar novo apontamento"
             >
@@ -164,7 +164,7 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
             variant={totalDaySeconds > 0 ? 'secondary' : 'outline'}
             className={cn(
               'flex items-center gap-1 font-mono font-medium',
-              compact ? 'h-5 px-1.5 text-[11px]' : 'text-xs',
+              compact ? 'h-4 px-1.5 text-[10px]' : 'text-xs',
             )}
           >
             <Clock
