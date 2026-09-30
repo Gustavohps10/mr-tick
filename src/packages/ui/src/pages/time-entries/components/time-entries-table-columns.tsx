@@ -1,6 +1,6 @@
 import type { ConfiguredFieldMapping } from '@mr-tick/sdk'
 import { ColumnDef, Row as TanStackRow } from '@tanstack/react-table'
-import { parseISO } from 'date-fns'
+import { format, isValid, parseISO } from 'date-fns'
 import {
   ChevronDown,
   ChevronRight,
@@ -136,13 +136,20 @@ function AudioWavePlayingIndicator() {
  */
 interface RunningTimerCellWrapperProps {
   initialSeconds?: number
+  compact?: boolean
 }
 
 function RunningTimerCellWrapper({
   initialSeconds = 0,
+  compact = false,
 }: RunningTimerCellWrapperProps) {
   return (
-    <div className="text-primary bg-primary/10 border-primary/30 animate-in fade-in flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-xs font-bold shadow-xs">
+    <div
+      className={cn(
+        'text-primary bg-primary/10 border-primary/30 animate-in fade-in flex items-center gap-1.5 rounded-md border font-mono text-xs font-bold shadow-xs',
+        compact ? 'px-2 py-0.5' : 'px-2.5 py-1',
+      )}
+    >
       <span className="relative flex h-2 w-2">
         <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
         <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
@@ -154,6 +161,13 @@ function RunningTimerCellWrapper({
       />
     </div>
   )
+}
+
+function toHHMM(iso?: string): string {
+  if (!iso) return ''
+  const parsed = parseISO(iso)
+  if (!isValid(parsed)) return ''
+  return format(parsed, 'HH:mm')
 }
 
 interface MemoizedCommentInputProps {
@@ -716,9 +730,9 @@ export function createTimeEntriesColumns(
           Atividade
         </div>
       ),
-      size: compact ? 105 : 140,
-      minSize: compact ? 90 : 120,
-      maxSize: compact ? 125 : 170,
+      size: compact ? 110 : 140,
+      minSize: compact ? 95 : 120,
+      maxSize: compact ? 130 : 170,
       cell: ({ row }: { row: TanStackRow<SuggestionRow> }) => {
         const original = row.original
         const rowKey = getRowKey(original)
@@ -1001,8 +1015,8 @@ export function createTimeEntriesColumns(
     {
       id: 'comments',
       accessorKey: 'comments',
-      size: compact ? 140 : 260,
-      minSize: compact ? 90 : 160,
+      size: compact ? 160 : 260,
+      minSize: compact ? 110 : 160,
       header: () => (
         <div className="text-[10px] font-bold uppercase opacity-70">
           Comentários
@@ -1072,9 +1086,9 @@ export function createTimeEntriesColumns(
     },
     {
       id: 'hours',
-      size: compact ? 210 : 215,
+      size: compact ? 215 : 215,
       minSize: 205,
-      maxSize: 230,
+      maxSize: 235,
       header: () => (
         <div className="text-right text-[10px] font-bold uppercase opacity-70">
           Tempo
@@ -1094,17 +1108,49 @@ export function createTimeEntriesColumns(
           const initialSecs = original.timeSpent
             ? Math.round(original.timeSpent * 3600)
             : 0
+          const startHHMM = toHHMM(original.startDate)
           return (
-            <div className="flex shrink-0 items-center justify-end whitespace-nowrap">
-              <RunningTimerCellWrapper initialSeconds={initialSecs} />
+            <div className="flex shrink-0 items-center justify-end gap-2 whitespace-nowrap">
+              {startHHMM && (
+                <div className="text-muted-foreground/80 flex items-center gap-1 font-mono text-[11px]">
+                  <span>{startHHMM}</span>
+                  <span className="text-muted-foreground/40 text-[10px]">
+                    ›
+                  </span>
+                  <span className="text-primary animate-pulse text-[10px] font-semibold">
+                    agora
+                  </span>
+                </div>
+              )}
+              <RunningTimerCellWrapper
+                initialSeconds={initialSecs}
+                compact={compact}
+              />
             </div>
           )
         }
 
         if (original.timeStatus === 'paused') {
+          const startHHMM = toHHMM(original.startDate)
           return (
-            <div className="flex shrink-0 items-center justify-end whitespace-nowrap">
-              <div className="flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 font-mono text-xs font-semibold text-amber-600 dark:text-amber-400">
+            <div className="flex shrink-0 items-center justify-end gap-2 whitespace-nowrap">
+              {startHHMM && (
+                <div className="text-muted-foreground/80 flex items-center gap-1 font-mono text-[11px]">
+                  <span>{startHHMM}</span>
+                  <span className="text-muted-foreground/40 text-[10px]">
+                    ›
+                  </span>
+                  <span className="text-[10px] font-semibold text-amber-500">
+                    pausa
+                  </span>
+                </div>
+              )}
+              <div
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 font-mono text-xs font-semibold text-amber-600 dark:text-amber-400',
+                  compact ? 'px-2 py-0.5' : 'px-2.5 py-1',
+                )}
+              >
                 <Pause className="h-2.5 w-2.5 fill-current" />
                 <span>{decimalToHMS(original.timeSpent || 0)}</span>
               </div>
@@ -1155,9 +1201,9 @@ export function createTimeEntriesColumns(
     {
       id: 'actions',
       header: '',
-      size: compact ? 65 : 75,
-      minSize: compact ? 55 : 65,
-      maxSize: compact ? 75 : 90,
+      size: compact ? 100 : 100,
+      minSize: compact ? 95 : 95,
+      maxSize: compact ? 110 : 110,
       cell: ({ row }) => {
         const original = row.original
         const rowKey = getRowKey(original)
@@ -1201,6 +1247,7 @@ export function createTimeEntriesColumns(
           <TimeEntryRowActions
             row={original}
             isEditing={isEditing}
+            compact={compact}
             onToggleEdit={() =>
               setEditingRows((prev) => {
                 const next = { ...prev }

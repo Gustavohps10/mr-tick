@@ -21,6 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { cn } from '@/lib'
 import { SuggestionRow } from '@/pages/time-entries/lib/time-entries-utils'
 
 interface TimeEntryRowActionsProps {
@@ -36,6 +37,7 @@ interface TimeEntryRowActionsProps {
   onPauseTimer?: (row: SuggestionRow) => void
   onResumeTimer?: (row: SuggestionRow) => void
   onStopTimer?: (row: SuggestionRow) => void
+  compact?: boolean
 }
 
 export function TimeEntryRowActions({
@@ -51,6 +53,7 @@ export function TimeEntryRowActions({
   onPauseTimer,
   onResumeTimer,
   onStopTimer,
+  compact = false,
 }: TimeEntryRowActionsProps) {
   if (row.isSuggestion || row.timeStatus === 'suggestion') {
     return (
@@ -133,10 +136,13 @@ export function TimeEntryRowActions({
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground hover:text-foreground h-7 w-7 rounded-md p-0"
+              className={cn(
+                'text-muted-foreground hover:text-foreground rounded-md p-0',
+                compact ? 'h-6.5 w-6.5' : 'h-7 w-7',
+              )}
               title="Histórico de Intervalos"
             >
-              <History className="h-3.5 w-3.5" />
+              <History className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
             </Button>
           }
         />
@@ -144,24 +150,40 @@ export function TimeEntryRowActions({
           <Button
             variant="outline"
             size="icon"
-            className="border-border/60 hover:bg-accent h-7 w-7 rounded-md p-0 shadow-xs transition-transform active:scale-95"
+            className={cn(
+              'border-border/60 hover:bg-accent rounded-md p-0 shadow-xs transition-transform active:scale-95',
+              compact ? 'h-6.5 w-6.5' : 'h-7 w-7',
+            )}
             onClick={() => onPauseTimer(row)}
             title="Pausar Apontamento"
             data-testid="time-entry-pause-btn"
           >
-            <Pause className="text-primary h-3.5 w-3.5 fill-current" />
+            <Pause
+              className={cn(
+                'text-primary fill-current',
+                compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
+              )}
+            />
           </Button>
         )}
         {onStopTimer && (
           <Button
             variant="destructive"
             size="icon"
-            className="bg-destructive hover:bg-destructive/90 text-destructive-foreground h-7 w-7 rounded-md p-0 shadow-xs transition-transform active:scale-95"
+            className={cn(
+              'bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-md p-0 shadow-xs transition-transform active:scale-95',
+              compact ? 'h-6.5 w-6.5' : 'h-7 w-7',
+            )}
             onClick={() => onStopTimer(row)}
             title="Parar Apontamento"
             data-testid="time-entry-stop-btn"
           >
-            <Square className="h-3 w-3 rounded-[1px] fill-current" />
+            <Square
+              className={cn(
+                'rounded-[1px] fill-current',
+                compact ? 'h-2.5 w-2.5' : 'h-3 w-3',
+              )}
+            />
           </Button>
         )}
       </div>
@@ -177,10 +199,13 @@ export function TimeEntryRowActions({
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground hover:text-foreground h-7 w-7 rounded-md p-0"
+              className={cn(
+                'text-muted-foreground hover:text-foreground rounded-md p-0',
+                compact ? 'h-6.5 w-6.5' : 'h-7 w-7',
+              )}
               title="Histórico de Intervalos"
             >
-              <History className="h-3.5 w-3.5" />
+              <History className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
             </Button>
           }
         />
@@ -188,24 +213,40 @@ export function TimeEntryRowActions({
           <Button
             variant="default"
             size="icon"
-            className="bg-primary hover:bg-primary/90 text-primary-foreground h-7 w-7 rounded-md p-0 shadow-xs transition-transform active:scale-95"
+            className={cn(
+              'bg-primary hover:bg-primary/90 text-primary-foreground rounded-md p-0 shadow-xs transition-transform active:scale-95',
+              compact ? 'h-6.5 w-6.5' : 'h-7 w-7',
+            )}
             onClick={() => onResumeTimer(row)}
             title="Continuar Apontamento"
             data-testid="time-entry-resume-btn"
           >
-            <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
+            <Play
+              className={cn(
+                'ml-0.5 fill-current',
+                compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
+              )}
+            />
           </Button>
         )}
         {onStopTimer && (
           <Button
             variant="destructive"
             size="icon"
-            className="bg-destructive hover:bg-destructive/90 text-destructive-foreground h-7 w-7 rounded-md p-0 shadow-xs transition-transform active:scale-95"
+            className={cn(
+              'bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-md p-0 shadow-xs transition-transform active:scale-95',
+              compact ? 'h-6.5 w-6.5' : 'h-7 w-7',
+            )}
             onClick={() => onStopTimer(row)}
             title="Parar Apontamento"
             data-testid="time-entry-stop-btn"
           >
-            <Square className="h-3 w-3 rounded-[1px] fill-current" />
+            <Square
+              className={cn(
+                'rounded-[1px] fill-current',
+                compact ? 'h-2.5 w-2.5' : 'h-3 w-3',
+              )}
+            />
           </Button>
         )}
       </div>
@@ -220,10 +261,13 @@ export function TimeEntryRowActions({
           <Button
             variant="ghost"
             size="icon"
-            className="text-muted-foreground hover:text-foreground h-7 w-7 p-0 opacity-0 transition-opacity group-hover:opacity-100"
+            className={cn(
+              'text-muted-foreground hover:text-foreground p-0 opacity-0 transition-opacity group-hover:opacity-100',
+              compact ? 'h-6.5 w-6.5' : 'h-7 w-7',
+            )}
             title="Histórico de Intervalos"
           >
-            <History className="h-3.5 w-3.5" />
+            <History className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
           </Button>
         }
       />
@@ -231,10 +275,15 @@ export function TimeEntryRowActions({
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            className="text-muted-foreground hover:text-foreground h-7 w-7 p-0"
+            className={cn(
+              'text-muted-foreground hover:text-foreground p-0',
+              compact ? 'h-6.5 w-6.5' : 'h-7 w-7',
+            )}
             data-testid="time-entry-actions-trigger"
           >
-            <MoreHorizontal className="h-3.5 w-3.5" />
+            <MoreHorizontal
+              className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')}
+            />
           </Button>
         </DropdownMenuTrigger>
 

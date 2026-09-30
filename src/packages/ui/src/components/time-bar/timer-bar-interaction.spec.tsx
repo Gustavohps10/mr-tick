@@ -22,6 +22,8 @@ import {
   WorkspaceContextType,
 } from '@/contexts/WorkspaceContext'
 import { useTimerSettings } from '@/hooks/use-timer-settings'
+import { TimeEntryRowActions } from '@/pages/time-entries/components/time-entry-row-actions'
+import { SuggestionRow } from '@/pages/time-entries/lib/time-entries-utils'
 
 const mockSetIgnoreMouseEvents = vi.fn()
 const mockGetTimerbarMenus = vi
@@ -874,9 +876,9 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
 
       const popover = document.querySelector('[role="dialog"]')
       expect(popover).toBeTruthy()
-      expect(popover?.className).toContain('sm:w-[780px]')
+      expect(popover?.className).toContain('sm:w-[840px]')
       expect(popover?.className).toContain('h-[550px]')
-      expect(popover?.className).toContain('max-w-[780px]')
+      expect(popover?.className).toContain('max-w-[840px]')
       expect(popover?.className).toContain('overflow-hidden')
 
       // Switch to Weekly view
@@ -913,6 +915,57 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       expect(startInput.className).toContain('w-[46px]')
       expect(endInput.className).toContain('w-[46px]')
       expect(durationInput.className).toContain('w-[72px]')
+    })
+
+    it('renders running timer action buttons with compact styling without overflowing', () => {
+      const mockRow: SuggestionRow = {
+        id: 'entry-running-1',
+        dataSourceId: 'fake',
+        connectionInstanceId: 'conn-1',
+        syncStatus: 'synced',
+        syncError: null,
+        remoteId: 'remote-1',
+        lastPulledAt: null,
+        lastPushedAt: null,
+        task: { id: 'T-100' },
+        activity: { id: 'act-dev', name: 'Desenvolvimento' },
+        user: { id: 'user-1', name: 'User 1' },
+        startDate: '2026-09-30T10:00:00.000Z',
+        endDate: null,
+        timeSpent: 0.1,
+        comments: 'Trabalhando na tarefa',
+        timeStatus: 'running',
+        type: 'increasing',
+        createdAt: '2026-09-30T10:00:00.000Z',
+        updatedAt: '2026-09-30T10:00:00.000Z',
+        _deleted: false,
+      }
+
+      render(
+        <TimeEntryProvider>
+          <TimeEntryRowActions
+            row={mockRow}
+            isEditing={false}
+            compact={true}
+            onToggleEdit={vi.fn()}
+            onSave={vi.fn()}
+            onDuplicate={vi.fn()}
+            onDelete={vi.fn()}
+            onPauseTimer={vi.fn()}
+            onStopTimer={vi.fn()}
+          />
+        </TimeEntryProvider>,
+      )
+
+      const pauseBtn = screen.getByTestId('time-entry-pause-btn')
+      const stopBtn = screen.getByTestId('time-entry-stop-btn')
+
+      expect(pauseBtn).toBeTruthy()
+      expect(stopBtn).toBeTruthy()
+      expect(pauseBtn.className).toContain('h-6.5')
+      expect(pauseBtn.className).toContain('w-6.5')
+      expect(stopBtn.className).toContain('h-6.5')
+      expect(stopBtn.className).toContain('w-6.5')
     })
   })
 })

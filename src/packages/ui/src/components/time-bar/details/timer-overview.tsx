@@ -78,7 +78,7 @@ export const TimerOverview = memo(function TimerOverview({
         align="center"
         side={side}
         sideOffset={8}
-        className="border-border/80 bg-card text-card-foreground flex h-[550px] max-h-[85vh] w-[95vw] max-w-[780px] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-2xl sm:w-[780px]"
+        className="border-border/80 bg-card text-card-foreground flex h-[550px] max-h-[85vh] w-[95vw] max-w-[840px] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-2xl sm:w-[840px]"
       >
         <div className="border-border/60 bg-muted/20 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2.5 select-none">
           <div className="flex items-center gap-2">
