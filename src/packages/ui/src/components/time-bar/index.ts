@@ -14,6 +14,8 @@ export {
 } from './timer-engine'
 export type { TimerInputProps } from './timer-input'
 export { TimerInput } from './timer-input'
+export type { TimerSegmentedInputProps } from './timer-segmented-input'
+export { TimerSegmentedInput } from './timer-segmented-input'
 export { UltimateTimeTracker } from './ultimate-entry-bar'
 export { useActiveTimer } from './useActiveTimer'
 

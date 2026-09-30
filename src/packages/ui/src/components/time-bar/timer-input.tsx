@@ -9,6 +9,7 @@ import { KeyboardEvent, useCallback, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 import { formatTime, parseTimeInput } from './timer-engine'
+import { TimerSegmentedInput } from './timer-segmented-input'
 
 export interface TimerInputProps {
   /** Current value in seconds */
@@ -25,18 +26,33 @@ export interface TimerInputProps {
   max?: number
 }
 
-export function TimerInput({
-  value,
-  onChange,
-  onError,
-  hasError = false,
-  orientation = 'horizontal',
-  className,
-  disabled = false,
-  placeholder = '0:00:00',
-  min = 0,
-  max = Infinity,
-}: TimerInputProps) {
+export function TimerInput(props: TimerInputProps) {
+  if (props.orientation === 'vertical') {
+    return (
+      <TimerSegmentedInput
+        value={props.value}
+        onChange={props.onChange}
+        onError={props.onError}
+        hasError={props.hasError}
+        className={props.className}
+        disabled={props.disabled}
+        min={props.min}
+        max={props.max}
+      />
+    )
+  }
+
+  const {
+    value,
+    onChange,
+    onError,
+    hasError = false,
+    className,
+    disabled = false,
+    placeholder = '0:00:00',
+    min = 0,
+    max = Infinity,
+  } = props
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [invalid, setInvalid] = useState(false)
@@ -116,7 +132,7 @@ export function TimerInput({
         onError?.(null)
       }}
       onKeyDown={handleKeyDown}
-      style={{ width: orientation === 'vertical' ? '7ch' : '8ch' }}
+      style={{ width: '8ch' }}
       className={cn(
         // Base — fixed width, never expands
         'bg-transparent text-center font-mono tabular-nums outline-none',

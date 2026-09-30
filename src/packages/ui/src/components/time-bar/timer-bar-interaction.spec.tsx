@@ -732,7 +732,8 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       fireEvent.change(timerInput, { target: { value: '1h' } })
       fireEvent.blur(timerInput)
 
-      expect(screen.getByDisplayValue('01:00:00')).toBeTruthy()
+      expect(screen.getByDisplayValue('01')).toBeTruthy()
+      expect(screen.getAllByDisplayValue('00')).toHaveLength(2)
     })
 
     it('ensures expander button has no border, margin, or padding classes', async () => {

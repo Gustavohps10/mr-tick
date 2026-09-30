@@ -159,7 +159,7 @@ export function TimerDisplay({
           max={max}
           className={cn(
             orientation === 'vertical'
-              ? 'w-full max-w-[48px] px-0.5 text-[11px] font-bold tracking-tight'
+              ? 'text-[13px] font-bold tracking-tight'
               : 'text-[18px] font-semibold tracking-tight',
             resolvedStatus === 'idle' &&
               !hasError &&

@@ -40,10 +40,21 @@ export function parseTimeInput(raw: string): number | null {
     return isNeg ? -val : val
   }
 
+  // Compound with seconds: 1h 30m 15s or 1h30m15s
+  const compoundHms = absS.match(/^(\d+)\s*h\s*(\d+)\s*m\s*(\d+)\s*s?$/i)
+  if (compoundHms) {
+    const val =
+      parseInt(compoundHms[1], 10) * 3600 +
+      parseInt(compoundHms[2], 10) * 60 +
+      parseInt(compoundHms[3], 10)
+    return isNeg ? -val : val
+  }
+
   // Compound: 1h30m, 1h30, 1h 30m, 1h 30
   const compound = absS.match(/^(\d+)\s*h\s*(\d+)\s*m?$/i)
   if (compound) {
-    const val = parseInt(compound[1]) * 3600 + parseInt(compound[2]) * 60
+    const val =
+      parseInt(compound[1], 10) * 3600 + parseInt(compound[2], 10) * 60
     return isNeg ? -val : val
   }
 
