@@ -8,6 +8,7 @@ import { useMemo } from 'react'
 import { DataTable } from '@/components/time-entries-table/data-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { TimeEntrySuggestionBanner } from '@/pages/time-entries/components/time-entry-suggestion-banner'
 import {
@@ -31,6 +32,7 @@ interface TimeEntriesDayCardProps {
   onDismissAllSuggestions?: (rows: SuggestionRow[]) => void
   onAddNewEntry?: (day: Date) => void
   onRowDoubleClick?: (row: SuggestionRow) => void
+  compact?: boolean
 }
 
 export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
@@ -47,6 +49,7 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
   onDismissAllSuggestions,
   onAddNewEntry,
   onRowDoubleClick,
+  compact = false,
 }: TimeEntriesDayCardProps) {
   const dayEntries: SuggestionRow[] = useMemo(() => {
     const safeTemp = tempData ?? {}
@@ -108,13 +111,28 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
   }, [day])
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-        <div className="flex items-center gap-2.5">
-          <h3 className="text-sm font-semibold tracking-tight">
+    <div className={cn('flex flex-col', compact ? 'gap-2' : 'gap-3')}>
+      <div
+        className={cn(
+          'flex flex-wrap items-center justify-between border-b',
+          compact ? 'gap-1.5 pb-1.5' : 'gap-2 pb-3',
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <h3
+            className={cn(
+              'font-semibold tracking-tight',
+              compact ? 'text-xs' : 'text-sm',
+            )}
+          >
             {formattedDayTitle}
           </h3>
-          <span className="text-muted-foreground font-mono text-xs">
+          <span
+            className={cn(
+              'text-muted-foreground font-mono',
+              compact ? 'text-[11px]' : 'text-xs',
+            )}
+          >
             {format(day, 'dd/MM/yyyy')}
           </span>
           {isPulling && (
@@ -133,19 +151,25 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
             <Button
               variant="link"
               size="sm"
+              className={cn(compact && 'h-6 px-1.5 text-xs')}
               onClick={() => onAddNewEntry(day)}
               title="Adicionar novo apontamento"
             >
-              <Plus className="h-3 w-3" />
+              <Plus className={cn(compact ? 'h-2.5 w-2.5' : 'h-3 w-3')} />
               <span>Adicionar</span>
             </Button>
           )}
 
           <Badge
             variant={totalDaySeconds > 0 ? 'secondary' : 'outline'}
-            className="flex items-center gap-1 font-mono text-xs font-medium"
+            className={cn(
+              'flex items-center gap-1 font-mono font-medium',
+              compact ? 'h-5 px-1.5 text-[11px]' : 'text-xs',
+            )}
           >
-            <Clock className="h-3 w-3 opacity-70" />
+            <Clock
+              className={cn('opacity-70', compact ? 'h-2.5 w-2.5' : 'h-3 w-3')}
+            />
             <span>{formatSecondsToHMDisplay(totalDaySeconds)}</span>
           </Badge>
         </div>
@@ -172,6 +196,7 @@ export const TimeEntriesDayCard = React.memo(function TimeEntriesDayCard({
         expanded={expandedRows}
         onExpandedChange={onExpandedChange}
         onRowDoubleClick={onRowDoubleClick}
+        compact={compact}
         getRowClassName={(row, depth) => {
           const isGroup = (row.subRows?.length ?? 0) > 1
           const hasRunningChild = row.subRows?.some(

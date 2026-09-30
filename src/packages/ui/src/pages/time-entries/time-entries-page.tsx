@@ -22,9 +22,10 @@ import {
 
 export interface TimeEntriesProps {
   className?: string
+  compact?: boolean
 }
 
-export function TimeEntries({ className }: TimeEntriesProps = {}) {
+export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
   const { mappings } = useFieldMappings()
   const {
     db,
@@ -272,7 +273,13 @@ export function TimeEntries({ className }: TimeEntriesProps = {}) {
   }, [])
 
   return (
-    <div className={cn('flex h-full flex-col gap-6 px-6', className)}>
+    <div
+      className={cn(
+        'flex h-full flex-col gap-6 px-6',
+        compact && 'gap-3 px-2',
+        className,
+      )}
+    >
       <TimeEntriesHeader
         range={range}
         onRangeChange={handleRangeChange}
@@ -294,7 +301,7 @@ export function TimeEntries({ className }: TimeEntriesProps = {}) {
           }
         />
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className={cn('flex flex-col gap-6', compact && 'gap-3')}>
           {daysInRange.map((day) => (
             <TimeEntriesDayCard
               key={day.toISOString()}
@@ -307,6 +314,7 @@ export function TimeEntries({ className }: TimeEntriesProps = {}) {
               onExpandedChange={handleExpandedChange}
               isGrouped={isGrouped}
               isPulling={isPulling}
+              compact={compact}
               onAcceptAllSuggestions={handleAcceptAllSuggestions}
               onDismissAllSuggestions={handleDismissAllSuggestions}
               onAddNewEntry={handleAddNewEntry}

@@ -27,6 +27,7 @@ interface DataTableProps<TData> {
   onExpandedChange?: OnChangeFn<ExpandedState>
   getRowClassName?: (row: TData, depth: number) => string
   onRowDoubleClick?: (row: TData) => void
+  compact?: boolean
 }
 
 export function DataTable<TData extends { subRows?: TData[]; id: string }>({
@@ -36,6 +37,7 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
   onExpandedChange,
   getRowClassName,
   onRowDoubleClick,
+  compact = false,
 }: DataTableProps<TData>) {
   const table = useReactTable({
     data,
@@ -53,7 +55,12 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
 
   return (
     <div className="bg-background w-full overflow-x-auto rounded-md border shadow-sm">
-      <Table className="w-full min-w-[820px] table-fixed">
+      <Table
+        className={cn(
+          'w-full table-fixed',
+          compact ? 'min-w-[620px]' : 'min-w-[820px]',
+        )}
+      >
         <TableHeader className="bg-muted/30">
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id} className="hover:bg-transparent">
@@ -62,7 +69,10 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
                   key={header.id}
                   style={{ width: header.getSize() }}
                   className={cn(
-                    'text-muted-foreground px-2 py-3 text-[10px] font-bold tracking-wider uppercase',
+                    'text-muted-foreground font-bold tracking-wider uppercase',
+                    compact
+                      ? 'px-1.5 py-1.5 text-[9px]'
+                      : 'px-2 py-3 text-[10px]',
                     header.id === 'createdAt' && 'hidden md:table-cell',
                     header.id === 'syncStatus' && 'hidden sm:table-cell',
                   )}
@@ -105,7 +115,8 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
                     key={cell.id}
                     style={{ width: cell.column.getSize() }}
                     className={cn(
-                      'border-border/40 border-b py-2 text-sm',
+                      'border-border/40 border-b',
+                      compact ? 'py-1 text-xs' : 'py-2 text-sm',
                       cell.column.id === 'actions' ? 'px-0 pr-2' : 'px-2',
                       cell.column.id === 'createdAt' && 'hidden md:table-cell',
                       cell.column.id === 'syncStatus' && 'hidden sm:table-cell',

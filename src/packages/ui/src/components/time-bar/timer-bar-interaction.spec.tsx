@@ -797,7 +797,7 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       expect(expander).toBeNull()
     })
 
-    it('renders overview button in bar and opens popover with view switcher', async () => {
+    it('renders overview button in bar and opens popover with 3-mode switcher', async () => {
       window.location.hash = '#/workspaces/ws-1/widgets/timer'
       useTimerSettings.setState({
         widgetPosition: 'bottom',
@@ -821,13 +821,22 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
         expect(screen.getByText('Apontamentos de Horas')).toBeTruthy()
       })
       expect(screen.getByTestId('overview-tab-list')).toBeTruthy()
-      expect(screen.getByTestId('overview-tab-timesheet')).toBeTruthy()
+      expect(screen.getByTestId('overview-tab-weekly')).toBeTruthy()
+      expect(screen.getByTestId('overview-tab-monthly')).toBeTruthy()
 
-      // Switch to Timesheet view
+      // Switch to Weekly view
       await act(async () => {
-        fireEvent.click(screen.getByTestId('overview-tab-timesheet'))
+        fireEvent.click(screen.getByTestId('overview-tab-weekly'))
       })
-      expect(screen.getByTestId('overview-tab-timesheet').className).toContain(
+      expect(screen.getByTestId('overview-tab-weekly').className).toContain(
+        'bg-primary',
+      )
+
+      // Switch to Monthly view
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('overview-tab-monthly'))
+      })
+      expect(screen.getByTestId('overview-tab-monthly').className).toContain(
         'bg-primary',
       )
     })

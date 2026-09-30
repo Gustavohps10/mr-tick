@@ -11,12 +11,29 @@ import {
 } from '@/components/ui/popover'
 import { useTimerSettings } from '@/hooks/use-timer-settings'
 import { cn } from '@/lib/utils'
-import { TimeEntriesTimesheetView } from '@/pages/time-entries/components/timesheet-view/time-entries-timesheet-view'
-import { TimeEntries } from '@/pages/time-entries/time-entries-page'
+import {
+  TimeEntries,
+  TimeEntriesCalendarView,
+  TimeEntriesTimesheetView,
+} from '@/pages/time-entries'
 
 export interface TimerOverviewProps {
   isMini?: boolean
   isVertical?: boolean
+}
+
+type OverviewViewMode = 'list' | 'weekly' | 'monthly'
+
+function renderOverviewContent(view: OverviewViewMode) {
+  switch (view) {
+    case 'weekly':
+      return <TimeEntriesTimesheetView compact className="gap-3 px-1 py-1" />
+    case 'monthly':
+      return <TimeEntriesCalendarView compact className="gap-3 px-1 py-1" />
+    case 'list':
+    default:
+      return <TimeEntries compact className="gap-3 px-1 py-1" />
+  }
 }
 
 export const TimerOverview = memo(function TimerOverview({
@@ -24,7 +41,7 @@ export const TimerOverview = memo(function TimerOverview({
   isVertical: propIsVertical,
 }: TimerOverviewProps) {
   const [open, setOpen] = useState(false)
-  const [view, setView] = useState<'list' | 'timesheet'>('list')
+  const [view, setView] = useState<OverviewViewMode>('list')
   const { widgetPosition } = useTimerSettings()
 
   const isVertical =
@@ -61,19 +78,19 @@ export const TimerOverview = memo(function TimerOverview({
         align="center"
         side={side}
         sideOffset={8}
-        className="border-border/80 bg-card text-card-foreground flex max-h-[82vh] w-[94vw] max-w-4xl flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-2xl"
+        className="border-border/80 bg-card text-card-foreground flex max-h-[68vh] w-[95vw] max-w-[680px] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-2xl sm:w-[660px]"
       >
-        <div className="border-border/60 bg-muted/20 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3 select-none">
-          <div className="flex items-center gap-2.5">
-            <div className="bg-primary/10 text-primary flex size-8 items-center justify-center rounded-lg">
-              <CalendarDays className="size-4" />
+        <div className="border-border/60 bg-muted/20 flex shrink-0 items-center justify-between gap-3 border-b px-3.5 py-2.5 select-none">
+          <div className="flex items-center gap-2">
+            <div className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-lg">
+              <CalendarDays className="size-3.5" />
             </div>
             <div className="flex flex-col">
-              <span className="text-foreground text-sm leading-tight font-semibold">
+              <span className="text-foreground text-xs leading-tight font-semibold sm:text-sm">
                 Apontamentos de Horas
               </span>
-              <span className="text-muted-foreground hidden text-xs sm:inline">
-                Visão em lista diária e matriz semanal consolidada
+              <span className="text-muted-foreground hidden text-[11px] sm:inline">
+                Controle em lista, semanal e mensal
               </span>
             </div>
           </div>
@@ -85,50 +102,61 @@ export const TimerOverview = memo(function TimerOverview({
                 data-testid="overview-tab-list"
                 onClick={() => setView('list')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                  'flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
                   view === 'list'
                     ? 'bg-primary text-primary-foreground shadow-xs'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
                 )}
               >
-                <ListTodo className="size-3.5" />
+                <ListTodo className="size-3" />
                 <span>Lista</span>
               </button>
 
               <button
                 type="button"
-                data-testid="overview-tab-timesheet"
-                onClick={() => setView('timesheet')}
+                data-testid="overview-tab-weekly"
+                onClick={() => setView('weekly')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                  view === 'timesheet'
+                  'flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                  view === 'weekly'
                     ? 'bg-primary text-primary-foreground shadow-xs'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
                 )}
               >
-                <CalendarRange className="size-3.5" />
-                <span>Timesheet</span>
+                <CalendarRange className="size-3" />
+                <span>Semanal</span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="overview-tab-monthly"
+                onClick={() => setView('monthly')}
+                className={cn(
+                  'flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                  view === 'monthly'
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+                )}
+              >
+                <CalendarDays className="size-3" />
+                <span>Mensal</span>
               </button>
             </div>
 
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground hover:text-foreground size-8 rounded-md"
+              className="text-muted-foreground hover:text-foreground size-7 rounded-md"
               onClick={() => setOpen(false)}
               title="Fechar"
             >
-              <X className="size-4" />
+              <X className="size-3.5" />
             </Button>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4">
-          {view === 'list' ? (
-            <TimeEntries className="gap-4 px-1 py-1 sm:px-2" />
-          ) : (
-            <TimeEntriesTimesheetView className="gap-4 px-1 py-1 sm:px-2" />
-          )}
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-2 sm:p-3">
+          {renderOverviewContent(view)}
         </div>
       </PopoverContent>
     </Popover>
