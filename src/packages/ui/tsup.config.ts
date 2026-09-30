@@ -60,6 +60,7 @@ export default defineConfig({
     /^date-fns\//,
     /^zustand\//,
     /^react-icons\//,
+    /^@mr-tick\//,
   ],
 
   loader: {
