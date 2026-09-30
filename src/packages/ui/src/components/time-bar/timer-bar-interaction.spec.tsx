@@ -874,9 +874,9 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
 
       const popover = document.querySelector('[role="dialog"]')
       expect(popover).toBeTruthy()
-      expect(popover?.className).toContain('sm:w-[760px]')
-      expect(popover?.className).toContain('h-[540px]')
-      expect(popover?.className).toContain('max-w-[768px]')
+      expect(popover?.className).toContain('sm:w-[780px]')
+      expect(popover?.className).toContain('h-[550px]')
+      expect(popover?.className).toContain('max-w-[780px]')
       expect(popover?.className).toContain('overflow-hidden')
 
       // Switch to Weekly view

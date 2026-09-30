@@ -273,9 +273,9 @@ export function createTimeEntriesColumns(
     {
       id: 'expand',
       header: '',
-      size: compact ? 36 : 50,
-      minSize: compact ? 32 : 44,
-      maxSize: compact ? 40 : 70,
+      size: compact ? 34 : 50,
+      minSize: compact ? 30 : 44,
+      maxSize: compact ? 38 : 70,
       cell: ({ row }) => {
         if (
           row.original.isSuggestion ||
@@ -389,9 +389,9 @@ export function createTimeEntriesColumns(
           Ticket
         </div>
       ),
-      size: compact ? 170 : 210,
-      minSize: compact ? 140 : 170,
-      maxSize: compact ? 220 : 280,
+      size: compact ? 160 : 210,
+      minSize: compact ? 130 : 170,
+      maxSize: compact ? 200 : 280,
       cell: ({ row }: { row: TanStackRow<SuggestionRow> }) => {
         const original = row.original
         const rowKey = getRowKey(original)
@@ -716,9 +716,9 @@ export function createTimeEntriesColumns(
           Atividade
         </div>
       ),
-      size: compact ? 115 : 140,
-      minSize: compact ? 95 : 120,
-      maxSize: compact ? 140 : 170,
+      size: compact ? 105 : 140,
+      minSize: compact ? 90 : 120,
+      maxSize: compact ? 125 : 170,
       cell: ({ row }: { row: TanStackRow<SuggestionRow> }) => {
         const original = row.original
         const rowKey = getRowKey(original)
@@ -787,10 +787,19 @@ export function createTimeEntriesColumns(
               }}
               disabled={isSelectDisabled}
             >
-              <SelectTrigger className="border-primary/40 h-7 text-xs focus:ring-1">
+              <SelectTrigger
+                className={cn(
+                  'border-primary/40 h-7 w-full max-w-full min-w-0 text-xs focus:ring-1',
+                  compact && 'px-1.5 text-[11px]',
+                )}
+              >
                 <SelectValue
                   placeholder={
-                    isSelectDisabled ? 'Selecione uma tarefa' : 'Selecione'
+                    isSelectDisabled
+                      ? compact
+                        ? 'Sem tarefa'
+                        : 'Selecione uma tarefa'
+                      : 'Selecione'
                   }
                 />
               </SelectTrigger>
@@ -800,9 +809,11 @@ export function createTimeEntriesColumns(
                     value="__NONE__"
                     className="text-muted-foreground text-xs italic"
                   >
-                    <div className="flex items-center gap-1.5">
-                      <CircleDashed className="text-muted-foreground h-3.5 w-3.5" />
-                      <span>Sem atividade</span>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <CircleDashed className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">
+                        {compact ? 'Nenhuma' : 'Sem atividade'}
+                      </span>
                     </div>
                   </SelectItem>
                 )}
@@ -925,10 +936,17 @@ export function createTimeEntriesColumns(
                       event.stopPropagation()
                       setEditingRows((prev) => ({ ...prev, [rowKey]: true }))
                     }}
-                    className="hover:border-primary text-muted-foreground hover:text-primary bg-muted/20 hover:bg-primary/10 border-muted-foreground/40 inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-dashed px-2 font-sans text-[11px] font-medium transition-all"
+                    className={cn(
+                      'hover:border-primary text-muted-foreground hover:text-primary bg-muted/20 hover:bg-primary/10 border-muted-foreground/40 inline-flex h-6 max-w-full cursor-pointer items-center gap-1 truncate rounded border border-dashed font-sans transition-all',
+                      compact
+                        ? 'px-1.5 text-[10px]'
+                        : 'px-2 text-[11px] font-medium',
+                    )}
                   >
-                    <Plus className="h-3 w-3" />
-                    <span>Selecione a atividade</span>
+                    <Plus className="h-3 w-3 shrink-0" />
+                    <span className="truncate">
+                      {compact ? 'Selecionar' : 'Selecione a atividade'}
+                    </span>
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="right">
@@ -955,23 +973,27 @@ export function createTimeEntriesColumns(
         if (!isNeutral) {
           return (
             <div
-              className="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-all"
+              className="inline-flex max-w-full items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-all"
               style={{
                 backgroundColor,
                 color: textColor,
                 borderColor: badgeColor,
               }}
             >
-              {SingleIconComponent && <SingleIconComponent size={12} />}
-              <span className="max-w-[120px] truncate">{activityName}</span>
+              {SingleIconComponent && (
+                <SingleIconComponent size={12} className="shrink-0" />
+              )}
+              <span className="truncate">{activityName}</span>
             </div>
           )
         }
 
         return (
-          <div className="border-border/60 bg-secondary inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs">
-            {SingleIconComponent && <SingleIconComponent size={12} />}
-            <span className="max-w-[120px] truncate">{activityName}</span>
+          <div className="border-border/60 bg-secondary inline-flex max-w-full items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs">
+            {SingleIconComponent && (
+              <SingleIconComponent size={12} className="shrink-0" />
+            )}
+            <span className="truncate">{activityName}</span>
           </div>
         )
       },
@@ -979,8 +1001,8 @@ export function createTimeEntriesColumns(
     {
       id: 'comments',
       accessorKey: 'comments',
-      size: compact ? 120 : 260,
-      minSize: compact ? 80 : 160,
+      size: compact ? 140 : 260,
+      minSize: compact ? 90 : 160,
       header: () => (
         <div className="text-[10px] font-bold uppercase opacity-70">
           Comentários
@@ -1019,7 +1041,7 @@ export function createTimeEntriesColumns(
           )
           const currentVal = rowData.comments ?? original.comments ?? ''
           return (
-            <div className="w-full min-w-0 pr-2">
+            <div className="w-full min-w-0 pr-1">
               <MemoizedCommentInput
                 initialValue={currentVal}
                 onChange={(val) => updateField({ comments: val })}
@@ -1028,10 +1050,23 @@ export function createTimeEntriesColumns(
           )
         }
 
+        const commentText = original.comments || ''
         return (
-          <span className="text-muted-foreground line-clamp-1 text-xs">
-            {original.comments || '—'}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="text-muted-foreground hover:text-foreground block max-w-full cursor-default truncate text-xs transition-colors"
+                title={commentText || 'Sem comentários'}
+              >
+                {commentText || '—'}
+              </span>
+            </TooltipTrigger>
+            {commentText && (
+              <TooltipContent side="top" className="max-w-xs text-xs">
+                <p className="font-medium">{commentText}</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
         )
       },
     },
