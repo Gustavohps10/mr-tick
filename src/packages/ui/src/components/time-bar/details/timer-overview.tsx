@@ -78,7 +78,7 @@ export const TimerOverview = memo(function TimerOverview({
         align="center"
         side={side}
         sideOffset={8}
-        className="border-border/80 bg-card text-card-foreground flex h-[480px] max-h-[85vh] w-[95vw] max-w-[620px] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-2xl sm:w-[620px]"
+        className="border-border/80 bg-card text-card-foreground flex h-[540px] max-h-[85vh] w-[95vw] max-w-[768px] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-2xl sm:w-[760px]"
       >
         <div className="border-border/60 bg-muted/20 flex shrink-0 items-center justify-between gap-2 border-b px-3 py-1.5 select-none">
           <div className="flex items-center gap-1.5">
@@ -155,7 +155,7 @@ export const TimerOverview = memo(function TimerOverview({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto p-1.5">
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-1.5">
           {renderOverviewContent(view)}
         </div>
       </PopoverContent>

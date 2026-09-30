@@ -62,8 +62,10 @@ vi.mock('@/hooks/use-host-bridge', () => ({
 }))
 
 // Import components after mock
+import { TimerOverview } from '@/components/time-bar/details/timer-overview'
 import { TimerSettings } from '@/components/time-bar/details/timer-settings'
 import { UltimateTimeTracker } from '@/components/time-bar/ultimate-entry-bar'
+import { TimeEntryInputs } from '@/components/time-entry-inputs'
 import { TimeEntryProvider } from '@/stores/timeEntryStore'
 
 const mockConnectionsValue: DataSourceConnectionsContextType = {
@@ -855,6 +857,62 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       )
       expect(overviewButton).toBeTruthy()
       expect(overviewButton?.className).toContain('h-6 w-6')
+    })
+
+    it('maintains fixed popover dimensions (760px x 540px) across tabs without row overflow in list mode', async () => {
+      const { container } = renderWithProviders(<TimerOverview />)
+      const overviewButton = container.querySelector(
+        '[data-testid="timerbar-overview-button"]',
+      )
+      expect(overviewButton).toBeTruthy()
+
+      if (!overviewButton) return
+
+      await act(async () => {
+        fireEvent.click(overviewButton)
+      })
+
+      const popover = document.querySelector('[role="dialog"]')
+      expect(popover).toBeTruthy()
+      expect(popover?.className).toContain('sm:w-[760px]')
+      expect(popover?.className).toContain('h-[540px]')
+      expect(popover?.className).toContain('max-w-[768px]')
+      expect(popover?.className).toContain('overflow-hidden')
+
+      // Switch to Weekly view
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('overview-tab-weekly'))
+      })
+      expect(screen.getByText(/Semana de/i)).toBeTruthy()
+
+      // Switch to Monthly view
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('overview-tab-monthly'))
+      })
+      expect(screen.getByText('Seg')).toBeTruthy()
+      expect(screen.getByText('Dom')).toBeTruthy()
+    })
+
+    it('renders all 3 time inputs (start, end, duration) with proper widths without clipping', () => {
+      const handleChange = vi.fn()
+      render(
+        <TimeEntryInputs
+          startDate="2026-09-30T09:00:00.000Z"
+          endDate="2026-09-30T10:30:00.000Z"
+          timeSpent={1.5}
+          onChange={handleChange}
+        />,
+      )
+      const startInput = screen.getByTestId('time-entry-start-time-input')
+      const endInput = screen.getByTestId('time-entry-end-time-input')
+      const durationInput = screen.getByTestId('time-entry-duration-input')
+
+      expect(startInput).toBeTruthy()
+      expect(endInput).toBeTruthy()
+      expect(durationInput).toBeTruthy()
+      expect(startInput.className).toContain('w-[46px]')
+      expect(endInput.className).toContain('w-[46px]')
+      expect(durationInput.className).toContain('w-[72px]')
     })
   })
 })

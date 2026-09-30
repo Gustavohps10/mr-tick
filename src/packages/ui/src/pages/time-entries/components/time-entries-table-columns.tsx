@@ -87,6 +87,7 @@ export interface CreateColumnsOptions {
     resolution: 'local' | 'remote',
   ) => Promise<void> | void
   onOpenConflict?: (row: SuggestionRow) => void
+  compact?: boolean
 }
 
 function MasterGroupTotalTimeCell({ subRows }: { subRows?: SuggestionRow[] }) {
@@ -265,15 +266,16 @@ export function createTimeEntriesColumns(
     onAddNewEntry,
     onResolveConflict,
     onOpenConflict,
+    compact = false,
   } = options
 
   return [
     {
       id: 'expand',
       header: '',
-      size: 50,
-      minSize: 44,
-      maxSize: 70,
+      size: compact ? 36 : 50,
+      minSize: compact ? 32 : 44,
+      maxSize: compact ? 40 : 70,
       cell: ({ row }) => {
         if (
           row.original.isSuggestion ||
@@ -387,9 +389,9 @@ export function createTimeEntriesColumns(
           Ticket
         </div>
       ),
-      size: 210,
-      minSize: 170,
-      maxSize: 280,
+      size: compact ? 170 : 210,
+      minSize: compact ? 140 : 170,
+      maxSize: compact ? 220 : 280,
       cell: ({ row }: { row: TanStackRow<SuggestionRow> }) => {
         const original = row.original
         const rowKey = getRowKey(original)
@@ -714,9 +716,9 @@ export function createTimeEntriesColumns(
           Atividade
         </div>
       ),
-      size: 140,
-      minSize: 120,
-      maxSize: 170,
+      size: compact ? 115 : 140,
+      minSize: compact ? 95 : 120,
+      maxSize: compact ? 140 : 170,
       cell: ({ row }: { row: TanStackRow<SuggestionRow> }) => {
         const original = row.original
         const rowKey = getRowKey(original)
@@ -977,8 +979,8 @@ export function createTimeEntriesColumns(
     {
       id: 'comments',
       accessorKey: 'comments',
-      size: 260,
-      minSize: 160,
+      size: compact ? 120 : 260,
+      minSize: compact ? 80 : 160,
       header: () => (
         <div className="text-[10px] font-bold uppercase opacity-70">
           Comentários
@@ -1035,7 +1037,7 @@ export function createTimeEntriesColumns(
     },
     {
       id: 'hours',
-      size: 215,
+      size: compact ? 210 : 215,
       minSize: 205,
       maxSize: 230,
       header: () => (
@@ -1118,9 +1120,9 @@ export function createTimeEntriesColumns(
     {
       id: 'actions',
       header: '',
-      size: 75,
-      minSize: 65,
-      maxSize: 90,
+      size: compact ? 65 : 75,
+      minSize: compact ? 55 : 65,
+      maxSize: compact ? 75 : 90,
       cell: ({ row }) => {
         const original = row.original
         const rowKey = getRowKey(original)

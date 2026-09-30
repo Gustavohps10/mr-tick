@@ -275,12 +275,13 @@ export function TimeEntriesCalendarView({
       onAddNewEntry: handleAddNewEntry,
       onResolveConflict: handleResolveConflict,
       onOpenConflict: handleOpenConflictResolution,
+      compact,
     })
   }, [
     activities,
     mappings,
     editingRows,
-
+    compact,
     getRowData,
     setEditingRows,
     setTempData,
@@ -316,7 +317,7 @@ export function TimeEntriesCalendarView({
       <div
         className={cn(
           'flex h-full flex-col gap-5 px-6',
-          compact && 'gap-2 px-1',
+          compact && 'gap-2 px-2',
           className,
         )}
       >
@@ -324,23 +325,23 @@ export function TimeEntriesCalendarView({
         <div
           className={cn(
             'border-border/60 bg-card/60 flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4 backdrop-blur-sm',
-            compact && 'gap-1.5 px-2 py-1',
+            compact && 'gap-1.5 px-3 py-1.5',
           )}
         >
           <div className="flex items-center gap-2">
             <div
               className={cn(
                 'bg-primary/10 text-primary flex size-9 items-center justify-center rounded-lg',
-                compact && 'size-6',
+                compact && 'size-7',
               )}
             >
-              <CalendarIcon className={cn('size-4.5', compact && 'size-3')} />
+              <CalendarIcon className={cn('size-4.5', compact && 'size-3.5')} />
             </div>
             <div>
               <h2
                 className={cn(
                   'text-foreground text-lg font-bold capitalize',
-                  compact && 'text-xs font-semibold',
+                  compact && 'text-sm font-bold',
                 )}
               >
                 {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
@@ -358,11 +359,11 @@ export function TimeEntriesCalendarView({
             <div
               className={cn(
                 'border-border/60 bg-muted/40 text-foreground/80 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold',
-                compact && 'px-1.5 py-0.5 text-[10px]',
+                compact && 'px-2 py-1 text-xs',
               )}
             >
               <Clock
-                className={cn('text-primary size-3.5', compact && 'size-2.5')}
+                className={cn('text-primary size-3.5', compact && 'size-3')}
               />
               <span>Total:</span>
               <span className="text-primary font-bold">
@@ -375,18 +376,18 @@ export function TimeEntriesCalendarView({
               <Button
                 variant="ghost"
                 size="icon"
-                className={cn('size-8 rounded-md', compact && 'size-6')}
+                className={cn('size-8 rounded-md', compact && 'size-7')}
                 onClick={handlePrevMonth}
                 title="Mês anterior"
               >
-                <ChevronLeft className={cn('size-4', compact && 'size-3')} />
+                <ChevronLeft className={cn('size-4', compact && 'size-3.5')} />
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 className={cn(
                   'h-8 px-3 text-xs font-semibold',
-                  compact && 'h-6 px-1.5 text-[10px]',
+                  compact && 'h-7 px-2.5 text-xs font-medium',
                 )}
                 onClick={handleToday}
               >
@@ -395,11 +396,11 @@ export function TimeEntriesCalendarView({
               <Button
                 variant="ghost"
                 size="icon"
-                className={cn('size-8 rounded-md', compact && 'size-6')}
+                className={cn('size-8 rounded-md', compact && 'size-7')}
                 onClick={handleNextMonth}
                 title="Próximo mês"
               >
-                <ChevronRight className={cn('size-4', compact && 'size-3')} />
+                <ChevronRight className={cn('size-4', compact && 'size-3.5')} />
               </Button>
             </div>
           </div>
@@ -411,7 +412,7 @@ export function TimeEntriesCalendarView({
           <div
             className={cn(
               'border-border/60 bg-muted/40 text-muted-foreground grid grid-cols-7 border-b text-center text-xs font-bold',
-              compact && 'text-[9px]',
+              compact && 'py-1 text-[11px] font-semibold',
             )}
           >
             {WEEK_DAYS.map((day) => (
@@ -419,7 +420,7 @@ export function TimeEntriesCalendarView({
                 key={day}
                 className={cn(
                   'py-2.5 tracking-wider uppercase',
-                  compact && 'py-0.5',
+                  compact && 'py-0.5 tracking-normal',
                 )}
               >
                 {day}
@@ -431,7 +432,7 @@ export function TimeEntriesCalendarView({
           <div
             className={cn(
               'divide-border/40 grid min-h-[580px] auto-rows-fr grid-cols-7 divide-x divide-y',
-              compact && 'min-h-[200px]',
+              compact && 'min-h-[350px]',
             )}
           >
             {calendarDays.map((day) => {
@@ -451,7 +452,7 @@ export function TimeEntriesCalendarView({
                   onClick={() => handleDayClick(day)}
                   className={cn(
                     'group relative flex min-h-[105px] cursor-pointer flex-col p-2 transition-colors',
-                    compact && 'min-h-[36px] p-0.5',
+                    compact && 'min-h-[58px] p-1',
                     isCurrentMonth ? 'bg-card/20' : 'bg-muted/10 opacity-40',
                     isDayToday && 'bg-primary/5 ring-primary/30 inset-0 ring-1',
                     'hover:bg-muted/40',
@@ -461,13 +462,13 @@ export function TimeEntriesCalendarView({
                   <div
                     className={cn(
                       'mb-1.5 flex items-center justify-between',
-                      compact && 'mb-0',
+                      compact && 'mb-0.5',
                     )}
                   >
                     <span
                       className={cn(
                         'flex size-6 items-center justify-center rounded-full font-mono text-xs font-bold',
-                        compact && 'size-3.5 text-[9px]',
+                        compact && 'size-5 text-[11px]',
                         isDayToday
                           ? 'bg-primary text-primary-foreground font-extrabold shadow-sm'
                           : isCurrentMonth
@@ -482,7 +483,7 @@ export function TimeEntriesCalendarView({
                       <span
                         className={cn(
                           'rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-emerald-500',
-                          compact && 'px-1 py-0 text-[8px]',
+                          compact && 'px-1.5 py-0.5 text-[10px]',
                         )}
                       >
                         {formatHours(dayHours)}
@@ -494,7 +495,7 @@ export function TimeEntriesCalendarView({
                   <div
                     className={cn(
                       'no-scrollbar flex max-h-[85px] flex-col gap-1 overflow-y-auto',
-                      compact && 'max-h-[20px] gap-0.5',
+                      compact && 'max-h-[34px] gap-1',
                     )}
                   >
                     {dayEntries.slice(0, 3).map((entry) => {
@@ -514,7 +515,7 @@ export function TimeEntriesCalendarView({
                             <div
                               className={cn(
                                 'bg-muted/60 hover:bg-muted border-border/40 flex items-center gap-1 truncate rounded border px-1.5 py-0.5 text-[11px] transition-colors',
-                                compact && 'px-1 py-0 text-[8px]',
+                                compact && 'px-1.5 py-0.5 text-[10px]',
                               )}
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -524,7 +525,7 @@ export function TimeEntriesCalendarView({
                               <span
                                 className={cn(
                                   'size-1.5 shrink-0 rounded-full',
-                                  compact && 'size-1',
+                                  compact && 'size-1.5',
                                 )}
                                 style={{ backgroundColor: activityColor }}
                               />
@@ -534,7 +535,7 @@ export function TimeEntriesCalendarView({
                               <span
                                 className={cn(
                                   'text-muted-foreground ml-auto shrink-0 font-mono text-[10px]',
-                                  compact && 'text-[8px]',
+                                  compact && 'text-[9px]',
                                 )}
                               >
                                 {formatHours(entry.timeSpent || 0)}

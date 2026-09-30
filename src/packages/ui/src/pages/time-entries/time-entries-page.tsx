@@ -237,13 +237,14 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
       onAddNewEntry: handleAddNewEntry,
       onResolveConflict: handleResolveConflict,
       onOpenConflict: handleOpenConflictResolution,
+      compact,
     })
   }, [
     activities,
     tasksById,
     mappings,
     editingRows,
-
+    compact,
     getRowData,
     setEditingRows,
     setTempData,

@@ -54,11 +54,16 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
   })
 
   return (
-    <div className="bg-background w-full overflow-x-auto rounded-md border shadow-sm">
+    <div
+      className={cn(
+        'bg-background w-full rounded-md border shadow-sm',
+        compact ? 'overflow-x-hidden' : 'overflow-x-auto',
+      )}
+    >
       <Table
         className={cn(
           'w-full table-fixed',
-          compact ? 'min-w-[480px]' : 'min-w-[820px]',
+          compact ? 'w-full' : 'min-w-[820px]',
         )}
       >
         <TableHeader className="bg-muted/30">
@@ -76,7 +81,7 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
                     className={cn(
                       'text-muted-foreground font-bold tracking-wider uppercase',
                       compact
-                        ? 'px-1 py-1 text-[9px]'
+                        ? 'px-1.5 py-1 text-[10px]'
                         : 'px-2 py-3 text-[10px]',
                       isHiddenOnCompact && 'hidden',
                       !compact &&
@@ -133,7 +138,7 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
                       style={{ width: cell.column.getSize() }}
                       className={cn(
                         'border-border/40 border-b',
-                        compact ? 'py-0.5 text-[11px]' : 'py-2 text-sm',
+                        compact ? 'py-1 text-[11px]' : 'py-2 text-sm',
                         cell.column.id === 'actions' ? 'px-0 pr-1' : 'px-1.5',
                         isHiddenOnCompact && 'hidden',
                         !compact &&
