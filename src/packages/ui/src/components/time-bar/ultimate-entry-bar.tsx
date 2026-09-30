@@ -2587,8 +2587,7 @@ UltimateTimeTracker.ToolsBlock = function ToolsBlock() {
       data-no-drag
       className={cn(
         'flex shrink-0 items-center',
-        isVertical ? 'flex-col' : 'flex-row',
-        isMini ? 'gap-1' : 'gap-2.5',
+        isVertical ? 'flex-col gap-2.5' : 'gap-2.5',
       )}
     >
       {isVertical && (
@@ -2599,8 +2598,7 @@ UltimateTimeTracker.ToolsBlock = function ToolsBlock() {
         role="group"
         aria-label="Configurações do timer"
         className={cn(
-          'bg-muted/40 flex items-center rounded-lg',
-          isMini ? 'gap-0.5 p-0.5' : 'gap-1 p-1',
+          'bg-muted/40 flex items-center gap-1 rounded-lg p-1',
           isVertical ? 'flex-col' : 'flex-row',
         )}
       >
