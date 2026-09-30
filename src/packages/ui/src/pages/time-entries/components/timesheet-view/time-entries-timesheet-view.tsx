@@ -528,7 +528,7 @@ export function TimeEntriesTimesheetView({
       <div
         className={cn(
           'flex h-full flex-col gap-5 px-6',
-          compact && 'gap-2 px-2',
+          compact && 'h-auto min-h-full gap-2 px-1 pb-2',
           className,
         )}
       >
@@ -666,7 +666,12 @@ export function TimeEntriesTimesheetView({
         </div>
 
         {/* Consolidated Timesheet Matrix Table */}
-        <div className="border-border/60 bg-card/40 flex-1 overflow-x-auto rounded-lg border shadow-xs">
+        <div
+          className={cn(
+            'border-border/60 bg-card/40 flex-1 overflow-x-auto rounded-lg border shadow-xs',
+            compact && 'flex-initial overflow-x-hidden',
+          )}
+        >
           <Table className={cn('table-fixed', compact && 'w-full')}>
             <TableHeader className="bg-muted/40 border-border/60 border-b">
               <TableRow className="hover:bg-transparent">

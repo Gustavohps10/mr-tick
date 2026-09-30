@@ -333,7 +333,7 @@ export function TimeEntriesCalendarView({
       <div
         className={cn(
           'flex h-full flex-col gap-5 px-6',
-          compact && 'gap-2 px-2',
+          compact && 'h-auto min-h-full gap-2 px-1 pb-2',
           className,
         )}
       >
@@ -423,7 +423,12 @@ export function TimeEntriesCalendarView({
         </div>
 
         {/* Calendar Grid */}
-        <div className="border-border/60 bg-card/40 flex-1 overflow-hidden rounded-lg border shadow-xs">
+        <div
+          className={cn(
+            'border-border/60 bg-card/40 flex-1 overflow-hidden rounded-lg border shadow-xs',
+            compact && 'flex-initial',
+          )}
+        >
           {/* Weekday headers */}
           <div
             className={cn(
