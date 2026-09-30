@@ -479,11 +479,15 @@ export function TimeEntriesCalendarView({
                     'group relative flex min-h-[105px] cursor-pointer flex-col p-2 transition-all select-none',
                     compact && 'min-h-[72px] p-1.5',
                     isCurrentMonth ? 'bg-card/20' : 'bg-muted/10 opacity-40',
-                    isDayToday && 'bg-primary/5 ring-primary/30 inset-0 ring-1',
-                    'hover:bg-muted/40 hover:border-primary/40',
+                    isDayToday && 'bg-primary/5 z-10',
+                    'hover:bg-muted/40',
                   )}
                   title={`Ver apontamentos de ${format(day, "dd 'de' MMMM", { locale: ptBR })}`}
                 >
+                  {isDayToday && (
+                    <div className="border-primary/80 pointer-events-none absolute inset-0 z-10 border-2" />
+                  )}
+
                   {/* Top Day Header */}
                   <div
                     className={cn(
