@@ -1249,7 +1249,7 @@ export function createTimeEntriesColumns(
                   onAddNewEntry?.(day, parentTask)
                 }}
                 className={cn(
-                  'h-6 gap-1 px-1 font-medium select-none',
+                  'text-foreground hover:text-foreground/80 h-6 gap-1 px-1 font-medium select-none',
                   compact && 'h-5 px-0.5 text-[11px]',
                 )}
                 title="Adicionar apontamento para esta tarefa"
