@@ -62,6 +62,8 @@ import { createTimeEntriesColumns } from '@/pages/time-entries/components/time-e
 import { useTimeEntriesData } from '@/pages/time-entries/hooks/use-time-entries-data'
 import { useTimeEntryMutations } from '@/pages/time-entries/hooks/use-time-entry-mutations'
 import {
+  cleanTaskId,
+  extractPureTaskId,
   formatHours,
   hasNoTask,
   SuggestionRow,
@@ -101,10 +103,10 @@ export function TimeEntriesTimesheetView({
   const { mappings } = useFieldMappings()
   const {
     db,
-
     memberIdsByConnection,
     timeEntries,
     activities,
+    tasksById,
     activeTimeEntry,
     setActive,
     pauseCurrentTimeEntry,
@@ -209,16 +211,28 @@ export function TimeEntriesTimesheetView({
       if (!isInCurrentWeek) return
 
       const isNoTask = hasNoTask(entry)
+      const pureTaskId = isNoTask
+        ? undefined
+        : extractPureTaskId(entry.task?.id)
+      const taskDoc = pureTaskId
+        ? tasksById?.[pureTaskId] ||
+          (entry.task?.id ? tasksById?.[entry.task.id] : undefined)
+        : undefined
+
+      const resolvedTitle = isNoTask
+        ? entry.comments || 'Sem tarefa vinculada'
+        : taskDoc?.title ||
+          entry.taskData?.title ||
+          (pureTaskId ? `#${pureTaskId}` : 'Tarefa')
+
       const groupKey = isNoTask
         ? `no-task-${entry.comments || 'geral'}`
-        : `${entry.task?.id || 'task'}-${entry.taskData?.title || ''}`
+        : `${pureTaskId || 'task'}-${resolvedTitle}`
 
       const existing = groupMap.get(groupKey) || {
         entries: [] as SyncTimeEntryRxDBDTO[],
-        title: isNoTask
-          ? entry.comments || 'Sem tarefa vinculada'
-          : entry.taskData?.title || entry.task?.id || 'Tarefa',
-        taskId: isNoTask ? undefined : entry.task?.id,
+        title: resolvedTitle,
+        taskId: isNoTask ? undefined : pureTaskId,
         dataSourceId: entry.dataSourceId,
         activityId: entry.activity?.id,
       }
@@ -263,7 +277,7 @@ export function TimeEntriesTimesheetView({
     })
 
     return rows.sort((a, b) => b.totalHours - a.totalHours)
-  }, [timeEntries, weekDays, activities])
+  }, [timeEntries, weekDays, activities, tasksById])
 
   // Column totals
   const dailyColumnTotals = React.useMemo(() => {
@@ -386,7 +400,10 @@ export function TimeEntriesTimesheetView({
 
     return timeEntries.filter((e) => {
       if (selectedTaskFocus.taskId) {
-        return e.task?.id === selectedTaskFocus.taskId
+        return (
+          extractPureTaskId(e.task?.id) === selectedTaskFocus.taskId ||
+          e.task?.id === selectedTaskFocus.taskId
+        )
       }
       const isNoTask = hasNoTask(e)
       return (
@@ -403,7 +420,10 @@ export function TimeEntriesTimesheetView({
 
     return draftEntries.filter((e) => {
       if (selectedTaskFocus.taskId) {
-        return e.task?.id === selectedTaskFocus.taskId
+        return (
+          extractPureTaskId(e.task?.id) === selectedTaskFocus.taskId ||
+          e.task?.id === selectedTaskFocus.taskId
+        )
       }
       const isNoTask = hasNoTask(e)
       return (
@@ -638,8 +658,9 @@ export function TimeEntriesTimesheetView({
               <TableRow className="hover:bg-transparent">
                 <TableHead
                   className={cn(
-                    'text-muted-foreground w-[360px] pl-4 text-xs font-bold',
-                    compact && 'w-[190px] pl-2 text-xs',
+                    'text-muted-foreground w-[320px] min-w-[200px] pl-4 text-xs font-bold',
+                    compact &&
+                      'w-[210px] max-w-[210px] min-w-[210px] pl-2 text-xs',
                   )}
                 >
                   Tarefa / Atividade
@@ -651,7 +672,7 @@ export function TimeEntriesTimesheetView({
                       key={day.toISOString()}
                       className={cn(
                         'text-muted-foreground w-[110px] text-center text-xs font-bold transition-colors',
-                        compact && 'w-[64px]',
+                        compact && 'w-[72px]',
                         isDayToday &&
                           'bg-primary/10 text-primary font-extrabold',
                       )}
@@ -684,7 +705,7 @@ export function TimeEntriesTimesheetView({
                 <TableHead
                   className={cn(
                     'text-muted-foreground w-[130px] pr-4 text-center font-mono text-xs font-bold',
-                    compact && 'w-[68px] pr-2 text-xs',
+                    compact && 'w-[72px] pr-2 text-xs',
                   )}
                 >
                   Total
@@ -743,13 +764,14 @@ export function TimeEntriesTimesheetView({
                       {/* Task Info Cell */}
                       <TableCell
                         className={cn(
-                          'py-3 pl-4 text-xs font-medium',
-                          compact && 'py-1 pl-2',
+                          'max-w-[320px] min-w-0 overflow-hidden py-3 pl-4 text-xs font-medium',
+                          compact &&
+                            'w-[210px] max-w-[210px] min-w-[210px] py-1 pl-2',
                         )}
                       >
                         <div
                           className={cn(
-                            'flex items-center gap-2.5',
+                            'flex min-w-0 items-center gap-2.5 overflow-hidden',
                             compact && 'gap-1.5',
                           )}
                         >
@@ -760,37 +782,45 @@ export function TimeEntriesTimesheetView({
                             )}
                             style={{ backgroundColor: row.activityColor }}
                           />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1">
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <div className="flex min-w-0 items-center gap-1">
                               {row.taskId && (
                                 <span
                                   className={cn(
-                                    'text-primary bg-primary/10 shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold',
-                                    compact && 'px-1 py-0 text-[10px]',
+                                    'text-primary bg-primary/10 max-w-[85px] shrink-0 truncate rounded px-1.5 py-0.5 font-mono text-[10px] font-bold',
+                                    compact &&
+                                      'max-w-[70px] px-1 py-0 text-[10px]',
                                   )}
+                                  title={`#${cleanTaskId(row.taskId)}`}
                                 >
-                                  #{row.taskId}
+                                  #{cleanTaskId(row.taskId)}
                                 </span>
                               )}
-                              <span
-                                className={cn(
-                                  'text-foreground truncate text-xs font-bold',
-                                  compact && 'text-xs font-semibold',
+                              {row.taskTitle &&
+                                row.taskTitle !== row.taskId &&
+                                row.taskTitle !== `#${row.taskId}` && (
+                                  <span
+                                    className={cn(
+                                      'text-foreground min-w-0 flex-1 truncate text-xs font-bold',
+                                      compact && 'text-xs font-semibold',
+                                    )}
+                                    title={row.taskTitle}
+                                  >
+                                    {row.taskTitle}
+                                  </span>
                                 )}
-                                title={row.taskTitle}
-                              >
-                                {row.taskTitle}
-                              </span>
                             </div>
                             <div
                               className={cn(
-                                'text-muted-foreground mt-0.5 flex items-center gap-1.5 text-[10px]',
+                                'text-muted-foreground mt-0.5 flex items-center gap-1.5 truncate text-[10px]',
                                 compact && 'mt-0.5 text-[10px]',
                               )}
                             >
-                              <span>{row.activityName}</span>
+                              <span className="truncate">
+                                {row.activityName}
+                              </span>
                               {row.dataSourceId && (
-                                <span className="font-mono uppercase opacity-70">
+                                <span className="shrink-0 font-mono uppercase opacity-70">
                                   &bull; {row.dataSourceId}
                                 </span>
                               )}
@@ -980,12 +1010,18 @@ export function TimeEntriesTimesheetView({
                       <div className="flex items-center gap-2 truncate">
                         {selectedTaskFocus.taskId && (
                           <span className="text-primary bg-primary/10 shrink-0 rounded px-2 py-0.5 font-mono text-sm font-bold">
-                            #{selectedTaskFocus.taskId}
+                            #{cleanTaskId(selectedTaskFocus.taskId)}
                           </span>
                         )}
-                        <span className="truncate">
-                          {selectedTaskFocus.taskTitle}
-                        </span>
+                        {selectedTaskFocus.taskTitle &&
+                          selectedTaskFocus.taskTitle !==
+                            selectedTaskFocus.taskId &&
+                          selectedTaskFocus.taskTitle !==
+                            `#${selectedTaskFocus.taskId}` && (
+                            <span className="truncate">
+                              {selectedTaskFocus.taskTitle}
+                            </span>
+                          )}
                       </div>
                     ) : (
                       <span>Apontamentos</span>

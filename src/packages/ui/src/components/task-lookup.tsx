@@ -56,6 +56,7 @@ import {
   SyncMetadataRxDBDTO,
 } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
+import { cleanTaskId } from '@/pages/time-entries/lib/time-entries-utils'
 import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
 
 interface TaskLookupModalProps {
@@ -663,7 +664,9 @@ export function TaskLookup({
                                     className="h-3 w-3 shrink-0"
                                   />
                                 )}
-                                <span>{task.id}</span>
+                                <span>
+                                  {cleanTaskId(task.sourceId || task.id)}
+                                </span>
                               </span>
                               <h4
                                 className="text-foreground truncate text-xs font-medium tracking-tight opacity-90"

@@ -271,6 +271,9 @@ export function TaskPopover({
   }, [tasksList, pinnedIds])
 
   const handlePickTask = (t: SyncTaskRxDBDTO) => {
+    const cleanId = extractPureTaskId(t.sourceId || t.id)
+    setTaskId(cleanId)
+    setSearchQuery(cleanId)
     handleSelectTask(t)
     setIsOpen(false)
   }
@@ -639,8 +642,11 @@ export function TaskPopover({
                 ) : (
                   sortedTasks.map((t) => {
                     const isPinned = pinnedIds.includes(t.id)
-                    const isSelected = taskId === t.id
-                    const ticketId = /^\d+$/.test(t.id) ? `#${t.id}` : t.id
+                    const pureId = extractPureTaskId(t.sourceId || t.id)
+                    const isSelected = extractPureTaskId(taskId) === pureId
+                    const ticketId = /^\d+$/.test(pureId)
+                      ? `#${pureId}`
+                      : pureId
                     const trackerMapping = resolveEntityMapping(
                       t.tracker,
                       'tracker',
@@ -656,7 +662,7 @@ export function TaskPopover({
                       <div
                         key={t.id}
                         onClick={() => handlePickTask(t)}
-                        title={`${ticketId} - ${t.title}`}
+                        title={`${ticketId}${t.title ? ` - ${t.title}` : ''}`}
                         className={cn(
                           'group flex cursor-pointer items-center justify-between gap-1.5 rounded-md px-1.5 py-0.5 text-xs transition-colors',
                           isSelected
@@ -665,7 +671,7 @@ export function TaskPopover({
                           isPinned && !isSelected && 'bg-accent/30',
                         )}
                       >
-                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
                           {trackerMapping.icon && (
                             <DynamicIcon
                               name={trackerMapping.icon}
@@ -676,6 +682,11 @@ export function TaskPopover({
                           <span className="shrink-0 font-mono text-[10px] font-bold opacity-80">
                             {ticketId}
                           </span>
+                          {t.title && (
+                            <span className="text-muted-foreground/60 shrink-0 text-[10px]">
+                              -
+                            </span>
+                          )}
                           <span className="truncate text-[11px] leading-snug">
                             {t.title}
                           </span>
