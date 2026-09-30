@@ -1105,9 +1105,9 @@ export function createTimeEntriesColumns(
     },
     {
       id: 'hours',
-      size: compact ? 175 : 215,
-      minSize: compact ? 165 : 205,
-      maxSize: compact ? 190 : 235,
+      size: compact ? 195 : 215,
+      minSize: compact ? 185 : 205,
+      maxSize: compact ? 210 : 235,
       header: () => (
         <div className="text-right text-[10px] font-bold uppercase opacity-70">
           Tempo
@@ -1221,9 +1221,9 @@ export function createTimeEntriesColumns(
     {
       id: 'actions',
       header: '',
-      size: compact ? 80 : 100,
-      minSize: compact ? 75 : 95,
-      maxSize: compact ? 95 : 110,
+      size: compact ? 90 : 100,
+      minSize: compact ? 85 : 95,
+      maxSize: compact ? 105 : 110,
       cell: ({ row }) => {
         const original = row.original
         const rowKey = getRowKey(original)
@@ -1235,7 +1235,7 @@ export function createTimeEntriesColumns(
             <div className="flex items-center justify-end pr-1">
               <Button
                 type="button"
-                variant="ghost"
+                variant="link"
                 size="sm"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -1248,11 +1248,19 @@ export function createTimeEntriesColumns(
                       : undefined
                   onAddNewEntry?.(day, parentTask)
                 }}
-                className="hover:bg-muted/60 text-muted-foreground hover:text-foreground h-6 gap-1 px-1.5 font-medium transition-colors select-none"
+                className={cn(
+                  'h-6 gap-1 px-1 font-medium select-none',
+                  compact && 'h-5 px-0.5 text-[11px]',
+                )}
                 title="Adicionar apontamento para esta tarefa"
               >
-                <Plus className="h-3 w-3" />
-                <span className="text-[11px]">Adicionar</span>
+                <Plus
+                  className={cn(
+                    'shrink-0',
+                    compact ? 'h-2.5 w-2.5' : 'h-3 w-3',
+                  )}
+                />
+                <span className={cn(compact && 'text-[11px]')}>Adicionar</span>
               </Button>
             </div>
           )

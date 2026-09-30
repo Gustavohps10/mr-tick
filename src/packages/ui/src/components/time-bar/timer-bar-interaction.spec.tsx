@@ -930,9 +930,9 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       endInput = screen.getByTestId('time-entry-end-time-input')
       durationInput = screen.getByTestId('time-entry-duration-input')
 
-      expect(startInput.className).toContain('w-[36px]')
-      expect(endInput.className).toContain('w-[36px]')
-      expect(durationInput.className).toContain('w-[58px]')
+      expect(startInput.className).toContain('w-[45px]')
+      expect(endInput.className).toContain('w-[45px]')
+      expect(durationInput.className).toContain('w-[68px]')
     })
 
     it('renders running timer action buttons with compact styling without overflowing', () => {

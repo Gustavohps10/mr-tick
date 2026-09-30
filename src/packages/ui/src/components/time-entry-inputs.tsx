@@ -244,8 +244,8 @@ export const TimeEntryInputs = ({
         }}
         style={{ padding: 0, lineHeight: 1 }}
         className={cn(
-          'border-none bg-transparent text-center font-mono focus-visible:ring-0',
-          compact ? 'h-4 w-[36px] text-[10px]' : 'h-5 w-[46px] text-[11px]',
+          'border-none bg-transparent px-0 text-center font-mono focus-visible:ring-0',
+          compact ? 'h-4 w-[45px] text-[10px]' : 'h-5 w-[46px] text-[11px]',
           errors.start ? 'text-destructive font-bold' : 'text-muted-foreground',
         )}
         placeholder="00:00"
@@ -278,8 +278,8 @@ export const TimeEntryInputs = ({
         }}
         style={{ padding: 0, lineHeight: 1 }}
         className={cn(
-          'border-none bg-transparent text-center font-mono focus-visible:ring-0',
-          compact ? 'h-4 w-[36px] text-[10px]' : 'h-5 w-[46px] text-[11px]',
+          'border-none bg-transparent px-0 text-center font-mono focus-visible:ring-0',
+          compact ? 'h-4 w-[45px] text-[10px]' : 'h-5 w-[46px] text-[11px]',
           errors.end ? 'text-destructive font-bold' : 'text-muted-foreground',
         )}
         placeholder="00:00"
@@ -312,8 +312,8 @@ export const TimeEntryInputs = ({
         }}
         style={{ padding: 0, lineHeight: 1 }}
         className={cn(
-          'border-none bg-transparent text-center font-mono font-semibold focus-visible:ring-0',
-          compact ? 'h-4 w-[58px] text-[10px]' : 'h-5 w-[72px] text-[11px]',
+          'border-none bg-transparent px-0 text-center font-mono font-semibold focus-visible:ring-0',
+          compact ? 'h-4 w-[68px] text-[10px]' : 'h-5 w-[72px] text-[11px]',
           isSpentInvalid ? 'text-destructive font-bold' : 'text-primary',
           disabled && 'text-foreground/60',
         )}
