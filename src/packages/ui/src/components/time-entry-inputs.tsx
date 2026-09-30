@@ -83,6 +83,7 @@ interface TimeEntryInputsProps {
     timeSpent: number
   }) => void
   className?: string
+  compact?: boolean
 }
 
 export const TimeEntryInputs = ({
@@ -92,6 +93,7 @@ export const TimeEntryInputs = ({
   disabled,
   onChange,
   className,
+  compact = false,
 }: TimeEntryInputsProps) => {
   const [localStart, setLocalStart] = useState(toHHMM(startDate))
   const [localEnd, setLocalEnd] = useState(toHHMM(endDate))
@@ -214,7 +216,8 @@ export const TimeEntryInputs = ({
   return (
     <div
       className={cn(
-        'inline-flex items-center gap-0.5 rounded border px-1 py-0.5 transition-all',
+        'inline-flex items-center gap-0.5 rounded border transition-all',
+        compact ? 'px-0.5 py-0' : 'px-1 py-0.5',
         disabled
           ? 'border-transparent bg-transparent'
           : hasAnyError
@@ -241,13 +244,19 @@ export const TimeEntryInputs = ({
         }}
         style={{ padding: 0, lineHeight: 1 }}
         className={cn(
-          'h-5 w-[46px] border-none bg-transparent text-center font-mono text-[11px] focus-visible:ring-0',
+          'border-none bg-transparent text-center font-mono focus-visible:ring-0',
+          compact ? 'h-4 w-[36px] text-[10px]' : 'h-5 w-[46px] text-[11px]',
           errors.start ? 'text-destructive font-bold' : 'text-muted-foreground',
         )}
         placeholder="00:00"
       />
 
-      <span className="text-muted-foreground/30 text-[10px] leading-none">
+      <span
+        className={cn(
+          'text-muted-foreground/30 leading-none',
+          compact ? 'text-[8px]' : 'text-[10px]',
+        )}
+      >
         ›
       </span>
 
@@ -269,13 +278,19 @@ export const TimeEntryInputs = ({
         }}
         style={{ padding: 0, lineHeight: 1 }}
         className={cn(
-          'h-5 w-[46px] border-none bg-transparent text-center font-mono text-[11px] focus-visible:ring-0',
+          'border-none bg-transparent text-center font-mono focus-visible:ring-0',
+          compact ? 'h-4 w-[36px] text-[10px]' : 'h-5 w-[46px] text-[11px]',
           errors.end ? 'text-destructive font-bold' : 'text-muted-foreground',
         )}
         placeholder="00:00"
       />
 
-      <div className="bg-border/40 mx-1 h-3 w-px shrink-0" />
+      <div
+        className={cn(
+          'bg-border/40 h-3 w-px shrink-0',
+          compact ? 'mx-0.5' : 'mx-1',
+        )}
+      />
 
       <Input
         data-testid="time-entry-duration-input"
@@ -297,7 +312,8 @@ export const TimeEntryInputs = ({
         }}
         style={{ padding: 0, lineHeight: 1 }}
         className={cn(
-          'h-5 w-[72px] border-none bg-transparent text-center font-mono text-[11px] font-semibold focus-visible:ring-0',
+          'border-none bg-transparent text-center font-mono font-semibold focus-visible:ring-0',
+          compact ? 'h-4 w-[58px] text-[10px]' : 'h-5 w-[72px] text-[11px]',
           isSpentInvalid ? 'text-destructive font-bold' : 'text-primary',
           disabled && 'text-foreground/60',
         )}

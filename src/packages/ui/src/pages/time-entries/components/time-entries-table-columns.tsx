@@ -287,9 +287,9 @@ export function createTimeEntriesColumns(
     {
       id: 'expand',
       header: '',
-      size: compact ? 34 : 50,
-      minSize: compact ? 30 : 44,
-      maxSize: compact ? 38 : 70,
+      size: compact ? 46 : 50,
+      minSize: compact ? 42 : 44,
+      maxSize: compact ? 52 : 70,
       cell: ({ row }) => {
         if (
           row.original.isSuggestion ||
@@ -357,7 +357,12 @@ export function createTimeEntriesColumns(
           }
 
           return (
-            <div className="flex items-center justify-start pl-[22px]">
+            <div
+              className={cn(
+                'flex items-center justify-start',
+                compact ? 'pl-[19px]' : 'pl-[22px]',
+              )}
+            >
               <Badge
                 variant="outline"
                 className="bg-muted/20 border-border/40 text-muted-foreground/70 flex h-4 min-w-[18px] items-center justify-center px-1 font-mono text-[10px]"
@@ -375,13 +380,26 @@ export function createTimeEntriesColumns(
             <button
               type="button"
               onClick={row.getToggleExpandedHandler()}
-              className="hover:bg-muted/70 flex h-6 cursor-pointer items-center gap-1 rounded-sm px-1 text-xs font-semibold transition-all select-none active:scale-95"
+              className={cn(
+                'hover:bg-muted/70 flex h-6 cursor-pointer items-center rounded-sm font-semibold transition-all select-none active:scale-95',
+                compact ? 'gap-1.5 px-0.5 text-xs' : 'gap-1 px-1 text-xs',
+              )}
               title={row.getIsExpanded() ? 'Recolher grupo' : 'Expandir grupo'}
             >
               {row.getIsExpanded() ? (
-                <ChevronDown className="text-foreground/80 h-3.5 w-3.5 shrink-0" />
+                <ChevronDown
+                  className={cn(
+                    'text-foreground/80 shrink-0',
+                    compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
+                  )}
+                />
               ) : (
-                <ChevronRight className="text-foreground/80 h-3.5 w-3.5 shrink-0" />
+                <ChevronRight
+                  className={cn(
+                    'text-foreground/80 shrink-0',
+                    compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
+                  )}
+                />
               )}
               <Badge
                 variant="outline"
@@ -705,9 +723,9 @@ export function createTimeEntriesColumns(
           Sync
         </div>
       ),
-      size: 60,
-      minSize: 50,
-      maxSize: 75,
+      size: compact ? 38 : 60,
+      minSize: compact ? 34 : 50,
+      maxSize: compact ? 46 : 75,
       cell: ({ row }) => {
         const original = row.original
         const isGroupMaster =
@@ -719,6 +737,7 @@ export function createTimeEntriesColumns(
             isGroupMaster={isGroupMaster}
             onResolveConflict={onResolveConflict}
             onOpenConflict={onOpenConflict}
+            compact={compact}
           />
         )
       },
@@ -1086,9 +1105,9 @@ export function createTimeEntriesColumns(
     },
     {
       id: 'hours',
-      size: compact ? 215 : 215,
-      minSize: 205,
-      maxSize: 235,
+      size: compact ? 175 : 215,
+      minSize: compact ? 165 : 205,
+      maxSize: compact ? 190 : 235,
       header: () => (
         <div className="text-right text-[10px] font-bold uppercase opacity-70">
           Tempo
@@ -1193,6 +1212,7 @@ export function createTimeEntriesColumns(
                 }
                 onTimeChangeDirect?.(rowKey, newData)
               }}
+              compact={compact}
             />
           </div>
         )
@@ -1201,9 +1221,9 @@ export function createTimeEntriesColumns(
     {
       id: 'actions',
       header: '',
-      size: compact ? 100 : 100,
-      minSize: compact ? 95 : 95,
-      maxSize: compact ? 110 : 110,
+      size: compact ? 80 : 100,
+      minSize: compact ? 75 : 95,
+      maxSize: compact ? 95 : 110,
       cell: ({ row }) => {
         const original = row.original
         const rowKey = getRowKey(original)

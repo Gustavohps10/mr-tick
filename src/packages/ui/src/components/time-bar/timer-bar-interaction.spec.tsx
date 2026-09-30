@@ -876,9 +876,9 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
 
       const popover = document.querySelector('[role="dialog"]')
       expect(popover).toBeTruthy()
-      expect(popover?.className).toContain('sm:w-[840px]')
+      expect(popover?.className).toContain('sm:w-[880px]')
       expect(popover?.className).toContain('h-[550px]')
-      expect(popover?.className).toContain('max-w-[840px]')
+      expect(popover?.className).toContain('max-w-[880px]')
       expect(popover?.className).toContain('overflow-hidden')
 
       // Switch to Weekly view
@@ -897,7 +897,7 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
 
     it('renders all 3 time inputs (start, end, duration) with proper widths without clipping', () => {
       const handleChange = vi.fn()
-      render(
+      const { rerender } = render(
         <TimeEntryInputs
           startDate="2026-09-30T09:00:00.000Z"
           endDate="2026-09-30T10:30:00.000Z"
@@ -905,9 +905,9 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
           onChange={handleChange}
         />,
       )
-      const startInput = screen.getByTestId('time-entry-start-time-input')
-      const endInput = screen.getByTestId('time-entry-end-time-input')
-      const durationInput = screen.getByTestId('time-entry-duration-input')
+      let startInput = screen.getByTestId('time-entry-start-time-input')
+      let endInput = screen.getByTestId('time-entry-end-time-input')
+      let durationInput = screen.getByTestId('time-entry-duration-input')
 
       expect(startInput).toBeTruthy()
       expect(endInput).toBeTruthy()
@@ -915,6 +915,24 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       expect(startInput.className).toContain('w-[46px]')
       expect(endInput.className).toContain('w-[46px]')
       expect(durationInput.className).toContain('w-[72px]')
+
+      // Compact mode
+      rerender(
+        <TimeEntryInputs
+          startDate="2026-09-30T09:00:00.000Z"
+          endDate="2026-09-30T10:30:00.000Z"
+          timeSpent={1.5}
+          compact
+          onChange={handleChange}
+        />,
+      )
+      startInput = screen.getByTestId('time-entry-start-time-input')
+      endInput = screen.getByTestId('time-entry-end-time-input')
+      durationInput = screen.getByTestId('time-entry-duration-input')
+
+      expect(startInput.className).toContain('w-[36px]')
+      expect(endInput.className).toContain('w-[36px]')
+      expect(durationInput.className).toContain('w-[58px]')
     })
 
     it('renders running timer action buttons with compact styling without overflowing', () => {

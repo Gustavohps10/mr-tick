@@ -70,9 +70,7 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id} className="hover:bg-transparent">
               {headerGroup.headers.map((header) => {
-                const isHiddenOnCompact =
-                  compact &&
-                  (header.id === 'createdAt' || header.id === 'syncStatus')
+                const isHiddenOnCompact = compact && header.id === 'createdAt'
 
                 return (
                   <TableHead
@@ -128,9 +126,7 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
               >
                 {row.getVisibleCells().map((cell) => {
                   const isHiddenOnCompact =
-                    compact &&
-                    (cell.column.id === 'createdAt' ||
-                      cell.column.id === 'syncStatus')
+                    compact && cell.column.id === 'createdAt'
 
                   return (
                     <TableCell
@@ -140,6 +136,7 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
                         'border-border/40 border-b',
                         compact ? 'py-1 text-[11px]' : 'py-2 text-sm',
                         cell.column.id === 'actions' ? 'px-0 pr-1' : 'px-1.5',
+                        cell.column.id === 'syncStatus' && compact && 'px-0.5',
                         isHiddenOnCompact && 'hidden',
                         !compact &&
                           cell.column.id === 'createdAt' &&

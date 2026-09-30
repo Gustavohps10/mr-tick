@@ -32,6 +32,7 @@ export interface SyncStatusCellProps {
     resolution: 'local' | 'remote',
   ) => Promise<void> | void
   onOpenConflict?: (row: SuggestionRow) => void
+  compact?: boolean
 }
 
 function formatSyncTimestamp(isoString?: string | null): string {
@@ -49,6 +50,7 @@ export function SyncStatusCell({
   original,
   isGroupMaster,
   onOpenConflict,
+  compact = false,
 }: SyncStatusCellProps) {
   const openConflictModal = useConflictModalStore(
     (state) => state.openConflictModal,
@@ -76,19 +78,26 @@ export function SyncStatusCell({
       <div className="flex items-center justify-center gap-1">
         <Badge
           variant="outline"
-          className="border-primary/50 bg-primary/15 text-primary gap-1 px-1.5 py-0.5 text-[10px] font-bold shadow-xs"
+          className={cn(
+            'border-primary/50 bg-primary/15 text-primary font-bold shadow-xs',
+            compact
+              ? 'gap-0.5 px-1 py-0.5 text-[9px]'
+              : 'gap-1 px-1.5 py-0.5 text-[10px]',
+          )}
         >
           <span className="relative flex h-2 w-2">
             <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
             <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
           </span>
-          <span>AO VIVO</span>
+          <span>{compact ? 'VIVO' : 'AO VIVO'}</span>
         </Badge>
         {hasTaskAndConn && isMissingActivity && (
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="flex cursor-help items-center text-amber-500 transition-colors">
-                <CloudAlert className="h-3.5 w-3.5" />
+                <CloudAlert
+                  className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')}
+                />
               </span>
             </TooltipTrigger>
             <TooltipContent side="top" className="text-xs">
@@ -111,9 +120,16 @@ export function SyncStatusCell({
       <div className="flex justify-center">
         <Badge
           variant="outline"
-          className="gap-1 border-amber-500/50 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+          className={cn(
+            'border-amber-500/50 bg-amber-500/15 font-semibold text-amber-600 dark:text-amber-400',
+            compact
+              ? 'gap-0.5 px-1 py-0.5 text-[9px]'
+              : 'gap-1 px-1.5 py-0.5 text-[10px]',
+          )}
         >
-          <Pause className="h-2.5 w-2.5 fill-current" />
+          <Pause
+            className={cn(compact ? 'h-2 w-2' : 'h-2.5 w-2.5', 'fill-current')}
+          />
           <span>PAUSADO</span>
         </Badge>
       </div>
@@ -125,9 +141,19 @@ export function SyncStatusCell({
       <div className="flex justify-center">
         <Badge
           variant="outline"
-          className="gap-1 border-amber-500/50 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+          className={cn(
+            'border-amber-500/50 bg-amber-500/15 font-semibold text-amber-600 dark:text-amber-400',
+            compact
+              ? 'gap-0.5 px-1 py-0.5 text-[9px]'
+              : 'gap-1 px-1.5 py-0.5 text-[10px]',
+          )}
         >
-          <Lightbulb className="h-3 w-3 fill-current text-amber-500" />
+          <Lightbulb
+            className={cn(
+              compact ? 'h-2.5 w-2.5' : 'h-3 w-3',
+              'fill-current text-amber-500',
+            )}
+          />
           <span>SUGESTÃO</span>
         </Badge>
       </div>
@@ -149,10 +175,20 @@ export function SyncStatusCell({
             }
             openConflictModal(original.id)
           }}
-          className="h-6 gap-1 border-amber-500/60 bg-amber-500/15 px-2 text-[10px] font-bold text-amber-600 shadow-2xs hover:bg-amber-500/25 dark:text-amber-400"
+          className={cn(
+            'border-amber-500/60 bg-amber-500/15 font-bold text-amber-600 shadow-2xs hover:bg-amber-500/25 dark:text-amber-400',
+            compact
+              ? 'h-5 gap-0.5 px-1 text-[9px]'
+              : 'h-6 gap-1 px-2 text-[10px]',
+          )}
           title="Clique para comparar e resolver conflito"
         >
-          <AlertTriangle className="h-3 w-3 text-amber-500" />
+          <AlertTriangle
+            className={cn(
+              compact ? 'h-2.5 w-2.5' : 'h-3 w-3',
+              'text-amber-500',
+            )}
+          />
           <span>Conflito</span>
         </Button>
       </div>
@@ -267,7 +303,12 @@ export function SyncStatusCell({
         : 'sync-status-unpushed'
 
   return (
-    <div className="flex items-center justify-center gap-1.5">
+    <div
+      className={cn(
+        'flex items-center justify-center',
+        compact ? 'gap-0.5' : 'gap-1.5',
+      )}
+    >
       {/* Indicador Pull (↓) */}
       <Tooltip>
         <TooltipTrigger asChild>
@@ -279,7 +320,7 @@ export function SyncStatusCell({
                 : 'text-muted-foreground/30',
             )}
           >
-            <ArrowDown className="h-3.5 w-3.5" />
+            <ArrowDown className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
@@ -290,7 +331,14 @@ export function SyncStatusCell({
         </TooltipContent>
       </Tooltip>
 
-      <span className="text-muted-foreground/30 text-[8px] select-none">•</span>
+      <span
+        className={cn(
+          'text-muted-foreground/30 select-none',
+          compact ? 'text-[6px]' : 'text-[8px]',
+        )}
+      >
+        •
+      </span>
 
       {/* Indicador Push (↑) */}
       <Tooltip>
@@ -303,9 +351,9 @@ export function SyncStatusCell({
             )}
           >
             {isSyncError ? (
-              <XCircle className="text-destructive h-3.5 w-3.5" />
+              <XCircle className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
             ) : (
-              <ArrowUp className="h-3.5 w-3.5" />
+              <ArrowUp className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
             )}
           </span>
         </TooltipTrigger>
