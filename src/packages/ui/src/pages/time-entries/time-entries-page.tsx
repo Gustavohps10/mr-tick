@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 
 import { TaskLookup } from '@/components/task-lookup'
 import { useFieldMappings } from '@/hooks/use-field-mappings'
+import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { TimeEntriesDayCard } from '@/pages/time-entries/components/time-entries-day-card'
 import { TimeEntriesHeader } from '@/pages/time-entries/components/time-entries-header'
@@ -19,7 +20,11 @@ import {
   SuggestionRow,
 } from '@/pages/time-entries/lib/time-entries-utils'
 
-export function TimeEntries() {
+export interface TimeEntriesProps {
+  className?: string
+}
+
+export function TimeEntries({ className }: TimeEntriesProps = {}) {
   const { mappings } = useFieldMappings()
   const {
     db,
@@ -267,7 +272,7 @@ export function TimeEntries() {
   }, [])
 
   return (
-    <div className="flex h-full flex-col gap-6 px-6">
+    <div className={cn('flex h-full flex-col gap-6 px-6', className)}>
       <TimeEntriesHeader
         range={range}
         onRangeChange={handleRangeChange}

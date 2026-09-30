@@ -88,7 +88,13 @@ interface SelectedTaskFocus {
   dataSourceId?: string
 }
 
-export function TimeEntriesTimesheetView() {
+export interface TimeEntriesTimesheetViewProps {
+  className?: string
+}
+
+export function TimeEntriesTimesheetView({
+  className,
+}: TimeEntriesTimesheetViewProps = {}) {
   const queryClient = useQueryClient()
   const { mappings } = useFieldMappings()
   const {
@@ -482,7 +488,7 @@ export function TimeEntriesTimesheetView() {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="flex h-full flex-col gap-5 px-6">
+      <div className={cn('flex h-full flex-col gap-5 px-6', className)}>
         {/* Weekly Header Controls */}
         <div className="border-border/60 bg-card/60 flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4 shadow-xs backdrop-blur-sm">
           <div className="flex items-center gap-3">
@@ -579,7 +585,7 @@ export function TimeEntriesTimesheetView() {
         </div>
 
         {/* Consolidated Timesheet Matrix Table */}
-        <div className="border-border/60 bg-card/40 flex-1 overflow-hidden rounded-lg border shadow-xs">
+        <div className="border-border/60 bg-card/40 flex-1 overflow-x-auto rounded-lg border shadow-xs">
           <Table>
             <TableHeader className="bg-muted/40 border-border/60 border-b">
               <TableRow className="hover:bg-transparent">

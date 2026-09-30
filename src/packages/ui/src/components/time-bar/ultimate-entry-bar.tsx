@@ -94,6 +94,7 @@ import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
 import { useTimeEntryStore } from '@/stores/timeEntryStore'
 
 import { TimerHistory } from './details/timer-history'
+import { TimerOverview } from './details/timer-overview'
 import { TimerSettings } from './details/timer-settings'
 import { useActiveTimer } from './useActiveTimer'
 
@@ -1247,6 +1248,10 @@ export const UltimateTimeTracker = ({
           <UltimateTimeTracker.TodayBlock />
         </UltimateTimeTracker.Block>
 
+        <UltimateTimeTracker.Block id="overview">
+          <UltimateTimeTracker.OverviewBlock />
+        </UltimateTimeTracker.Block>
+
         <UltimateTimeTracker.Block id="actions">
           <UltimateTimeTracker.ActionsBlock />
         </UltimateTimeTracker.Block>
@@ -1906,6 +1911,21 @@ UltimateTimeTracker.TodayBlock = function TodayBlock() {
           {formatTodayTime(totalTodaySeconds)}
         </span>
       )}
+    </div>
+  )
+}
+
+UltimateTimeTracker.OverviewBlock = function OverviewBlock() {
+  const { isVertical, isMini } = useTrackerContext()
+  return (
+    <div
+      data-no-drag
+      className={cn(
+        'flex shrink-0 items-center justify-center',
+        isVertical ? 'py-0.5' : 'px-0.5',
+      )}
+    >
+      <TimerOverview isMini={isMini} isVertical={isVertical} />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import {
   afterEach,
   beforeAll,
@@ -105,13 +106,15 @@ function renderWithProviders(ui: React.ReactElement) {
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <WorkspaceContext.Provider value={mockWorkspaceValue}>
-        <DataSourceConnectionsContext.Provider value={mockConnectionsValue}>
-          <TooltipProvider>
-            <TimeEntryProvider>{ui}</TimeEntryProvider>
-          </TooltipProvider>
-        </DataSourceConnectionsContext.Provider>
-      </WorkspaceContext.Provider>
+      <MemoryRouter>
+        <WorkspaceContext.Provider value={mockWorkspaceValue}>
+          <DataSourceConnectionsContext.Provider value={mockConnectionsValue}>
+            <TooltipProvider>
+              <TimeEntryProvider>{ui}</TimeEntryProvider>
+            </TooltipProvider>
+          </DataSourceConnectionsContext.Provider>
+        </WorkspaceContext.Provider>
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }
@@ -792,6 +795,57 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       const { container } = renderWithProviders(<UltimateTimeTracker />)
       const expander = container.querySelector('[title="Expandir itens"]')
       expect(expander).toBeNull()
+    })
+
+    it('renders overview button in bar and opens popover with view switcher', async () => {
+      window.location.hash = '#/workspaces/ws-1/widgets/timer'
+      useTimerSettings.setState({
+        widgetPosition: 'bottom',
+        hiddenBlocks: [],
+        miniMode: false,
+      })
+
+      const { container } = renderWithProviders(<UltimateTimeTracker />)
+      const overviewButton = container.querySelector(
+        '[data-testid="timerbar-overview-button"]',
+      )
+      expect(overviewButton).toBeTruthy()
+      expect(overviewButton?.className).toContain('h-7 w-7')
+
+      // Click to open popover
+      await act(async () => {
+        fireEvent.click(overviewButton!)
+      })
+
+      await waitFor(() => {
+        expect(screen.getByText('Apontamentos de Horas')).toBeTruthy()
+      })
+      expect(screen.getByTestId('overview-tab-list')).toBeTruthy()
+      expect(screen.getByTestId('overview-tab-timesheet')).toBeTruthy()
+
+      // Switch to Timesheet view
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('overview-tab-timesheet'))
+      })
+      expect(screen.getByTestId('overview-tab-timesheet').className).toContain(
+        'bg-primary',
+      )
+    })
+
+    it('renders compact overview button in mini mode', async () => {
+      window.location.hash = '#/workspaces/ws-1/widgets/timer'
+      useTimerSettings.setState({
+        widgetPosition: 'left',
+        hiddenBlocks: [],
+        miniMode: true,
+      })
+
+      const { container } = renderWithProviders(<UltimateTimeTracker />)
+      const overviewButton = container.querySelector(
+        '[data-testid="timerbar-overview-button"]',
+      )
+      expect(overviewButton).toBeTruthy()
+      expect(overviewButton?.className).toContain('h-6 w-6')
     })
   })
 })

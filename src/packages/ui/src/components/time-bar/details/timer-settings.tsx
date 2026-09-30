@@ -470,6 +470,7 @@ export const TimerSettings = memo(({ isMini }: TimerSettingsProps) => {
               {[
                 { id: 'task', label: 'Seletor de tarefas' },
                 { id: 'today', label: 'Tempo Hoje' },
+                { id: 'overview', label: 'Visão de Apontamentos' },
                 { id: 'actions', label: 'Controles (Play/Stop)' },
                 { id: 'tools', label: 'Ferramentas' },
               ].map((block) => {

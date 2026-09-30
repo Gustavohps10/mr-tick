@@ -2,6 +2,10 @@
 // index.ts — barrel exports
 // ─────────────────────────────────────────────
 
+export {
+  TimerOverview,
+  type TimerOverviewProps,
+} from './details/timer-overview'
 export type { TimerDisplayProps, TimerStatus } from './timer-display'
 export { TimerDisplay } from './timer-display'
 export {
