@@ -1467,6 +1467,33 @@ interface TrackerBlockProps {
   children?: React.ReactNode
 }
 
+function mergeBlockOrders(
+  declaredIds: string[],
+  savedOrder: string[],
+): string[] {
+  const result: string[] = []
+  const savedValid = savedOrder.filter((id) => declaredIds.includes(id))
+
+  for (const declaredId of declaredIds) {
+    if (savedValid.includes(declaredId)) {
+      if (!result.includes(declaredId)) {
+        const indexInSaved = savedValid.indexOf(declaredId)
+        for (let i = 0; i <= indexInSaved; i++) {
+          const item = savedValid[i]
+          if (!result.includes(item)) result.push(item)
+        }
+      }
+    }
+    if (!result.includes(declaredId)) result.push(declaredId)
+  }
+
+  for (const item of savedValid) {
+    if (!result.includes(item)) result.push(item)
+  }
+
+  return result
+}
+
 UltimateTimeTracker.Blocks = function TrackerBlocks({
   children,
 }: {
@@ -1498,17 +1525,19 @@ UltimateTimeTracker.Blocks = function TrackerBlocks({
       if (raw) saved = JSON.parse(raw)
     } catch {}
 
-    const savedValid = saved.filter((id) => childIds.includes(id))
-    const missing = childIds.filter((id) => !savedValid.includes(id))
-    return [...savedValid, ...missing]
+    return mergeBlockOrders(childIds, saved)
   })
 
   useEffect(() => {
     setBlocksOrder((prev) => {
-      const valid = prev.filter((id) => childIds.includes(id))
-      const missing = childIds.filter((id) => !valid.includes(id))
-      if (missing.length === 0 && valid.length === prev.length) return prev
-      return [...valid, ...missing]
+      const merged = mergeBlockOrders(childIds, prev)
+      if (
+        merged.length === prev.length &&
+        merged.every((id, idx) => id === prev[idx])
+      ) {
+        return prev
+      }
+      return merged
     })
   }, [childIds.join(',')])
 

@@ -167,6 +167,10 @@ export function TimerWidget() {
           <UltimateTimeTracker.TodayBlock />
         </UltimateTimeTracker.Block>
 
+        <UltimateTimeTracker.Block id="overview">
+          <UltimateTimeTracker.OverviewBlock />
+        </UltimateTimeTracker.Block>
+
         <UltimateTimeTracker.Block id="actions">
           <UltimateTimeTracker.ActionsBlock />
         </UltimateTimeTracker.Block>
