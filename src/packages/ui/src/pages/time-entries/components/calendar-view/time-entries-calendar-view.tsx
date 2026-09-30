@@ -23,6 +23,7 @@ import {
 import * as React from 'react'
 import { toast } from 'sonner'
 
+import { DataSourceLogo } from '@/components/datasource-logo'
 import { TaskLookup } from '@/components/task-lookup'
 import { Button } from '@/components/ui/button'
 import {
@@ -39,7 +40,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useFieldMappings } from '@/hooks/use-field-mappings'
+import {
+  resolveEntityMapping,
+  useFieldMappings,
+} from '@/hooks/use-field-mappings'
 import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
@@ -51,6 +55,7 @@ import {
   cleanTaskId,
   extractPureTaskId,
   formatHours,
+  getActivityIcon,
   hasNoTask,
   SuggestionRow,
 } from '@/pages/time-entries/lib/time-entries-utils'
@@ -532,8 +537,6 @@ export function TimeEntriesCalendarView({
                       const activity = activities.find(
                         (a) => a.id === entry.activity?.id,
                       )
-                      const activityColor =
-                        activity?.colors?.background || '#3b82f6'
                       const isNoTask = hasNoTask(entry)
                       const pureTaskId = isNoTask
                         ? undefined
@@ -548,6 +551,15 @@ export function TimeEntriesCalendarView({
                         ? cleanTaskId(pureTaskId)
                         : undefined
                       const rawTitle = taskDoc?.title || entry.taskData?.title
+                      const trackerObj = (taskDoc || entry.taskData)?.tracker
+                      const resolvedTracker = resolveEntityMapping(
+                        trackerObj,
+                        'tracker',
+                        mappings,
+                      )
+                      const TrackerIconComponent = getActivityIcon(
+                        resolvedTracker.icon,
+                      )
 
                       let displayLabel = 'Apontamento'
                       if (isNoTask) {
@@ -559,7 +571,7 @@ export function TimeEntriesCalendarView({
                         rawTitle &&
                         rawTitle !== cleanId
                       ) {
-                        displayLabel = `#${cleanId} ${rawTitle}`
+                        displayLabel = `#${cleanId} - ${rawTitle}`
                       }
                       if (
                         !isNoTask &&
@@ -585,13 +597,23 @@ export function TimeEntriesCalendarView({
                                 handleDayClick(day)
                               }}
                             >
-                              <span
+                              <DataSourceLogo
+                                connectionInstanceId={
+                                  entry.connectionInstanceId
+                                }
+                                dataSourceId={entry.dataSourceId}
                                 className={cn(
-                                  'size-1.5 shrink-0 rounded-full',
-                                  compact && 'size-1.5',
+                                  'h-3.5 w-3.5 shrink-0 rounded-xs',
+                                  compact && 'h-3 w-3',
                                 )}
-                                style={{ backgroundColor: activityColor }}
                               />
+                              {TrackerIconComponent && (
+                                <TrackerIconComponent
+                                  size={compact ? 10 : 12}
+                                  className="shrink-0"
+                                  style={{ color: resolvedTracker.badgeColor }}
+                                />
+                              )}
                               <span className="text-foreground/90 min-w-0 flex-1 truncate font-medium">
                                 {displayLabel}
                               </span>
@@ -610,7 +632,7 @@ export function TimeEntriesCalendarView({
                             className="max-w-xs space-y-1 p-2 text-xs"
                           >
                             <p className="font-bold">{displayLabel}</p>
-                            {entry.comments && (
+                            {entry.comments && entry.comments !== rawTitle && (
                               <p className="text-muted-foreground text-[11px]">
                                 {entry.comments}
                               </p>

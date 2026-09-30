@@ -179,7 +179,25 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
   const mockConnectionsValue: DataSourceConnectionsContextType = {
     isLoading: false,
     workspaceId: undefined,
-    connections: [],
+    connections: [
+      {
+        connectionId: 'conn-1',
+        dataSourceId: 'jira',
+        status: 'connected',
+        addon: {
+          id: 'jira',
+          version: '1.0.0',
+          name: 'Jira Software',
+          creator: 'Atlassian',
+          description: 'Jira integration',
+          path: '/plugins/jira',
+          logo: 'http://example.com/jira-logo.png',
+          downloads: 10,
+          stars: 5,
+          installed: true,
+        },
+      },
+    ],
     workspaceConnections: [],
     installedPlugins: [],
     link: async () => undefined,
@@ -242,6 +260,10 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
       </TooltipProvider>,
     )
 
+    // Should display DataSourceLogo icon in monthly entry chips
+    expect(
+      screen.getAllByRole('img', { name: /Jira Software/i }).length,
+    ).toBeGreaterThan(0)
     // Should display sanitized clean task IDs without compound keys
     expect(screen.queryByText(/mr-tick-fake/)).toBeNull()
     // Should display formatted hour totals
@@ -272,6 +294,13 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
     // Should contain Tarefa / Atividade column and total
     expect(screen.getByText('Tarefa / Atividade')).toBeTruthy()
     expect(screen.getByText('Total')).toBeTruthy()
+    // Should display DataSourceLogo icon
+    expect(screen.getByRole('img', { name: /Jira Software/i })).toBeTruthy()
+    // Should NOT display raw datasource name
+    expect(screen.queryByText(/• jira/i)).toBeNull()
+    // Should display sanitized clean task ID and title
+    expect(screen.getByText('#DOC-131')).toBeTruthy()
+    expect(screen.getByText('Manual de Instalação')).toBeTruthy()
     expect(screen.queryByText(/mr-tick-fake/)).toBeNull()
   })
 

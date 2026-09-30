@@ -1,5 +1,6 @@
 'use client'
 
+import type { ConfiguredFieldMapping } from '@mr-tick/sdk'
 import { useQueryClient } from '@tanstack/react-query'
 import { ExpandedState } from '@tanstack/react-table'
 import {
@@ -28,6 +29,7 @@ import {
 import * as React from 'react'
 import { toast } from 'sonner'
 
+import { DataSourceLogo } from '@/components/datasource-logo'
 import { TaskLookup } from '@/components/task-lookup'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -53,7 +55,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useFieldMappings } from '@/hooks/use-field-mappings'
+import {
+  resolveEntityMapping,
+  useFieldMappings,
+} from '@/hooks/use-field-mappings'
 import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
@@ -65,6 +70,7 @@ import {
   cleanTaskId,
   extractPureTaskId,
   formatHours,
+  getActivityIcon,
   hasNoTask,
   SuggestionRow,
 } from '@/pages/time-entries/lib/time-entries-utils'
@@ -74,6 +80,7 @@ interface TimesheetRowItem {
   taskTitle: string
   taskId?: string
   dataSourceId?: string
+  connectionInstanceId?: string
   activityId?: string
   activityName?: string
   activityColor?: string
@@ -88,6 +95,92 @@ interface SelectedTaskFocus {
   taskTitle: string
   activityId?: string
   dataSourceId?: string
+  connectionInstanceId?: string
+}
+
+interface TimesheetTaskChipProps {
+  row: TimesheetRowItem
+  tasksById?: Record<string, SyncTaskRxDBDTO>
+  mappings?: Record<string, ConfiguredFieldMapping>
+  compact?: boolean
+}
+
+function TimesheetTaskChip({
+  row,
+  tasksById,
+  mappings,
+  compact = false,
+}: TimesheetTaskChipProps) {
+  const cleanId = row.taskId ? extractPureTaskId(row.taskId) : undefined
+  const associatedTask = cleanId && tasksById ? tasksById[cleanId] : undefined
+  const trackerObj = associatedTask?.tracker
+  const resolvedTracker = resolveEntityMapping(trackerObj, 'tracker', mappings)
+  const TrackerIconComponent = getActivityIcon(resolvedTracker.icon)
+  const hasTaskTitle = Boolean(
+    row.taskTitle &&
+    cleanId &&
+    row.taskTitle !== cleanId &&
+    row.taskTitle !== `#${cleanId}` &&
+    row.taskTitle !== 'Tarefa',
+  )
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          className={cn(
+            'border-border/60 bg-secondary/70 hover:bg-secondary inline-flex max-w-[300px] cursor-help items-center gap-1.5 truncate rounded-md border px-2 py-1 text-[11px] font-medium shadow-2xs transition-colors',
+            compact && 'max-w-[195px] px-1.5 py-0.5 text-[10px]',
+          )}
+        >
+          <DataSourceLogo
+            connectionInstanceId={row.connectionInstanceId}
+            dataSourceId={row.dataSourceId}
+            className={cn(
+              'h-3.5 w-3.5 shrink-0 rounded-xs',
+              compact && 'h-3 w-3',
+            )}
+          />
+          {TrackerIconComponent && (
+            <TrackerIconComponent
+              size={compact ? 10 : 12}
+              className="shrink-0"
+              style={{ color: resolvedTracker.badgeColor }}
+            />
+          )}
+          {cleanId ? (
+            <>
+              <span className="shrink-0 font-mono font-bold">{`#${cleanId}`}</span>
+              {hasTaskTitle && (
+                <>
+                  <span className="text-muted-foreground/50 shrink-0 font-mono">
+                    -
+                  </span>
+                  <span className="text-muted-foreground truncate font-sans text-[11px] font-normal">
+                    {row.taskTitle}
+                  </span>
+                </>
+              )}
+            </>
+          ) : (
+            <span className="text-muted-foreground truncate font-sans text-[11px] font-normal">
+              {row.taskTitle || 'Sem tarefa vinculada'}
+            </span>
+          )}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-[320px]">
+        {cleanId && (
+          <p className="font-mono text-xs font-bold">{`#${cleanId}`}</p>
+        )}
+        {row.taskTitle && (
+          <p className="text-muted-foreground mt-0.5 text-xs">
+            {row.taskTitle}
+          </p>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 export interface TimeEntriesTimesheetViewProps {
@@ -177,6 +270,7 @@ export function TimeEntriesTimesheetView({
       taskTitle: row.taskTitle,
       activityId: row.activityId,
       dataSourceId: row.dataSourceId,
+      connectionInstanceId: row.connectionInstanceId,
     })
     setDayDetailsOpen(true)
   }
@@ -209,6 +303,7 @@ export function TimeEntriesTimesheetView({
         title: string
         taskId?: string
         dataSourceId?: string
+        connectionInstanceId?: string
         activityId?: string
       }
     >()
@@ -246,6 +341,7 @@ export function TimeEntriesTimesheetView({
         title: resolvedTitle,
         taskId: isNoTask ? undefined : pureTaskId,
         dataSourceId: entry.dataSourceId,
+        connectionInstanceId: entry.connectionInstanceId,
         activityId: entry.activity?.id,
       }
 
@@ -278,6 +374,7 @@ export function TimeEntriesTimesheetView({
         taskTitle: val.title,
         taskId: val.taskId,
         dataSourceId: val.dataSourceId,
+        connectionInstanceId: val.connectionInstanceId,
         activityId: val.activityId,
         activityName,
         activityColor,
@@ -788,64 +885,12 @@ export function TimeEntriesTimesheetView({
                             'w-[210px] max-w-[210px] min-w-[210px] py-1 pl-2',
                         )}
                       >
-                        <div
-                          className={cn(
-                            'flex min-w-0 items-center gap-2.5 overflow-hidden',
-                            compact && 'gap-1.5',
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              'size-2 shrink-0 rounded-full',
-                              compact && 'size-2',
-                            )}
-                            style={{ backgroundColor: row.activityColor }}
-                          />
-                          <div className="min-w-0 flex-1 overflow-hidden">
-                            <div className="flex min-w-0 items-center gap-1">
-                              {row.taskId && (
-                                <span
-                                  className={cn(
-                                    'text-primary bg-primary/10 max-w-[85px] shrink-0 truncate rounded px-1.5 py-0.5 font-mono text-[10px] font-bold',
-                                    compact &&
-                                      'max-w-[70px] px-1 py-0 text-[10px]',
-                                  )}
-                                  title={`#${cleanTaskId(row.taskId)}`}
-                                >
-                                  #{cleanTaskId(row.taskId)}
-                                </span>
-                              )}
-                              {row.taskTitle &&
-                                row.taskTitle !== row.taskId &&
-                                row.taskTitle !== `#${row.taskId}` && (
-                                  <span
-                                    className={cn(
-                                      'text-foreground min-w-0 flex-1 truncate text-xs font-bold',
-                                      compact && 'text-xs font-semibold',
-                                    )}
-                                    title={row.taskTitle}
-                                  >
-                                    {row.taskTitle}
-                                  </span>
-                                )}
-                            </div>
-                            <div
-                              className={cn(
-                                'text-muted-foreground mt-0.5 flex items-center gap-1.5 truncate text-[10px]',
-                                compact && 'mt-0.5 text-[10px]',
-                              )}
-                            >
-                              <span className="truncate">
-                                {row.activityName}
-                              </span>
-                              {row.dataSourceId && (
-                                <span className="shrink-0 font-mono uppercase opacity-70">
-                                  &bull; {row.dataSourceId}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                        <TimesheetTaskChip
+                          row={row}
+                          tasksById={tasksById}
+                          mappings={mappings}
+                          compact={compact}
+                        />
                       </TableCell>
 
                       {/* Day Cells with Hover Affordance, Pencil Icon and Click to Edit only this task */}
