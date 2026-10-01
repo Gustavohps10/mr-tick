@@ -258,6 +258,22 @@ export class TimeEntriesReplication implements IReplicationStrategy<
       let resolvedTaskData = existingLocalDoc
         ? existingLocalDoc.taskData
         : undefined
+
+      const incomingTaskData =
+        item &&
+        'taskData' in item &&
+        item.taskData &&
+        typeof item.taskData === 'object'
+          ? (item.taskData as Record<string, unknown>)
+          : undefined
+
+      const incomingTitle =
+        incomingTaskData &&
+        typeof incomingTaskData.title === 'string' &&
+        incomingTaskData.title.trim() !== ''
+          ? incomingTaskData.title.trim()
+          : undefined
+
       const rawItemTaskName =
         item.task &&
         'name' in item.task &&
@@ -266,8 +282,18 @@ export class TimeEntriesReplication implements IReplicationStrategy<
           ? item.task.name.trim()
           : ''
 
-      if (!resolvedTaskData && rawItemTaskName && item.task?.id) {
+      const effectiveTitle = incomingTitle || rawItemTaskName
+
+      if (!resolvedTaskData && effectiveTitle && item.task?.id) {
         const sourceId = cleanTaskId(item.task.id)
+        const incomingTracker =
+          incomingTaskData &&
+          typeof incomingTaskData.tracker === 'object' &&
+          incomingTaskData.tracker !== null &&
+          'id' in incomingTaskData.tracker
+            ? { id: String((incomingTaskData.tracker as { id: unknown }).id) }
+            : undefined
+
         resolvedTaskData = {
           id: `${this.connectionInstanceId}::${sourceId}`,
           sourceId,
@@ -278,11 +304,19 @@ export class TimeEntriesReplication implements IReplicationStrategy<
           lastPulledAt: nowIso,
           lastPushedAt: null,
           lastReconciledAt: nowIso,
-          title: rawItemTaskName,
+          title: effectiveTitle,
           status: { id: '1', name: 'Ativa' },
+          tracker: incomingTracker,
           createdAt: nowIso,
           updatedAt: nowIso,
           timeEntryIds: [docId],
+        }
+      }
+
+      if (resolvedTaskData && !resolvedTaskData.title && effectiveTitle) {
+        resolvedTaskData = {
+          ...resolvedTaskData,
+          title: effectiveTitle,
         }
       }
 
@@ -321,13 +355,38 @@ export class TimeEntriesReplication implements IReplicationStrategy<
     if (this.collection?.database?.collections?.tasks) {
       const tasksCol = this.collection.database.collections.tasks
       for (const doc of docs) {
-        if (doc.taskData?.title && doc.taskData.id) {
+        const rawTaskId = doc.taskData?.id || doc.task?.id
+        if (doc.taskData?.title && rawTaskId) {
           try {
-            const existingTask = await tasksCol.findOne(doc.taskData.id).exec()
-            if (!existingTask) {
-              await tasksCol.insert(doc.taskData)
-            } else if (!existingTask.title && doc.taskData.title) {
-              await existingTask.incrementalPatch({ title: doc.taskData.title })
+            const pureId = cleanTaskId(rawTaskId)
+            const compositeId = `${this.connectionInstanceId}::${pureId}`
+            const existingTask = await tasksCol.findOne(compositeId).exec()
+            if (existingTask) {
+              if (!existingTask.title && doc.taskData.title) {
+                await existingTask.incrementalPatch({
+                  title: doc.taskData.title,
+                })
+              }
+            } else {
+              await tasksCol.insert({
+                id: compositeId,
+                sourceId: pureId,
+                connectionInstanceId: this.connectionInstanceId,
+                dataSourceId: this.pluginId,
+                _deleted: false,
+                syncStatus: 'synced',
+                lastPulledAt: nowIso,
+                lastPushedAt: null,
+                lastReconciledAt: nowIso,
+                title: doc.taskData.title,
+                status: { id: 'unknown', name: 'Ativa' },
+                tracker: doc.taskData.tracker?.id
+                  ? { id: String(doc.taskData.tracker.id) }
+                  : undefined,
+                createdAt: doc.createdAt ?? nowIso,
+                updatedAt: doc.updatedAt ?? nowIso,
+                timeEntryIds: [doc.id],
+              })
             }
           } catch {
             // Silencia se houver concorrência na inserção

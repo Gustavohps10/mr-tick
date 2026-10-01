@@ -1,4 +1,4 @@
-﻿import { IHttpClient, IHttpClientConfig } from '@mr-tick/adapters/contracts'
+import { IHttpClient, IHttpClientConfig } from '@mr-tick/adapters/contracts'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import { AxiosRequestConfig } from 'axios'
 import { net } from 'electron'
@@ -197,14 +197,27 @@ export class ElectronHttpClient implements IHttpClient {
       }
 
       return Either.success(responseData as T)
-    } catch (err: any) {
+    } catch (error) {
+      const errorObj = error instanceof Error ? error : new Error(String(error))
+      const originalMessage = errorObj.message
+
       console.error(
         '[ElectronHttpClient] Erro na requisição Chromium net:',
-        err.message,
+        originalMessage,
       )
-      return Either.failure(
-        AppError.Internal(err.message || 'Erro de rede no Electron net'),
-      )
+
+      let friendlyMessage = originalMessage || 'Erro de conexão de rede'
+      if (originalMessage.includes('ERR_NAME_NOT_RESOLVED')) {
+        friendlyMessage = `Não foi possível alcançar o servidor (${originalMessage}). Verifique sua conexão com a internet ou se a VPN corporativa necessária está conectada.`
+      }
+      if (originalMessage.includes('ERR_CONNECTION_REFUSED')) {
+        friendlyMessage = `Conexão recusada pelo servidor (${originalMessage}). Verifique se o serviço está em execução ou se a VPN está conectada.`
+      }
+      if (originalMessage.includes('ERR_INTERNET_DISCONNECTED')) {
+        friendlyMessage = `Computador sem conexão com a internet (${originalMessage}).`
+      }
+
+      return Either.failure(AppError.Internal(friendlyMessage))
     }
   }
 }

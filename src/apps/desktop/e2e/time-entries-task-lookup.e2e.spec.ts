@@ -194,4 +194,79 @@ test.describe('E2E - Seleção e Busca de Tarefa (TSK-01)', () => {
     await expect(saveBtn).not.toBeVisible()
     await expect(page.locator('text=DEV-').first()).toBeVisible()
   })
+
+  test('deve validar título e tracker após pull e atualizar tarefa via popover com título completo (TSK-04)', async ({
+    page,
+  }) => {
+    const workspaceLink = page.locator('nav a[href*="/workspaces/"]').first()
+    await expect(workspaceLink).toBeVisible({ timeout: 15000 })
+    await workspaceLink.click()
+
+    const syncIndicator = page.locator(
+      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
+    )
+    await expect(syncIndicator).toBeVisible({ timeout: 30000 })
+
+    // Valida que apontamentos sincronizados no pull exibem o título completo da tarefa
+    const rowWithTitle = page
+      .locator('text=Ajustar responsividade do dashboard (API-240)')
+      .first()
+    await expect(rowWithTitle).toBeVisible({ timeout: 15000 })
+
+    const actionTriggers = page.locator(
+      '[data-testid="time-entry-actions-trigger"]',
+    )
+    await expect(actionTriggers.first()).toBeVisible({ timeout: 15000 })
+
+    const editBtn = page.locator('[data-testid="time-entry-edit-btn"]')
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(editBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
+    await editBtn.click()
+
+    // Abre o popover de tarefa
+    const popoverTrigger = page
+      .locator('[data-testid="time-entry-task-popover-trigger"]')
+      .first()
+    await expect(popoverTrigger).toBeVisible()
+    await popoverTrigger.click()
+
+    // Valida que o popover abriu
+    await expect(page.getByText('Detalhes da Tarefa')).toBeVisible({
+      timeout: 5000,
+    })
+
+    // Busca pela tarefa API-240
+    const searchInput = page.getByPlaceholder('Buscar ou digitar ID...')
+    await expect(searchInput).toBeVisible()
+
+    // Aguarda o carregamento inicial da mini-lista reativa
+    const initialTask = page.locator('text=DEV-').first()
+    await expect(initialTask).toBeVisible({ timeout: 10000 })
+
+    await searchInput.fill('API-240')
+
+    // Localiza o item da tarefa e valida o título completo
+    const taskItem = page.locator('text=API-240').first()
+    await expect(taskItem).toBeVisible({ timeout: 10000 })
+    await expect(
+      page.getByText('Ajustar responsividade do dashboard (API-240)').first(),
+    ).toBeVisible({
+      timeout: 5000,
+    })
+
+    // Clica para selecionar a tarefa
+    await taskItem.click()
+
+    // Salva a alteração
+    const saveBtn = page.locator('[data-testid="time-entry-save-btn"]').first()
+    await expect(saveBtn).toBeVisible()
+    await saveBtn.click({ force: true })
+
+    // Valida que a alteração foi persistida e a linha exibe a tarefa com título e ID
+    await expect(saveBtn).not.toBeVisible()
+    await expect(page.locator('text=API-240').first()).toBeVisible()
+  })
 })

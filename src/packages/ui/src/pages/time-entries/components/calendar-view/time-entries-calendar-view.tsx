@@ -589,6 +589,15 @@ export function TimeEntriesCalendarView({
                         displayLabel = rawTitle
                       }
 
+                      const resolvedConnectionId =
+                        entry.connectionInstanceId ||
+                        taskDoc?.connectionInstanceId ||
+                        entry.taskData?.connectionInstanceId
+                      const resolvedDataSourceId =
+                        entry.dataSourceId ||
+                        taskDoc?.dataSourceId ||
+                        entry.taskData?.dataSourceId
+
                       return (
                         <Tooltip key={entry.id}>
                           <TooltipTrigger asChild>
@@ -603,10 +612,8 @@ export function TimeEntriesCalendarView({
                               }}
                             >
                               <DataSourceLogo
-                                connectionInstanceId={
-                                  entry.connectionInstanceId
-                                }
-                                dataSourceId={entry.dataSourceId}
+                                connectionInstanceId={resolvedConnectionId}
+                                dataSourceId={resolvedDataSourceId}
                                 className={cn(
                                   'h-3.5 w-3.5 shrink-0 rounded-xs',
                                   compact && 'h-3 w-3',

@@ -215,13 +215,31 @@ function buildTasks(): TaskDTO[] {
       updatedAt: updated,
       status: { id: status.id, name: status.name },
       priority: { id: priority.id, name: priority.name },
-      tracker: { id: tracker.id },
+      tracker: { id: tracker.id, name: tracker.name },
       projectName: `Projeto ${key}`,
       assignedTo,
       participants,
     })
     globalNum++
   }
+
+  // Tarefa de Apoio especial para testes E2E (não atribuída ao usuário)
+  tasks.push({
+    id: 'DEV-9999',
+    title: 'TAREFA PARA APOIO (DEV-9999)',
+    description: 'Tarefa de apoio técnico externo para testes E2E e cobertura.',
+    createdAt: new Date(now.getTime() - 86400000 * 200),
+    updatedAt: new Date(now.getTime() - 86400000 * 190),
+    status: { id: 'progress', name: 'In Progress' },
+    priority: { id: 'high', name: 'High' },
+    tracker: { id: 'task', name: 'Task' },
+    projectName: 'Projeto DEV',
+    assignedTo: {
+      id: '99',
+      name: 'Outro Desenvolvedor',
+    },
+    participants: [],
+  })
 
   return tasks.sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
 }
@@ -312,6 +330,26 @@ function buildTimeEntries(): TimeEntryDTO[] {
       if (start.getHours() >= 18) break
     }
   }
+
+  // Apontamento na Tarefa de Apoio DEV-9999 (ocorrido há 15 dias para simular apontamento passado em tarefa de apoio)
+  const supportEntryDate = new Date(today.getTime() - 15 * 86400000)
+  entries.push({
+    id: 'te-support-9999',
+    task: { id: 'DEV-9999' },
+    taskData: {
+      id: 'DEV-9999',
+      title: 'TAREFA PARA APOIO (DEV-9999)',
+      tracker: { id: 'task', name: 'Task' },
+    },
+    activity: { id: 'act-coding', name: 'Coding' },
+    user: { id: FAKE_USER_ID, name: USER_NAME },
+    timeSpent: 3.5,
+    startDate: new Date(supportEntryDate.getTime() + 10 * 3600000),
+    endDate: new Date(supportEntryDate.getTime() + 13.5 * 3600000),
+    comments: 'Apontamento de apoio técnico em DEV-9999',
+    createdAt: new Date(supportEntryDate.getTime() + 10 * 3600000),
+    updatedAt: new Date(supportEntryDate.getTime() + 13.5 * 3600000),
+  })
 
   return entries.sort(
     (a, b) =>

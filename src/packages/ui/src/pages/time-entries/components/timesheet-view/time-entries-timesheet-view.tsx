@@ -112,7 +112,10 @@ function TimesheetTaskChip({
   compact = false,
 }: TimesheetTaskChipProps) {
   const cleanId = row.taskId ? extractPureTaskId(row.taskId) : undefined
-  const associatedTask = cleanId && tasksById ? tasksById[cleanId] : undefined
+  const associatedTask =
+    (cleanId && tasksById ? tasksById[cleanId] : undefined) ||
+    (row.taskId && tasksById ? tasksById[row.taskId] : undefined) ||
+    row.entries.find((e) => e.taskData)?.taskData
   const trackerObj = associatedTask?.tracker
   const resolvedTracker = resolveEntityMapping(trackerObj, 'tracker', mappings)
   const TrackerIconComponent = getActivityIcon(resolvedTracker.icon)
@@ -124,6 +127,19 @@ function TimesheetTaskChip({
     row.taskTitle !== 'Tarefa',
   )
 
+  const resolvedConnectionInstanceId =
+    row.connectionInstanceId ||
+    associatedTask?.connectionInstanceId ||
+    row.entries.find((e) => e.connectionInstanceId)?.connectionInstanceId ||
+    row.entries.find((e) => e.taskData?.connectionInstanceId)?.taskData
+      ?.connectionInstanceId
+
+  const resolvedDataSourceId =
+    row.dataSourceId ||
+    associatedTask?.dataSourceId ||
+    row.entries.find((e) => e.dataSourceId)?.dataSourceId ||
+    row.entries.find((e) => e.taskData?.dataSourceId)?.taskData?.dataSourceId
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -134,8 +150,8 @@ function TimesheetTaskChip({
           )}
         >
           <DataSourceLogo
-            connectionInstanceId={row.connectionInstanceId}
-            dataSourceId={row.dataSourceId}
+            connectionInstanceId={resolvedConnectionInstanceId}
+            dataSourceId={resolvedDataSourceId}
             className={cn(
               'h-3.5 w-3.5 shrink-0 rounded-xs',
               compact && 'h-3 w-3',
@@ -339,13 +355,30 @@ export function TimeEntriesTimesheetView({
         ? `no-task-${entry.comments || 'geral'}`
         : `${pureTaskId || 'task'}-${resolvedTitle}`
 
+      const resolvedConnectionId =
+        entry.connectionInstanceId ||
+        taskDoc?.connectionInstanceId ||
+        entry.taskData?.connectionInstanceId
+
+      const resolvedDataSourceId =
+        entry.dataSourceId ||
+        taskDoc?.dataSourceId ||
+        entry.taskData?.dataSourceId
+
       const existing = groupMap.get(groupKey) || {
         entries: [] as SyncTimeEntryRxDBDTO[],
         title: resolvedTitle,
         taskId: isNoTask ? undefined : pureTaskId,
-        dataSourceId: entry.dataSourceId,
-        connectionInstanceId: entry.connectionInstanceId,
+        dataSourceId: resolvedDataSourceId,
+        connectionInstanceId: resolvedConnectionId,
         activityId: entry.activity?.id,
+      }
+
+      if (!existing.connectionInstanceId && resolvedConnectionId) {
+        existing.connectionInstanceId = resolvedConnectionId
+      }
+      if (!existing.dataSourceId && resolvedDataSourceId) {
+        existing.dataSourceId = resolvedDataSourceId
       }
 
       existing.entries.push(entry)

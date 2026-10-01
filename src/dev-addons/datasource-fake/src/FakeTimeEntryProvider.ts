@@ -56,7 +56,24 @@ export class FakeTimeEntryProvider implements ITimeEntryProvider {
       checkpoint.updatedAt,
       batch,
     )
-    return Either.success(entries)
+    const enriched = entries.map((entry) => {
+      if (entry.task?.id && !entry.taskData) {
+        const task = this.store.findTaskById(entry.task.id)
+        if (task) {
+          return {
+            ...entry,
+            taskData: {
+              id: task.id,
+              title: task.title,
+              tracker: task.tracker,
+              status: task.status,
+            },
+          }
+        }
+      }
+      return entry
+    })
+    return Either.success(enriched)
   }
 
   async findAll(

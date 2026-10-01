@@ -206,7 +206,27 @@ export class FakeDatabaseStore {
         this.tasks = parsed.tasks.map(deserializeTask)
         this.metadata = parsed.metadata ?? FAKE_METADATA
         this.members = parsed.members ?? [FAKE_MEMBER]
+
+        let hasNewItems = false
+        for (const seedTask of FAKE_TASKS) {
+          if (!this.tasks.some((t) => t.id === seedTask.id)) {
+            this.tasks.push(deserializeTask(serializeTask(seedTask)))
+            hasNewItems = true
+          }
+        }
+        for (const seedEntry of FAKE_TIME_ENTRIES) {
+          if (!this.timeEntries.some((e) => e.id === seedEntry.id)) {
+            this.timeEntries.push(
+              deserializeTimeEntry(serializeTimeEntry(seedEntry)),
+            )
+            hasNewItems = true
+          }
+        }
+
         this.isLoaded = true
+        if (hasNewItems && !this.isInMemory) {
+          this.persist()
+        }
         return
       } catch (readError) {
         console.error(

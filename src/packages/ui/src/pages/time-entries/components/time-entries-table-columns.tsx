@@ -478,6 +478,16 @@ export function createTimeEntriesColumns(
         )
         const TrackerIconComponent = getActivityIcon(resolvedTracker.icon)
 
+        const resolvedConnectionInstanceId =
+          original.connectionInstanceId ||
+          associatedTask?.connectionInstanceId ||
+          mergedRow.connectionInstanceId
+
+        const resolvedDataSourceId =
+          original.dataSourceId ||
+          associatedTask?.dataSourceId ||
+          mergedRow.dataSourceId
+
         if (isEditing) {
           const isRemote = Boolean(
             (mergedRow.remoteId &&
@@ -487,7 +497,8 @@ export function createTimeEntriesColumns(
           )
           const currentDescription = mergedRow.comments ?? ''
           const currentActivity = mergedRow.activity?.id ?? ''
-          const currentConnectionId = mergedRow.connectionInstanceId ?? ''
+          const currentConnectionId =
+            mergedRow.connectionInstanceId || resolvedConnectionInstanceId || ''
 
           const formattedActivities = activities.map((act) => ({
             id: act.id,
@@ -604,8 +615,8 @@ export function createTimeEntriesColumns(
                 <TooltipTrigger asChild>
                   <div className="border-border/60 bg-secondary/70 hover:bg-secondary inline-flex max-w-[180px] cursor-help items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-colors">
                     <DataSourceLogo
-                      connectionInstanceId={original.connectionInstanceId}
-                      dataSourceId={original.dataSourceId}
+                      connectionInstanceId={resolvedConnectionInstanceId}
+                      dataSourceId={resolvedDataSourceId}
                       className="h-3.5 w-3.5 shrink-0 rounded-xs"
                     />
                     {TrackerIconComponent && (
@@ -678,8 +689,8 @@ export function createTimeEntriesColumns(
               <TooltipTrigger asChild>
                 <div className="border-border/60 bg-secondary/70 hover:bg-secondary inline-flex max-w-[180px] cursor-help items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-colors">
                   <DataSourceLogo
-                    connectionInstanceId={original.connectionInstanceId}
-                    dataSourceId={original.dataSourceId}
+                    connectionInstanceId={resolvedConnectionInstanceId}
+                    dataSourceId={resolvedDataSourceId}
                     className="h-3.5 w-3.5 shrink-0 rounded-xs"
                   />
                   {TrackerIconComponent && (
