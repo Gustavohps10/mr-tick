@@ -33,9 +33,18 @@ test.describe('E2E - Seleção e Busca de Tarefa (TSK-01)', () => {
     await expect(popoverTrigger).toBeVisible()
     await popoverTrigger.click()
 
+    // Valida que o popover abriu
+    await expect(page.getByText('Detalhes da Tarefa')).toBeVisible({
+      timeout: 5000,
+    })
+
     // Input de busca compacto
     const searchInput = page.getByPlaceholder('Buscar ou digitar ID...')
     await expect(searchInput).toBeVisible()
+
+    // Valida que a mini-lista lista as tarefas sincronizadas inicialmente sem busca digitada
+    const initialTask = page.locator('text=DEV-').first()
+    await expect(initialTask).toBeVisible({ timeout: 10000 })
 
     // Digita uma tarefa para buscar
     await searchInput.fill('DEV-552')
@@ -130,5 +139,59 @@ test.describe('E2E - Seleção e Busca de Tarefa (TSK-01)', () => {
     await expect(saveBtn).toBeVisible()
     await saveBtn.click({ force: true })
     await expect(saveBtn).not.toBeVisible()
+  })
+
+  test('deve abrir o popover e selecionar diretamente uma tarefa da listagem inicial sem digitar busca (TSK-03)', async ({
+    page,
+  }) => {
+    const workspaceLink = page.locator('nav a[href*="/workspaces/"]').first()
+    await expect(workspaceLink).toBeVisible({ timeout: 15000 })
+    await workspaceLink.click()
+
+    const syncIndicator = page.locator(
+      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
+    )
+    await expect(syncIndicator).toBeVisible({ timeout: 30000 })
+
+    const actionTriggers = page.locator(
+      '[data-testid="time-entry-actions-trigger"]',
+    )
+    await expect(actionTriggers.first()).toBeVisible({ timeout: 15000 })
+
+    const editBtn = page.locator('[data-testid="time-entry-edit-btn"]')
+    await expect(async () => {
+      await actionTriggers.first().scrollIntoViewIfNeeded()
+      await actionTriggers.first().click()
+      await expect(editBtn).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
+    await editBtn.click()
+
+    // Abre o popover de tarefa
+    const popoverTrigger = page
+      .locator('[data-testid="time-entry-task-popover-trigger"]')
+      .first()
+    await expect(popoverTrigger).toBeVisible()
+    await popoverTrigger.click()
+
+    // Valida que o popover abriu
+    await expect(page.getByText('Detalhes da Tarefa')).toBeVisible({
+      timeout: 5000,
+    })
+
+    // Valida que a mini-lista já exibe tarefas sincronizadas imediatamente
+    const firstListedTask = page.locator('text=DEV-').first()
+    await expect(firstListedTask).toBeVisible({ timeout: 10000 })
+
+    // Clica diretamente na tarefa listada sem digitar nada no input de busca
+    await firstListedTask.click()
+
+    // Salva a alteração
+    const saveBtn = page.locator('[data-testid="time-entry-save-btn"]').first()
+    await expect(saveBtn).toBeVisible()
+    await saveBtn.click({ force: true })
+
+    // Verifica que a alteração foi persistida e a linha exibe a tarefa
+    await expect(saveBtn).not.toBeVisible()
+    await expect(page.locator('text=DEV-').first()).toBeVisible()
   })
 })

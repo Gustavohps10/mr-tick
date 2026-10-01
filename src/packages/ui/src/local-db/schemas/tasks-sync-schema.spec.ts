@@ -45,6 +45,45 @@ describe('Tasks Schema Validation', () => {
     expect(inserted.description).toBeNull()
     expect(inserted.dueDate).toBeNull()
 
+    // Testar query do TaskPopover sem busca
+    const selector: any = {
+      _deleted: { $eq: false },
+      connectionInstanceId: { $eq: 'gustavohps10-redmine-2df61e0d' },
+    }
+    const docs = await collection.find({ selector, limit: 30 }).exec()
+    expect(docs.length).toBe(1)
+    expect(docs[0].id).toBe('gustavohps10-redmine-2df61e0d::76314')
+
+    // Testar query com busca por ID '76314'
+    const searchSelector: any = {
+      _deleted: { $eq: false },
+      connectionInstanceId: { $eq: 'gustavohps10-redmine-2df61e0d' },
+      $or: [
+        { sourceId: { $regex: '76314', $options: 'i' } },
+        { id: { $regex: '76314', $options: 'i' } },
+        { title: { $regex: '76314', $options: 'i' } },
+      ],
+    }
+    const searchDocs = await collection
+      .find({ selector: searchSelector, limit: 30 })
+      .exec()
+    expect(searchDocs.length).toBe(1)
+
+    // Testar query com busca por texto 'DAILY'
+    const textSelector: any = {
+      _deleted: { $eq: false },
+      connectionInstanceId: { $eq: 'gustavohps10-redmine-2df61e0d' },
+      $or: [
+        { sourceId: { $regex: 'DAILY', $options: 'i' } },
+        { id: { $regex: 'DAILY', $options: 'i' } },
+        { title: { $regex: 'DAILY', $options: 'i' } },
+      ],
+    }
+    const textDocs = await collection
+      .find({ selector: textSelector, limit: 30 })
+      .exec()
+    expect(textDocs.length).toBe(1)
+
     await db.close()
     removeDatabaseFromCache(workspaceId, true)
   })

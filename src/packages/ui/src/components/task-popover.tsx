@@ -1,6 +1,6 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CircleDashed,
   ExternalLink,
@@ -172,19 +172,39 @@ export function TaskPopover({
     defaultSyncConnections ??
     []
 
-  const validConnection = syncConnections.find(
-    (c) => c.connectionId === propSelectedConnectionId,
-  )
-  const fallbackConnection = syncConnections.find(
-    (c) => c.connectionId === trackerContext?.selectedConnectionId,
-  )
-  const selectedConnectionId =
-    validConnection?.connectionId ?? fallbackConnection?.connectionId ?? ''
+  const [internalConnectionId, setInternalConnectionId] = useState('')
 
-  const setSelectedConnectionId =
-    propOnConnectionChange ??
-    trackerContext?.setSelectedConnectionId ??
-    (() => {})
+  const selectedConnectionId = useMemo(() => {
+    if (propSelectedConnectionId) return propSelectedConnectionId
+    if (internalConnectionId) return internalConnectionId
+    if (trackerContext?.selectedConnectionId) {
+      return trackerContext.selectedConnectionId
+    }
+    if (syncConnections.length === 1) {
+      const single = syncConnections[0]
+      if (single) return single.connectionId
+    }
+    return ''
+  }, [
+    propSelectedConnectionId,
+    internalConnectionId,
+    trackerContext?.selectedConnectionId,
+    syncConnections,
+  ])
+
+  const setSelectedConnectionId = useCallback(
+    (connId: string) => {
+      setInternalConnectionId(connId)
+      if (propOnConnectionChange) {
+        propOnConnectionChange(connId)
+        return
+      }
+      if (trackerContext?.setSelectedConnectionId) {
+        trackerContext.setSelectedConnectionId(connId)
+      }
+    },
+    [propOnConnectionChange, trackerContext],
+  )
 
   const activities =
     propActivities && propActivities.length > 0
@@ -199,6 +219,7 @@ export function TaskPopover({
   const onCommitAndClose = propOnCommitAndClose
 
   const db = useSyncStore((s) => s.db)
+  const queryClient = useQueryClient()
   const [internalOpen, setInternalOpen] = useState(false)
   const isOpen = propOpen ?? internalOpen
   const setIsOpen = propOnOpenChange ?? setInternalOpen
@@ -219,13 +240,65 @@ export function TaskPopover({
     })
   }, [])
 
+  const miniTasksQueryKey = useMemo(
+    () => ['popover-tasks-mini', debouncedSearch, selectedConnectionId],
+    [debouncedSearch, selectedConnectionId],
+  )
+
+  // Subscription reativa ao RxDB em tempo real quando o popover estiver aberto
+  useEffect(() => {
+    if (!db?.tasks || !isOpen) return
+
+    const selector: MangoQuery<SyncTaskRxDBDTO>['selector'] = {
+      _deleted: { $ne: true },
+    }
+
+    if (selectedConnectionId) {
+      selector.connectionInstanceId = { $eq: selectedConnectionId }
+    }
+
+    if (debouncedSearch.trim()) {
+      const queryStr = debouncedSearch.trim()
+      const pureQuery = extractPureTaskId(queryStr)
+      const escaped = queryStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      selector.$or = [
+        { sourceId: { $regex: pureQuery || escaped, $options: 'i' } },
+        { id: { $regex: escaped, $options: 'i' } },
+        { title: { $regex: escaped, $options: 'i' } },
+      ]
+    }
+
+    const query = db.tasks.find({ selector })
+    const subscription = query.$.subscribe((docs) => {
+      const mapped = docs.map((docItem) => docItem.toMutableJSON())
+      const sorted = mapped
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        )
+        .slice(0, 50)
+      queryClient.setQueryData(miniTasksQueryKey, sorted)
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [
+    db,
+    isOpen,
+    debouncedSearch,
+    selectedConnectionId,
+    miniTasksQueryKey,
+    queryClient,
+  ])
+
   // Buscar tarefas no RxDB de forma otimizada
   const { data: tasksList = [] } = useQuery<SyncTaskRxDBDTO[]>({
-    queryKey: ['popover-tasks-mini', debouncedSearch, selectedConnectionId],
+    queryKey: miniTasksQueryKey,
     queryFn: async () => {
       if (!db?.tasks) return []
       const selector: MangoQuery<SyncTaskRxDBDTO>['selector'] = {
-        _deleted: { $eq: false },
+        _deleted: { $ne: true },
       }
 
       if (selectedConnectionId) {
@@ -243,18 +316,14 @@ export function TaskPopover({
         ]
       }
 
-      const docs = await db.tasks
-        .find({
-          selector,
-          limit: 30,
-        })
-        .exec()
+      const docs = await db.tasks.find({ selector }).exec()
 
       const mapped = docs.map((docItem) => docItem.toMutableJSON())
-      return mapped.sort(
+      const sorted = mapped.sort(
         (a, b) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       )
+      return sorted.slice(0, 50)
     },
     enabled: isOpen && !!db?.tasks,
   })
@@ -318,7 +387,7 @@ export function TaskPopover({
         const docs = await db.tasks
           .find({
             selector: {
-              _deleted: { $eq: false },
+              _deleted: { $ne: true },
               $or: [
                 { id: { $eq: cleanId } },
                 { sourceId: { $eq: cleanId } },
@@ -328,7 +397,7 @@ export function TaskPopover({
             limit: 1,
           })
           .exec()
-        const firstDoc = docs[0]
+        const [firstDoc] = docs
         if (firstDoc) matched = firstDoc.toMutableJSON()
       } catch (e) {
         console.error('Erro ao buscar tarefa no Enter:', e)

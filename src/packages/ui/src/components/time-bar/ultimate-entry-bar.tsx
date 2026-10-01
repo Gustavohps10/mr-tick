@@ -1739,6 +1739,7 @@ UltimateTimeTracker.TaskBlock = function TaskBlock() {
         trigger={
           <div className="relative cursor-pointer">
             <Button
+              data-testid="timerbar-task-popover-trigger"
               variant={isEditingVertical ? 'secondary' : 'ghost'}
               size="icon"
               className={cn(
@@ -1781,6 +1782,7 @@ UltimateTimeTracker.TaskBlock = function TaskBlock() {
 
       {formattedLabel && (
         <span
+          data-testid="timerbar-task-badge"
           onClick={() => setIsEditingVertical(true)}
           title={formattedLabel.full}
           className={cn(
