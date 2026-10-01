@@ -1,6 +1,6 @@
 {
   "name": "@mr-tick/application",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "private": true,
   "description": "Contém os serviços e casos de uso (use cases) da aplicação Mr-tick.",
   "type": "module",

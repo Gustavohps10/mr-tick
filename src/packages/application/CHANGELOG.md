@@ -1,5 +1,12 @@
 # @mr-tick/application
 
+## 1.2.2
+
+### Patch Changes
+
+- Updated dependencies [0c03498]
+  - @mr-tick/domain@1.0.3
+
 ## 1.2.1
 
 ### Patch Changes
