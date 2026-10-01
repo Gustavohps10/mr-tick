@@ -3,6 +3,7 @@ import { TimeEntryViewModel } from '@mr-tick/shared/view-models'
 import { RxCollection } from 'rxdb'
 
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
+import { cleanTaskId } from '@/pages/time-entries/lib/time-entries-utils'
 
 import {
   IReplicationStrategy,
@@ -151,16 +152,30 @@ export class TimeEntriesReplication implements IReplicationStrategy<
       // Tertiary lookup: match unlinked pending_push document with identical task and start date
       if (!existingLocalDoc) {
         const itemStartDate = dateToISO(item.startDate)
+        const itemDatePart = itemStartDate ? itemStartDate.split('T')[0] : ''
+        const itemTaskIdClean = item.task?.id ? cleanTaskId(item.task.id) : ''
+
         const pendingMatch = existingDocs.find((d) => {
           const dData = d.toMutableJSON()
           if (dData.remoteId) return false
           if (dData.syncStatus !== 'pending_push') return false
+
+          const localTaskIdClean = dData.task?.id
+            ? cleanTaskId(dData.task.id)
+            : ''
           const taskMatch =
-            dData.task?.id && item.task?.id && dData.task.id === item.task.id
+            Boolean(localTaskIdClean) &&
+            Boolean(itemTaskIdClean) &&
+            localTaskIdClean === itemTaskIdClean
+
+          const localDatePart = dData.startDate
+            ? dData.startDate.split('T')[0]
+            : ''
           const dateMatch =
-            dData.startDate &&
-            itemStartDate &&
-            dData.startDate === itemStartDate
+            Boolean(localDatePart) &&
+            Boolean(itemDatePart) &&
+            localDatePart === itemDatePart
+
           return Boolean(taskMatch && dateMatch)
         })
         if (pendingMatch) existingLocalDoc = pendingMatch.toMutableJSON()
@@ -190,6 +205,23 @@ export class TimeEntriesReplication implements IReplicationStrategy<
 
       const rawStartDate = dateToISO(item.startDate)
       let resolvedStartDate = rawStartDate
+      let resolvedEndDate = dateToISO(item.endDate) ?? null
+
+      if (existingLocalDoc && existingLocalDoc.startDate) {
+        const localDatePart = existingLocalDoc.startDate.split('T')[0]
+        const remoteDatePart = rawStartDate ? rawStartDate.split('T')[0] : ''
+        if (
+          localDatePart &&
+          remoteDatePart &&
+          localDatePart === remoteDatePart
+        ) {
+          resolvedStartDate = existingLocalDoc.startDate
+          if (existingLocalDoc.endDate) {
+            resolvedEndDate = existingLocalDoc.endDate
+          }
+        }
+      }
+
       if (!resolvedStartDate) {
         const rawCreatedAt = dateToISO(item.createdAt)
         resolvedStartDate = rawCreatedAt ? rawCreatedAt : nowIso
@@ -200,9 +232,6 @@ export class TimeEntriesReplication implements IReplicationStrategy<
 
       const parsedUpdatedAt = dateToISO(item.updatedAt)
       const updatedAtIso = parsedUpdatedAt ? parsedUpdatedAt : nowIso
-
-      const parsedEndDate = dateToISO(item.endDate)
-      const endDateIso = parsedEndDate ? parsedEndDate : null
 
       // Support both legacy seconds (> 24) and decimal hours
       let resolvedTimeSpent = item.timeSpent
@@ -226,6 +255,37 @@ export class TimeEntriesReplication implements IReplicationStrategy<
         type = existingLocalDoc.type
       }
 
+      let resolvedTaskData = existingLocalDoc
+        ? existingLocalDoc.taskData
+        : undefined
+      const rawItemTaskName =
+        item.task &&
+        'name' in item.task &&
+        typeof item.task.name === 'string' &&
+        item.task.name.trim() !== ''
+          ? item.task.name.trim()
+          : ''
+
+      if (!resolvedTaskData && rawItemTaskName && item.task?.id) {
+        const sourceId = cleanTaskId(item.task.id)
+        resolvedTaskData = {
+          id: `${this.connectionInstanceId}::${sourceId}`,
+          sourceId,
+          connectionInstanceId: this.connectionInstanceId,
+          dataSourceId: this.pluginId,
+          _deleted: false,
+          syncStatus: 'synced',
+          lastPulledAt: nowIso,
+          lastPushedAt: null,
+          lastReconciledAt: nowIso,
+          title: rawItemTaskName,
+          status: { id: '1', name: 'Ativa' },
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          timeEntryIds: [docId],
+        }
+      }
+
       docs.push({
         id: docId,
         remoteId,
@@ -236,13 +296,13 @@ export class TimeEntriesReplication implements IReplicationStrategy<
         lastPulledAt: nowIso,
         lastPushedAt: existingLocalDoc ? existingLocalDoc.lastPushedAt : null,
         task: item.task,
-        taskData: existingLocalDoc ? existingLocalDoc.taskData : undefined,
+        taskData: resolvedTaskData,
         activity: item.activity,
         user: item.user,
         timeSpent: resolvedTimeSpent,
         comments: typeof item.comments === 'string' ? item.comments : null,
         startDate: resolvedStartDate,
-        endDate: endDateIso,
+        endDate: resolvedEndDate,
         createdAt: createdAtIso,
         updatedAt: updatedAtIso,
         timeStatus,
@@ -256,6 +316,24 @@ export class TimeEntriesReplication implements IReplicationStrategy<
           ? existingLocalDoc.timerConfig
           : undefined,
       })
+    }
+
+    if (this.collection?.database?.collections?.tasks) {
+      const tasksCol = this.collection.database.collections.tasks
+      for (const doc of docs) {
+        if (doc.taskData?.title && doc.taskData.id) {
+          try {
+            const existingTask = await tasksCol.findOne(doc.taskData.id).exec()
+            if (!existingTask) {
+              await tasksCol.insert(doc.taskData)
+            } else if (!existingTask.title && doc.taskData.title) {
+              await existingTask.incrementalPatch({ title: doc.taskData.title })
+            }
+          } catch {
+            // Silencia se houver concorrência na inserção
+          }
+        }
+      }
     }
 
     const parsedLastUpdatedAt = dateToISO(last.updatedAt)

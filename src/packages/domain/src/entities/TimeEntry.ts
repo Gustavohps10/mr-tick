@@ -6,6 +6,7 @@ import { Entity } from '@/entities/Entity'
 const CommentSchema = z
   .string()
   .max(255, 'O comentário não pode ter mais que 255 caracteres')
+  .nullable()
   .optional()
 
 const UserSchema = z.object({
@@ -164,7 +165,7 @@ export class TimeEntry extends Entity {
 
   // ===== Mutations =====
 
-  updateComments(comments?: string): Either<AppError, TimeEntry> {
+  updateComments(comments?: string | null): Either<AppError, TimeEntry> {
     const parsed = CommentSchema.safeParse(comments)
 
     if (!parsed.success) {
@@ -175,7 +176,13 @@ export class TimeEntry extends Entity {
       )
     }
 
-    this._comments = comments?.trim()
+    let nextComments: string | undefined = undefined
+    if (parsed.data) {
+      const trimmed = parsed.data.trim()
+      if (trimmed.length > 0) nextComments = trimmed
+    }
+
+    this._comments = nextComments
     this.touch()
     return Either.success(this)
   }

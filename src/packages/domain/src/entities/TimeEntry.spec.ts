@@ -62,6 +62,16 @@ describe('TimeEntry Entity', () => {
       expect(entry.endDate).toEqual(endDate)
     })
 
+    it('should create successfully when comments is explicitly null', () => {
+      const props = { ...makeValidProps(), timeSpent: 1800, comments: null }
+
+      const result = TimeEntry.create(props)
+
+      expect(result.isSuccess()).toBe(true)
+      const entry = result.success
+      expect(entry.comments).toBeUndefined()
+    })
+
     it('should create successfully and calculate accurate duration when interval crosses midnight (TMR-04)', () => {
       const startDate = new Date('2024-05-01T23:55:00Z')
       const endDate = new Date('2024-05-02T00:05:00Z')
