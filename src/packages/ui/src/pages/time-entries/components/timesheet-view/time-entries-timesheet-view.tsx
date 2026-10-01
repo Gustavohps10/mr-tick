@@ -186,17 +186,20 @@ function TimesheetTaskChip({
 export interface TimeEntriesTimesheetViewProps {
   className?: string
   compact?: boolean
+  initialDate?: Date
 }
 
 export function TimeEntriesTimesheetView({
   className,
   compact = false,
+  initialDate,
 }: TimeEntriesTimesheetViewProps = {}) {
   const queryClient = useQueryClient()
   const { mappings } = useFieldMappings()
-  const [currentWeekDate, setCurrentWeekDate] = React.useState<Date>(
-    () => new Date(),
-  )
+  const [currentWeekDate, setCurrentWeekDate] = React.useState<Date>(() => {
+    if (initialDate) return initialDate
+    return new Date()
+  })
 
   // 7 days interval of the active week (Segunda a Domingo)
   const weekDays = React.useMemo(() => {

@@ -65,15 +65,20 @@ const WEEK_DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
 export interface TimeEntriesCalendarViewProps {
   className?: string
   compact?: boolean
+  initialDate?: Date
 }
 
 export function TimeEntriesCalendarView({
   className,
   compact = false,
+  initialDate,
 }: TimeEntriesCalendarViewProps = {}) {
   const queryClient = useQueryClient()
   const { mappings } = useFieldMappings()
-  const [currentMonth, setCurrentMonth] = React.useState<Date>(() => new Date())
+  const [currentMonth, setCurrentMonth] = React.useState<Date>(() => {
+    if (initialDate) return initialDate
+    return new Date()
+  })
 
   // Calculate days matrix for the visible calendar
   const calendarDays = React.useMemo(() => {

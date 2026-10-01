@@ -239,6 +239,8 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
     recoverRunningEntry: async () => {},
   }))
 
+  const testReferenceDate = new Date('2026-09-29T12:00:00.000Z')
+
   it('renders TimeEntriesCalendarView compact mode with clean task IDs and full month data', () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -252,7 +254,10 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
               <DataSourceConnectionsContext.Provider
                 value={mockConnectionsValue}
               >
-                <TimeEntriesCalendarView compact />
+                <TimeEntriesCalendarView
+                  compact
+                  initialDate={testReferenceDate}
+                />
               </DataSourceConnectionsContext.Provider>
             </TimeEntryContext.Provider>
           </WorkspaceContext.Provider>
@@ -283,7 +288,10 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
               <DataSourceConnectionsContext.Provider
                 value={mockConnectionsValue}
               >
-                <TimeEntriesTimesheetView compact />
+                <TimeEntriesTimesheetView
+                  compact
+                  initialDate={testReferenceDate}
+                />
               </DataSourceConnectionsContext.Provider>
             </TimeEntryContext.Provider>
           </WorkspaceContext.Provider>
