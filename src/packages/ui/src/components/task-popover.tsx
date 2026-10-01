@@ -234,9 +234,12 @@ export function TaskPopover({
 
       if (debouncedSearch.trim()) {
         const queryStr = debouncedSearch.trim()
+        const pureQuery = extractPureTaskId(queryStr)
+        const escaped = queryStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         selector.$or = [
-          { id: { $regex: queryStr, $options: 'i' } },
-          { title: { $regex: queryStr, $options: 'i' } },
+          { sourceId: { $regex: pureQuery || escaped, $options: 'i' } },
+          { id: { $regex: escaped, $options: 'i' } },
+          { title: { $regex: escaped, $options: 'i' } },
         ]
       }
 
@@ -244,11 +247,14 @@ export function TaskPopover({
         .find({
           selector,
           limit: 30,
-          sort: [{ updatedAt: 'desc' }],
         })
         .exec()
 
-      return docs.map((docItem) => docItem.toMutableJSON())
+      const mapped = docs.map((docItem) => docItem.toMutableJSON())
+      return mapped.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      )
     },
     enabled: isOpen && !!db?.tasks,
   })

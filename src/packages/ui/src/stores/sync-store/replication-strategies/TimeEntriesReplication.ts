@@ -411,7 +411,7 @@ export class TimeEntriesReplication implements IReplicationStrategy<
         const entry: SyncTimeEntryDTO = {
           id: entryId,
           _deleted: doc._deleted,
-          task: { id: doc.task.id },
+          task: { id: cleanTaskId(doc.task.id) },
           activity: { id: doc.activity.id, name: doc.activity.name },
           user: { id: doc.user.id, name: doc.user.name },
           timeSpent: doc.timeSpent,
@@ -437,8 +437,8 @@ export class TimeEntriesReplication implements IReplicationStrategy<
           entry.assumedMasterState = {
             id: assumedId,
             task: serverConflictState.task
-              ? { id: serverConflictState.task.id }
-              : { id: doc.task.id },
+              ? { id: cleanTaskId(serverConflictState.task.id) }
+              : { id: cleanTaskId(doc.task.id) },
             activity: serverConflictState.activity
               ? {
                   id: serverConflictState.activity.id,
@@ -471,7 +471,7 @@ export class TimeEntriesReplication implements IReplicationStrategy<
 
           entry.assumedMasterState = {
             id: assumedId,
-            task: { id: assumedState.task.id },
+            task: { id: cleanTaskId(assumedState.task.id) },
             activity: {
               id: assumedState.activity.id,
               name: assumedState.activity.name,

@@ -31,20 +31,20 @@ export interface SyncTaskRxDBDTO {
 
   // ── Dados de negócio ─────────────────────────
   title: string
-  description?: string
-  url?: string
-  projectName?: string
+  description?: string | null
+  url?: string | null
+  projectName?: string | null
   status: { id: string; name: string }
-  tracker?: { id: string }
-  priority?: { id: string; name: string }
-  author?: { id?: string; name: string }
-  assignedTo?: { id?: string; name: string }
+  tracker?: { id: string } | null
+  priority?: { id: string; name: string } | null
+  author?: { id?: string; name: string } | null
+  assignedTo?: { id?: string; name: string } | null
   createdAt: string
   updatedAt: string
-  startDate?: string
-  dueDate?: string
-  doneRatio?: number
-  spentHours?: number
+  startDate?: string | null
+  dueDate?: string | null
+  doneRatio?: number | null
+  spentHours?: number | null
   estimatedTimes?: SyncEstimatedTimeRxDBDTO[]
   statusChanges?: {
     fromStatus: string
@@ -84,9 +84,9 @@ export const tasksSyncSchema: RxJsonSchema<SyncTaskRxDBDTO> = {
     lastPushedAt: { type: ['string', 'null'], format: 'date-time' },
     lastReconciledAt: { type: ['string', 'null'], format: 'date-time' },
     title: { type: 'string', maxLength: 250 },
-    description: { type: 'string' },
-    url: { type: 'string' },
-    projectName: { type: 'string' },
+    description: { type: ['string', 'null'] },
+    url: { type: ['string', 'null'] },
+    projectName: { type: ['string', 'null'] },
     status: {
       type: 'object',
       properties: {
@@ -128,10 +128,10 @@ export const tasksSyncSchema: RxJsonSchema<SyncTaskRxDBDTO> = {
     },
     createdAt: { type: 'string', format: 'date-time', maxLength: 30 },
     updatedAt: { type: 'string', format: 'date-time', maxLength: 30 },
-    startDate: { type: 'string', format: 'date-time', maxLength: 30 },
-    dueDate: { type: 'string', format: 'date-time', maxLength: 30 },
-    doneRatio: { type: 'number' },
-    spentHours: { type: 'number' },
+    startDate: { type: ['string', 'null'], format: 'date-time', maxLength: 30 },
+    dueDate: { type: ['string', 'null'], format: 'date-time', maxLength: 30 },
+    doneRatio: { type: ['number', 'null'] },
+    spentHours: { type: ['number', 'null'] },
     estimatedTimes: {
       type: 'array',
       items: {
@@ -212,6 +212,7 @@ export const tasksSyncSchema: RxJsonSchema<SyncTaskRxDBDTO> = {
     'updatedAt',
   ],
   indexes: [
+    'connectionInstanceId',
     'dataSourceId',
     'status.name',
     'createdAt',

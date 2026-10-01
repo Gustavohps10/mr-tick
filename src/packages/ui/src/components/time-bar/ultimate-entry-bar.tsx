@@ -918,8 +918,9 @@ export const UltimateTimeTracker = ({
 
   const handleSelectTask = useCallback(
     async (task: SyncTaskRxDBDTO) => {
+      const pureId = extractPureTaskId(task.sourceId || task.id)
       setSelectedTask(task)
-      setTaskId(task.id)
+      setTaskId(pureId)
       const connId = task.connectionInstanceId || selectedConnectionId
       if (connId) {
         setSelectedConnectionId(connId)
@@ -927,7 +928,7 @@ export const UltimateTimeTracker = ({
 
       if (!activeEntry || !db) {
         bridge.events.emit('tracker:draft-sync', {
-          taskId: task.id,
+          taskId: pureId,
           selectedTask: task,
           selectedConnectionId: connId,
         })
@@ -937,7 +938,7 @@ export const UltimateTimeTracker = ({
       const doc = await db.timeEntries.findOne(activeEntry.id).exec()
       if (doc) {
         const updated = await doc.patch({
-          task: { id: task.id },
+          task: { id: pureId },
           taskData: task,
           connectionInstanceId: connId,
           dataSourceId: task.dataSourceId || activeEntry.dataSourceId,
