@@ -1,5 +1,13 @@
 ﻿# @mr-tick/ui
 
+## 1.4.1
+
+### Patch Changes
+
+- 0c03498: Adicionar suporte a comments nulos e fuso horário noturno na entidade TimeEntry e suíte E2E automatizada de sincronização e cenários caóticos com DataSource Fake
+  - @mr-tick/sdk@0.5.0
+  - @mr-tick/application@1.2.2
+
 ## 1.4.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @mr-tick/adapters
 
+## 1.1.3
+
+### Patch Changes
+
+- Updated dependencies [0c03498]
+  - @mr-tick/domain@1.0.3
+  - @mr-tick/application@1.2.2
+
 ## 1.1.2
 
 ### Patch Changes
