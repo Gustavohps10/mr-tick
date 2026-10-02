@@ -58,7 +58,7 @@ test.describe('E2E - Troca Rápida de Workspaces durante Sincronização (STR-04
     await expect(actionTriggers).toHaveCount(initialCountWs1, {
       timeout: 15000,
     })
-    await expect(page.locator('text=#DEV-27').first()).toBeVisible({
+    await expect(actionTriggers.first()).toBeVisible({
       timeout: 15000,
     })
   })

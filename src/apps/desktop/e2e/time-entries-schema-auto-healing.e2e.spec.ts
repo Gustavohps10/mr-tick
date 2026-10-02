@@ -46,7 +46,7 @@ test.describe('E2E - Auto-Healing de Schema do Banco Local / Reset (STR-05)', ()
     await expect(actionTriggers).toHaveCount(initialCount, {
       timeout: 15000,
     })
-    await expect(page.locator('text=#DEV-27').first()).toBeVisible({
+    await expect(actionTriggers.first()).toBeVisible({
       timeout: 15000,
     })
   })

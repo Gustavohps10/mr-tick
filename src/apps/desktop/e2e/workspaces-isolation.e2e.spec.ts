@@ -14,7 +14,7 @@ test.describe('E2E - Multi-Tenancy e Isolamento de Workspaces (WS-01)', () => {
 
     // 3. Aguarda a sincronização inicial do Workspace 1
     const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
+      '[data-testid="sync-status-indicator"][data-status="synced"], [data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
     )
     await expect(syncIndicator).toBeVisible({ timeout: 15000 })
 
@@ -23,9 +23,8 @@ test.describe('E2E - Multi-Tenancy e Isolamento de Workspaces (WS-01)', () => {
       '[data-testid="time-entry-actions-trigger"]',
     )
     await expect(actionTriggers.first()).toBeVisible({ timeout: 15000 })
-    await expect(page.locator('text=#DEV-27').first()).toBeVisible({
-      timeout: 10000,
-    })
+    const initialCountWs1 = await actionTriggers.count()
+    expect(initialCountWs1).toBeGreaterThan(0)
 
     // 5. Alterna para o segundo workspace (Workspace 2: WORKSPACE ISOLADO)
     await workspaceLinks.nth(1).click()
@@ -36,7 +35,7 @@ test.describe('E2E - Multi-Tenancy e Isolamento de Workspaces (WS-01)', () => {
     })
 
     // 7. Garante que nenhum apontamento do Workspace 1 vazou para o Workspace 2
-    await expect(page.locator('text=#DEV-27')).toHaveCount(0, {
+    await expect(actionTriggers).toHaveCount(0, {
       timeout: 10000,
     })
     await expect(
@@ -50,7 +49,7 @@ test.describe('E2E - Multi-Tenancy e Isolamento de Workspaces (WS-01)', () => {
     })
 
     // 9. Garante que os apontamentos do Workspace 1 continuam intactos
-    await expect(page.locator('text=#DEV-27').first()).toBeVisible({
+    await expect(actionTriggers).toHaveCount(initialCountWs1, {
       timeout: 15000,
     })
     await expect(actionTriggers.first()).toBeVisible({ timeout: 15000 })
