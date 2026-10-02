@@ -88,9 +88,9 @@ function addonMatchesCategory(
       primaryCategory === 'datasources' ||
       primaryCategory === 'datasource' ||
       categoriesList.includes('datasource') ||
+      categoriesList.includes('datasources') ||
       tagsList.includes('datasource') ||
-      tagsList.includes('redmine') ||
-      tagsList.includes('mock')
+      tagsList.includes('datasources')
     )
   }
 
@@ -99,9 +99,9 @@ function addonMatchesCategory(
       primaryCategory === 'watchers' ||
       primaryCategory === 'watcher' ||
       categoriesList.includes('watcher') ||
+      categoriesList.includes('watchers') ||
       tagsList.includes('watcher') ||
-      tagsList.includes('discord') ||
-      tagsList.includes('ai')
+      tagsList.includes('watchers')
     )
   }
 

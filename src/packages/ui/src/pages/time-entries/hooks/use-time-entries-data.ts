@@ -1,15 +1,18 @@
 import { eachDayOfInterval, isValid, parseISO, subDays } from 'date-fns'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { DateRange } from 'react-day-picker'
 import { useSearchParams } from 'react-router-dom'
 
-import { useDataSourceConnections } from '@/hooks'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useDataSourceConnections, useHostBridge } from '@/hooks'
 import {
   useActivitiesQuery,
   useTasksQuery,
   useTimeEntriesQuery,
 } from '@/hooks/queries'
+import { fetchAndPersistTasks } from '@/lib/tasks-enrichment'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
+import { extractPureTaskId } from '@/pages/time-entries/lib/time-entries-utils'
 import { useSyncStore } from '@/stores/syncStore'
 import { useTimeEntryStore } from '@/stores/timeEntryStore'
 
@@ -100,6 +103,54 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
     }
     return map
   }, [tasks])
+
+  const hostBridge = useHostBridge()
+  const { workspace } = useWorkspace()
+  const requestedTaskIdsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!db || !workspace?.id || !timeEntries || timeEntries.length === 0)
+      return
+
+    const missingByConnection = new Map<string, string[]>()
+
+    for (const entry of timeEntries) {
+      const connId = entry.connectionInstanceId
+      if (!connId) continue
+      const rawTaskId = entry.task?.id
+      if (!rawTaskId) continue
+      const pureId = extractPureTaskId(rawTaskId)
+      if (!pureId) continue
+      if (tasksById[pureId]?.title) continue
+
+      const cacheKey = `${connId}::${pureId}`
+      if (requestedTaskIdsRef.current.has(cacheKey)) continue
+      requestedTaskIdsRef.current.add(cacheKey)
+
+      const currentList = missingByConnection.get(connId)
+      if (currentList) {
+        currentList.push(pureId)
+        continue
+      }
+      missingByConnection.set(connId, [pureId])
+    }
+
+    if (missingByConnection.size === 0) return
+
+    missingByConnection.forEach((ids, connId) => {
+      const conn = connections.find((c) => c.connectionId === connId)
+      const dsId = conn?.dataSourceId ? conn.dataSourceId : 'datasource'
+
+      fetchAndPersistTasks({
+        hostBridge,
+        db,
+        workspaceId: workspace.id,
+        connectionInstanceId: connId,
+        dataSourceId: dsId,
+        ids,
+      })
+    })
+  }, [db, workspace?.id, timeEntries, tasksById, connections, hostBridge])
 
   const daysInRange = useMemo(() => {
     return eachDayOfInterval({ start: range.from, end: range.to }).reverse()

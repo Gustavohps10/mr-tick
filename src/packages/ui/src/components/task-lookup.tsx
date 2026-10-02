@@ -1,7 +1,11 @@
 'use client'
 
 import { WorkspaceConnectionDTO } from '@mr-tick/application'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   AlertCircle,
@@ -22,6 +26,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import { MangoQuerySelector } from 'rxdb'
@@ -46,17 +51,22 @@ import {
 } from '@/components/ui/select'
 import { useDataSourceConnections } from '@/contexts/DataSourceConnectionsContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useHostBridge } from '@/hooks'
 import {
   resolveEntityMapping,
   useFieldMappings,
 } from '@/hooks/use-field-mappings'
+import { fetchAndPersistTasks } from '@/lib/tasks-enrichment'
 import { cn } from '@/lib/utils'
 import {
   SyncMetadataItem,
   SyncMetadataRxDBDTO,
 } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
-import { cleanTaskId } from '@/pages/time-entries/lib/time-entries-utils'
+import {
+  cleanTaskId,
+  extractPureTaskId,
+} from '@/pages/time-entries/lib/time-entries-utils'
 import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
 
 interface TaskLookupModalProps {
@@ -269,6 +279,81 @@ export function TaskLookup({
 
   const allTasks = useMemo(() => data?.pages.flat() ?? [], [data])
 
+  const hostBridge = useHostBridge()
+  const searchedTermsRef = useRef<Set<string>>(new Set())
+  const [isSearchingRemote, setIsSearchingRemote] = useState(false)
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    if (!isModalOpen || !db || !workspace?.id || !debouncedSearch.trim()) return
+
+    const queryStr = debouncedSearch.trim()
+    const pureId = extractPureTaskId(queryStr)
+    const isPureNumeric = /^\d+$/.test(pureId)
+
+    const targetConnections =
+      effectiveConnectionIds.length > 0
+        ? availableConnections.filter((c) =>
+            effectiveConnectionIds.includes(c.id),
+          )
+        : availableConnections
+
+    if (targetConnections.length === 0) return
+
+    let needsRemoteSearch = false
+    for (const conn of targetConnections) {
+      const searchKey = `${conn.id}::${queryStr}`
+      if (!searchedTermsRef.current.has(searchKey)) {
+        needsRemoteSearch = true
+        searchedTermsRef.current.add(searchKey)
+      }
+    }
+
+    if (!needsRemoteSearch) return
+
+    let isSubscribed = true
+    setIsSearchingRemote(true)
+
+    const promises = targetConnections.map((conn) =>
+      fetchAndPersistTasks({
+        hostBridge,
+        db,
+        workspaceId: workspace.id,
+        connectionInstanceId: conn.id,
+        dataSourceId: conn.dataSourceId,
+        ids: isPureNumeric ? [pureId] : undefined,
+        search: !isPureNumeric ? queryStr : undefined,
+      }),
+    )
+
+    Promise.all(promises)
+      .then((results) => {
+        if (!isSubscribed) return
+        setIsSearchingRemote(false)
+        const totalFetched = results.reduce((acc, curr) => acc + curr.length, 0)
+        if (totalFetched > 0) {
+          queryClient.invalidateQueries({ queryKey: ['task-lookup'] })
+        }
+      })
+      .catch(() => {
+        if (!isSubscribed) return
+        setIsSearchingRemote(false)
+      })
+
+    return () => {
+      isSubscribed = false
+    }
+  }, [
+    isModalOpen,
+    db,
+    workspace?.id,
+    debouncedSearch,
+    effectiveConnectionIds,
+    availableConnections,
+    hostBridge,
+    queryClient,
+  ])
+
   const rowVirtualizer = useVirtualizer({
     count: hasNextPage ? allTasks.length + 1 : allTasks.length,
     getScrollElement: () => scrollElement,
@@ -350,7 +435,7 @@ export function TaskLookup({
           {/* Header Command Input Bar */}
           <DialogHeader className="border-border/30 space-y-0 border-b p-0">
             <div className="border-border/20 relative flex items-center border-b px-4 py-3">
-              {isLoading ? (
+              {isLoading || isSearchingRemote ? (
                 <Loader2 className="text-primary h-5 w-5 shrink-0 animate-spin" />
               ) : singleSelectedConnection?.logo ? (
                 <img

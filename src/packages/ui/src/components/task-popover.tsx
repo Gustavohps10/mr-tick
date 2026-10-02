@@ -34,10 +34,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { AddonConnectionView } from '@/contexts/DataSourceConnectionsContext'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useHostBridge } from '@/hooks'
 import {
   resolveEntityMapping,
   useFieldMappings,
 } from '@/hooks/use-field-mappings'
+import { fetchAndPersistTasks } from '@/lib/tasks-enrichment'
 import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { extractPureTaskId } from '@/pages/time-entries/lib/time-entries-utils'
@@ -175,7 +178,15 @@ export function TaskPopover({
   const [internalConnectionId, setInternalConnectionId] = useState('')
 
   const selectedConnectionId = useMemo(() => {
-    if (propSelectedConnectionId) return propSelectedConnectionId
+    if (propSelectedConnectionId) {
+      const match = syncConnections.find(
+        (c) =>
+          c.connectionId === propSelectedConnectionId ||
+          c.dataSourceId === propSelectedConnectionId,
+      )
+      if (match) return match.connectionId
+      return propSelectedConnectionId
+    }
     if (internalConnectionId) return internalConnectionId
     if (trackerContext?.selectedConnectionId) {
       return trackerContext.selectedConnectionId
@@ -290,6 +301,55 @@ export function TaskPopover({
     selectedConnectionId,
     miniTasksQueryKey,
     queryClient,
+  ])
+
+  const hostBridge = useHostBridge()
+  const { workspace } = useWorkspace()
+  const searchedTermsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!isOpen || !db || !workspace?.id || !debouncedSearch.trim()) return
+
+    const queryStr = debouncedSearch.trim()
+    const pureId = extractPureTaskId(queryStr)
+    const isPureNumeric = /^\d+$/.test(pureId)
+
+    const targetConnections = selectedConnectionId
+      ? syncConnections.filter((c) => c.connectionId === selectedConnectionId)
+      : syncConnections
+
+    if (targetConnections.length === 0) return
+
+    let needsRemoteSearch = false
+    for (const conn of targetConnections) {
+      const searchKey = `${conn.connectionId}::${queryStr}`
+      if (!searchedTermsRef.current.has(searchKey)) {
+        needsRemoteSearch = true
+        searchedTermsRef.current.add(searchKey)
+      }
+    }
+
+    if (!needsRemoteSearch) return
+
+    targetConnections.forEach((conn) => {
+      fetchAndPersistTasks({
+        hostBridge,
+        db,
+        workspaceId: workspace.id,
+        connectionInstanceId: conn.connectionId,
+        dataSourceId: conn.dataSourceId,
+        ids: isPureNumeric ? [pureId] : undefined,
+        search: !isPureNumeric ? queryStr : undefined,
+      })
+    })
+  }, [
+    isOpen,
+    db,
+    workspace?.id,
+    debouncedSearch,
+    selectedConnectionId,
+    syncConnections,
+    hostBridge,
   ])
 
   // Buscar tarefas no RxDB de forma otimizada
@@ -592,63 +652,73 @@ export function TaskPopover({
                 <SelectTrigger className="border-input bg-background hover:bg-accent hover:text-accent-foreground flex !h-7 !w-7 shrink-0 items-center justify-center rounded-md border !p-0 shadow-sm transition-colors focus:ring-1 [&>svg]:hidden">
                   <SelectValue>
                     {(() => {
-                      const conn = syncConnections.find(
-                        (connItem) =>
-                          connItem.connectionId === selectedConnectionId,
-                      )
-                      return conn?.addon?.logo ? (
-                        <img
-                          src={conn.addon.logo}
-                          className="h-3.5 w-3.5 object-contain"
-                          alt=""
-                        />
-                      ) : (
-                        <span className="text-xs">📦</span>
-                      )
+                      const conn =
+                        syncConnections.find(
+                          (connItem) =>
+                            connItem.connectionId === selectedConnectionId ||
+                            connItem.dataSourceId === selectedConnectionId,
+                        ) ||
+                        (syncConnections.length === 1
+                          ? syncConnections[0]
+                          : undefined)
+                      const logoUrl = conn?.addon?.logo
+                      if (logoUrl) {
+                        return (
+                          <img
+                            src={logoUrl}
+                            className="h-3.5 w-3.5 object-contain"
+                            alt=""
+                          />
+                        )
+                      }
+                      return <span className="text-xs">📦</span>
                     })()}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent align="end" className="min-w-[170px]">
-                  {syncConnections.map((connItem) => (
-                    <SelectItem
-                      key={connItem.connectionId}
-                      value={connItem.connectionId}
-                      className="py-1.5 text-xs"
-                    >
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          {connItem.addon?.logo ? (
-                            <img
-                              src={connItem.addon.logo}
-                              className="h-4 w-4 shrink-0 object-contain"
-                              alt=""
-                            />
-                          ) : (
-                            <span className="text-xs">📦</span>
-                          )}
-                          <span className="truncate font-medium">
-                            {connItem.addon?.name ?? connItem.connectionId}
-                          </span>
-                        </div>
-                        {connItem.member && (
-                          <div className="ml-6 flex items-center gap-1.5">
-                            {connItem.member.avatarUrl ? (
+                  {syncConnections.map((connItem) => {
+                    const itemLogo = connItem.addon?.logo
+                    return (
+                      <SelectItem
+                        key={connItem.connectionId}
+                        value={connItem.connectionId}
+                        className="py-1.5 text-xs"
+                      >
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            {itemLogo ? (
                               <img
-                                src={connItem.member.avatarUrl}
+                                src={itemLogo}
+                                className="h-4 w-4 shrink-0 object-contain"
                                 alt=""
-                                className="h-3.5 w-3.5 rounded-full"
                               />
                             ) : (
-                              <LucideIcons.User2 className="h-3 w-3 opacity-60" />
+                              <span className="text-xs">📦</span>
                             )}
-                            <span className="text-muted-foreground truncate text-[10px]">
-                              {connItem.member.name ?? connItem.member.login}
+                            <span className="truncate font-medium">
+                              {connItem.addon?.name ?? connItem.connectionId}
                             </span>
                           </div>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
+                          {connItem.member && (
+                            <div className="ml-6 flex items-center gap-1.5">
+                              {connItem.member.avatarUrl ? (
+                                <img
+                                  src={connItem.member.avatarUrl}
+                                  alt=""
+                                  className="h-3.5 w-3.5 rounded-full"
+                                />
+                              ) : (
+                                <LucideIcons.User2 className="h-3 w-3 opacity-60" />
+                              )}
+                              <span className="text-muted-foreground truncate text-[10px]">
+                                {connItem.member.name ?? connItem.member.login}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -672,17 +742,26 @@ export function TaskPopover({
                 placeholder="Buscar ou digitar ID..."
                 className="flex-1"
                 sourceIcon={(() => {
-                  const activeConn = syncConnections.find(
-                    (connItem) =>
-                      connItem.connectionId === selectedConnectionId,
-                  )
-                  return activeConn?.addon?.logo ? (
-                    <img
-                      src={activeConn.addon.logo}
-                      alt={activeConn.addon.name}
-                      className="h-3.5 w-3.5 rounded-xs object-contain"
-                    />
-                  ) : undefined
+                  const activeConn =
+                    syncConnections.find(
+                      (connItem) =>
+                        connItem.connectionId === selectedConnectionId ||
+                        connItem.dataSourceId === selectedConnectionId,
+                    ) ||
+                    (syncConnections.length === 1
+                      ? syncConnections[0]
+                      : undefined)
+                  const logoUrl = activeConn?.addon?.logo
+                  if (logoUrl) {
+                    return (
+                      <img
+                        src={logoUrl}
+                        alt={activeConn?.addon?.name}
+                        className="h-3.5 w-3.5 rounded-xs object-contain"
+                      />
+                    )
+                  }
+                  return undefined
                 })()}
               />
               <Button

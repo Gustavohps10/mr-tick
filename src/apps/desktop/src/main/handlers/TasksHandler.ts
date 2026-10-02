@@ -1,4 +1,4 @@
-﻿import {
+import {
   IListTasksUseCase,
   ITaskPullUseCase,
   TaskDTO,
@@ -18,6 +18,10 @@ import { MetadataHandler } from '@/main/handlers/MetadataHandler'
 export interface ListTasksRequest {
   workspaceId: string
   connectionInstanceId: string
+  search?: string
+  ids?: string[]
+  page?: number
+  pageSize?: number
 }
 
 export interface PullTasksRequest {
@@ -34,12 +38,16 @@ export class TasksHandler implements HandlerBase<MetadataHandler> {
   ) {}
 
   public async listTasks(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<ListTasksRequest>,
   ): Promise<PaginatedViewModel<TaskViewModel[]>> {
     const result = await this.listTasksService.execute({
       workspaceId: body.workspaceId,
       connectionInstanceId: body.connectionInstanceId,
+      search: body.search,
+      ids: body.ids,
+      page: body.page,
+      pageSize: body.pageSize,
     })
 
     const mappedResult = result.map((paged) => ({
@@ -55,7 +63,7 @@ export class TasksHandler implements HandlerBase<MetadataHandler> {
   }
 
   public async pull(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<PullTasksRequest>,
   ): Promise<ViewModel<TaskDTO[]>> {
     const result = await this.taskPullService.execute({

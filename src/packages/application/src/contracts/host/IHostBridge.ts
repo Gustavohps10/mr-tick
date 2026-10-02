@@ -118,6 +118,10 @@ export interface ITaskAPI {
     input: IRequest<{
       workspaceId: string
       connectionInstanceId: string
+      search?: string
+      ids?: string[]
+      page?: number
+      pageSize?: number
     }>,
   ) => Promise<PaginatedViewModel<TaskViewModel[]>>
 

@@ -20,15 +20,16 @@ export function DataSourceLogo({
 }: DataSourceLogoProps) {
   const { connections } = useDataSourceConnections()
 
-  const matchedConnection = connections.find((conn) => {
-    if (connectionInstanceId && conn.connectionId === connectionInstanceId) {
-      return true
-    }
-    if (dataSourceId && conn.dataSourceId === dataSourceId) {
-      return true
-    }
-    return false
-  })
+  const matchedConnection =
+    connections.find((conn) => {
+      if (connectionInstanceId && conn.connectionId === connectionInstanceId) {
+        return true
+      }
+      if (dataSourceId && conn.dataSourceId === dataSourceId) {
+        return true
+      }
+      return false
+    }) || (connections.length === 1 ? connections[0] : undefined)
 
   const logoUrl = matchedConnection?.addon?.logo
   const name =

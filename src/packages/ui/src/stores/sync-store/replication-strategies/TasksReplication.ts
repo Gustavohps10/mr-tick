@@ -1,6 +1,7 @@
 import { IHostBridge } from '@mr-tick/application'
-import { StatusChange, TaskViewModel } from '@mr-tick/shared/view-models'
+import { TaskViewModel } from '@mr-tick/shared/view-models'
 
+import { mapTaskViewModelToRxDB } from '@/lib/tasks-enrichment'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 
 import { IReplicationStrategy, ReplicationCheckpoint } from '../types'
@@ -73,51 +74,8 @@ export class TasksReplication implements IReplicationStrategy<
     const last = data[data.length - 1]
     const nowIso = new Date().toISOString()
 
-    const docs: SyncTaskRxDBDTO[] = data.map(
-      (item: TaskViewModel): SyncTaskRxDBDTO => {
-        const sourceId = String(item.id)
-        const createdAtIso = dateToISO(item.createdAt) ?? nowIso
-        const updatedAtIso = dateToISO(item.updatedAt) ?? nowIso
-
-        return {
-          id: `${this.connectionInstanceId}::${sourceId}`,
-          sourceId,
-          dataSourceId: this.pluginId,
-          connectionInstanceId: this.connectionInstanceId,
-          _deleted: false,
-          syncStatus: 'synced',
-          lastPulledAt: nowIso,
-          lastPushedAt: null,
-          lastReconciledAt: nowIso,
-          title: item.title,
-          description: item.description ? item.description : null,
-          projectName: item.projectName ? item.projectName : null,
-          url: item.url ? item.url : null,
-          tracker: item.tracker?.id ? item.tracker : undefined,
-          status: item.status,
-          priority: item.priority?.name ? item.priority : undefined,
-          assignedTo: item.assignedTo?.name ? item.assignedTo : undefined,
-          author: item.author?.name ? item.author : undefined,
-          doneRatio: typeof item.doneRatio === 'number' ? item.doneRatio : null,
-          createdAt: createdAtIso,
-          updatedAt: updatedAtIso,
-          startDate: dateToISO(item.startDate) ?? null,
-          dueDate: dateToISO(item.dueDate) ?? null,
-          timeEntryIds: [],
-          statusChanges: item.statusChanges?.map((changeItem: StatusChange) => {
-            const changedAtIso = dateToISO(changeItem.changedAt)
-            return {
-              fromStatus: changeItem.fromStatus,
-              toStatus: changeItem.toStatus,
-              description: changeItem.description
-                ? changeItem.description
-                : undefined,
-              changedBy: changeItem.changedBy,
-              changedAt: changedAtIso ? changedAtIso : nowIso,
-            }
-          }),
-        }
-      },
+    const docs: SyncTaskRxDBDTO[] = data.map((item: TaskViewModel) =>
+      mapTaskViewModelToRxDB(item, this.connectionInstanceId, this.pluginId),
     )
     const lastUpdatedAtIso = dateToISO(last.updatedAt) ?? nowIso
     return {

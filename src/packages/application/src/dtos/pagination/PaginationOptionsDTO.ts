@@ -3,4 +3,6 @@ export interface PaginationOptionsDTO {
   pageSize?: number
   orderBy?: string
   orderDirection?: 'asc' | 'desc'
+  search?: string
+  ids?: string[]
 }
