@@ -1,5 +1,20 @@
 ﻿# @mr-tick/ui
 
+## 1.5.0
+
+### Minor Changes
+
+- 9afb4a1: Implementa busca sob demanda e auto-enriquecimento em segundo plano de tarefas faltantes com persistência no RxDB local, garantindo exibição de títulos e metadados na tabela de apontamentos, popover e lookup.
+
+### Patch Changes
+
+- adae8ae: Corrige a hidratação e propagação de `taskData` nas replicações de apontamentos de tempo e resolução de títulos e trackers de tarefas no popover e tabelas.
+- f91a79c: fix(ui): adiciona subscription reativa no RxDB para o popover de tarefas, preserva tarefas recentes sem truncamento prematuro e expande suite e2e
+- 165229a: Corrige isolamento de identificadores (Regra 13) ao selecionar tarefas no widget e popover, otimiza busca de tarefas com ordenação em memória, adiciona indexação por conexão no RxDB para eliminar travamentos e suporta campos nulos (description, dueDate, etc.) no schema de tarefas do RxDB.
+- Updated dependencies [9afb4a1]
+  - @mr-tick/application@1.3.0
+  - @mr-tick/sdk@0.5.0
+
 ## 1.4.1
 
 ### Patch Changes
