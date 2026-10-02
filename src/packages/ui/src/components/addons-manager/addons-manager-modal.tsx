@@ -1,4 +1,5 @@
-import { AddonManifestViewModel } from '@mr-tick/sdk'
+import { AddonManifestViewModel, AddonPackageViewModel } from '@mr-tick/sdk'
+import { isApiVersionCompatible } from '@mr-tick/shared/helpers'
 import { useQuery } from '@tanstack/react-query'
 import {
   Calendar,
@@ -26,6 +27,13 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib'
@@ -59,6 +67,23 @@ function formatStarCount(stars?: number): string {
   if (stars >= 1000000) return `${(stars / 1000000).toFixed(1)}M`
   if (stars >= 1000) return `${(stars / 1000).toFixed(1)}k`
   return String(stars)
+}
+
+function getAddonPackages(
+  addon: AddonManifestViewModel,
+): AddonPackageViewModel[] {
+  if (addon.packages && addon.packages.length > 0) return addon.packages
+  if (!addon.downloadUrl) return []
+
+  return [
+    {
+      version: addon.version,
+      downloadUrl: addon.downloadUrl,
+      requiredApiVersion: addon.requiredApiVersion,
+      releaseDate: addon.releaseDate,
+      changelog: addon.changelog,
+    },
+  ]
 }
 
 function addonMatchesCategory(
@@ -169,8 +194,17 @@ export function AddonsManagerModal({
   const [installTarget, setInstallTarget] = useState<AddonInstallTarget | null>(
     null,
   )
+  const [selectedVersions, setSelectedVersions] = useState<
+    Record<string, string>
+  >({})
   const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false)
   const [isUninstalling, setIsUninstalling] = useState<boolean>(false)
+
+  const { data: sdkVersion = '0.5.0' } = useQuery({
+    queryKey: ['sdkVersion'],
+    queryFn: () => bridge.system.getSdkVersion(),
+    staleTime: Infinity,
+  })
 
   const handleUninstallAddon = async (addonId: string, version?: string) => {
     setIsUninstalling(true)
@@ -211,6 +245,12 @@ export function AddonsManagerModal({
     },
   })
 
+  const installedAddonsById = useMemo(() => {
+    const addonsById = new Map<string, AddonManifestViewModel>()
+    installedList.forEach((addon) => addonsById.set(addon.id, addon))
+    return addonsById
+  }, [installedList])
+
   const handleSelectSection = (
     section: SidebarSection,
     categoryName: string | null = null,
@@ -220,16 +260,16 @@ export function AddonsManagerModal({
     setSelectedAddonId(null)
   }
 
-  const handleOpenInstall = (addon: AddonManifestViewModel) => {
+  const handleOpenInstall = (
+    addon: AddonManifestViewModel,
+    selectedPackage: AddonPackageViewModel,
+  ) => {
     setInstallTarget({
       id: addon.id,
       name: addon.name,
-      version: addon.version,
-      downloadUrl: addon.downloadUrl,
-      requiredApiVersion: addon.requiredApiVersion,
-      releaseDate: addon.releaseDate,
-      changelog: addon.changelog,
-      packages: addon.packages,
+      version: selectedPackage.version,
+      downloadUrl: selectedPackage.downloadUrl,
+      requiredApiVersion: selectedPackage.requiredApiVersion,
     })
     setIsInstallModalOpen(true)
   }
@@ -263,6 +303,28 @@ export function AddonsManagerModal({
     }
     return filteredAvailableList[0] || null
   }, [filteredAvailableList, selectedAddonId])
+
+  const activeInstalledAddon = activeBrowseAddon
+    ? installedAddonsById.get(activeBrowseAddon.id)
+    : undefined
+
+  const activeAddonPackages = useMemo(() => {
+    if (!activeBrowseAddon) return []
+    return getAddonPackages(activeBrowseAddon)
+  }, [activeBrowseAddon])
+
+  const selectedPackage = activeBrowseAddon
+    ? (activeAddonPackages.find(
+        (pkg) => pkg.version === selectedVersions[activeBrowseAddon.id],
+      ) ??
+      activeAddonPackages.find(
+        (pkg) => pkg.version === activeBrowseAddon.version,
+      ))
+    : undefined
+
+  const isSelectedPackageCompatible = selectedPackage
+    ? isApiVersionCompatible(selectedPackage.requiredApiVersion, sdkVersion)
+    : false
 
   const renderManagerSidebarItem = (
     id: SidebarSection,
@@ -387,9 +449,7 @@ export function AddonsManagerModal({
             <div className="space-y-1.5 p-2.5">
               {filteredAvailableList.map((addon) => {
                 const isSelected = activeBrowseAddon?.id === addon.id
-                const isInstalled = installedList.some(
-                  (installed) => installed.id === addon.id,
-                )
+                const installedAddon = installedAddonsById.get(addon.id)
 
                 return (
                   <button
@@ -424,6 +484,9 @@ export function AddonsManagerModal({
                           <span className="bg-muted text-muted-foreground py-0.2 shrink-0 rounded px-1.5 font-mono text-[10px]">
                             v{addon.version}
                           </span>
+                          <span className="text-muted-foreground shrink-0 text-[9px] font-semibold uppercase">
+                            Mais Recente
+                          </span>
                         </div>
 
                         {/* Estrelinha no canto superior direito */}
@@ -444,10 +507,10 @@ export function AddonsManagerModal({
                       </p>
 
                       {/* Indicador de Status */}
-                      {isInstalled && (
+                      {installedAddon && (
                         <div className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-emerald-500">
                           <Check className="h-3 w-3" />
-                          <span>Instalado</span>
+                          <span>Instalado · v{installedAddon.version}</span>
                         </div>
                       )}
                     </div>
@@ -491,7 +554,10 @@ export function AddonsManagerModal({
                     <span className="text-foreground font-medium">
                       {activeBrowseAddon.creator}
                     </span>{' '}
-                    • Versão {activeBrowseAddon.version}
+                    •{' '}
+                    <span data-testid="addon-details-version-label">
+                      Mais recente: {activeBrowseAddon.version}
+                    </span>
                   </p>
 
                   {/* Links Úteis: GitHub e Documentação */}
@@ -525,9 +591,7 @@ export function AddonsManagerModal({
 
                   {/* Botão de Ação */}
                   <div className="mt-4">
-                    {installedList.some(
-                      (item) => item.id === activeBrowseAddon.id,
-                    ) ? (
+                    {activeInstalledAddon ? (
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge
                           variant="outline"
@@ -563,15 +627,66 @@ export function AddonsManagerModal({
                         </Button>
                       </div>
                     ) : (
-                      <Button
-                        data-testid="addon-details-install-btn"
-                        size="sm"
-                        onClick={() => handleOpenInstall(activeBrowseAddon)}
-                        className="cursor-pointer gap-1.5 px-4 font-semibold"
-                      >
-                        <Download className="h-4 w-4" />
-                        Instalar
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select
+                          value={selectedPackage?.version ?? ''}
+                          onValueChange={(version) =>
+                            setSelectedVersions((versions) => ({
+                              ...versions,
+                              [activeBrowseAddon.id]: version,
+                            }))
+                          }
+                        >
+                          <SelectTrigger
+                            data-testid="addon-details-version-select"
+                            aria-label={`Versão do addon ${activeBrowseAddon.name}`}
+                            className="h-8 w-36 text-xs"
+                          >
+                            <SelectValue placeholder="Selecionar versão" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeAddonPackages.map((pkg) => (
+                              <SelectItem
+                                key={pkg.version}
+                                data-testid={`addon-version-option-${pkg.version}`}
+                                value={pkg.version}
+                                disabled={
+                                  !isApiVersionCompatible(
+                                    pkg.requiredApiVersion,
+                                    sdkVersion,
+                                  )
+                                }
+                              >
+                                v{pkg.version}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {selectedPackage?.requiredApiVersion && (
+                          <span className="text-muted-foreground font-mono text-[10px]">
+                            API {selectedPackage.requiredApiVersion}
+                          </span>
+                        )}
+                        <Button
+                          data-testid="addon-details-install-btn"
+                          size="sm"
+                          disabled={
+                            !selectedPackage?.downloadUrl ||
+                            !isSelectedPackageCompatible
+                          }
+                          onClick={() => {
+                            if (!selectedPackage) return
+                            handleOpenInstall(
+                              activeBrowseAddon,
+                              selectedPackage,
+                            )
+                          }}
+                          className="cursor-pointer gap-1.5 px-4 font-semibold"
+                        >
+                          <Download className="h-4 w-4" />
+                          Instalar
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>

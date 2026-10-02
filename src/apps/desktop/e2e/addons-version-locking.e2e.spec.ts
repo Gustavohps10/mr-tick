@@ -109,61 +109,35 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
     await expect(redmineCard).toBeVisible({ timeout: 10000 })
     await redmineCard.click()
 
-    // Abre o modal de instalação
     const installBtn = page.locator('[data-testid="addon-details-install-btn"]')
     await expect(installBtn).toBeVisible({ timeout: 5000 })
-    await installBtn.click()
+    await expect(installBtn).toBeDisabled()
 
-    // Valida que o modal de instalação abriu
-    const modalContent = page.locator(
-      '[data-testid="addon-install-modal-content"]',
-    )
-    await expect(modalContent).toBeVisible({ timeout: 5000 })
-
-    // Valida que o pacote legado exibe a badge "Incompatível"
-    const incompatibleBadge = page.locator(
-      '[data-testid="addon-incompatible-badge"]',
-    )
-    await expect(incompatibleBadge.first()).toBeVisible({ timeout: 5000 })
-
-    // Valida que o botão "Confirmar e Instalar" está estritamente desabilitado para o Redmine antigo
-    const confirmInstallBtn = page.locator(
-      '[data-testid="addon-confirm-install-btn"]',
-    )
-    await expect(confirmInstallBtn).toBeDisabled()
-
-    // Fecha o modal de instalação do cenário 1
-    const cancelBtn = page.locator('[data-testid="addon-cancel-install-btn"]')
-    await cancelBtn.click()
-    await expect(modalContent).not.toBeVisible({ timeout: 5000 })
-
-    // 6. Cenário 2: Addon Híbrido (possui v0.1.0 legada incompatível e v0.4.0 compatível)
+    // 6. Cenário 2: Addon Híbrido com uma versão legada e outra compatível
     const hybridAddonCard = page.locator(
       '[data-testid="addon-browse-card-test-multi-version-addon"]',
     )
     await expect(hybridAddonCard).toBeVisible({ timeout: 5000 })
     await hybridAddonCard.click()
 
-    // Abre o modal de instalação do plugin híbrido
     await expect(installBtn).toBeVisible({ timeout: 5000 })
-    await installBtn.click()
-    await expect(modalContent).toBeVisible({ timeout: 5000 })
-
-    // Valida que o pacote incompatível (v0.1.0) exibe a badge "Incompatível"
-    await expect(incompatibleBadge.first()).toBeVisible({ timeout: 5000 })
-
-    // Valida que a versão compatível foi selecionada automaticamente e o botão fica habilitado para ela
-    await expect(confirmInstallBtn).toBeEnabled()
-    await expect(confirmInstallBtn).toContainText(`v${currentSdkVersion}`)
-
-    // Tenta clicar no card incompatível (v0.1.0) e garante que a seleção NÃO muda
-    const incompatibleCard = page.locator(
-      '[data-testid="addon-version-card-0.1.0"]',
+    const versionSelect = page.locator(
+      '[data-testid="addon-details-version-select"]',
     )
-    await expect(incompatibleCard).toBeVisible()
-    await incompatibleCard.click({ force: true })
+    await versionSelect.click()
 
-    // O botão ainda deve manter a versão compatível selecionada e não v0.1.0
-    await expect(confirmInstallBtn).toContainText(`v${currentSdkVersion}`)
+    const incompatibleOption = page.locator(
+      '[data-testid="addon-version-option-0.1.0"]',
+    )
+    await expect(incompatibleOption).toBeVisible()
+    await expect(incompatibleOption).toBeDisabled()
+
+    const compatibleOption = page.locator(
+      `[data-testid="addon-version-option-${currentSdkVersion}"]`,
+    )
+    await compatibleOption.click()
+
+    await expect(versionSelect).toContainText(`v${currentSdkVersion}`)
+    await expect(installBtn).toBeEnabled()
   })
 })
