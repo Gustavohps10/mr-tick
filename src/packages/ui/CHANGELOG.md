@@ -1,5 +1,11 @@
 ﻿# @mr-tick/ui
 
+## 1.5.1
+
+### Patch Changes
+
+- 53c3eb1: Corrige a seleção e compatibilidade de versões de addons na interface.
+
 ## 1.5.0
 
 ### Minor Changes

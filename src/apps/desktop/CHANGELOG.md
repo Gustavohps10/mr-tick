@@ -1,5 +1,12 @@
 ﻿# @mr-tick/desktop
 
+## 0.8.3
+
+### Patch Changes
+
+- Updated dependencies [53c3eb1]
+  - @mr-tick/ui@1.5.1
+
 ## 0.8.2
 
 ### Patch Changes
