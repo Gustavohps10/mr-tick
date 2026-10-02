@@ -13,6 +13,36 @@ export function getTagSemver(tagName: string): string | null {
   return toSemver(tagName.replace('@mr-tick/desktop@', ''))
 }
 
+export function getLatestReleasePerMinor<T extends { version: string }>(
+  releases: T[],
+): T[] {
+  const latestReleasesByMinor = new Map<
+    string,
+    { release: T; version: string }
+  >()
+  const releasesWithoutSemver: T[] = []
+
+  for (const release of releases) {
+    const version = toSemver(release.version)
+    if (!version) {
+      releasesWithoutSemver.push(release)
+      continue
+    }
+
+    const minorVersion = `${semver.major(version)}.${semver.minor(version)}`
+    const latestRelease = latestReleasesByMinor.get(minorVersion)
+    if (!latestRelease || semver.gt(version, latestRelease.version))
+      latestReleasesByMinor.set(minorVersion, { release, version })
+  }
+
+  return [
+    ...Array.from(latestReleasesByMinor.values())
+      .sort((left, right) => semver.rcompare(left.version, right.version))
+      .map(({ release }) => release),
+    ...releasesWithoutSemver,
+  ]
+}
+
 export interface DesktopReleaseInfo {
   version: string
   rawVersion: string
@@ -406,15 +436,16 @@ export async function fetchLatestDesktopReleases(): Promise<{
     const validStables = parsedStables.filter(
       (r): r is DesktopReleaseInfo => r !== null,
     )
+    const latestStableReleases = getLatestReleasePerMinor(validStables)
 
-    const latestStable = validStables[0] ?? null
+    const latestStable = latestStableReleases[0] ?? null
     const latestBeta = parsedBeta ?? null
 
     // If an active beta exists (strictly newer than latest stable), list it on top.
     // Intermediate and obsolete betas are completely omitted from the site.
     const allReleases = latestBeta
-      ? [latestBeta, ...validStables]
-      : [...validStables]
+      ? [latestBeta, ...latestStableReleases]
+      : latestStableReleases
 
     const defaultVersion = latestStable?.version ?? latestBeta?.version ?? ''
 
