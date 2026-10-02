@@ -1,5 +1,11 @@
 # @mr-tick/application
 
+## 1.3.0
+
+### Minor Changes
+
+- 9afb4a1: Implementa busca sob demanda e auto-enriquecimento em segundo plano de tarefas faltantes com persistência no RxDB local, garantindo exibição de títulos e metadados na tabela de apontamentos, popover e lookup.
+
 ## 1.2.2
 
 ### Patch Changes

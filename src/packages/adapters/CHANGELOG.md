@@ -1,5 +1,12 @@
 # @mr-tick/adapters
 
+## 1.1.4
+
+### Patch Changes
+
+- Updated dependencies [9afb4a1]
+  - @mr-tick/application@1.3.0
+
 ## 1.1.3
 
 ### Patch Changes
