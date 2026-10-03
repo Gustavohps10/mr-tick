@@ -1,178 +1,129 @@
 import { AppError, Either } from '@mr-tick/shared/helpers'
-import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ITimeEntryProvider } from '@/contracts/data/providers'
-import type { IDataSourceResolver } from '@/contracts/resolvers'
-import type { IDataSourceAdapter } from '@/contracts/resolvers/IDataSourceAdapter'
-import type { PullTimeEntriesInput } from '@/contracts/use-cases'
-import type { TimeEntryDTO } from '@/dtos'
+import {
+  IDataSourceAdapter,
+  IDataSourceResolver,
+  ITimeEntryProvider,
+  PullTimeEntriesInput,
+} from '@/contracts'
+import { MemberDTO, TimeEntryPullPageDTO } from '@/dtos'
 
 import { TimeEntriesPullService } from './TimeEntriesPullService'
 
-describe('TimeEntriesPullService', () => {
-  let sut: TimeEntriesPullService
-
-  let dataSourceResolverMock: Mocked<IDataSourceResolver>
-  let adapterMock: Mocked<IDataSourceAdapter>
-  let timeEntriesProviderMock: Mocked<ITimeEntryProvider>
-
-  const fakeDate = new Date('2026-04-18T00:00:00.000Z')
-
-  const makeInput = (): PullTimeEntriesInput => ({
-    workspaceId: 'workspace-123',
-    connectionInstanceId: 'conn-abc',
-    checkpoint: {
-      updatedAt: fakeDate,
-      id: 'time-entry-sync-1',
-    },
-    batch: 100,
-  })
-
-  const fakeMember = {
-    id: 'member-123',
-    firstname: 'John',
-    lastname: 'Doe',
-  }
-
-  const fakeTimeEntries: TimeEntryDTO[] = [
+const date = new Date('2026-04-18T00:00:00.000Z')
+const member: MemberDTO = {
+  id: 123,
+  firstname: 'John',
+  lastname: 'Doe',
+  login: 'john',
+  admin: false,
+  createdOn: '2026-01-01',
+  lastLoginOn: '2026-01-01',
+  customFields: [],
+}
+const input: PullTimeEntriesInput = {
+  workspaceId: 'workspace-123',
+  connectionInstanceId: 'conn-abc',
+  checkpoint: { updatedAt: date, id: 'entry-1', cursor: 'opaque-input-cursor' },
+  batch: 100,
+}
+const page: TimeEntryPullPageDTO = {
+  items: [
     {
       id: 'entry-1',
       task: { id: 'task-1' },
-      activity: { id: 'act-1', name: 'Development' },
-      user: { id: 'session-user-id', name: 'Jane Doe' },
-      timeSpent: 3600,
+      activity: { id: 'act-1' },
+      user: { id: '123' },
+      timeSpent: 1,
       comments: 'Worked on authentication',
-      createdAt: fakeDate,
-      updatedAt: fakeDate,
+      createdAt: date,
+      updatedAt: date,
     },
-  ]
+  ],
+  checkpoint: {
+    id: 'entry-1',
+    updatedAt: date,
+    cursor: 'opaque-output-cursor',
+  },
+  hasMore: false,
+  snapshotId: 'snapshot-1',
+}
 
+describe('TimeEntriesPullService', () => {
+  const pull = vi.fn<ITimeEntryProvider['pull']>()
+  const auth = vi.fn<IDataSourceAdapter['getAuthenticatedMemberData']>()
+  const resolve = vi.fn<IDataSourceResolver['getDataSource']>()
+  let service: TimeEntriesPullService
   beforeEach(() => {
-    vi.clearAllMocks()
-
-    timeEntriesProviderMock = {
-      pull: vi.fn(),
+    vi.resetAllMocks()
+    const provider: ITimeEntryProvider = {
+      pull,
       findByMemberId: vi.fn(),
       findAll: vi.fn(),
       findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
-    } as unknown as Mocked<ITimeEntryProvider>
-
-    adapterMock = {
-      timeEntriesProvider: timeEntriesProviderMock,
-      getAuthenticatedMemberData: vi.fn(),
-    } as unknown as Mocked<IDataSourceAdapter>
-
-    dataSourceResolverMock = {
-      getDataSource: vi.fn(),
-    } as unknown as Mocked<IDataSourceResolver>
-
-    sut = new TimeEntriesPullService(dataSourceResolverMock)
+    }
+    const adapter: IDataSourceAdapter = {
+      id: 'provider',
+      timeEntriesProvider: provider,
+      getAuthenticatedMemberData: auth,
+      authenticationStrategy: { authenticate: vi.fn() },
+      tasksProvider: {
+        pull: vi.fn(),
+        findAll: vi.fn(),
+        findById: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+      },
+      membersProvider: {
+        getCurrentUser: vi.fn(),
+        findById: vi.fn(),
+        findByCredentials: vi.fn(),
+        findAll: vi.fn(),
+      },
+      metadataProvider: { getMetadata: vi.fn() },
+    }
+    auth.mockReturnValue(Either.success(member))
+    resolve.mockResolvedValue(adapter)
+    pull.mockResolvedValue(Either.success(page))
+    service = new TimeEntriesPullService({
+      getDataSource: resolve,
+      getDataSourcesForWorkspace: vi.fn(),
+    })
   })
-
-  it('should successfully pull time entries using the authenticated member from the adapter', async () => {
-    // Arrange
-    const input = makeInput()
-
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
-    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
-      Either.success(fakeMember as any),
-    )
-    timeEntriesProviderMock.pull.mockResolvedValue(
-      Either.success(fakeTimeEntries),
-    )
-
-    // Act
-    const result = await sut.execute(input)
-
-    // Assert
-    expect(result.isSuccess()).toBe(true)
-    expect(result.success).toEqual(fakeTimeEntries)
-
-    expect(adapterMock.getAuthenticatedMemberData).toHaveBeenCalled()
-    expect(timeEntriesProviderMock.pull).toHaveBeenCalledWith(
-      fakeMember.id,
-      input.checkpoint,
-      input.batch,
-    )
+  it('passes the provider page and opaque cursor unchanged through the service', async () => {
+    const result = await service.execute(input)
+    expect(result.success).toEqual(page)
+    expect(pull).toHaveBeenCalledWith('123', input.checkpoint, input.batch)
+    expect(result.success.checkpoint.cursor).toBe('opaque-output-cursor')
   })
-
-  it('should forward the failure if timeEntriesProvider.pull returns an Unauthorized failure', async () => {
-    // Arrange
-    const input = makeInput()
-    const unauthorizedError = AppError.Unauthorized('TOKEN_EXPIRED')
-
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
-    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
-      Either.success(fakeMember as any),
-    )
-    timeEntriesProviderMock.pull.mockResolvedValue(
-      Either.failure(unauthorizedError),
-    )
-
-    // Act
-    const result = await sut.execute(input)
-
-    // Assert
-    expect(result.isFailure()).toBe(true)
-    expect(result.failure).toBe(unauthorizedError)
+  it('forwards the original provider failure and status', async () => {
+    const failure = AppError.Unauthorized('TOKEN_EXPIRED')
+    pull.mockResolvedValueOnce(Either.failure(failure))
+    const result = await service.execute(input)
+    expect(result.failure).toBe(failure)
     expect(result.failure.statusCode).toBe(401)
   })
-
-  it('should forward the failure if getAuthenticatedMemberData returns a failure', async () => {
-    // Arrange
-    const input = makeInput()
-    const authError = AppError.Unauthorized('FALHA_DE_AUTENTICACAO')
-
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
-    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
-      Either.failure(authError),
-    )
-
-    // Act
-    const result = await sut.execute(input)
-
-    // Assert
-    expect(result.isFailure()).toBe(true)
-    expect(result.failure).toBe(authError)
-
-    expect(timeEntriesProviderMock.pull).not.toHaveBeenCalled()
+  it('does not call the provider when authentication fails', async () => {
+    const failure = AppError.Unauthorized('FALHA_DE_AUTENTICACAO')
+    auth.mockReturnValueOnce(Either.failure(failure))
+    expect((await service.execute(input)).failure).toBe(failure)
+    expect(pull).not.toHaveBeenCalled()
   })
-
-  it('should return unexpected error when the data source resolver throws an exception', async () => {
-    // Arrange
-    const input = makeInput()
-    dataSourceResolverMock.getDataSource.mockRejectedValue(new Error('Fail'))
-
-    // Act
-    const result = await sut.execute(input)
-
-    // Assert
-    expect(result.isFailure()).toBe(true)
-    expect(result.failure).toBeInstanceOf(AppError)
+  it('reports an unexpected resolver exception', async () => {
+    resolve.mockRejectedValueOnce(new Error('Fail'))
+    const result = await service.execute(input)
     expect(result.failure.messageKey).toBe('ERRO_INESPERADO')
-    // Verifica se retornou NotFound como implementado no service
     expect(result.failure.statusCode).toBe(404)
   })
-
-  it('should return unexpected error when the adapter fails to pull time entries (throws)', async () => {
-    // Arrange
-    const input = makeInput()
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
-    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
-      Either.success(fakeMember as any),
+  it('reports an unexpected provider exception', async () => {
+    pull.mockRejectedValueOnce(new Error('Timeout'))
+    expect((await service.execute(input)).failure.messageKey).toBe(
+      'ERRO_INESPERADO',
     )
-    timeEntriesProviderMock.pull.mockRejectedValue(new Error('Timeout'))
-
-    // Act
-    const result = await sut.execute(input)
-
-    // Assert
-    expect(result.isFailure()).toBe(true)
-    expect(result.failure).toBeInstanceOf(AppError)
-    expect(result.failure.messageKey).toBe('ERRO_INESPERADO')
   })
 })

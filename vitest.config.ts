@@ -17,7 +17,11 @@ export default defineConfig({
           name: 'unit',
           globals: true,
           environment: 'node',
-          include: ['src/packages/!(ui)/**/*.spec.ts', 'src/apps/**/*.spec.ts'],
+          include: [
+            'src/packages/!(ui)/**/*.spec.ts',
+            'src/apps/**/*.spec.ts',
+            'src/dev-addons/**/*.spec.ts',
+          ],
           exclude: [
             ...configDefaults.exclude,
             '**/e2e/**',

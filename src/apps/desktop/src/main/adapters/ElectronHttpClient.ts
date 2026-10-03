@@ -166,22 +166,8 @@ export class ElectronHttpClient implements IHttpClient {
 
       if (!response.ok) {
         const errorText = await response.text()
-        if (response.status === 401 || response.status === 403) {
-          return Either.failure(
-            AppError.Unauthorized(errorText || 'Unauthorized'),
-          )
-        }
-        if (response.status === 404) {
-          return Either.failure(AppError.NotFound(errorText || 'Not Found'))
-        }
-        if (response.status === 422) {
-          return Either.failure(
-            AppError.ValidationError(errorText || 'Validation Error'),
-          )
-        }
-        return Either.failure(
-          AppError.Internal(errorText || `HTTP ${response.status}`),
-        )
+        const message = errorText ? errorText : `HTTP ${response.status}`
+        return Either.failure(AppError.Http(response.status, message))
       }
 
       let responseData: any

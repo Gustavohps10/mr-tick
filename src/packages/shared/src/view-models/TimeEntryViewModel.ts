@@ -1,5 +1,6 @@
 export interface TimeEntryViewModel {
   id?: string
+  correlationId?: string
   task: {
     id: string
   }

@@ -3,6 +3,8 @@ import {
   ITimeEntriesPullUseCase,
   ITimeEntriesPushUseCase,
   PushTimeEntriesInput,
+  TimeEntryPullCheckpointDTO,
+  TimeEntryPullPageDTO,
 } from '@mr-tick/application'
 import { createResponseViewModel } from '@mr-tick/shared/helpers'
 import { IRequest } from '@mr-tick/shared/transport'
@@ -26,7 +28,7 @@ export interface ListTimeEntriesRequest {
 export interface PullTimeEntriesRequest {
   workspaceId: string
   connectionInstanceId: string
-  checkpoint: { updatedAt: Date; id: string }
+  checkpoint: TimeEntryPullCheckpointDTO
   batch: number
 }
 
@@ -62,7 +64,8 @@ export class TimeEntriesHandler implements HandlerBase<TimeEntriesHandler> {
         updatedAt: dto.updatedAt,
       })),
       totalItems: paged.total,
-      totalPages: Math.ceil(paged.total / paged.pageSize),
+      totalPages:
+        paged.total === 0 ? 0 : Math.ceil(paged.total / paged.pageSize),
       currentPage: paged.page,
     }))
 
@@ -71,7 +74,7 @@ export class TimeEntriesHandler implements HandlerBase<TimeEntriesHandler> {
   public async pull(
     event: IpcMainInvokeEvent,
     { body }: IRequest<PullTimeEntriesRequest>,
-  ): Promise<ViewModel<TimeEntryViewModel[]>> {
+  ): Promise<ViewModel<TimeEntryPullPageDTO>> {
     const result = await this.timeEntriesPullService.execute({
       workspaceId: body.workspaceId,
       connectionInstanceId: body.connectionInstanceId,
@@ -79,22 +82,7 @@ export class TimeEntriesHandler implements HandlerBase<TimeEntriesHandler> {
       batch: body.batch,
     })
 
-    const mappedResult = result.map((items) =>
-      items.map((dto) => ({
-        id: dto.id,
-        task: dto.task,
-        user: dto.user,
-        activity: dto.activity,
-        startDate: dto.startDate,
-        endDate: dto.endDate,
-        timeSpent: dto.timeSpent,
-        comments: dto.comments,
-        createdAt: dto.createdAt,
-        updatedAt: dto.updatedAt,
-      })),
-    )
-
-    return createResponseViewModel(mappedResult)
+    return createResponseViewModel(result)
   }
 
   public async push(

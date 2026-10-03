@@ -24,7 +24,7 @@ build
 .pnp.*
 logs/
 playwright-report/
-test-results/
+test-results*/
 
 # Dev Addons
 src/dev-addons/*

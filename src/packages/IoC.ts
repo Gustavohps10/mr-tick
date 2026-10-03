@@ -1,7 +1,7 @@
 import { JwtService } from '@mr-tick/adapters/auth'
 import { IHttpClient } from '@mr-tick/adapters/contracts'
 import { AddonsFacade } from '@mr-tick/adapters/facades'
-import { FileManager } from '@mr-tick/adapters/tools'
+import { FileManager, KeyedMutex } from '@mr-tick/adapters/tools'
 import {
   ConnectDataSourceService,
   CreateWorkspaceService,
@@ -157,6 +157,7 @@ export class ContainerBuilder {
       jwtService: asClass(JwtService).scoped(),
       fileManager: asClass(FileManager).scoped(),
       addonsFacade: asClass(AddonsFacade).scoped(),
+      keyedMutex: asClass(KeyedMutex).singleton(),
     })
     return this
   }

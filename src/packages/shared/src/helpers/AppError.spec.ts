@@ -74,3 +74,17 @@ describe('AppError', () => {
     })
   })
 })
+
+describe('HTTP failures preserve the provider status', () => {
+  it.each([403, 429, 503])(
+    'retains HTTP %i and the original server message',
+    (status) => {
+      const error = AppError.Http(status, 'SERVER_MESSAGE', {
+        hours: ['INVALID'],
+      })
+      expect(error.statusCode).toBe(status)
+      expect(error.messageKey).toBe('SERVER_MESSAGE')
+      expect(error.details).toEqual({ hours: ['INVALID'] })
+    },
+  )
+})

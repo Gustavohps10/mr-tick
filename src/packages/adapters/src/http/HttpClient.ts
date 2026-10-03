@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios'
 
 import { IHttpClient, IHttpClientConfig } from '@/contracts/IHttpClient'
@@ -130,16 +130,8 @@ export class HttpClient implements IHttpClient {
         error.response?.data?.message || error.message || 'HTTP Request Failed'
       const status = error.response?.status
 
-      if (status === 401 || status === 403) {
-        return Either.failure(AppError.Unauthorized(message))
-      }
-      if (status === 404) {
-        return Either.failure(AppError.NotFound(message))
-      }
-      if (status === 422) {
-        return Either.failure(AppError.ValidationError(message))
-      }
-
+      if (status !== undefined)
+        return Either.failure(AppError.Http(status, message))
       return Either.failure(AppError.Internal(message))
     }
 
