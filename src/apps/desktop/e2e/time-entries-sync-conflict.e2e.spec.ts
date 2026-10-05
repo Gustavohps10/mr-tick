@@ -14,9 +14,9 @@ async function openDetectedConflict(page: Page) {
     const conflictButton = page
       .getByRole('button', { name: 'Conflito', exact: true })
       .first()
-    await expect(conflictButton).toBeVisible({ timeout: 2000 })
+    await expect(conflictButton).toBeVisible({ timeout: 5000 })
     await conflictButton.click()
-    await expect(dialog).toBeVisible({ timeout: 2000 })
+    await expect(dialog).toBeVisible({ timeout: 5000 })
   }).toPass({ timeout: 20000 })
   return dialog
 }

@@ -11,7 +11,7 @@ export default defineConfig({
     ? 2
     : process.env.WORKERS
       ? Number(process.env.WORKERS)
-      : 2,
+      : 4,
   forbidOnly: Boolean(process.env.CI),
   retries: 4,
   reporter: [

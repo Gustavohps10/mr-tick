@@ -57,8 +57,12 @@ jobs:
         run: yarn build
 
   e2e:
-    name: End-to-End Tests (Desktop)
+    name: End-to-End Tests (Desktop) (${{ matrix.shard }}/4)
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -85,12 +89,12 @@ jobs:
         run: yarn addon:link datasource-fake
 
       - name: Run E2E Tests
-        run: yarn test:e2e
+        run: yarn --cwd src/apps/desktop test:e2e --shard=${{ matrix.shard }}/4
 
       - name: Upload Playwright Report on Failure
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report-branch
+          name: playwright-report-branch-shard-${{ matrix.shard }}
           path: src/apps/desktop/playwright-report/
           retention-days: 7
