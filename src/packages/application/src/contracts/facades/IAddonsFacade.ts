@@ -8,7 +8,10 @@ export interface IAddonsFacade {
   listAvailable(): Promise<Either<AppError, AddonManifestDTO[]>>
   listInstalled(): Promise<Either<AppError, AddonManifestDTO[]>>
 
-  getInstalledById(addonId: string): Promise<Either<AppError, AddonManifestDTO>>
+  getInstalledById(
+    addonId: string,
+    version?: string,
+  ): Promise<Either<AppError, AddonManifestDTO>>
   getInstaller(
     installerUrl: string,
   ): Promise<Either<AppError, AddonInstallerDTO>>

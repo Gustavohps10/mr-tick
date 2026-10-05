@@ -1,11 +1,15 @@
 'use client'
 
 import {
-  AddonManifest,
+  AddonManifestViewModel,
   WorkspaceConnectionDTO,
   WorkspaceDTO,
 } from '@mr-tick/application'
-import { compareSemVer, parseSemVer } from '@mr-tick/shared/helpers'
+import {
+  compareSemVer,
+  isApiVersionCompatible,
+  parseSemVer,
+} from '@mr-tick/shared/helpers'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
@@ -14,6 +18,10 @@ import { toast } from 'sonner'
 import jiraLogo from '@/assets/temp-plugins-icons/jira.png'
 import youtrackLogo from '@/assets/temp-plugins-icons/youtrack.png'
 import { AddonSettingsPanel } from '@/components/addon-settings-panel'
+import {
+  AddonInstallModal,
+  AddonInstallTarget,
+} from '@/components/addons-manager/addon-install-modal'
 import {
   DataSourceInstanceFormData,
   NewDataSourceInstanceForm,
@@ -93,7 +101,7 @@ function connectionMatchesAddon(
 }
 
 function manifestToAddonItem(
-  m: AddonManifest,
+  m: AddonManifestViewModel,
   connections: AddonConnection[],
   category: AddonCategory,
 ): AddonItem {
@@ -112,13 +120,14 @@ function manifestToAddonItem(
     updateAvailable: m.updateAvailable,
     latestVersion: m.latestVersion,
     latestDownloadUrl: m.latestDownloadUrl,
+    requiredApiVersion: m.requiredApiVersion,
     changelog: m.changelog,
     incompatibleUpdate: m.incompatibleUpdate,
     incompatibleReason: m.incompatibleReason,
   }
 }
 
-function addonCategory(m: AddonManifest): AddonCategory {
+function addonCategory(m: AddonManifestViewModel): AddonCategory {
   const tags = (m.tags ?? []).map((t) => t.toLowerCase())
   const name = m.name.toLowerCase()
 
@@ -140,6 +149,13 @@ function addonCategory(m: AddonManifest): AddonCategory {
 
 export function AddonsPage() {
   const bridge = useHostBridge()
+  const { data: sdkVersion = '0.5.0' } = useQuery({
+    queryKey: ['sdkVersion'],
+    queryFn: () => bridge.system.getSdkVersion(),
+    staleTime: Infinity,
+  })
+  const [operation, setOperation] = useState<'install' | 'update'>('install')
+  const [jobTarget, setJobTarget] = useState<AddonInstallTarget | null>(null)
   const {
     connect,
     disconnect,
@@ -207,8 +223,17 @@ export function AddonsPage() {
   )
 
   const addons: AddonItem[] = useMemo(() => {
-    const byId = new Map<string, AddonManifest>()
+    const byId = new Map<string, AddonManifestViewModel>()
     installedList.forEach((m) => {
+      const previous = byId.get(m.id)
+      const previousVersion = previous && parseSemVer(previous.version)
+      const candidateVersion = parseSemVer(m.version)
+      if (
+        previousVersion &&
+        (!candidateVersion ||
+          compareSemVer(candidateVersion, previousVersion) <= 0)
+      )
+        return
       const match = availableList.find((av) => av.id === m.id)
       let updateAvailable = false
       let latestVersion = m.version
@@ -221,7 +246,8 @@ export function AddonsPage() {
         if (
           parsedRemote &&
           parsedLocal &&
-          compareSemVer(parsedRemote, parsedLocal) > 0
+          compareSemVer(parsedRemote, parsedLocal) > 0 &&
+          isApiVersionCompatible(match.requiredApiVersion, sdkVersion)
         ) {
           updateAvailable = true
           latestVersion = match.version
@@ -235,6 +261,9 @@ export function AddonsPage() {
         updateAvailable,
         latestVersion,
         latestDownloadUrl,
+        requiredApiVersion: updateAvailable
+          ? match?.requiredApiVersion
+          : m.requiredApiVersion,
         changelog,
       })
     })
@@ -264,7 +293,7 @@ export function AddonsPage() {
     })
 
     return [...realAddons, ...MOCK_ADDONS]
-  }, [installedList, availableList, connections, connectionState])
+  }, [installedList, availableList, connections, connectionState, sdkVersion])
 
   useEffect(() => {
     const upgradable = addons.filter((a) => a.installed && a.updateAvailable)
@@ -357,19 +386,27 @@ export function AddonsPage() {
     setIsInstalling(true)
     bridge.addons
       .getInstaller({ body: { installerUrl: addon.installerManifestUrl } })
-      .then((installer) => {
-        const pkg = installer.data?.packages.find((p) => p.version === version)
-        if (!pkg) throw new Error('Versão não encontrada.')
-        return bridge.addons.install({
-          body: { downloadUrl: pkg.downloadUrl },
-        })
-      })
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ['plugins'] })
-        toast.success('Instalado.')
-        setInstallDialogOpen(false)
-      })
-      .catch((e: Error) => toast.error(e?.message ?? 'Erro'))
+      .then(
+        (installer) => {
+          const pkg = installer.data?.packages.find(
+            (item) => item.version === version,
+          )
+          if (!installer.isSuccess || !pkg?.downloadUrl) {
+            toast.error(installer.error ?? 'Versão não encontrada.')
+            return
+          }
+          setOperation('install')
+          setInstallDialogOpen(false)
+          setJobTarget({
+            id: addon.id,
+            name: addon.name,
+            version: pkg.version,
+            downloadUrl: pkg.downloadUrl,
+            requiredApiVersion: pkg.requiredApiVersion,
+          })
+        },
+        () => toast.error('Falha ao obter instalador do addon.'),
+      )
       .finally(() => setIsInstalling(false))
   }
 
@@ -434,44 +471,30 @@ export function AddonsPage() {
     unlinkMutation.mutate(connection.id)
 
   const handleUpdate = (addon: AddonItem) => {
-    const downloadUrl = addon.latestDownloadUrl || addon.installerManifestUrl
-    if (!downloadUrl) {
+    if (!addon.latestDownloadUrl || !addon.latestVersion) {
       toast.error('URL de download da atualização não disponível.')
       return
     }
-    const updateToastId = `update-${addon.id}`
-    toast.loading(
-      `Atualizando ${addon.name} para v${addon.latestVersion || ''}...`,
-      { id: updateToastId },
-    )
-    bridge.addons
-      .update({
-        body: {
-          addonId: addon.id,
-          downloadUrl,
-        },
-      })
-      .then((res) => {
-        if (!res.isSuccess) {
-          toast.error(res.error || 'Falha ao atualizar addon.', {
-            id: updateToastId,
-          })
-          return
-        }
-        toast.success(`${addon.name} atualizado com sucesso!`, {
-          id: updateToastId,
-        })
-        queryClient.invalidateQueries({ queryKey: ['plugins'] })
-      })
-      .catch((err: Error) => {
-        toast.error(err.message || 'Falha ao atualizar addon.', {
-          id: updateToastId,
-        })
-      })
+    setOperation('update')
+    setJobTarget({
+      id: addon.id,
+      name: addon.name,
+      version: addon.latestVersion,
+      downloadUrl: addon.latestDownloadUrl,
+      requiredApiVersion: addon.requiredApiVersion,
+    })
   }
 
   return (
     <>
+      <AddonInstallModal
+        addon={jobTarget}
+        open={jobTarget !== null}
+        operation={operation}
+        onOpenChange={(open) => {
+          if (!open) setJobTarget(null)
+        }}
+      />
       <AddonList
         addons={filteredAddons}
         onInstall={handleOpenInstallDialog}

@@ -67,20 +67,28 @@ describe('UpdateAddonService', () => {
       exists: vi.fn().mockResolvedValue(true),
       delete: vi.fn().mockResolvedValue(undefined),
       getPublicUrl: vi.fn(),
-    } as Mocked<IFileStorage>
+    }
 
     fileManagerMock = {
       zip: vi.fn(),
       unzipInMemory: vi.fn().mockResolvedValue(fakeExtractedFiles),
       getMimeType: vi.fn(),
-    } as Mocked<IFileManager>
+    }
 
     addonsFacadeMock = {
       listAvailable: vi.fn(),
       listInstalled: vi.fn(),
-      getInstalledById: vi
-        .fn()
-        .mockResolvedValue(Either.success(existingManifest)),
+      getInstalledById: vi.fn().mockImplementation(async (addonId, version) =>
+        Either.success(
+          version
+            ? {
+                ...updatedManifest,
+                installed: true,
+                path: 'C:/isolated-user-data/addons/mr-tick-datasource-redmine/0.8.0',
+              }
+            : existingManifest,
+        ),
+      ),
       getInstaller: vi.fn(),
       parseManifest: vi.fn().mockResolvedValue(Either.success(updatedManifest)),
       parseInstaller: vi.fn(),
@@ -96,7 +104,7 @@ describe('UpdateAddonService', () => {
         ),
       restoreAddonBackup: vi.fn().mockResolvedValue(Either.success()),
       removeAddonBackup: vi.fn().mockResolvedValue(Either.success()),
-    } as Mocked<IAddonsFacade>
+    }
 
     addonReloaderMock = {
       getHostSdkVersion: vi.fn().mockReturnValue('0.8.4'),
@@ -143,7 +151,7 @@ describe('UpdateAddonService', () => {
     )
     expect(addonReloaderMock.loadAndActivateFromDisk).toHaveBeenCalledWith(
       'mr-tick-datasource-redmine',
-      './addons/mr-tick-datasource-redmine/0.8.0',
+      'C:/isolated-user-data/addons/mr-tick-datasource-redmine/0.8.0',
     )
     expect(addonsFacadeMock.removeAddonBackup).toHaveBeenCalledWith(
       './addons/mr-tick-datasource-redmine/0.7.0.backup',
@@ -212,5 +220,69 @@ describe('UpdateAddonService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure.messageKey).toBe('ADDON_NAO_INSTALADO')
     expect(addonsFacadeMock.downloadFile).not.toHaveBeenCalled()
+  })
+  it('activates the absolute path discovered from the written addon manifest, not a cwd-relative path', async () => {
+    addonsFacadeMock.getInstalledById
+      .mockResolvedValueOnce(Either.success(existingManifest))
+      .mockResolvedValueOnce(
+        Either.success({
+          ...updatedManifest,
+          installed: true,
+          path: 'C:/isolated-user-data/addons/mr-tick-datasource-redmine/0.8.0',
+        }),
+      )
+    const result = await sut.execute({
+      addonId: existingManifest.id,
+      downloadUrl: 'https://example.com/update.tladdon',
+    })
+    expect(result.isSuccess()).toBe(true)
+    expect(addonReloaderMock.loadAndActivateFromDisk).toHaveBeenCalledWith(
+      existingManifest.id,
+      'C:/isolated-user-data/addons/mr-tick-datasource-redmine/0.8.0',
+    )
+  })
+
+  it('preserves the backup when restoring the previous version fails', async () => {
+    addonReloaderMock.loadAndActivateFromDisk.mockResolvedValueOnce(false)
+    addonsFacadeMock.restoreAddonBackup.mockResolvedValue(
+      Either.failure(AppError.Internal('RESTORE_FAILED')),
+    )
+    const result = await sut.execute({
+      addonId: existingManifest.id,
+      downloadUrl: 'https://example.com/update.zip',
+    })
+    expect(result.isFailure()).toBe(true)
+    expect(result.failure.messageKey).toBe('RESTORE_FAILED')
+    expect(addonsFacadeMock.removeAddonBackup).not.toHaveBeenCalled()
+  })
+
+  it.each(['0.7.0', '0.6.0'])(
+    'rejects equal or older version %s before deactivation',
+    async (version) => {
+      addonsFacadeMock.parseManifest.mockResolvedValue(
+        Either.success({ ...updatedManifest, version }),
+      )
+      const result = await sut.execute({
+        addonId: existingManifest.id,
+        downloadUrl: 'https://example.com/update.zip',
+      })
+      expect(result.isFailure()).toBe(true)
+      expect(addonReloaderMock.deactivateAddon).not.toHaveBeenCalled()
+      expect(fileStorageMock.write).not.toHaveBeenCalled()
+    },
+  )
+
+  it('rejects archive traversal before writing or deactivating', async () => {
+    fileManagerMock.unzipInMemory.mockResolvedValue([
+      ...fakeExtractedFiles,
+      { name: '../outside.js', content: Buffer.from('bad') },
+    ])
+    const result = await sut.execute({
+      addonId: existingManifest.id,
+      downloadUrl: 'https://example.com/update.zip',
+    })
+    expect(result.isFailure()).toBe(true)
+    expect(fileStorageMock.write).not.toHaveBeenCalled()
+    expect(addonReloaderMock.deactivateAddon).not.toHaveBeenCalled()
   })
 })

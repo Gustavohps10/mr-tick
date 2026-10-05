@@ -382,11 +382,11 @@ export interface IAddonsAPI {
   ): Promise<ViewModel<AddonInstallerViewModel>>
 
   install(
-    payload: IRequest<{ downloadUrl: string }>,
+    payload: IRequest<{ downloadUrl: string; jobId?: string }>,
   ): Promise<ViewModel<IJobResult>>
 
   update(
-    payload: IRequest<{ addonId: string; downloadUrl: string }>,
+    payload: IRequest<{ addonId: string; downloadUrl: string; jobId: string }>,
   ): Promise<ViewModel<IJobResult>>
 
   uninstall(

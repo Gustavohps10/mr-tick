@@ -390,7 +390,7 @@ function AddonRow({
                         onClick={() => onUpdate(addon)}
                       >
                         <ArrowUpCircle className="mr-2 h-4 w-4" />
-                        Atualizar plugin
+                        Atualizar addon
                       </DropdownMenuItem>
                     )}
                   </DropdownMenuContent>

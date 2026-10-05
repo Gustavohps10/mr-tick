@@ -35,6 +35,7 @@ import { HandlerBase } from '@/main/handlers/HandlerBase'
 import { AddonLoader } from '@/main/services/AddonLoader'
 
 export class AddonsHandler implements HandlerBase<AddonsHandler> {
+  private readonly updatingAddonIds = new Set<string>()
   constructor(
     private readonly importAddonService: IImportAddonUseCase,
     private readonly updateAddonService: IUpdateAddonUseCase,
@@ -410,7 +411,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       return createResponseViewModel(result.forwardFailure())
     }
 
-    const installedItems = result.success
+    const installedItems = result.success.filter(
+      (item, index, items) =>
+        items.findIndex((candidate) => candidate.id === item.id) === index,
+    )
 
     const viewModels = installedItems.map((item) => ({
       ...item,
@@ -439,6 +443,12 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       }
     }
 
+    if (this.updatingAddonIds.has(body.addonId))
+      return {
+        isSuccess: false,
+        statusCode: 409,
+        error: 'ATUALIZACAO_ADDON_EM_ANDAMENTO',
+      }
     const result = await this.addonsFacade.uninstallAddon(
       body.addonId,
       body.version,
@@ -493,9 +503,9 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
 
   public async install(
     _event: IpcMainInvokeEvent,
-    { body }: IRequest<{ downloadUrl: string }>,
+    { body }: IRequest<{ downloadUrl: string; jobId?: string }>,
   ): Promise<ViewModel<IJobResult>> {
-    const jobId = crypto.randomUUID()
+    const jobId = body.jobId ?? crypto.randomUUID()
 
     this.runInstallationJob(jobId, body.downloadUrl).catch((err) => {
       console.error(`[Fatal Job Error ${jobId}]:`, err)
@@ -510,9 +520,9 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
 
   public async update(
     event: IpcMainInvokeEvent,
-    { body }: IRequest<{ addonId: string; downloadUrl: string }>,
+    { body }: IRequest<{ addonId: string; downloadUrl: string; jobId: string }>,
   ): Promise<ViewModel<IJobResult>> {
-    if (!body?.addonId || !body?.downloadUrl) {
+    if (!body?.addonId || !body?.downloadUrl || !body?.jobId) {
       return {
         isSuccess: false,
         statusCode: 400,
@@ -520,7 +530,14 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       }
     }
 
-    const jobId = crypto.randomUUID()
+    if (this.updatingAddonIds.has(body.addonId))
+      return {
+        isSuccess: false,
+        statusCode: 409,
+        error: 'ATUALIZACAO_ADDON_EM_ANDAMENTO',
+      }
+    this.updatingAddonIds.add(body.addonId)
+    const jobId = body.jobId
 
     this.runUpdateJob(jobId, body.addonId, body.downloadUrl).catch((err) => {
       console.error(`[Fatal Update Job Error ${jobId}]:`, err)
@@ -563,6 +580,8 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         status: 'error',
         error: 'UPDATE_FAILED',
       })
+    } finally {
+      this.updatingAddonIds.delete(addonId)
     }
   }
 

@@ -1,8 +1,9 @@
 import {
   AppError,
-  DEFAULT_MIN_API_VERSION,
+  compareSemVer,
   Either,
   isApiVersionCompatible,
+  parseSemVer,
 } from '@mr-tick/shared/helpers'
 import { IJobEvent } from '@mr-tick/shared/transport'
 
@@ -92,6 +93,34 @@ export class UpdateAddonService implements IUpdateAddonUseCase {
     if (newManifest.id !== input.addonId)
       return Either.failure(AppError.ValidationError('ADDON_ID_INCOMPATIVEL'))
 
+    const newVersion = newManifest.version
+    const parsedNewVersion = parseSemVer(newVersion)
+    const parsedCurrentVersion = parseSemVer(currentVersion)
+    if (
+      !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(
+        newVersion,
+      ) ||
+      !parsedNewVersion ||
+      !parsedCurrentVersion ||
+      compareSemVer(parsedNewVersion, parsedCurrentVersion) <= 0
+    )
+      return Either.failure(
+        AppError.ValidationError('VERSAO_ATUALIZACAO_DEVE_SER_SUPERIOR'),
+      )
+
+    if (
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(input.addonId) ||
+      extractedFiles.some(
+        (file) =>
+          /^(?:[\\/]|[a-zA-Z]:)/.test(file.name) ||
+          file.name.split(/[\\/]/).includes('..') ||
+          file.name.includes(':'),
+      )
+    )
+      return Either.failure(
+        AppError.ValidationError('CAMINHO_ARQUIVO_ADDON_INVALIDO'),
+      )
+
     if (newManifest.requiredApiVersion) {
       const hostSdkVersion = this.addonReloader.getHostSdkVersion()
       const isCompatible = isApiVersionCompatible(
@@ -120,7 +149,6 @@ export class UpdateAddonService implements IUpdateAddonUseCase {
 
     await this.addonReloader.deactivateAddon(input.addonId)
 
-    const newVersion = newManifest.version || DEFAULT_MIN_API_VERSION
     const newFolderPath = `./addons/${input.addonId}/${newVersion}`
 
     onProgress?.({ status: 'data', data: 'Instalando novos arquivos...' })
@@ -133,7 +161,13 @@ export class UpdateAddonService implements IUpdateAddonUseCase {
       try {
         await this.fileStorage.write(finalPath, file.content)
       } catch {
-        await this.rollback(input.addonId, backupPath, currentPath)
+        const rollbackResult = await this.rollback(
+          input.addonId,
+          backupPath,
+          currentPath,
+          newVersion,
+        )
+        if (rollbackResult.isFailure()) return rollbackResult.forwardFailure()
         return Either.failure(
           AppError.Internal('FALHA_AO_GRAVAR_ARQUIVOS_ATUALIZACAO'),
         )
@@ -145,25 +179,64 @@ export class UpdateAddonService implements IUpdateAddonUseCase {
     onProgress?.({ status: 'data', data: 'Ativando nova versão...' })
     onProgress?.({ status: 'progress', value: 92 })
 
+    const writtenAddon = await this.addonsFacade.getInstalledById(
+      input.addonId,
+      newVersion,
+    )
+    if (writtenAddon.isFailure()) {
+      const rollbackResult = await this.rollback(
+        input.addonId,
+        backupPath,
+        currentPath,
+        newVersion,
+      )
+      if (rollbackResult.isFailure()) return rollbackResult.forwardFailure()
+      return writtenAddon.forwardFailure()
+    }
+
     let activated = false
     try {
       activated = await this.addonReloader.loadAndActivateFromDisk(
         input.addonId,
-        newFolderPath,
+        writtenAddon.success.path,
       )
     } catch {
       activated = false
     }
 
     if (!activated) {
-      await this.rollback(input.addonId, backupPath, currentPath)
+      const rollbackResult = await this.rollback(
+        input.addonId,
+        backupPath,
+        currentPath,
+        newVersion,
+      )
+      if (rollbackResult.isFailure()) return rollbackResult.forwardFailure()
       return Either.failure(AppError.Internal('FALHA_AO_ATIVAR_NOVA_VERSAO'))
     }
 
-    await this.addonsFacade.removeAddonBackup(backupPath)
-    if (newVersion !== currentVersion) {
-      await this.addonsFacade.uninstallAddon(input.addonId, currentVersion)
+    const removedOldVersion = await this.addonsFacade.uninstallAddon(
+      input.addonId,
+      currentVersion,
+    )
+    if (removedOldVersion.isSuccess()) {
+      const removedBackup =
+        await this.addonsFacade.removeAddonBackup(backupPath)
+      if (removedBackup.isFailure())
+        onProgress?.({
+          status: 'data',
+          data:
+            'Nova versão ativada; não foi possível remover o backup: ' +
+            removedBackup.failure.messageKey,
+        })
     }
+    if (removedOldVersion.isFailure())
+      onProgress?.({
+        status: 'data',
+        data:
+          'Nova versão ativada; backup preservado porque a limpeza da versão anterior falhou: ' +
+          removedOldVersion.failure.messageKey,
+      })
 
     onProgress?.({ status: 'data', data: 'Atualização concluída com sucesso.' })
     onProgress?.({ status: 'progress', value: 100 })
@@ -175,9 +248,28 @@ export class UpdateAddonService implements IUpdateAddonUseCase {
     addonId: string,
     backupPath: string,
     currentPath: string,
-  ): Promise<void> {
-    await this.addonsFacade.restoreAddonBackup(addonId, backupPath)
-    await this.addonReloader.loadAndActivateFromDisk(addonId, currentPath)
-    await this.addonsFacade.removeAddonBackup(backupPath)
+    failedVersion: string,
+  ): Promise<Either<AppError, void>> {
+    await this.addonReloader.deactivateAddon(addonId)
+    const restored = await this.addonsFacade.restoreAddonBackup(
+      addonId,
+      backupPath,
+    )
+    if (restored.isFailure()) return restored.forwardFailure()
+    const reactivated = await this.addonReloader.loadAndActivateFromDisk(
+      addonId,
+      currentPath,
+    )
+    if (!reactivated)
+      return Either.failure(
+        AppError.Internal('FALHA_AO_REATIVAR_VERSAO_ANTERIOR'),
+      )
+    const removed = await this.addonsFacade.uninstallAddon(
+      addonId,
+      failedVersion,
+    )
+    if (removed.isFailure() && removed.failure.statusCode !== 404)
+      return removed.forwardFailure()
+    return this.addonsFacade.removeAddonBackup(backupPath)
   }
 }

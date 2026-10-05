@@ -1,227 +1,244 @@
+import { randomUUID } from 'node:crypto'
+import { mkdir, symlink, writeFile } from 'node:fs/promises'
+import { createServer, type ServerResponse } from 'node:http'
+import { dirname, join, resolve, sep } from 'node:path'
+
+import archiver from 'archiver'
+
+import type { IHostBridge } from '../../../packages/application/src/contracts/host/IHostBridge'
 import { expect, test } from './fixtures/electron-fixture'
 
-test.describe('E2E - Atualizador de Addons & Notificações de Versão', () => {
-  test('deve detectar nova versão disponível, exibir notificação toast, badge e disparar atualização com sucesso', async ({
-    electronApp,
-    page,
-  }) => {
-    let updatePayloadReceived: { addonId: string; downloadUrl: string } | null =
-      null
+declare global {
+  interface Window {
+    api: IHostBridge
+  }
+}
 
-    await electronApp.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('ADDONS_LIST_INSTALLED')
-      ipcMain.handle('ADDONS_LIST_INSTALLED', async () => ({
-        isSuccess: true,
-        statusCode: 200,
-        data: [
-          {
-            id: 'mr-tick-datasource-redmine',
-            name: 'Redmine Integration',
-            version: '0.7.0',
-            creator: 'Community',
-            description: 'Plugin Redmine legado v0.7.0',
-            category: 'integrations',
-            categories: ['dataSource'],
-            installed: true,
-            path: './addons/mr-tick-datasource-redmine/0.7.0',
-            logo: '',
-            downloads: 50,
-            stars: 5,
-          },
-        ],
-        totalItems: 1,
-        totalPages: 1,
-        currentPage: 1,
-      }))
+function addonModule(version: string, fails: boolean) {
+  return `export default class AuditAddon {
+    async activate(context) {
+      if (${fails}) throw new Error('Intentional activation failure')
+      this.context = context
+      context.commands.register('audit:version', () => '${version}')
+    }
+    async deactivate() { this.context?.commands.unregister('audit:version') }
+  }`
+}
 
-      ipcMain.removeHandler('ADDONS_LIST_AVAILABLE')
-      ipcMain.handle('ADDONS_LIST_AVAILABLE', async () => ({
-        isSuccess: true,
-        statusCode: 200,
-        data: [
-          {
-            id: 'mr-tick-datasource-redmine',
-            name: 'Redmine Integration',
-            version: '0.8.0',
-            creator: 'Community',
-            description: 'Plugin Redmine atualizado v0.8.0',
-            category: 'integrations',
-            categories: ['dataSource'],
-            downloadUrl: 'https://example.com/redmine-0.8.0.tladdon',
-            requiredApiVersion: '>=0.8.0',
-            installed: false,
-            path: '',
-            logo: '',
-            downloads: 120,
-            stars: 5,
-            changelog: ['Melhorias de estabilidade e hot-reload'],
-          },
-        ],
-        totalItems: 1,
-        totalPages: 1,
-        currentPage: 1,
-      }))
+async function addonArchive(id: string, fails: boolean) {
+  const archive = archiver('zip')
+  const chunks: Buffer[] = []
+  const completed = new Promise<Buffer>((resolveArchive, reject) => {
+    archive.on('data', (chunk: Buffer) => chunks.push(chunk))
+    archive.on('end', () => resolveArchive(Buffer.concat(chunks)))
+    archive.on('error', reject)
+  })
+  archive.append(
+    `id: ${id}\nname: Audit Addon\nversion: 1.0.0\nrequiredApiVersion: '>=0.6.0'\n`,
+    { name: 'manifest.yaml' },
+  )
+  archive.append(addonModule('1.0.0', fails), { name: 'dist/index.mjs' })
+  await archive.finalize()
+  return completed
+}
 
-      ipcMain.removeHandler('ADDONS_UPDATE')
-      ipcMain.handle('ADDONS_UPDATE', async (_event, req) => {
-        ;(
-          globalThis as unknown as { lastUpdatePayload: unknown }
-        ).lastUpdatePayload = req?.body
-        return {
-          isSuccess: true,
-          statusCode: 200,
-          data: { jobId: 'job-update-123' },
-        }
+for (const scenario of ['success', 'activation-failure', 'linked-addon']) {
+  const fails = scenario === 'activation-failure'
+  const linked = scenario === 'linked-addon'
+  const expectsOldVersion = fails || linked
+  test(
+    linked
+      ? 'real update protects a linked development addon'
+      : fails
+        ? 'real update restores the old addon after activation failure'
+        : 'real update opens the console, installs and activates the downloaded version',
+    async ({ electronApp, page }, testInfo) => {
+      await page.setViewportSize({ width: 1280, height: 800 })
+      const id = 'audit-update-' + randomUUID()
+      const userData = await electronApp.evaluate(({ app }) =>
+        app.getPath('userData'),
+      )
+      const expectedRoot = resolve('test-results/electron-user-data')
+      expect(resolve(userData).startsWith(expectedRoot + sep)).toBe(true)
+      const oldFolder = join(userData, 'addons', id, '0.9.0')
+      if (linked) {
+        const sourceFolder = join(userData, 'linked-audit-source', id)
+        await mkdir(sourceFolder, { recursive: true })
+        await mkdir(dirname(oldFolder), { recursive: true })
+        await symlink(sourceFolder, oldFolder, 'junction')
+      }
+      await mkdir(join(oldFolder, 'dist'), { recursive: true })
+      await writeFile(
+        join(oldFolder, 'manifest.yaml'),
+        `id: ${id}\nname: Audit Addon\nversion: 0.9.0\ncategory: DataSources\nrequiredApiVersion: '>=0.6.0'\n`,
+      )
+      await writeFile(
+        join(oldFolder, 'dist/index.mjs'),
+        addonModule('0.9.0', false),
+      )
+      const archive = await addonArchive(id, fails)
+      let pendingResponse: ServerResponse | undefined
+      let notifyDownload: () => void = () => {}
+      const downloadStarted = new Promise<void>((resolveDownload) => {
+        notifyDownload = resolveDownload
       })
-    })
-
-    // 1. Acessa o workspace padrão
-    const workspaceLinks = page.locator('nav a[href*="/workspaces/"]')
-    await expect(workspaceLinks.first()).toBeVisible({ timeout: 15000 })
-    await workspaceLinks.first().click()
-
-    // 2. Abre o modal de gerenciamento de addons
-    const addonsButton = page.locator('button[aria-label="Gerenciar Addons"]')
-    await expect(addonsButton.first()).toBeVisible({ timeout: 10000 })
-    await addonsButton.first().click()
-
-    // 3. Valida a exibição do badge de atualização na lista de addons
-    const updateBadge = page.locator(
-      '[data-testid="addon-update-badge-mr-tick-datasource-redmine"]',
-    )
-    await expect(updateBadge.first()).toBeVisible({ timeout: 10000 })
-    await expect(updateBadge.first()).toHaveText('Atualização')
-
-    // 4. Seleciona o addon na lista para abrir a coluna de detalhes
-    const addonBrowseCard = page.locator(
-      '[data-testid="addon-browse-card-mr-tick-datasource-redmine"]',
-    )
-    await expect(addonBrowseCard).toBeVisible({ timeout: 5000 })
-    await addonBrowseCard.click()
-
-    // 5. Clica no botão de atualizar nos detalhes
-    const updateButton = page.locator(
-      '[data-testid="addon-update-btn-mr-tick-datasource-redmine"]',
-    )
-    await expect(updateButton.first()).toBeVisible({ timeout: 5000 })
-    await updateButton.first().click()
-
-    // 6. Valida que o payload IPC foi enviado corretamente ao Main Process
-    updatePayloadReceived = await electronApp.evaluate(() => {
-      return (
-        globalThis as unknown as {
-          lastUpdatePayload: { addonId: string; downloadUrl: string }
+      const server = createServer((request, response) => {
+        pendingResponse = response
+        notifyDownload()
+      })
+      await new Promise<void>((resolveListening, reject) => {
+        server.once('error', reject)
+        server.listen(0, '127.0.0.1', resolveListening)
+      })
+      const address = server.address()
+      if (!address || typeof address === 'string')
+        throw new Error('HTTP test server has no port')
+      const downloadUrl = `http://127.0.0.1:${address.port}/addon.zip`
+      try {
+        // Only the remote catalog is mocked; update IPC, download, disk and loader are real.
+        await electronApp.evaluate(
+          ({ ipcMain }, catalog) => {
+            ipcMain.removeHandler('ADDONS_LIST_AVAILABLE')
+            ipcMain.handle('ADDONS_LIST_AVAILABLE', async () => ({
+              isSuccess: true,
+              statusCode: 200,
+              data: [
+                {
+                  id: catalog.id,
+                  name: 'Audit Addon',
+                  version: '1.0.0',
+                  requiredApiVersion: '>=0.6.0',
+                  category: 'DataSources',
+                  categories: ['DataSources'],
+                  creator: 'Audit',
+                  description: 'Real update regression',
+                  path: '',
+                  logo: '',
+                  installed: false,
+                  downloads: 0,
+                  stars: 0,
+                  downloadUrl: catalog.downloadUrl,
+                },
+              ],
+            }))
+          },
+          { id, downloadUrl },
+        )
+        const initial = await page.evaluate(
+          (addonId) => window.api.addons.getSchema({ body: { addonId } }),
+          id,
+        )
+        expect(initial.isSuccess).toBe(true)
+        const oldCommand = await page.evaluate(
+          (addonId) =>
+            window.api.addons.executeCommand({
+              body: { commandId: addonId + ':audit:version' },
+            }),
+          id,
+        )
+        expect(oldCommand.data).toBe('0.9.0')
+        const workspace = page.locator('nav a[href*="/workspaces/"]').first()
+        await expect(workspace).toBeVisible()
+        await workspace.click()
+        await page
+          .getByRole('button', { name: 'Gerenciar Addons' })
+          .first()
+          .click()
+        await page.getByTestId('addon-browse-card-' + id).click()
+        const actions = page.getByTestId('addon-details-actions')
+        const update = page.getByTestId('addon-update-btn-' + id)
+        const uninstall = actions.getByRole('button', { name: 'Desinstalar' })
+        const updateBox = await update.boundingBox()
+        const uninstallBox = await uninstall.boundingBox()
+        expect(updateBox).not.toBeNull()
+        expect(uninstallBox).not.toBeNull()
+        expect(
+          Math.abs((updateBox?.y ?? 0) - (uninstallBox?.y ?? 0)),
+        ).toBeLessThan(2)
+        await page.screenshot({
+          path: testInfo.outputPath('addon-actions.png'),
+        })
+        await update.click()
+        await expect(page.getByText('Console de Atualização')).toBeVisible()
+        await downloadStarted
+        const concurrent = await page.evaluate(
+          async (addonId) => ({
+            update: await window.api.addons.update({
+              body: {
+                addonId,
+                downloadUrl: 'http://127.0.0.1/unused',
+                jobId: crypto.randomUUID(),
+              },
+            }),
+            uninstall: await window.api.addons.uninstall({ body: { addonId } }),
+          }),
+          id,
+        )
+        expect(concurrent.update.statusCode).toBe(409)
+        expect(concurrent.uninstall.statusCode).toBe(409)
+        await expect(
+          page.getByRole('button', { name: 'Aguarde...' }),
+        ).toBeDisabled()
+        await expect(
+          page.getByText('Addon atualizado com sucesso!', { exact: true }),
+        ).toHaveCount(0)
+        if (!pendingResponse)
+          throw new Error('Download request was not received')
+        pendingResponse.writeHead(200, {
+          'Content-Type': 'application/zip',
+          'Content-Length': archive.length,
+        })
+        pendingResponse.end(archive)
+        await expect(
+          page.getByRole('button', { name: 'Concluir', exact: true }),
+        ).toBeEnabled()
+        if (expectsOldVersion) {
+          await expect(
+            page
+              .getByText(
+                linked
+                  ? 'Addon vinculado para desenvolvimento: instale uma cópia pelo catálogo para permitir atualizações.'
+                  : 'FALHA_AO_ATIVAR_NOVA_VERSAO',
+              )
+              .first(),
+          ).toBeVisible()
+          await expect(
+            page.getByText('Addon atualizado com sucesso!', { exact: true }),
+          ).toHaveCount(0)
         }
-      ).lastUpdatePayload
-    })
-
-    expect(updatePayloadReceived).not.toBeNull()
-    expect(updatePayloadReceived?.addonId).toBe('mr-tick-datasource-redmine')
-    expect(updatePayloadReceived?.downloadUrl).toBe(
-      'https://example.com/redmine-0.8.0.tladdon',
-    )
-
-    // 7. Valida o toast de sucesso
-    await expect(
-      page.getByText('Plugin atualizado com sucesso!').first(),
-    ).toBeVisible({
-      timeout: 10000,
-    })
-  })
-
-  test('deve tratar falha na atualização exibindo toast de erro', async ({
-    electronApp,
-    page,
-  }) => {
-    await electronApp.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('ADDONS_LIST_INSTALLED')
-      ipcMain.handle('ADDONS_LIST_INSTALLED', async () => ({
-        isSuccess: true,
-        statusCode: 200,
-        data: [
-          {
-            id: 'mr-tick-datasource-failing',
-            name: 'Plugin com Falha',
-            version: '1.0.0',
-            creator: 'Tester',
-            description: 'Plugin para teste de erro',
-            category: 'integrations',
-            categories: ['dataSource'],
-            installed: true,
-            path: './addons/mr-tick-datasource-failing/1.0.0',
-            logo: '',
-            downloads: 1,
-            stars: 1,
-          },
-        ],
-        totalItems: 1,
-        totalPages: 1,
-        currentPage: 1,
-      }))
-
-      ipcMain.removeHandler('ADDONS_LIST_AVAILABLE')
-      ipcMain.handle('ADDONS_LIST_AVAILABLE', async () => ({
-        isSuccess: true,
-        statusCode: 200,
-        data: [
-          {
-            id: 'mr-tick-datasource-failing',
-            name: 'Plugin com Falha',
-            version: '1.1.0',
-            creator: 'Tester',
-            description: 'Plugin para teste de erro',
-            category: 'integrations',
-            categories: ['dataSource'],
-            downloadUrl: 'https://example.com/failing-1.1.0.tladdon',
-            requiredApiVersion: '>=1.0.0',
-            installed: false,
-            path: '',
-            logo: '',
-            downloads: 2,
-            stars: 1,
-          },
-        ],
-        totalItems: 1,
-        totalPages: 1,
-        currentPage: 1,
-      }))
-
-      ipcMain.removeHandler('ADDONS_UPDATE')
-      ipcMain.handle('ADDONS_UPDATE', async () => ({
-        isSuccess: false,
-        statusCode: 500,
-        error: 'FALHA_AO_ATIVAR_NOVA_VERSAO',
-      }))
-    })
-
-    const workspaceLinks = page.locator('nav a[href*="/workspaces/"]')
-    await expect(workspaceLinks.first()).toBeVisible({ timeout: 15000 })
-    await workspaceLinks.first().click()
-
-    // Abre o modal de gerenciamento de addons
-    const addonsButton = page.locator('button[aria-label="Gerenciar Addons"]')
-    await expect(addonsButton.first()).toBeVisible({ timeout: 10000 })
-    await addonsButton.first().click()
-
-    // Clica na aba "Atualizações" do gerenciador
-    const updatesTab = page.locator(
-      '[data-testid="addons-manager-tab-updates"]',
-    )
-    await expect(updatesTab).toBeVisible({ timeout: 10000 })
-    await updatesTab.click()
-
-    // Clica no botão de atualizar do addon na lista de atualizações
-    const updateBtn = page.locator(
-      '[data-testid="addon-update-btn-mr-tick-datasource-failing"]',
-    )
-    await expect(updateBtn.first()).toBeVisible({ timeout: 10000 })
-    await updateBtn.first().click()
-
-    // O toast de erro deve ser exibido com a mensagem de falha
-    await expect(
-      page.getByText('FALHA_AO_ATIVAR_NOVA_VERSAO').first(),
-    ).toBeVisible({
-      timeout: 10000,
-    })
-  })
-})
+        const active = await page.evaluate(
+          (addonId) =>
+            window.api.addons.executeCommand({
+              body: { commandId: addonId + ':audit:version' },
+            }),
+          id,
+        )
+        expect(active.isSuccess).toBe(true)
+        expect(active.data).toBe(expectsOldVersion ? '0.9.0' : '1.0.0')
+        const installed = await page.evaluate(() =>
+          window.api.addons.listInstalled(),
+        )
+        expect(
+          installed.data
+            ?.filter((item) => item.id === id)
+            .map((item) => item.version),
+        ).toEqual([expectsOldVersion ? '0.9.0' : '1.0.0'])
+        await page.screenshot({
+          path: testInfo.outputPath('addon-update-console.png'),
+        })
+        await page
+          .getByRole('button', { name: 'Concluir', exact: true })
+          .click()
+        if (!expectsOldVersion)
+          await expect(page.getByTestId('addon-update-btn-' + id)).toHaveCount(
+            0,
+          )
+      } finally {
+        pendingResponse?.destroy()
+        await new Promise<void>((resolveClosed) =>
+          server.close(() => resolveClosed()),
+        )
+      }
+    },
+  )
+}

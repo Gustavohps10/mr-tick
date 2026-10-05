@@ -6,9 +6,8 @@
 "@mr-tick/desktop": minor
 ---
 
-Implementação do atualizador automático de addons com hot-reload gracioso e rollback atômico:
-- Detecção semântica de novas versões disponíveis e validação de compatibilidade com a versão da API do Host.
-- Hot-reload com desativação em memória, backup temporário e restauração automática (rollback) em caso de falha de ativação da nova versão.
-- Injeção estrita de dependências sem parâmetros opcionais (`?:`) no IoC/DI.
-- Interface visual no Gerenciador de Addons com abas dedicadas, badges de versão, toasts informativos e disparo de atualização.
-- Cobertura completa com testes unitários e suíte E2E automatizada no Playwright com Electron.
+Adiciona atualização de addons com validação de versão/API, backup e rollback compensatório quando a ativação falha. Instalação e atualização abrem um console com progresso e logs; o sucesso é confirmado somente após a conclusão do job.
+
+Corrige a ativação pelo caminho absoluto da versão gravada, prioriza a versão instalada mais recente e exclui backups da descoberta. Preserva backups quando a recuperação falha, protege addons vinculados de desenvolvimento e bloqueia atualização/desinstalação concorrentes. As ações do gerenciador ficam compactas e usam a terminologia Addon.
+
+A validação inclui regressões unitárias e de UI e três testes E2E no Electron com download, filesystem, ativação e rollback reais, simulando apenas o catálogo remoto.

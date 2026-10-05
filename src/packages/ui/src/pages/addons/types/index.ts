@@ -29,6 +29,7 @@ export interface AddonItem {
   updateAvailable?: boolean
   latestVersion?: string
   latestDownloadUrl?: string
+  requiredApiVersion?: string
   changelog?: string[]
   incompatibleUpdate?: boolean
   incompatibleReason?: string

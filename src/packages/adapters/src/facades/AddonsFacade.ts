@@ -96,18 +96,17 @@ function isPathResolvableStorage(
 ): storage is IFileStorage & IPathResolvableStorage {
   return (
     'getAbsolutePath' in storage &&
-    typeof (storage as Partial<IPathResolvableStorage>).getAbsolutePath ===
-      'function'
+    typeof storage.getAbsolutePath === 'function'
   )
 }
 
 export class AddonsFacade implements IAddonsFacade {
-  constructor(private readonly fileStorage?: IFileStorage) {}
+  constructor(private readonly fileStorage: IFileStorage) {}
 
   private getAddonsBasePaths(): string[] {
     const paths: string[] = [resolve('./addons'), resolve('./storage/addons')]
 
-    if (this.fileStorage && isPathResolvableStorage(this.fileStorage)) {
+    if (isPathResolvableStorage(this.fileStorage)) {
       const storageAddonsPath = this.fileStorage.getAbsolutePath('addons')
       if (storageAddonsPath && !paths.includes(storageAddonsPath)) {
         paths.push(storageAddonsPath)
@@ -207,6 +206,13 @@ export class AddonsFacade implements IAddonsFacade {
         }
       }
 
+      installedAddons.sort((left, right) => {
+        const leftVersion = parseSemVer(left.version)
+        const rightVersion = parseSemVer(right.version)
+        if (!leftVersion) return rightVersion ? 1 : 0
+        if (!rightVersion) return -1
+        return compareSemVer(rightVersion, leftVersion)
+      })
       return Either.success(installedAddons)
     } catch {
       return Either.failure(
@@ -217,11 +223,28 @@ export class AddonsFacade implements IAddonsFacade {
 
   public async getInstalledById(
     addonId: string,
+    version?: string,
   ): Promise<Either<AppError, AddonManifestDTO>> {
     const result = await this.listInstalled()
     if (result.isFailure()) return result.forwardFailure()
 
-    const addon = result.success.find((a: AddonManifestDTO) => a.id === addonId)
+    const matches = result.success.filter(
+      (item) => item.id === addonId && (!version || item.version === version),
+    )
+    const addon = matches.reduce<AddonManifestDTO | undefined>(
+      (latest, item) => {
+        if (!latest) return item
+        const candidateVersion = parseSemVer(item.version)
+        const latestVersion = parseSemVer(latest.version)
+        if (
+          candidateVersion &&
+          (!latestVersion || compareSemVer(candidateVersion, latestVersion) > 0)
+        )
+          return item
+        return latest
+      },
+      undefined,
+    )
     if (!addon)
       return Either.failure(AppError.NotFound('LOCAL_ADDON_NOT_FOUND'))
 
@@ -254,6 +277,7 @@ export class AddonsFacade implements IAddonsFacade {
 
             if (matchesId && matchesVersion) {
               const targetFolder = join(manifestPath, '..')
+              if (await this.isLinkedAddonFolder(targetFolder)) continue
               await fs.rm(targetFolder, { recursive: true, force: true })
               removedCount++
             }
@@ -295,6 +319,12 @@ export class AddonsFacade implements IAddonsFacade {
         )
       }
 
+      if (await this.isLinkedAddonFolder(targetAddon.path))
+        return Either.failure(
+          AppError.ValidationError(
+            'Addon vinculado para desenvolvimento: instale uma cópia pelo catálogo para permitir atualizações.',
+          ),
+        )
       const backupPath = `${targetAddon.path}.backup`
       await fs.cp(targetAddon.path, backupPath, {
         recursive: true,
@@ -538,12 +568,21 @@ export class AddonsFacade implements IAddonsFacade {
     }
   }
 
+  private async isLinkedAddonFolder(addonPath: string): Promise<boolean> {
+    const actualPath = await fs.realpath(addonPath)
+    const expectedPath = resolve(addonPath)
+    if (process.platform === 'win32')
+      return actualPath.toLowerCase() !== expectedPath.toLowerCase()
+    return actualPath !== expectedPath
+  }
+
   private async findManifestFiles(dir: string): Promise<string[]> {
     const manifestPaths: string[] = []
 
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true })
       for (const entry of entries) {
+        if (entry.name.endsWith('.backup')) continue
         const fullPath = join(dir, entry.name)
         let isDirectory = entry.isDirectory()
 

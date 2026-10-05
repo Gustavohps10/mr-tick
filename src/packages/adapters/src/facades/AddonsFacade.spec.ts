@@ -1,13 +1,14 @@
 import axios from 'axios'
 import { describe, expect, it, vi } from 'vitest'
 
+import { HardDiskStorage } from '../tools/HardDiskStorage'
 import { AddonsFacade } from './AddonsFacade'
 
 vi.mock('axios')
 
 describe('AddonsFacade', () => {
   it('should parse unified manifest YAML correctly', async () => {
-    const facade = new AddonsFacade()
+    const facade = new AddonsFacade(new HardDiskStorage('./storage'))
     const yamlContent = `
 id: mr-tick-datasource-redmine
 name: Redmine Integration
@@ -44,7 +45,7 @@ changelog:
   })
 
   it('should maintain backward compatibility with legacy PascalCase manifests', async () => {
-    const facade = new AddonsFacade()
+    const facade = new AddonsFacade(new HardDiskStorage('./storage'))
     const legacyYaml = `
 AddonId: mr-tick-legacy
 Name: Legacy Addon
@@ -68,7 +69,7 @@ IconUrl: https://example.com/legacy.png
   })
 
   it('should fetch available addons in a single HTTP request without N+1', async () => {
-    const facade = new AddonsFacade()
+    const facade = new AddonsFacade(new HardDiskStorage('./storage'))
     const mockConsolidatedCatalog = [
       {
         id: 'mr-tick-datasource-redmine',
@@ -110,7 +111,7 @@ IconUrl: https://example.com/legacy.png
 
   describe('checkUpdates', () => {
     it('should mark updateAvailable: true when remote version is higher and compatible with host', () => {
-      const facade = new AddonsFacade()
+      const facade = new AddonsFacade(new HardDiskStorage('./storage'))
       const installed = [
         {
           id: 'mr-tick-datasource-redmine',
@@ -159,7 +160,7 @@ IconUrl: https://example.com/legacy.png
     })
 
     it('should mark incompatibleUpdate: true when remote version requires newer host SDK', () => {
-      const facade = new AddonsFacade()
+      const facade = new AddonsFacade(new HardDiskStorage('./storage'))
       const installed = [
         {
           id: 'mr-tick-datasource-redmine',
@@ -206,7 +207,7 @@ IconUrl: https://example.com/legacy.png
 
   describe('backupAddon, restoreAddonBackup and removeAddonBackup', () => {
     it('deve ter os métodos backupAddon, restoreAddonBackup e removeAddonBackup definidos na facade', () => {
-      const facade = new AddonsFacade()
+      const facade = new AddonsFacade(new HardDiskStorage('./storage'))
       expect(typeof facade.backupAddon).toBe('function')
       expect(typeof facade.restoreAddonBackup).toBe('function')
       expect(typeof facade.removeAddonBackup).toBe('function')
