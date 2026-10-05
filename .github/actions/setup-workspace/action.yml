@@ -1,0 +1,84 @@
+name: Setup workspace
+description: Install Yarn dependencies and restore compatible task and Electron caches.
+inputs:
+  turbo-scope:
+    description: Task cache producer (checks or desktop). Empty disables the task cache.
+    required: false
+    default: ''
+  restore-only:
+    description: Restore a producer cache without saving another snapshot.
+    required: false
+    default: 'false'
+  cache-builder:
+    description: Cache packaging downloads only in the packaging job.
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24
+
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable
+
+    - name: Locate Yarn Cache
+      id: yarn-cache
+      shell: bash
+      run: echo "path=$(yarn config get cacheFolder)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Yarn Packages
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.yarn-cache.outputs.path }}
+        key: ${{ runner.os }}-${{ runner.arch }}-yarn-v1-${{ hashFiles('yarn.lock', '.yarnrc.yml', '.yarn/releases/*') }}
+
+    - name: Cache Electron Downloads
+      if: runner.os == 'Windows'
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/electron-download-cache
+        key: ${{ runner.os }}-${{ runner.arch }}-electron-v1-${{ hashFiles('yarn.lock', 'src/apps/desktop/electron-builder.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-electron-v1-
+
+    - name: Cache Electron Builder Downloads
+      if: runner.os == 'Windows' && inputs.cache-builder == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}/electron-package-cache
+          ${{ runner.temp }}/electron-builder-cache
+        key: ${{ runner.os }}-${{ runner.arch }}-electron-builder-v1-${{ hashFiles('yarn.lock', 'src/apps/desktop/electron-builder.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-electron-builder-v1-
+
+    - name: Restore and Save Turbo Cache
+      if: inputs.turbo-scope != '' && inputs.restore-only != 'true'
+      uses: actions/cache@v4
+      with:
+        path: .turbo/cache
+        key: ${{ runner.os }}-${{ runner.arch }}-node24-turbo-v2-${{ inputs.turbo-scope }}-${{ hashFiles('yarn.lock') }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-node24-turbo-v2-${{ inputs.turbo-scope }}-${{ hashFiles('yarn.lock') }}-
+          ${{ runner.os }}-${{ runner.arch }}-node24-turbo-v2-${{ inputs.turbo-scope }}-
+
+    - name: Restore Turbo Cache
+      if: inputs.turbo-scope != '' && inputs.restore-only == 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: .turbo/cache
+        key: ${{ runner.os }}-${{ runner.arch }}-node24-turbo-v2-${{ inputs.turbo-scope }}-${{ hashFiles('yarn.lock') }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-node24-turbo-v2-${{ inputs.turbo-scope }}-${{ hashFiles('yarn.lock') }}-
+          ${{ runner.os }}-${{ runner.arch }}-node24-turbo-v2-${{ inputs.turbo-scope }}-
+
+    - name: Install Dependencies
+      shell: bash
+      run: yarn install --immutable
+      env:
+        electron_config_cache: ${{ runner.temp }}/electron-download-cache
+        ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache

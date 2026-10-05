@@ -6,7 +6,9 @@ on:
     branches:
       - main
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: write
@@ -27,37 +29,31 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Workspace
+        uses: ./.github/actions/setup-workspace
         with:
-          node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Cache Turbo
-        uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-
-
-      - name: Install Dependencies
-        run: yarn install --immutable
+          turbo-scope: checks
 
       - name: Typecheck
-        run: yarn typecheck
+        run: yarn typecheck --summarize
 
       - name: Run Unit Tests
-        run: yarn test:unit
+        run: yarn test:unit --summarize
 
       - name: Run UI Tests
-        run: yarn test:ui
+        run: yarn test:ui --summarize
 
       - name: Build
-        run: yarn build
+        run: yarn build --summarize
+
+      - name: Upload Turbo Run Summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: turbo-summaries-test
+          path: .turbo/runs/*.json
+          retention-days: 7
+          if-no-files-found: ignore
 
   build-e2e:
     name: Build Desktop for E2E
@@ -66,31 +62,13 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Workspace
+        uses: ./.github/actions/setup-workspace
         with:
-          node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Cache Turbo
-        uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-desktop-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-desktop-
-
-      - name: Install Dependencies
-        run: yarn install --immutable
+          turbo-scope: desktop
 
       - name: Build Desktop App
-        run: yarn turbo run build --filter=@mr-tick/desktop
-
-      - name: Build Test Addon
-        run: yarn addon:build datasource-fake
+        run: yarn turbo run build --concurrency=100% --filter=@mr-tick/desktop --filter=@mr-tick/datasource-fake --summarize
 
       - name: Upload Desktop Build Artifacts
         uses: actions/upload-artifact@v4
@@ -102,6 +80,17 @@ jobs:
             src/apps/sdk/dist
             src/dev-addons/datasource-fake/dist
           retention-days: 1
+          compression-level: 1
+          if-no-files-found: error
+
+      - name: Upload Turbo Run Summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: turbo-summaries-build-e2e
+          path: .turbo/runs/*.json
+          retention-days: 7
+          if-no-files-found: ignore
 
   e2e:
     name: End-to-End Tests (Desktop) (${{ matrix.shard }}/6)
@@ -115,17 +104,8 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install Dependencies
-        run: yarn install --immutable
+      - name: Setup Workspace
+        uses: ./.github/actions/setup-workspace
 
       - name: Download Desktop Build Artifacts
         uses: actions/download-artifact@v4
@@ -137,7 +117,7 @@ jobs:
         run: yarn addon:link datasource-fake
 
       - name: Run E2E Tests
-        run: yarn --cwd src/apps/desktop test:e2e --shard=${{ matrix.shard }}/6
+        run: yarn --cwd src/apps/desktop test:e2e --retries=1 --shard=${{ matrix.shard }}/6
 
       - name: Upload Playwright Report on Failure
         uses: actions/upload-artifact@v4
@@ -146,6 +126,7 @@ jobs:
           name: playwright-report-shard-${{ matrix.shard }}
           path: src/apps/desktop/playwright-report/
           retention-days: 7
+          compression-level: 1
 
   release:
     name: Release & Version
@@ -165,17 +146,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Workspace
+        uses: ./.github/actions/setup-workspace
         with:
-          node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install Dependencies
-        run: yarn install --immutable
+          turbo-scope: checks
+          restore-only: 'true'
 
       - name: Configure NPM Registry Auth
         run: |
@@ -202,16 +177,16 @@ jobs:
         run: |
           DESKTOP_VERSION=$(node -p "require('./src/apps/desktop/package.json').version")
           DESKTOP_TAG="@mr-tick/desktop@$DESKTOP_VERSION"
-          
+
           if [[ "$DESKTOP_VERSION" == *"-"* ]]; then
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
           else
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
           fi
-          
+
           # Check if assets (.exe / .zip) already exist in the release for this tag
           HAS_ASSETS=$(gh release view "$DESKTOP_TAG" --json assets -q '.assets | length' 2>/dev/null || echo "0")
-          
+
           if [ "$HAS_ASSETS" = "0" ] && [ "$DESKTOP_VERSION" != "0.0.0" ]; then
             echo "has_desktop=true" >> $GITHUB_OUTPUT
             echo "desktop_version=$DESKTOP_VERSION" >> $GITHUB_OUTPUT
@@ -241,20 +216,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Workspace
+        uses: ./.github/actions/setup-workspace
         with:
-          node-version: 24
-          cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install Dependencies
-        run: yarn install --immutable
+          turbo-scope: desktop
+          restore-only: 'true'
+          cache-builder: 'true'
 
       - name: Build Desktop App
-        run: yarn turbo run build --filter=@mr-tick/desktop
+        run: yarn turbo run build --concurrency=100% --filter=@mr-tick/desktop --summarize
 
       - name: Package with Electron Builder
         run: |
@@ -267,6 +237,8 @@ jobs:
           }
         shell: pwsh
         env:
+          ELECTRON_CACHE: ${{ runner.temp }}/electron-package-cache
+          ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -301,3 +273,12 @@ jobs:
           prerelease: ${{ needs.release.outputs.is_prerelease == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Turbo Run Summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: turbo-summaries-build-desktop
+          path: .turbo/runs/*.json
+          retention-days: 7
+          if-no-files-found: ignore

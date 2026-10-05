@@ -1,5 +1,5 @@
 {
-  "$schema": "https://turbo.build/schema.json",
+  "$schema": "https://turborepo.com/schema.json",
   "cacheMaxSize": "5GB",
   "tasks": {
     "typecheck": {
@@ -24,6 +24,46 @@
     "clean": {
       "cache": false,
       "outputs": []
+    },
+    "//#test:unit:run": {
+      "inputs": ["$TURBO_DEFAULT$", "!*.md", "!.github/**", "!.changeset/**"],
+      "outputs": []
+    },
+    "//#test:ui:run": {
+      "inputs": ["$TURBO_DEFAULT$", "!*.md", "!.github/**", "!.changeset/**"],
+      "outputs": []
+    },
+    "@mr-tick/desktop#build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/src/packages/IoC.ts",
+        "$TURBO_ROOT$/src/apps/sdk/package.json"
+      ],
+      "outputs": ["out/**"]
+    },
+    "@mr-tick/desktop#typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/src/packages/IoC.ts",
+        "$TURBO_ROOT$/src/apps/sdk/package.json"
+      ],
+      "outputs": []
+    },
+    "@mr-tick/landing-page#build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**", ".source/**"],
+      "passThroughEnv": ["GITHUB_TOKEN"]
+    },
+    "@mr-tick/landing-page#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": [".source/**"]
     }
-  }
+  },
+  "agentGuidance": false,
+  "cacheDir": ".turbo/cache",
+  "globalDependencies": ["tsconfig.base.json"],
+  "globalEnv": ["CI", "NODE_ENV", "RUNNER_OS", "RUNNER_ARCH"],
+  "globalPassThroughEnv": ["NODE_OPTIONS"]
 }
