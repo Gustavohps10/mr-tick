@@ -1,5 +1,13 @@
 ﻿# @mr-tick/ui
 
+## 1.6.0
+
+### Minor Changes
+
+- d2f85f1: Adiciona imports tipados por componente na biblioteca de UI, preservando os imports existentes e reduzindo o tempo e o consumo de memória da compilação. Preserva as diretivas de componentes de cliente e alinha o carregamento do plugin de eleição de líder do RxDB.
+
+  Atualiza o desktop para consumir os novos imports de UI e reconhecer os subpaths publicados no Vite.
+
 ## 1.5.1
 
 ### Patch Changes
