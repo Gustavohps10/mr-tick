@@ -250,6 +250,20 @@ A UI agora importa RxDBLeaderElectionPlugin estaticamente. O registro continua e
 
 A documentação oficial apresenta o mesmo padrão de import estático: https://rxdb.info/leader-election.html. O código instalado de rxdb/dist/esm/plugins/replication/index.js confirma o import estático e o registro feito por replicateRxCollection. Validações concluídas: build completo com 9/9 tarefas passou sem avisos de import dinâmico/estático ou diretivas; typecheck passou com 14/14 tarefas; 210 testes de UI passaram, incluindo criação de banco RxDB em memória e cenários de replicação. Lint passou sem erros e com os mesmos 75 avisos. Os 49 exports, 270 declarações e SSR básico foram revalidados. Essas provas não incluem múltiplas janelas Electron nem eleição real entre processos. Evidências nos logs rxdb-* em .temp/ui-implementation.
 
+## Correção da orquestração de desenvolvimento
+
+O watch isolado da UI havia sido validado, mas o yarn dev antigo iniciava simultaneamente os watchers de shared, domain, application e adapters. Esses scripts combinavam clean: true e --no-dts: apagavam as declarações existentes sem reemiti-las. A geração de declarações da UI então falhava com TS7016 e erros de tipagem em cascata. A ausência de contratos reexportados pelo SDK também afetava a UI.
+
+Reprodução: iniciado somente o watcher antigo de application, seu dist/index.d.ts desapareceu; o emissor de UI falhou com TS7016. Em seguida os outputs foram restaurados pelo build, sem alterar contratos ou componentes.
+
+Os scripts raiz dev, dev:desktop e dev:landing-page agora usam turbo watch dev, filtrando as aplicações desejadas. A tarefa dev depende de ^build e é persistent/interruptible. Os builds transitivos de shared, domain, application, SDK, adapters e UI executam na ordem do grafo; os watchers antigos das bibliotecas não são iniciados por esses comandos. Ao editar uma biblioteca, o Turbo reconstrói os dependentes e reinicia os servidores consumidores. Edições próprias das aplicações continuam atendidas pelos watchers nativos. Não foi usada supressão de erros de tipos, declare module, casts ou mudança de contratos para contornar o problema.
+
+Validação real do yarn dev: iniciado com perfil Electron temporário e --env-mode=loose exclusivamente para repassar o caminho desse perfil de teste; os scripts normais preservam o modo de ambiente padrão. Desktop e landing iniciaram após a emissão dos tipos. Adicionado um tipo público temporário DevWatchProbe no Button: o .d.ts foi atualizado e ambas as aplicações reiniciaram. O Button foi restaurado byte a byte, houve novo rebuild e nova inicialização; o tipo temporário saiu do output. Três inicializações de cada aplicação, nenhuma ocorrência de error TS, Command failed ou saída de tarefa com código 1. Tipos de application continuaram presentes. Os processos de teste foram encerrados.
+
+Essa prova cobre inicialização e atualização do grafo, não uma sessão interativa completa nem os E2E. A edição de bibliotecas pode reiniciar as aplicações, encerrando o estado de UI em memória; dados persistidos não foram alterados pela correção. Rebuilds frios têm o custo de compilar as dependências; caches válidos são reutilizados. Os scripts de watch antigos dos pacotes permanecem disponíveis para uso isolado e não devem ser usados em paralelo com essa orquestração.
+
+Checks finais: lint na raiz sem erros e com 75 avisos existentes; typecheck 14/14 tarefas aprovado; 338 testes unitários passaram em 43 arquivos. O arquivo temporário de Button foi restaurado e os processos de teste foram encerrados. Evidências: dev-red-watch, dev-red-types, dev-red-restore, dev-graph.json, dev-green e dev-validation.json em .temp/ui-implementation. Referências oficiais: https://turborepo.dev/docs/reference/watch e https://turborepo.dev/docs/reference/configuration#interruptible.
+
 Fontes:
 
 - https://github.com/microsoft/TypeScript/wiki/Performance
