@@ -1,7 +1,12 @@
 import { AddonManifestViewModel, AddonPackageViewModel } from '@mr-tick/sdk'
-import { isApiVersionCompatible } from '@mr-tick/shared/helpers'
+import {
+  compareSemVer,
+  isApiVersionCompatible,
+  parseSemVer,
+} from '@mr-tick/shared/helpers'
 import { useQuery } from '@tanstack/react-query'
 import {
+  ArrowUpCircle,
   Calendar,
   Check,
   CheckCircle,
@@ -14,12 +19,13 @@ import {
   GlobeIcon,
   Palette,
   PuzzleIcon,
+  RefreshCw,
   Search,
   Settings2,
   Star,
   Trash2,
 } from 'lucide-react'
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -251,6 +257,69 @@ export function AddonsManagerModal({
     return addonsById
   }, [installedList])
 
+  const [updatingAddonId, setUpdatingAddonId] = useState<string | null>(null)
+
+  const addonsWithUpdates = useMemo(() => {
+    return installedList
+      .map((installed) => {
+        const available = availableList.find((a) => a.id === installed.id)
+        if (!available) return null
+        const parsedRemote = parseSemVer(available.version)
+        const parsedLocal = parseSemVer(installed.version)
+        const hasUpdate =
+          parsedRemote && parsedLocal
+            ? compareSemVer(parsedRemote, parsedLocal) > 0
+            : false
+        return hasUpdate ? { installed, available } : null
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          installed: AddonManifestViewModel
+          available: AddonManifestViewModel
+        } => item !== null,
+      )
+  }, [installedList, availableList])
+
+  const hasNotifiedUpdatesRef = useRef(false)
+  useEffect(() => {
+    if (addonsWithUpdates.length > 0 && !hasNotifiedUpdatesRef.current) {
+      hasNotifiedUpdatesRef.current = true
+      const first = addonsWithUpdates[0]
+      toast.info(
+        `Atualização disponível para ${first.available.name} (v${first.available.version})!`,
+      )
+    }
+  }, [addonsWithUpdates])
+
+  const handleUpdateAddon = async (addonId: string, downloadUrl?: string) => {
+    if (!downloadUrl) {
+      toast.error('URL de download da nova versão não encontrada.')
+      return
+    }
+
+    setUpdatingAddonId(addonId)
+    try {
+      const response = await bridge.addons.update({
+        body: { addonId, downloadUrl },
+      })
+      if (!response.isSuccess) {
+        toast.error(response.error ?? 'Falha ao atualizar addon.')
+        return
+      }
+
+      toast.success('Plugin atualizado com sucesso!')
+      await Promise.all([refetchInstalled(), refetchAvailable()])
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Falha ao atualizar addon.',
+      )
+    } finally {
+      setUpdatingAddonId(null)
+    }
+  }
+
   const handleSelectSection = (
     section: SidebarSection,
     categoryName: string | null = null,
@@ -337,13 +406,23 @@ export function AddonsManagerModal({
         data-testid={`addons-manager-tab-${id}`}
         onClick={() => handleSelectSection(id)}
         className={cn(
-          'flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+          'flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-sm transition-colors',
           isSelected
             ? 'bg-primary/10 text-primary font-medium'
             : 'hover:bg-muted text-muted-foreground hover:text-foreground',
         )}
       >
-        <IconComponent className="h-4 w-4" /> {label}
+        <div className="flex items-center gap-2.5">
+          <IconComponent className="h-4 w-4" /> {label}
+        </div>
+        {id === 'updates' && addonsWithUpdates.length > 0 && (
+          <Badge
+            variant="outline"
+            className="border-amber-500/40 bg-amber-500/15 px-1.5 py-0 text-[10px] font-bold text-amber-600 dark:text-amber-400"
+          >
+            {addonsWithUpdates.length}
+          </Badge>
+        )}
       </button>
     )
   }
@@ -508,9 +587,22 @@ export function AddonsManagerModal({
 
                       {/* Indicador de Status */}
                       {installedAddon && (
-                        <div className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-emerald-500">
-                          <Check className="h-3 w-3" />
-                          <span>Instalado · v{installedAddon.version}</span>
+                        <div className="mt-2 flex items-center justify-between">
+                          <div className="flex items-center gap-1 text-[10px] font-semibold text-emerald-500">
+                            <Check className="h-3 w-3" />
+                            <span>Instalado · v{installedAddon.version}</span>
+                          </div>
+                          {addonsWithUpdates.some(
+                            (u) => u.installed.id === addon.id,
+                          ) && (
+                            <Badge
+                              variant="outline"
+                              data-testid={`addon-update-badge-${addon.id}`}
+                              className="border-amber-500/40 bg-amber-500/15 px-1.5 py-0 text-[9px] text-amber-600 dark:text-amber-400"
+                            >
+                              Atualização
+                            </Badge>
+                          )}
                         </div>
                       )}
                     </div>
@@ -599,6 +691,43 @@ export function AddonsManagerModal({
                         >
                           <Check className="mr-1 h-3.5 w-3.5" /> Instalado
                         </Badge>
+                        {addonsWithUpdates.some(
+                          (u) => u.installed.id === activeBrowseAddon.id,
+                        ) && (
+                          <>
+                            <Badge
+                              variant="outline"
+                              data-testid={`addon-update-badge-${activeBrowseAddon.id}`}
+                              className="border-amber-500/40 bg-amber-500/15 px-2 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400"
+                            >
+                              Atualização
+                            </Badge>
+                            <Button
+                              data-testid={`addon-update-btn-${activeBrowseAddon.id}`}
+                              size="sm"
+                              disabled={
+                                updatingAddonId === activeBrowseAddon.id
+                              }
+                              onClick={() => {
+                                const updateInfo = addonsWithUpdates.find(
+                                  (u) =>
+                                    u.installed.id === activeBrowseAddon.id,
+                                )
+                                handleUpdateAddon(
+                                  activeBrowseAddon.id,
+                                  updateInfo?.available.downloadUrl ||
+                                    activeBrowseAddon.downloadUrl,
+                                )
+                              }}
+                              className="cursor-pointer gap-1.5 bg-amber-600 px-3 text-xs text-white hover:bg-amber-700"
+                            >
+                              <ArrowUpCircle className="h-3.5 w-3.5" />
+                              {updatingAddonId === activeBrowseAddon.id
+                                ? 'Atualizando...'
+                                : 'Atualizar plugin'}
+                            </Button>
+                          </>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -820,6 +949,121 @@ export function AddonsManagerModal({
     )
   }
 
+  const renderUpdatesView = () => {
+    return (
+      <div className="flex h-full flex-col overflow-auto p-6 lg:p-8">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold">Atualizações Disponíveis</h2>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Mantenha seus plugins sincronizados com as últimas correções e
+              novidades.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              refetchInstalled()
+              refetchAvailable()
+            }}
+            className="cursor-pointer gap-1.5 text-xs"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Verificar Novamente
+          </Button>
+        </div>
+
+        {addonsWithUpdates.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
+            <CheckCircle className="mb-3 h-10 w-10 text-emerald-500" />
+            <p className="text-sm font-semibold">
+              Todos os seus plugins estão atualizados!
+            </p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Nenhuma nova versão encontrada para os addons instalados.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {addonsWithUpdates.map(({ installed, available }) => (
+              <div
+                key={installed.id}
+                className="bg-card flex flex-col items-start justify-between gap-4 rounded-lg border p-4 shadow-sm md:flex-row md:items-center"
+              >
+                <div className="flex min-w-0 items-start gap-4">
+                  <div className="bg-muted/50 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border p-1.5 shadow-2xs">
+                    <SafeAddonLogo
+                      src={available.logo || installed.logo}
+                      alt={available.name}
+                      className="h-full w-full object-contain"
+                      fallbackIconClassName="h-6 w-6 text-muted-foreground/60"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="truncate text-sm font-semibold">
+                        {available.name}
+                      </h4>
+                      <Badge
+                        variant="outline"
+                        data-testid={`addon-update-badge-${installed.id}`}
+                        className="border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400"
+                      >
+                        Atualização
+                      </Badge>
+                    </div>
+                    <div className="text-muted-foreground mt-1 flex items-center gap-2 text-xs">
+                      <span>
+                        Instalada:{' '}
+                        <strong className="font-mono">
+                          v{installed.version}
+                        </strong>
+                      </span>
+                      <span>→</span>
+                      <span>
+                        Nova:{' '}
+                        <strong className="text-foreground font-mono">
+                          v{available.version}
+                        </strong>
+                      </span>
+                    </div>
+                    <p className="text-muted-foreground mt-1 line-clamp-1 text-xs">
+                      {available.description || installed.description}
+                    </p>
+                    {available.changelog && available.changelog.length > 0 && (
+                      <div className="bg-muted/40 text-muted-foreground/90 mt-2 rounded border p-2 text-[11px]">
+                        <span className="font-semibold">Novidades:</span>{' '}
+                        {available.changelog[0]}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex w-full shrink-0 items-center justify-end gap-2 md:w-auto">
+                  <Button
+                    data-testid={`addon-update-btn-${installed.id}`}
+                    size="sm"
+                    disabled={updatingAddonId === installed.id}
+                    onClick={() =>
+                      handleUpdateAddon(installed.id, available.downloadUrl)
+                    }
+                    className="cursor-pointer gap-1.5 bg-amber-600 text-xs text-white hover:bg-amber-700"
+                  >
+                    <ArrowUpCircle className="h-3.5 w-3.5" />
+                    {updatingAddonId === installed.id
+                      ? 'Atualizando...'
+                      : 'Atualizar plugin'}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -866,14 +1110,7 @@ export function AddonsManagerModal({
             {activeSection === 'installed' && renderInstalledView()}
             {activeSection === 'browse' && renderBrowseView()}
             {activeSection === 'settings' && renderSettingsView()}
-            {activeSection === 'updates' && (
-              <div className="p-6">
-                <h2 className="mb-6 text-2xl font-bold">Atualizações</h2>
-                <p className="text-muted-foreground">
-                  Nenhuma atualização disponível no momento.
-                </p>
-              </div>
-            )}
+            {activeSection === 'updates' && renderUpdatesView()}
           </div>
         </DialogContent>
       </Dialog>

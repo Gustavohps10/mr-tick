@@ -56,4 +56,8 @@ Ao escrever ou modificar código neste projeto, você DEVE seguir rigorosamente 
   - NUNCA crie commits isolados para cada alteração pontual, ajuste cosmético ou linha modificada durante o desenvolvimento.
     - Agrupe modificações relacionadas e valide o conjunto completo (código, testes unitários, linter e typecheck na raiz).
     - Realize commits coesos e consolidados que representem uma etapa completa de trabalho, uma funcionalidade inteira ou um pacote de correções em conjunto, mantendo o histórico do Git limpo, rastreável e sem poluição de micro-commits desnecessários.
+31. **Injeção Estrita de Dependências em IoC (Proibição de `?:`)**:
+  - NUNCA declare parâmetros de construtor como opcionais (`?:`) em classes gerenciadas por IoC/DI (Services, Use Cases, Handlers, Repositories).
+  - Toda dependência que a classe necessita para operar deve ser declarada como obrigatória e sem `?:`.
+  - O uso de `?:` mascara falhas de registro no container de IoC e força o espalhamento de verificações nulas (`if (this.dep) ...`) no meio da regra de negócio. Se um comportamento for opcional para certos cenários (ex: testes ou modo headless), utilize o padrão Null Object (`NoOp`) registrado no container, garantindo determinismo total do grafo de dependências.
 

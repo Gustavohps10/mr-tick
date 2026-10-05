@@ -4,6 +4,7 @@ import {
   IAddonsFacade,
   IDataSourceResolver,
   IImportAddonUseCase,
+  IUpdateAddonUseCase,
   type MappingFieldDefinition,
 } from '@mr-tick/application'
 import {
@@ -36,10 +37,11 @@ import { AddonLoader } from '@/main/services/AddonLoader'
 export class AddonsHandler implements HandlerBase<AddonsHandler> {
   constructor(
     private readonly importAddonService: IImportAddonUseCase,
+    private readonly updateAddonService: IUpdateAddonUseCase,
     private readonly addonsFacade: IAddonsFacade,
     private readonly jobEmitter: IEventEmitter<IJobEvents>,
     private readonly dataSourceResolver: IDataSourceResolver,
-    private readonly addonLoader?: AddonLoader,
+    private readonly addonLoader: AddonLoader,
   ) {}
 
   public async getSidebarMenus(): Promise<ViewModel<SidebarMenuItem[]>> {
@@ -503,6 +505,64 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       isSuccess: true,
       statusCode: 200,
       data: { jobId },
+    }
+  }
+
+  public async update(
+    event: IpcMainInvokeEvent,
+    { body }: IRequest<{ addonId: string; downloadUrl: string }>,
+  ): Promise<ViewModel<IJobResult>> {
+    if (!body?.addonId || !body?.downloadUrl) {
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'PARAMETROS_INVALIDOS',
+      }
+    }
+
+    const jobId = crypto.randomUUID()
+
+    this.runUpdateJob(jobId, body.addonId, body.downloadUrl).catch((err) => {
+      console.error(`[Fatal Update Job Error ${jobId}]:`, err)
+    })
+
+    return {
+      isSuccess: true,
+      statusCode: 200,
+      data: { jobId },
+    }
+  }
+
+  private async runUpdateJob(
+    jobId: string,
+    addonId: string,
+    downloadUrl: string,
+  ): Promise<void> {
+    try {
+      this.jobEmitter.emit(jobId, { status: 'progress', value: 0 })
+
+      const result = await this.updateAddonService.execute(
+        { addonId, downloadUrl },
+        (event) => {
+          this.jobEmitter.emit(jobId, event)
+        },
+      )
+
+      if (result.isFailure()) {
+        this.jobEmitter.emit(jobId, {
+          status: 'error',
+          error: result.failure.messageKey,
+        })
+        return
+      }
+
+      this.jobEmitter.emit(jobId, { status: 'progress', value: 100 })
+      this.jobEmitter.emit(jobId, { status: 'done' })
+    } catch {
+      this.jobEmitter.emit(jobId, {
+        status: 'error',
+        error: 'UPDATE_FAILED',
+      })
     }
   }
 

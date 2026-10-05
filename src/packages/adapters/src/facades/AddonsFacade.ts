@@ -6,8 +6,11 @@ import {
 } from '@mr-tick/application'
 import {
   AppError,
+  compareSemVer,
   DEFAULT_MIN_API_VERSION,
   Either,
+  isApiVersionCompatible,
+  parseSemVer,
 } from '@mr-tick/shared/helpers'
 import { IJobEvent } from '@mr-tick/shared/transport'
 import axios from 'axios'
@@ -272,6 +275,81 @@ export class AddonsFacade implements IAddonsFacade {
     }
   }
 
+  public async backupAddon(
+    addonId: string,
+    version?: string,
+  ): Promise<Either<AppError, string>> {
+    try {
+      const installedResult = await this.listInstalled()
+      if (installedResult.isFailure()) return installedResult.forwardFailure()
+
+      const targetAddon = installedResult.success.find((item) => {
+        const matchesId = item.id === addonId
+        const matchesVersion = !version || item.version === version
+        return matchesId && matchesVersion
+      })
+
+      if (!targetAddon || !targetAddon.path) {
+        return Either.failure(
+          AppError.NotFound('ADDON_INSTALADO_NAO_ENCONTRADO'),
+        )
+      }
+
+      const backupPath = `${targetAddon.path}.backup`
+      await fs.cp(targetAddon.path, backupPath, {
+        recursive: true,
+        force: true,
+      })
+
+      return Either.success(backupPath)
+    } catch {
+      return Either.failure(AppError.Internal('ERRO_AO_CRIAR_BACKUP_ADDON'))
+    }
+  }
+
+  public async restoreAddonBackup(
+    addonId: string,
+    backupPath: string,
+  ): Promise<Either<AppError, void>> {
+    try {
+      try {
+        await fs.access(backupPath)
+      } catch {
+        return Either.failure(AppError.NotFound('BACKUP_NAO_ENCONTRADO'))
+      }
+
+      const targetFolder = backupPath.endsWith('.backup')
+        ? backupPath.slice(0, -7)
+        : backupPath
+
+      try {
+        await fs.rm(targetFolder, { recursive: true, force: true })
+      } catch {
+        // Silencia caso diretório não exista
+      }
+
+      await fs.cp(backupPath, targetFolder, {
+        recursive: true,
+        force: true,
+      })
+
+      return Either.success()
+    } catch {
+      return Either.failure(AppError.Internal('ERRO_AO_RESTAURAR_BACKUP_ADDON'))
+    }
+  }
+
+  public async removeAddonBackup(
+    backupPath: string,
+  ): Promise<Either<AppError, void>> {
+    try {
+      await fs.rm(backupPath, { recursive: true, force: true })
+      return Either.success()
+    } catch {
+      return Either.failure(AppError.Internal('ERRO_AO_REMOVER_BACKUP_ADDON'))
+    }
+  }
+
   public async getInstaller(
     installerUrl: string,
   ): Promise<Either<AppError, AddonInstallerDTO>> {
@@ -512,5 +590,56 @@ export class AddonsFacade implements IAddonsFacade {
       }
     }
     return null
+  }
+
+  public checkUpdates(
+    installed: AddonManifestDTO[],
+    available: AddonManifestDTO[],
+    hostSdkVersion?: string,
+  ): AddonManifestDTO[] {
+    const availableMap = new Map<string, AddonManifestDTO>()
+    for (const item of available) {
+      availableMap.set(item.id, item)
+    }
+
+    return installed.map((installedItem) => {
+      const remote = availableMap.get(installedItem.id)
+      if (!remote) return { ...installedItem, updateAvailable: false }
+
+      const installedSemVer = parseSemVer(installedItem.version)
+      const remoteSemVer = parseSemVer(remote.version)
+      if (!installedSemVer || !remoteSemVer)
+        return { ...installedItem, updateAvailable: false }
+
+      if (compareSemVer(remoteSemVer, installedSemVer) <= 0)
+        return { ...installedItem, updateAvailable: false }
+
+      let activeHostVersion = DEFAULT_MIN_API_VERSION
+      if (hostSdkVersion) {
+        activeHostVersion = hostSdkVersion
+      }
+
+      const isCompatible = isApiVersionCompatible(
+        remote.requiredApiVersion,
+        activeHostVersion,
+      )
+
+      if (!isCompatible) {
+        return {
+          ...installedItem,
+          updateAvailable: false,
+          incompatibleUpdate: true,
+          incompatibleReason: `Requer Mr. Tick API ${remote.requiredApiVersion ?? 'mais recente'}`,
+        }
+      }
+
+      return {
+        ...installedItem,
+        updateAvailable: true,
+        latestVersion: remote.version,
+        downloadUrl: remote.downloadUrl,
+        changelog: remote.changelog,
+      }
+    })
   }
 }

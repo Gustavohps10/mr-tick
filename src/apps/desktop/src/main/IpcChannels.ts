@@ -58,6 +58,7 @@ export const IpcChannels = {
   ADDONS_UPDATE_LOCAL: 'addons:update-local',
   ADDONS_IMPORT: 'addons:import',
   ADDONS_INSTALL: 'addons:install',
+  ADDONS_UPDATE: 'addons:update',
   ADDONS_UNINSTALL: 'addons:uninstall',
   ADDONS_GET_SIDEBAR_MENUS: 'addons:get-sidebar-menus',
 

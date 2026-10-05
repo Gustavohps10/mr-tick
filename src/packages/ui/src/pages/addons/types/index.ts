@@ -27,4 +27,9 @@ export interface AddonItem {
   installerManifestUrl?: string
   /** from marketplace, has update */
   updateAvailable?: boolean
+  latestVersion?: string
+  latestDownloadUrl?: string
+  changelog?: string[]
+  incompatibleUpdate?: boolean
+  incompatibleReason?: string
 }

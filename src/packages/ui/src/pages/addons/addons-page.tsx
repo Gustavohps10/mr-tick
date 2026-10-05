@@ -5,8 +5,9 @@ import {
   WorkspaceConnectionDTO,
   WorkspaceDTO,
 } from '@mr-tick/application'
+import { compareSemVer, parseSemVer } from '@mr-tick/shared/helpers'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
@@ -108,6 +109,12 @@ function manifestToAddonItem(
     connections,
     documentationUrl: m.sourceUrl,
     installerManifestUrl: m.installerManifestUrl,
+    updateAvailable: m.updateAvailable,
+    latestVersion: m.latestVersion,
+    latestDownloadUrl: m.latestDownloadUrl,
+    changelog: m.changelog,
+    incompatibleUpdate: m.incompatibleUpdate,
+    incompatibleReason: m.incompatibleReason,
   }
 }
 
@@ -201,7 +208,37 @@ export function AddonsPage() {
 
   const addons: AddonItem[] = useMemo(() => {
     const byId = new Map<string, AddonManifest>()
-    installedList.forEach((m) => byId.set(m.id, m))
+    installedList.forEach((m) => {
+      const match = availableList.find((av) => av.id === m.id)
+      let updateAvailable = false
+      let latestVersion = m.version
+      let latestDownloadUrl = m.downloadUrl
+      let changelog = m.changelog
+
+      if (match) {
+        const parsedRemote = parseSemVer(match.version)
+        const parsedLocal = parseSemVer(m.version)
+        if (
+          parsedRemote &&
+          parsedLocal &&
+          compareSemVer(parsedRemote, parsedLocal) > 0
+        ) {
+          updateAvailable = true
+          latestVersion = match.version
+          latestDownloadUrl = match.downloadUrl
+          changelog = match.changelog
+        }
+      }
+
+      byId.set(m.id, {
+        ...m,
+        updateAvailable,
+        latestVersion,
+        latestDownloadUrl,
+        changelog,
+      })
+    })
+
     availableList.forEach((m) => {
       if (!byId.has(m.id)) byId.set(m.id, m)
     })
@@ -228,6 +265,18 @@ export function AddonsPage() {
 
     return [...realAddons, ...MOCK_ADDONS]
   }, [installedList, availableList, connections, connectionState])
+
+  useEffect(() => {
+    const upgradable = addons.filter((a) => a.installed && a.updateAvailable)
+    if (upgradable.length > 0) {
+      const names = upgradable
+        .map((a) => `${a.name} (v${a.latestVersion})`)
+        .join(', ')
+      toast.info(`Atualização disponível para: ${names}`, {
+        id: 'addons-update-notification',
+      })
+    }
+  }, [addons])
 
   const filteredAddons = useMemo(() => {
     let result = addons.filter((a) => a.category === category)
@@ -384,6 +433,43 @@ export function AddonsPage() {
   const handleUninstall = (_addon: AddonItem, connection: AddonConnection) =>
     unlinkMutation.mutate(connection.id)
 
+  const handleUpdate = (addon: AddonItem) => {
+    const downloadUrl = addon.latestDownloadUrl || addon.installerManifestUrl
+    if (!downloadUrl) {
+      toast.error('URL de download da atualização não disponível.')
+      return
+    }
+    const updateToastId = `update-${addon.id}`
+    toast.loading(
+      `Atualizando ${addon.name} para v${addon.latestVersion || ''}...`,
+      { id: updateToastId },
+    )
+    bridge.addons
+      .update({
+        body: {
+          addonId: addon.id,
+          downloadUrl,
+        },
+      })
+      .then((res) => {
+        if (!res.isSuccess) {
+          toast.error(res.error || 'Falha ao atualizar addon.', {
+            id: updateToastId,
+          })
+          return
+        }
+        toast.success(`${addon.name} atualizado com sucesso!`, {
+          id: updateToastId,
+        })
+        queryClient.invalidateQueries({ queryKey: ['plugins'] })
+      })
+      .catch((err: Error) => {
+        toast.error(err.message || 'Falha ao atualizar addon.', {
+          id: updateToastId,
+        })
+      })
+  }
+
   return (
     <>
       <AddonList
@@ -396,7 +482,7 @@ export function AddonsPage() {
         onAddConnection={handleAddConnection}
         onOpenSettings={handleOpenSettings}
         onDisconnect={handleDisconnect}
-        onUpdate={() => toast.info('Atualização em breve.')}
+        onUpdate={handleUpdate}
         onUninstall={handleUninstall}
         onConfigure={(a) => {
           setSelectedAddon(a)
