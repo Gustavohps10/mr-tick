@@ -1,10 +1,10 @@
-﻿# Mr-tick
+# Mr-tick
 
 ## Sistema de Rastreamento e Visualização de Produtividade
 
-**Versão:** 1.3
+**Versão:** 1.4
 **Desenvolvedor:** Gustavo Henrique Pereira dos Santos
-**Data:** 24 de Agosto de 2026
+**Data:** 05 de Outubro de 2026
 
 ---
 
@@ -15,7 +15,8 @@
 | 1.0    | Gustavo Henrique | Versão Inicial consolidada (ADR-001 + Core Sync)                                                     | 07/03/2026 |
 | 1.1    | Gustavo Henrique | Arquitetura do Timer Service, Schema de TimeEntries, Journal e timerConfig                           | 10/05/2026 |
 | 1.2    | Gustavo Henrique | Revisão arquitetural: camadas Domain/Application/Main/Renderer, modelo operacional do timer          | 10/05/2026 |
-| 1.3    | Gustavo Henrique | Simplificação: SDK de Addons Multicapacidade, Política Zero-Cloud, Free vs Pro e Licenciamento Local | 24/08/2026 |
+| 1.3    | Gustavo Henrique | Simplificação: SDK de Addons Multicapacidade, Política Zero-Cloud e Modelo Offline-First             | 24/08/2026 |
+| 1.4    | Gustavo Henrique | Consolidação Open-Source (Apache 2.0), Core Gratuito e Extensível, Modelos Reconciliados e Roadmap  | 05/10/2026 |
 
 ---
 
@@ -45,31 +46,16 @@ O Mr-tick adota uma política rigorosa de **não exfiltração de dados operacio
 - **Desenvolvedores PJ / Freelancers / Consultores:** Gestão de múltiplos clientes/workspaces simultâneos, automação de apontamento e exportação de faturamento.
 - **Equipes de Tecnologia e Agências:** Visão de capacidade, alocação e relatórios centralizados.
 
-## 2.2 Divisão de Planos (Free vs Pro)
+## 2.2 Modelo de Distribuição do Core
 
-O Mr-tick opera sob um modelo de licenciamento local simplificado (sem necessidade de cadastro ou login obrigatório):
+O **Mr-tick Core** é 100% gratuito, de código aberto e extensível:
 
-### 🟢 Plano FREE (Uso Individual / Básico)
-
-- Timer manual com precisão no Main Process.
-- Widget flutuante com suporte a _click-through_ e atalhos globais.
-- 1 Conexão de DataSource ativa por vez.
-- Temas nativos da aplicação (Light & Dark padrão).
-- Armazenamento 100% local.
-
-### 💎 Plano PRO (Automações & Multi-Workspaces)
-
-Ativado localmente via **Chave de Licença (License Key)**:
-
-- **Multi-Workspace & Múltiplas Conexões:** Conectar simultaneamente múltiplos DataSources (ex: Jira + Redmine + GitHub).
-- **Pacote de Automações & Watchers Locais:**
-  - _Window Context Observer:_ Identificação de janelas ativas em primeiro plano.
-  - _Git Tracker:_ Associação automática de branches/commits a tarefas.
-  - _Idle Resolver:_ Detecção e tratamento inteligente de pausas e reuniões.
-  - _Sugestor Automático:_ Captura de atividades (Discord, Calls) com pré-preenchimento heurístico.
-  - _Gerador de Daily:_ Resumo automático do dia anterior em tópicos para reuniões diárias.
-- **Temas e Customização Visual Ilimitada:** Aplicação de temas da comunidade via Addons e injeção de CSS personalizado.
-- **Exportação de Faturamento:** Geração de relatórios consolidados em PDF e planilhas para cobrança de horas.
+- **Local-First & Offline-First:** Toda a computação e persistência rodam na máquina do usuário.
+- **Multi-Workspace & Múltiplas Conexões:** Conectar simultaneamente múltiplos DataSources (ex: Jira + Redmine + GitHub) sem travas artificiais.
+- **Timer de Alta Precisão:** Executado no processo principal (Main Process) do Electron, imune a congelamentos da UI.
+- **Widget Flutuante:** Suporte nativo a click-through, visualização compacta e atalhos globais.
+- **Extensibilidade Aberta (SDK de Addons):** Qualquer desenvolvedor pode criar e conectar plugins de DataSources, Watchers e Temas.
+- **Pacote de Automações Locais:** Watchers para detecção de janelas ativas, git branches e integrações de produtividade.
 
 ---
 
@@ -92,7 +78,7 @@ O Mr-tick possui uma arquitetura orientada a **Addons Multicapacidade**. Um úni
 
 - **Sistemas Operacionais:** Windows 10/11, macOS, Linux
 - **Stack Técnica:** Electron, TypeScript, React, Tailwind CSS v4, RxDB (Persistência Local)
-- **Privacidade & Rede:** Totalmente funcional offline. Acesso à internet necessário apenas para sincronizar com os DataSources externos configurados pelo próprio usuário e para a validação pontual da Chave de Licença.
+- **Privacidade & Rede:** Totalmente funcional offline. Acesso à internet necessário apenas para sincronizar com os DataSources externos configurados pelo próprio usuário.
 
 ---
 
@@ -102,8 +88,6 @@ O Mr-tick possui uma arquitetura orientada a **Addons Multicapacidade**. Um úni
 
 | ID    | Descrição                                                         | Prioridade | Depende De   |
 | ----- | ----------------------------------------------------------------- | ---------- | ------------ |
-| ID    | Descrição                                                         | Prioridade | Depende De   |
-| ----- | ----------------------------------------------------------------- | ---------- | ----------   |
 | RF001 | Gestão de Workspaces locais independentes                         | Alta       | —            |
 | RF002 | Gerenciador e SDK de Addons Multicapacidade                       | Alta       | —            |
 | RF003 | Configuração de conexões externas diretas                         | Alta       | RF002        |
@@ -112,10 +96,9 @@ O Mr-tick possui uma arquitetura orientada a **Addons Multicapacidade**. Um úni
 | RF006 | Sistema de timer processado em background                         | Alta       | —            |
 | RF007 | Widget flutuante com suporte a click-through e atalhos            | Alta       | RF006        |
 | RF008 | Injeção dinâmica de temas CSS via Addons                          | Alta       | RF002        |
-| RF009 | Validação de Chave de Licença PRO (License Key) offline-first     | Média      | —            |
-| RF010 | Temporização manual e recuperação de estado (Boot Recovery)       | Alta       | RF006        |
-| RF011 | Journal de eventos do timer e auditoria local                     | Alta       | RF006        |
-| RF012 | Pacote de Watchers e Automações Locais (Window/Git/Idle/Sugestor) | Média      | RF002, RF009 |
+| RF009 | Temporização manual e recuperação de estado (Boot Recovery)       | Alta       | RF006        |
+| RF010 | Journal de eventos do timer e auditoria local                     | Alta       | RF006        |
+| RF011 | Pacote de Watchers e Automações Locais (Window/Git/Idle/Sugestor) | Média      | RF002        |
 
 ## 5.2 Requisitos Não Funcionais (RNF)
 
@@ -136,9 +119,12 @@ Persistência local realizada através de **RxDB**.
 
 Coleções principais:
 
-- `tasks`
 - `timeEntries`
+- `tasks`
 - `metadata`
+- `kanbanColumns`
+- `kanbanTaskColumns`
+- `automations`
 
 ---
 
@@ -178,44 +164,40 @@ Representa tarefas sincronizadas a partir de sistemas externos.
 
 # 6.2 Coleção: timeEntries
 
-Representa registros de tempo vinculados a tarefas. Esta coleção possui duas categorias de campos:
+Representa registros de tempo vinculados a tarefas, gerenciados com garantias de **idempotência, persistência durável e reconciliação canônica**.
 
-- **Campos sincronizados** — enviados e recebidos do servidor
-- **Campos locais** — existem apenas no RxDB, nunca trafegam para o servidor
+## Campos da Coleção
 
-## Campos Sincronizados
-
-| Campo                | Tipo     | Descrição                                                                                                                                                                                |
-| -------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| \_id                 | String   | Chave primária local — formato `dataSourceId::id`                                                                                                                                        |
-| \_deleted            | Boolean  | Soft delete para controle de sync                                                                                                                                                        |
-| id                   | String   | ID do apontamento na fonte externa                                                                                                                                                       |
-| dataSourceId         | String   | Identifica a origem do dado                                                                                                                                                              |
-| connectionInstanceId | String   | Identifica a conexão ativa                                                                                                                                                               |
-| task                 | Object   | Referência da tarefa `{ id }`                                                                                                                                                            |
-| taskData             | Object   | Snapshot/cache local da task (desnormalizado)                                                                                                                                            |
-| activity             | Object   | Tipo de atividade `{ id, name? }`                                                                                                                                                        |
-| user                 | Object   | Usuário responsável `{ id, name? }`                                                                                                                                                      |
-| startDate            | DateTime | **Fonte de verdade do timer.** Quando o cronômetro começou a contar. Em casos de tempo inicial manual ou retomada após pausa, é recalculado retroativamente como `now - secondsAtMoment` |
-| endDate              | DateTime | Preenchido no stop. Enviado ao servidor junto com startDate                                                                                                                              |
-| timeSpent            | Number   | Tempo acumulado localmente pelo renderer (em horas). Calculado a partir dos segundos acumulados durante a sessão de timer. Enviado ao datasource externo no momento do push via adapter  |
-| comments             | String   | Observações livres do usuário                                                                                                                                                            |
-| timeStatus           | Enum     | Estado do timer — ver seção 6.2.1                                                                                                                                                        |
-| type                 | Enum     | Modo de operação — ver seção 6.2.2                                                                                                                                                       |
-| createdAt            | DateTime | Data de criação do registro                                                                                                                                                              |
-| updatedAt            | DateTime | Data da última atualização                                                                                                                                                               |
-| conflicted           | Boolean  | Flag de conflito de sincronização                                                                                                                                                        |
-| conflictData         | Object   | Dados do conflito `{ server, local }`                                                                                                                                                    |
-| validationError      | Object   | Erros de validação do servidor                                                                                                                                                           |
-| syncedAt             | DateTime | Última sincronização com o servidor                                                                                                                                                      |
-| assumedMasterState   | Object   | Usado pelo RxDB para resolução de conflitos                                                                                                                                              |
-
-## Campos Locais (nunca sincronizados)
-
-| Campo       | Tipo   | Descrição                                                                 |
-| ----------- | ------ | ------------------------------------------------------------------------- |
-| journal     | Array  | Histórico de eventos do timer — ver seção 6.2.3                           |
-| timerConfig | Object | Configurações do timer para este apontamento específico — ver seção 6.2.4 |
+| Campo                  | Tipo     | Descrição                                                                                                                                                                                |
+| ---------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                     | String   | **Chave primária local.** Hash SHA-256 determinístico de `connectionInstanceId::remoteId` para registros importados, ou UUID v4 para criações locais não confirmadas.                  |
+| _deleted               | Boolean  | Flag nativa de soft delete do RxDB.                                                                                                                                                      |
+| connectionInstanceId   | String   | Identificador único da conexão ativa no workspace.                                                                                                                                       |
+| dataSourceId           | String   | Identificador do plugin/provedor do datasource (ex: `mr-tick-redmine`).                                                                                                                   |
+| syncStatus             | String   | Status de sincronização: `synced`, `pending_push`, `creating`, `ambiguous`, `conflict`, `local_only`, `error`.                                                                            |
+| remoteDeleted          | Boolean  | Tombstone que confirma a ausência remota do registro; impede que a exclusão local seja reenviada como DELETE ao provedor.                                                                |
+| deletionConfirmed      | Boolean  | Confirmação durável de exclusão solicitada explicitamente pelo usuário.                                                                                                                  |
+| remoteId               | String   | Identificador oficial do apontamento no sistema externo.                                                                                                                                 |
+| remoteUpdatedAt        | String   | Timestamp ISO da última versão confirmada pelo servidor; base de comparação para detecção de conflitos sem depender do relógio local.                                                     |
+| task                   | Object   | Referência mínima da tarefa `{ id }`.                                                                                                                                                    |
+| taskData               | Object   | Snapshot local desnormalizado da tarefa para renderização offline instantânea.                                                                                                           |
+| activity               | Object   | Atividade vinculada `{ id, name? }`.                                                                                                                                                     |
+| user                   | Object   | Usuário responsável `{ id, name? }`.                                                                                                                                                     |
+| startDate              | DateTime | **Âncora temporal do timer.** Início do período apontado.                                                                                                                                 |
+| endDate                | DateTime | Fim do período apontado (preenchido no stop ou apontamento manual).                                                                                                                       |
+| timeSpent              | Number   | Tempo total em horas (número decimal enviado ao provedor remoto).                                                                                                                        |
+| comments               | String   | Descrição e observações do apontamento.                                                                                                                                                  |
+| timeStatus             | Enum     | Estado do timer: `running`, `paused`, `finished`, `suggestion`.                                                                                                                          |
+| source                 | Enum     | Origem do apontamento: `manual`, `timer`, `ai_suggestion`, `addon`.                                                                                                                      |
+| type                   | Enum     | Modo de contagem: `increasing`, `decreasing`, `manual`.                                                                                                                                  |
+| journal                | Array    | Histórico local de eventos do timer (nunca sincronizado com o servidor) — ver seção 6.2.3.                                                                                               |
+| timerConfig            | Object   | Configurações locais do timer para este apontamento — ver seção 6.2.4.                                                                                                                   |
+| conflictData           | Object   | Snapshot de conflito contendo o estado remoto (`server`) e o estado local (`local`).                                                                                                     |
+| syncFailure            | Object   | Detalhes estruturados da falha de sincronização (`status`, `serverMessage`, etc.).                                                                                                       |
+| confirmationState      | Object   | Estado submetido de escrita confirmada pendente de releitura canônica.                                                                                                                   |
+| creationState          | Object   | Payload original durável retido durante criação em voo para recuperação de respostas perdidas.                                                                                           |
+| createdAt              | DateTime | Timestamp local de criação.                                                                                                                                                              |
+| updatedAt              | DateTime | Timestamp local de alteração.                                                                                                                                                            |
 
 ## 6.2.1 `timeStatus` — Estados e Transições
 
@@ -321,10 +303,6 @@ Estrutura de cores:
 ###### diagram-classes-003-metadata.puml
 
 <img src="./diagrams/puml-images/classes/diagram-classes-003-metadata.png" alt="CLASSES_DIAGRAM" />
-
-###### diagram-classes-004-license-plan.puml
-
-<img src="./diagrams/puml-images/classes/diagram-classes-004-license-plan.png" alt="CLASSES_DIAGRAM" />
 <!--END_CLASSES_DIAGRAM -->
 
 ---
@@ -666,74 +644,8 @@ Configurar integração com a fonte externa e sincronizar dados.
 ###### diagram-flow-006-sync-conflict.puml
 
 <img src="./diagrams/puml-images/flow/diagram-flow-006-sync-conflict.png" alt="FLOW" />
-
-###### diagram-flow-007-payment-pro.puml
-
-<img src="./diagrams/puml-images/flow/diagram-flow-007-payment-pro.png" alt="FLOW" />
 <!--END_FLOW -->
 
-## UC002 — Rastreamento de Tempo
-
-### Objetivo
-
-Permitir que o usuário registre tempo em tarefas com suporte a modos de operação distintos, tempo inicial manual e histórico auditável.
-
-### Fluxo
-
-1. Usuário seleciona tarefa
-2. Opcionalmente define tempo inicial (ex: "já trabalhei 2h nisso")
-3. Inicia timer — renderer cria entry no RxDB com `timeStatus: running` e primeira entrada no `journal`, e aciona o processamento no Main Process via IPC
-4. Main Process passa a processar o interval e emitir `timer:tick` a cada 1s para o renderer
-5. Usuário pausa ou finaliza — renderer atualiza o RxDB, journal é registrado; no stop, `timeSpent` é consolidado localmente e o apontamento fica disponível para push ao datasource externo
-
-### Sub-fluxos do Timer
-
-**UC-T01 — Iniciar Timer (padrão)**
-
-```
-Usuário clica Play
-  │
-  ├─ Renderer cria entry no RxDB
-  │    startDate: now
-  │    timeStatus: running
-  │    timerConfig: { mode }
-  │    journal: [{ event: 'started', at: now, secondsAtEvent: 0 }]
-  │
-  └─ Renderer envia ao Main Process via IPC
-       timer:start({ initialSeconds: 0, mode })
-         └─ Main Process inicia interval → timer:tick a cada 1s → renderer atualiza display
-```
-
-**UC-T02 — Iniciar Timer com Tempo Manual**
-
-```
-Usuário define "6h" e clica Play
-  │
-  ├─ Renderer calcula startDate = now - 21600
-  │
-  ├─ Renderer cria entry no RxDB
-  │    startDate: calculado retroativamente
-  │    timeStatus: running
-  │    timerConfig: { mode, manualInitialSeconds: 21600 }
-  │    journal: [{ event: 'adjusted', at: now, secondsAtEvent: 21600,
-  │               note: 'Usuário definiu 6h manualmente' }]
-  │
-  └─ Renderer envia ao Main Process: timer:start({ initialSeconds: 21600, mode })
-```
-
-**UC-T03 — Pausar Timer**
-
-```
-Usuário clica Pause
-  │
-  ├─ Renderer envia timer:pause ao Main Process → interval interrompido
-  │
-  └─ Renderer atualiza RxDB
-       timeStatus: paused
-       journal: push { event: 'paused', at: now, secondsAtEvent }
-```
-
-<!--END_FLOW -->
 
 ## UC002 — Rastreamento de Tempo
 
@@ -878,19 +790,19 @@ App abre
 <img src="./diagrams/puml-images/component/diagram-component-003-shared-ui.png" alt="COMPONENT_DIAGRAM" />
 <!--END_COMPONENT_DIAGRAM -->
 
-## UC003 — Ativação de Licença Pro
+## UC003 — Instalação e Ativação de Addons
 
 ### Objetivo
 
-Ativar os recursos do plano Pro localmente através de uma chave de licença (License Key).
+Instalar e ativar extensões multicapacidade (DataSources, Watchers, Menus e Temas) através do SDK do Mr. Tick.
 
 ### Fluxo
 
-1. Usuário realiza o upgrade/pagamento via Checkout Web
-2. Gateway emite a Chave de Licença (License Key)
-3. Usuário acessa as Configurações do Mr-tick e insere a Chave
-4. Sistema valida a chave via API (1 única vez) e grava `{ isPro: true }` no `settings.json` local
-5. Recursos Pro (Automações, Watchers, Multi-Workspaces) são desbloqueados imediatamente
+1. Usuário navega até a tela de Addons / Configurações
+2. Visualiza catálogo de addons disponíveis ou aponta para um addon local / pacote instalado
+3. Ativa o addon desejado para o workspace ativo
+4. `AddonLoader` carrega o manifesto em memória e registra as capacidades (provedor de dados, menus, temas)
+5. Addon passa a operar imediatamente com isolamento local e tratamento funcional de erros
 
 ---
 
@@ -960,13 +872,9 @@ Ativar os recursos do plano Pro localmente através de uma chave de licença (Li
 
 <img src="./diagrams/puml-images/uml/diagram-uml-003-sequence-sync.png" alt="UML_DIAGRAM" />
 
-###### diagram-uml-004-sequence-payment.puml
+###### diagram-uml-004-component-overview.puml
 
-<img src="./diagrams/puml-images/uml/diagram-uml-004-sequence-payment.png" alt="UML_DIAGRAM" />
-
-###### diagram-uml-005-component-overview.puml
-
-<img src="./diagrams/puml-images/uml/diagram-uml-005-component-overview.png" alt="UML_DIAGRAM" />
+<img src="./diagrams/puml-images/uml/diagram-uml-004-component-overview.png" alt="UML_DIAGRAM" />
 <!--END_UML_DIAGRAM -->
 
 ---
@@ -1010,44 +918,6 @@ flowchart TB
         DS <--> RedmineServer
         DS <--> JiraServer
     end
-<img src="./diagrams/puml-images/uml/diagram-uml-007-component-overview.png" alt="UML_DIAGRAM" />
-        end
-
-        subgraph AppCore [Application Core]
-            direction TB
-            SharedUI[Shared UI]
-            RxDB[(RxDB Local Database)]
-            Sync[Sync Engine]
-            TimerService[Timer Service — Main Process]
-
-            SharedUI --> RxDB --> Sync
-            SharedUI -- IPC --> TimerService
-            TimerService -- timer:tick --> SharedUI
-        end
-
-        subgraph Integrations [Integrations]
-            direction TB
-            subgraph DataSources [Data Sources]
-                Jira[Jira]
-                Redmine[Redmine]
-                Other[Other Systems]
-            end
-
-            subgraph Plugins [Plugins]
-                Clock[Time Clock Plugin]
-                Git[Git Activity Plugin]
-                Ext[Custom Extensions]
-            end
-        end
-    end
-
-    Desktop & Mobile & SelfHosted --> Auth
-    Desktop & Mobile & SelfHosted --> Orgs
-    Desktop & Mobile & SelfHosted --> Lic
-    Desktop & Mobile & SelfHosted --> SharedUI
-    Sync --> DataSources
-    Sync --> Plugins
-    LeftColumn ~~~ RightColumn
 ```
 
 ---
@@ -1102,16 +972,17 @@ flowchart TB
 - Facilidade para a comunidade e empresas desenvolverem extensões completas.
 - O Core do Mr-tick e a UI permanecem 100% agnósticos aos detalhes das ferramentas externas.
 
-## ADR-005 — Licenciamento Local-First por Chave (Zero Backend Auth)
+## ADR-005 — Modelo Local-First e Licença Apache 2.0 (Zero Cloud / Zero Auth)
 
-**Contexto:** Criar um backend SaaS de autenticação (Magic Links, senhas, banco de usuários) introduz custos de infraestrutura e aumenta o risco de vazamento de dados de compliance de clientes corporativos.
+**Contexto:** O projeto Mr. Tick é uma ferramenta para desenvolvedores e equipes de engenharia que prezam por privacidade absoluta e autonomia. Criar um backend SaaS de autenticação (Magic Links, senhas, banco de usuários e chaves de licença) introduziria custos de infraestrutura, latência desnecessária e riscos de vazamento de dados de compliance corporativo.
 
-**Decisão:** O licenciamento PRO opera no modelo **License Key Offline-First**. A chave adquirida no checkout é validada e persistida localmente nas configurações do app. O app opera 100% funcional localmente sem obrigatoriedade de login.
+**Decisão:** O Core do Mr. Tick é software livre distribuído sob os termos da licença **Apache 2.0**, sendo 100% gratuito e expansível via SDK. O aplicativo desktop opera no modelo **Local-First**, persistindo dados no RxDB local e se comunicando diretamente com os datasources do usuário sem qualquer obrigatoriedade de login, telemetria ou validação de chave de licença externa.
 
 **Consequências:**
 
-- Zero custo e manutenção de servidores de autenticação centralizados.
-- Cumprimento rigoroso da política de privacidade Zero-Cloud.
+- Zero custo operacional e ausência de dependência de servidores centrais proprietários.
+- Cumprimento rigoroso e auditável da política de privacidade Zero-Cloud.
+- Adoção imediata em ambientes corporativos com restrições rígidas de segurança de rede.
 
 ## ADR-006 — Injeção Dinâmica e Tratamento de Temas CSS no Client-Side
 

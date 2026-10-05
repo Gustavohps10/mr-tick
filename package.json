@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "author": "Gustavo Henrique",
+  "license": "Apache-2.0",
   "type": "module",
   "changeset": "changeset",
   "lint-staged": {

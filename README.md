@@ -4,295 +4,127 @@
     <img height="100" src="./src/packages/ui/src/assets/logo-dark.svg#gh-dark-mode-only" alt="Mr. Tick Logo" />
   </div>
 
-Engine de produtividade local-first para devs e times técnicos. Seus dados. Sua máquina. Seu tempo.
+Engine de produtividade e rastreamento de tempo local-first para desenvolvedores e equipes técnicas. Seus dados. Sua máquina. Seu tempo.
 
 </h2>
 
 <p align="center">
     <img src="https://img.shields.io/github/languages/top/Gustavohps10/mr-tick?label=TypeScript&color=4f94ee&style=flat-square&logoColor=ffffff&logo=typescript"/>
-    <img src="https://img.shields.io/website?url=https://teste-atak.vercel.app&label=Website&color=4f94ee&style=flat-square&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAAsTAAALEwEAmpwYAAABxklEQVR4nK3Uz25NURTH8fsApa2GxJ9QNFFD5h5B2oG0JBriTxFXpCGoO6PUvTyDqUTiCWqmCAN/54Qn6KidkI8sWTfZ9+Rwb8JJVrL2b6/9PXuvvfZqNPp8GMbBtOF+8bUfxtDCZ/zEl7TwP+E2tgwKO473OIcXOIr5tKnUzmfMbD/YLazE3xO4nPpvYPptnM1TrODmn2Cz2MB9jONt91gV4FjOjWfsBmaqsNHMzdaYxEus4Qk6eJrWSW0tY2ZyTawdKYGt7g5y3MRVHMq8PU6bSi3mmkX8hbioEngDQ8X4BCaK8ZGwYjwRMcV4KBiNyo52YA6n0r+Ey9iJkziN7aldSX+u0Jsl8BouYhWv0o9FCwnu6vN53Ot5zFW8Tn2hBO7DdzzAoyziXdiLb3kZndR3Y3/Gt/Ew9T3Vm17GgXxidwo9SmMy5+7WxE9iqQr775fSipzUlM1hTBdlM51aXdkslsCRfyjsbbm2txPl5Dru5bN6E89sgKe3jmM9sEoun2FzNoB2DTBu9UyCn0cJ1cIKaDSJd5mXaFXx3LrtK3IYtRd1Gu2rtyn8BRrtaxEf8QNf08L/kG1udCBYDTyOH7UWtqnfgl8Icmgv6bleHgAAAABJRU5ErkJggg=="/>
     <img src="https://img.shields.io/github/commit-activity/w/Gustavohps10/mr-tick?label=Commits&color=4f94ee&style=flat-square&logo=git&logoColor=ffffff"/>
-    <img src="https://img.shields.io/github/created-at/gustavohps10/mr-tick?label=Created%20At&color=4f94ee&style=flat-square&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8%2F9hAAABuklEQVR4AZSTz0sVURTHv%2BfeeVLQIgqpVbyWEdiyB9GiVUJUWwlC2gQtWhYE7d4yIlq1a9Eit24EBRFcibgR%2FwBFNyqCuBF17r1z%2FJ7R%2Bxx9s%2FExn3fPOd9zvjN3fjg0frEKs2RJVX2jXIesjaQqrFKfrgvnf47CKLlP7rH2kvSA8hFzqw0ICGMKPKH%2BltptYtqoSxpWksbtCuEdxQNykuDHrNbEwT2mlsgeeyfPtLBysQWVSS94pYIXUH3PxsuH6oRpXvQ1VD5kcWBgl5cUC6KYozhOrh7j1GaSyqL1ZjEb7AK6SXbIPrG4DdOshxo4A9QGKpgo3Ej3OtiMXUVtYEFGVe9GjW%2BChmeMB3qpZY88zX15HTTkQqpSnzfxI%2Fe7GKvYt3pM5X%2FHvZNvljcZMvDOf65E%2BwKssbFD4F31XRV%2FLL7KkAEbbvJMv3mnH8BhnjlEbqzb2kabwWHhOj2e8a9T%2FGwbataGDCqN9r4vi%2BATBP%2BazW3xkIGT4jkf0RcvxUMvnR95qHDFLy%2Fpa87zWhsIhB%2FGUVf1qAsc3ykQt7jesjzDXPiClTkXzphJbcDHNpW02LgONmMGpwAAAP%2F%2FjxwNAQAAAAZJREFUAwBNXh4wS6bnRwAAAABJRU5ErkJggg%3D%3D"/>
-    <img src="https://img.shields.io/github/license/gustavohps10/mr-tick?label=License&color=4f94ee&style=flat-square&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAHxSURBVEiJtZS/axVREIW/ScQuKhJELIyKqNjYGYKxsLKwsbAICNHWztikkyAi2BhLG0HwBwoWafIHiBqCpcQmxELBIDbhmcqQ5LPIRJ+buy/7RA8sc3dn7pwzM3sv/GdEnUMN4CJwrEGeLxHxpCtmddLuMNktQUt9pvZuEzfRiaSnw95dwHxErDXUNAlcr5Ls6LDhAzDfIHEr7cO0YyoRMdZQGKhH1O+Vns+lb0BdKszkSrECdRA4C6wDMxExCywCt4G9baFzABHxST0FXAL2pW8cOFxNvFudLiiZVvc0Lncjl+pEtYLnwDngBhv97AWuAneBp8CF3HwUOFTIu5oVr5QYh5J1y2DUsfSdzvevHc7CtboKhtI+Kih7DNzLmHfAcKcKqh+rQy5dHTvT9gBExAKwUIgrYpPgTdpR4H4lZjTtawB1BBgo5FoHXkTE5yKTOqWuZM/71QPquPpDnWqLm6vp/2qS/zGDdoK+DsPra9qSKsGvGUTEsgobv+Rmy4aByxGx3A1BO0p30UJEPEgl+9tUnQFuUn9BrgO3IuLtdgSo/X8lt4ASwXHgfa5fbX5MZee7JSiVO1KzbgT1ZC5bJeeauqieyGdRXUvfSP6KTbCkHoStLRoFZiPiYyYdBgbTNwPc4ffJrsM34GXtgfvX+AkvyO4YoQp6EQAAAABJRU5ErkJggg=="/>
+    <img src="https://img.shields.io/github/license/gustavohps10/mr-tick?label=License&color=4f94ee&style=flat-square"/>
 </p>
 
 <p width="100%">
- <img src="./docs/screenshots/screenshot-dark.png#gh-dark-mode-only" width="100%" />
-  <img src="./docs/screenshots/screenshot-light.png#gh-light-mode-only" width="100%" />
+  <img src="./docs/screenshots/screenshot-dark.png#gh-dark-mode-only" width="100%" alt="Mr. Tick Dark Mode" />
+  <img src="./docs/screenshots/screenshot-light.png#gh-light-mode-only" width="100%" alt="Mr. Tick Light Mode" />
 </p>
 
-# Mapa
+---
 
-<p width="100%">
-  <img src="./docs/diagram-light.png#gh-dark-mode-only" width="100%" />
-  <img src="./docs/diagram-dark.png#gh-light-mode-only" width="100%" />
-</p>
+## 💡 O que é o Mr. Tick?
 
-O **Mr. Tick** é uma plataforma de **apontamento de horas e observabilidade Local-First** projetada para oferecer:
+O **Mr. Tick** é uma plataforma de **apontamento de horas, produtividade e observabilidade Local-First** construída para eliminar a fricção de alternar entre múltiplas ferramentas (Redmine, Jira, GitHub, Calendário).
 
-- performance instantânea
-- operação offline
-- integração com ferramentas externas
-- controle total dos dados pelo usuário
-
-A arquitetura foi construída para que **os dados operacionais pertençam ao cliente**, e não a um backend central.
-
-Isso permite que o sistema funcione **offline**, seja **self-hosted** e continue rápido mesmo com APIs externas lentas.
-
-As decisões de produto e arquitetura estão documentadas em **[docs/ADR-001.md](docs/ADR-001.md)** e **[docs/ADR-002.md](docs/ADR-002.md)**.
+- **Performance Instantânea:** A UI interage com o banco de dados reativo local (**RxDB**), garantindo resposta com zero latência.
+- **100% Offline-First:** O sistema opera perfeitamente sem internet. A sincronização com APIs externas ocorre em background de forma incremental e idempotente.
+- **Privacidade Absoluta (Zero-Cloud Data Policy):** Nenhum dado de tarefas, apontamentos ou código trafega para servidores de terceiros. A comunicação acontece diretamente da sua máquina para as ferramentas corporativas integradas.
+- **Extensibilidade Ilimitada:** Arquitetura desacoplada via **SDK de Addons Multicapacidade** para criação de conectores de dados, watchers e temas.
 
 ---
 
-# 🧠 Princípios Arquiteturais
+## 🏗️ Estrutura do Monorepo
 
-O projeto é guiado pelos seguintes pilares:
+O projeto é gerenciado com **Turborepo** e **Yarn 4 (Berry)**:
 
-| Conceito                   | Descrição                                                                                 | Tecnologia             |
-| -------------------------- | ----------------------------------------------------------------------------------------- | ---------------------- |
-| **Local-First**            | Toda a UI interage primeiro com um banco de dados local, garantindo resposta instantânea. | **RxDB**               |
-| **Offline-First**          | O sistema continua funcional sem internet. A sincronização ocorre em background.          | **RxDB Replication**   |
-| **Client-Owned Data**      | Dados de produtividade pertencem ao cliente e não são armazenados no backend.             | Arquitetura do produto |
-| **Workspaces**             | Contextos isolados de trabalho que conectam o usuário a diferentes fontes de dados.       | Monorepo               |
-| **Ecossistema de Plugins** | Conectores dinâmicos permitem integração com APIs externas (Redmine, Jira, etc.).         | SDK + IoC              |
-
----
-
-# 🏗️ Modelo de Execução
-
-O Mr. Tick opera em **três modos** (ver **ADR-001**):
-
-- **Desktop** — cliente na máquina do usuário (Windows / Linux / macOS); modo padrão; dados locais (RxDB), sync com datasources via plugins.
-- **Cloud SaaS** — backend hospedado pelo Mr. Tick (ex.: app.mr-tick.dev); autenticação, painel admin, organizações, planos.
-- **Self-Hosted** — empresas rodam em sua própria infraestrutura (ex.: mr-tick.internal.company.com); compliance, dados internos, isolamento.
-
----
-
-# ☁️ Mr. Tick Control Plane
-
-O Mr. Tick possui um serviço central opcional chamado **Control Plane**.
-
-Ele **não armazena dados operacionais** da aplicação.
-
-## Responsabilidades:
-
-- autenticação via Magic Link
-- gestão de organizações
-- controle de membros
-- licenciamento
-- painel administrativo
-
-### Esse serviço de licenças **não armazena**:
-
-- tarefas
-- apontamentos de horas
-- atividades
-- dados de produtividade
-
-  _Esses dados operacionais permanecem_ :
-  - no **banco local do cliente**
-  - ou nas **ferramentas externas integradas (Redmine, Jira, Youtrack, etc...)**
-
----
-
-# 🧩 Ecossistema de Plugins
-
-A extensibilidade é baseada em **conectores de fontes de dados** (datasources). Cada plugin comunica com uma API externa (Redmine, Jira, etc.). Um **mesmo workspace** pode ter **várias conexões** (N datasources) — ver **ADR-002**.
-
----
-
-# 🧱 Workspaces
-
-O **Workspace** é a unidade central de trabalho (ver **ADR-002**).
-
-- Um workspace pode ter **múltiplas conexões** (N datasources): ex. Redmine + Jira no mesmo workspace.
-- Cada conexão tem **credenciais e configuração próprias**; o login é **por conexão**, não por workspace.
-- Conexões são gerenciadas na **página de Plugins** (conectar/desconectar/editar por datasource).
-- A **sincronização** é por (workspace, conexão): cada conexão tem seu motor de sync (metadata, tarefas, apontamentos) e checkpoint próprio; falha em uma não derruba as outras.
-- No **header**, o status de sync aparece **agrupado por datasource** (cada conexão com seu bloco: Metadata, Tarefas, Apontamentos).
-
-Fluxo: criar workspace → na página de Plugins, conectar as fontes desejadas → sync roda por conexão → dados locais (RxDB) identificados por `dataSourceId`.
-
----
-
-# 💻 Arquitetura Técnica
-
-O projeto utiliza um **Monorepo** gerenciado pelo **Turbo Repo** (ver **ADR-001**).
-
-```
-apps/          → desktop (em construção), web e mobile (futuro)
-packages/      → ui, domain, application, sdk, container, infra, etc.
+```text
+src/
+├── apps/
+│   ├── desktop/           # Aplicação desktop principal (Electron + React)
+│   ├── landing-page/      # Portal web e página de downloads (Next.js)
+│   └── sdk/               # CLI e runtime do SDK (@mr-tick/sdk)
+├── packages/
+│   ├── ui/                # Biblioteca de componentes visuais (Tailwind v4)
+│   ├── application/       # Casos de uso, orquestração e contratos do host
+│   ├── domain/            # Entidades de negócio puras
+│   ├── adapters/          # Adaptadores de rede, HTTP e integrações
+│   └── shared/            # Helpers, ViewModels e tratamento funcional de erros (Either)
+├── dev-addons/
+│   └── datasource-fake/   # Plugin mock para desenvolvimento e testes E2E
 ```
 
 ---
 
-## Clientes
+## 🚀 Como Começar
 
-### 🖥️ Desktop — **Em construção**
+### Pré-requisitos
+- **Node.js:** Versão 20 LTS ou superior.
+- **Yarn:** Yarn 4 habilitado (via Corepack ou `yarn set version 4`).
+- Guia detalhado passo a passo de configuração: **[docs/como-rodar.md](docs/como-rodar.md)**.
 
-Electron + React. Aplicação **Local-First + Offline-First**; banco local (RxDB), sincronização com datasources via plugins.
+### Instalação e Execução
 
----
+```bash
+# 1. Instalar dependências em todo o monorepo
+yarn install
 
-### 🌐 Web — **Futuro**
+# 2. Compilar os pacotes
+yarn build
 
-React + Vite; banco local no navegador (ex.: PGlite).
-
----
-
-### 📱 Mobile — **Futuro**
-
-Capacitor + React; apontamento em qualquer lugar.
-
----
-
-# 💾 Banco de Dados Local
-
-O banco local é responsável por armazenar:
-
-- tasks
-- time entries
-- activities
-- workspaces
-
-Tecnologia:
-
-RxDB
-
-Ele fornece:
-
-- queries reativas
-- replicação
-- funcionamento offline
-- sincronização incremental
+# 3. Iniciar o aplicativo desktop em modo de desenvolvimento
+yarn dev:desktop
+```
 
 ---
 
-# 🔄 Sincronização
+## 🛠️ Comandos Principais
 
-A sincronização ocorre entre o **banco local (RxDB)** e as **APIs externas**, via **plugins** (datasources). Cada (workspace, conexão) tem seu próprio motor de sync e checkpoint — ver **ADR-002**. O backend Mr. Tick **não participa da sincronização operacional** (tarefas/apontamentos ficam no cliente ou nas ferramentas integradas).
-
----
-
-# ⚙️ Ambiente de Desenvolvimento
-
-Este projeto utiliza **Turbo Repo + Yarn v4**.
-
----
-
-## Como rodar
-
-Instalação do Node, Yarn (via npm), liberação de scripts no Windows, Yarn 4 e comandos `yarn install` / `yarn build` / `yarn dev` estão descritos em detalhe em:
-
-**[docs/como-rodar.md](docs/como-rodar.md)**
+| Comando | Descrição |
+| :--- | :--- |
+| `yarn dev:desktop` | Inicia o app desktop com hot-reload e watchers ativos |
+| `yarn build` | Compila todos os pacotes e aplicações via Turborepo |
+| `yarn test:unit` | Executa a suíte de testes unitários com Vitest |
+| `yarn test:ui` | Executa os testes de interface e stores de sincronização |
+| `yarn --cwd src/apps/desktop test:e2e` | Roda a suíte completa de testes E2E do Electron com Playwright |
+| `yarn lint:fix` | Valida e corrige automaticamente regras de ESLint |
+| `yarn typecheck` | Executa a checagem de tipos estrita em todo o monorepo |
 
 ---
 
-## Comandos principais
+## 🧩 Ecossistema de Plugins & Addons
 
-| Comando                        | Descrição                          |
-| ------------------------------ | ---------------------------------- |
-| `yarn install`                 | Instala dependências               |
-| `yarn dev`                     | Inicia ambiente de desenvolvimento |
-| `yarn build`                   | Compila o projeto                  |
-| `yarn shadcn add [componente]` | Adiciona componentes de UI         |
+A extensibilidade do Mr. Tick é orientada a **4 Pilares Principais**:
+1. **DataSources:** Conexão com sistemas externos de issues e time tracking (Redmine, Jira, GitLab).
+2. **Watchers:** Automações locais para monitorar eventos do sistema (Git branch, Discord Presence, IDEs).
+3. **Calendários:** Integração com calendários para transformar reuniões em apontamentos com 1 clique.
+4. **Temas & Menus:** Customização completa do visual e atalhos na barra do timer.
 
----
-
-# 🧹 Qualidade de Código
-
-### Commits
-
-Utilizamos **Conventional Commits (Angular)**.
-
-Exemplo:
-
-> feat: add workspace creation
-
-> fix: resolve sync conflict
-
-Validação via:
-
-commitlint
+Documentação completa da arquitetura de plugins: **[docs/addons.md](docs/addons.md)**.  
+Plugin de referência oficial: **[redmine-plugin](https://github.com/Gustavohps10/mr-tick-redmine)**.
 
 ---
 
-### Formatação
+## 📚 Documentação & Decisões Arquiteturais
 
-Ferramentas:
-
-- ESLint
-- Prettier
-- lint-staged
-
-Executadas automaticamente antes do commit.
-
----
-
-### Versionamento
-
-Gerenciado via:
-
-Changesets
+- **[Roadmap Estratégico & Visão de Futuro](docs/ROADMAP.md)**: Marcos concluídos e próximas fases de produto.
+- **[Como Rodar o Projeto](docs/como-rodar.md)**: Instruções passo a passo de setup no Windows, Linux e macOS.
+- **[Arquitetura de Addons](docs/addons.md)**: Guia completo para criação e ciclo de vida de plugins.
+- **[ADRs (Architectural Decision Records)](docs/)**:
+  - `ADR-001`: Estrutura do Monorepo e Modelo de Execução
+  - `ADR-002`: Multi-datasource e Múltiplas Conexões por Workspace
+  - `ADR-003`: Sincronização Local-First com RxDB
+  - `ADR-004`: Arquitetura de Plugins e Isolamento
+  - `ADR-005`: Precisão de Timer e Journal no Main Process
+  - `ADR-006`: Design System com Tailwind v4
+  - `ADR-007`: Tratamento Funcional de Erros com Either e DTOs Canônicos no SDK
 
 ---
 
-# 🛠️ IDE Recomendada
+## 👤 Autor
 
-**Visual Studio Code**
+**Gustavo Henrique Pereira dos Santos**
+- Website: [gustavohenrique.vercel.app](https://gustavohenrique.vercel.app/)
+- GitHub: [@Gustavohps10](https://github.com/Gustavohps10)
 
-Extensões recomendadas:
+## 📄 Licença
 
-- Tailwind CSS Intellisense
-- PostCSS Language Support
-- ESLint
-- Prettier
-
----
-
-# 🗺️ Roadmap
-
-### ✅ Concluído
-
-- estrutura do monorepo
-- arquitetura de plugins
-- SDK de conectores
-- workspace management
-- integração inicial com Redmine
-- armazenamento seguro de credenciais
-- carregamento dinâmico de plugins
-
----
-
-### 🚧 Em Progresso
-
-- **Cliente Desktop** (Electron + React, Local-First)
-- Motor de sincronização Local-First (replicação incremental, sync contínuo, resolução de conflitos — RxDB Replication)
-
----
-
-### 🔜 Futuro
-
-- **Web** e **Mobile** (clientes)
-- dashboards de produtividade
-- colaboração P2P entre usuários
-- analytics por workspace
-- marketplace de plugins
-- suporte oficial a Jira
-
-## :adult: Autores
-
-<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
-<!-- prettier-ignore-start -->
-<!-- markdownlint-disable -->
-<table>
-  <tbody>
-    <tr>
-      <td align="center" valign="top" width="14.28%"><a href="https://gustavohenrique.vercel.app/"><img src="https://avatars.githubusercontent.com/u/61752235?v=4?s=100" width="100px;" alt="Gustavo Henrique"/><br /><sub><b>Gustavo Henrique</b></sub></a><br /><a href="#code-Gustavohps10" title="Code">💻</a></td>
-    </tr>
-  </tbody>
-</table>
-
-<!-- markdownlint-restore -->
-<!-- prettier-ignore-end -->
-
-<!-- ALL-CONTRIBUTORS-LIST:END -->
+Este projeto é software livre licenciado sob os termos da licença [Apache 2.0](LICENSE).
