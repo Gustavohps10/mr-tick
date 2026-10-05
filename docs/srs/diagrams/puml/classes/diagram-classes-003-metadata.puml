@@ -2,7 +2,12 @@
 title MR-TICK - Coleção metadata (SRS 6.3)
 package "Core Models" {
     class Metadata {
-        +String _id
+        +String id
+        +String sourceId
+        +String connectionInstanceId
+        +String dataSourceId
+        +String syncStatus
+        +DateTime lastPulledAt
         +Array taskStatuses
         +Array taskPriorities
         +Array activities
@@ -10,8 +15,6 @@ package "Core Models" {
         +Array participantRoles
         +Array estimationTypes
         +Boolean conflicted
-        +Object conflictData
-        +DateTime syncedAt
     }
     
     class MetadataItem {
@@ -22,6 +25,9 @@ package "Core Models" {
     }
 }
 Metadata *-- MetadataItem : contains
+note right of Metadata
+  id: connectionInstanceId::sourceId
+end note
 note right of MetadataItem
   colors: badge, background, text, border
 end note

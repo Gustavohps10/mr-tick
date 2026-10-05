@@ -2,8 +2,14 @@
 title MR-TICK - Coleção timeEntries (SRS 6.2)
 package "Core Models" {
     class TimeEntry {
-        +String _id
         +String id
+        +String remoteId
+        +String connectionInstanceId
+        +String dataSourceId
+        +String syncStatus
+        +Boolean remoteDeleted
+        +Boolean deletionConfirmed
+        +String remoteUpdatedAt
         +Object task
         +Object taskData
         +Object activity
@@ -16,15 +22,14 @@ package "Core Models" {
         +DateTime updatedAt
         +Enum timeStatus
         +Enum type
-        +Boolean conflicted
+        +Array journal
+        +Object timerConfig
         +Object conflictData
-        +DateTime syncedAt
-        --
-        calculateDuration()
-        isSynced()
     }
 }
 note right of TimeEntry
+  id: SHA-256 (connectionInstanceId::remoteId) ou UUID
+  syncStatus: synced, pending_push, creating, conflict, local_only
   timeStatus: running, paused, finished
   type: increasing, decreasing, manual
 end note

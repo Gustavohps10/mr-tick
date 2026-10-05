@@ -1,25 +1,29 @@
-﻿@startuml ClassTasks
+@startuml ClassTasks
 package "Core Models" {
     class Task {
-        +String _id
-        +String externalId
+        +String id
+        +String sourceId
+        +String connectionInstanceId
+        +String dataSourceId
         +String title
         +String description
         +Status status
         +Priority priority
         +DateTime createdAt
-        +sync()
-        +startTimer()
+        +DateTime updatedAt
+        +String syncStatus
     }
     
     class TimeEntry {
-        +String _id
+        +String id
+        +String remoteId
+        +String connectionInstanceId
+        +String dataSourceId
         +DateTime startDate
         +DateTime endDate
-        +Int durationSeconds
-        +String taskId
-        +Boolean isSynced
-        +calculateDuration()
+        +Number timeSpent
+        +String syncStatus
+        +String timeStatus
     }
     
     Task "1" *-- "0..*" TimeEntry : possui

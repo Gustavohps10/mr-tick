@@ -130,35 +130,41 @@ Coleções principais:
 
 # 6.1 Coleção: tasks
 
-Representa tarefas sincronizadas a partir de sistemas externos.
+Representa tarefas sincronizadas a partir de sistemas externos, armazenadas reativamente no RxDB.
 
-| Campo          | Tipo     | Descrição                             |
-| -------------- | -------- | ------------------------------------- |
-| \_id           | String   | Chave primária local                  |
-| id             | String   | ID da tarefa na fonte externa         |
-| title          | String   | Título da tarefa                      |
-| description    | String   | Descrição da tarefa                   |
-| url            | String   | URL da tarefa na ferramenta externa   |
-| projectName    | String   | Nome do projeto                       |
-| status         | Object   | Status atual da tarefa                |
-| tracker        | Object   | Tipo de issue                         |
-| priority       | Object   | Prioridade da tarefa                  |
-| author         | Object   | Usuário criador                       |
-| assignedTo     | Object   | Usuário responsável                   |
-| createdAt      | DateTime | Data de criação                       |
-| updatedAt      | DateTime | Data da última atualização            |
-| startDate      | DateTime | Data de início                        |
-| dueDate        | DateTime | Data limite                           |
-| doneRatio      | Number   | Percentual de conclusão               |
-| spentHours     | Number   | Horas gastas registradas externamente |
-| estimatedTimes | Array    | Estimativas de tempo                  |
-| statusChanges  | Array    | Histórico de mudança de status        |
-| participants   | Array    | Participantes da tarefa               |
-| timeEntryIds   | Array    | IDs dos apontamentos relacionados     |
-| timeEntries    | Array    | Apontamentos vinculados               |
-| conflicted     | Boolean  | Indica conflito de sincronização      |
-| conflictData   | Object   | Dados de conflito                     |
-| syncedAt       | DateTime | Última sincronização                  |
+| Campo                | Tipo     | Descrição                                                                                   |
+| -------------------- | -------- | ------------------------------------------------------------------------------------------- |
+| id                   | String   | **Chave primária local.** Chave composta determinística `connectionInstanceId::sourceId`.     |
+| sourceId             | String   | Identificador oficial da tarefa no sistema externo (ex: ID da issue no Redmine/Jira).        |
+| connectionInstanceId | String   | Identificador da conexão ativa no workspace.                                               |
+| dataSourceId         | String   | Identificador do plugin/provedor do conector (ex: `mr-tick-redmine`).                       |
+| _deleted             | Boolean  | Flag nativa de soft delete do RxDB.                                                         |
+| syncStatus           | String   | Status de sincronização: `synced`, `pending_push`, `pulling`, `conflict`, `local_only`.      |
+| lastPulledAt         | DateTime | Timestamp ISO do último pull executado com sucesso.                                         |
+| lastPushedAt         | DateTime | Timestamp ISO do último push de alterações.                                                 |
+| lastReconciledAt     | DateTime | Timestamp ISO da última reconciliação canônica.                                             |
+| title                | String   | Título da tarefa.                                                                           |
+| description          | String   | Descrição e corpo da tarefa.                                                                |
+| url                  | String   | Link direto para a tarefa na ferramenta externa.                                            |
+| projectName          | String   | Nome do projeto ao qual a tarefa pertence.                                                  |
+| status               | Object   | Status atual da tarefa `{ id, name }`.                                                      |
+| tracker              | Object   | Tipo ou rastreador `{ id }`.                                                                |
+| priority             | Object   | Nível de prioridade `{ id, name }`.                                                         |
+| author               | Object   | Usuário que criou a tarefa `{ id?, name }`.                                                 |
+| assignedTo           | Object   | Usuário atribuído `{ id?, name }`.                                                          |
+| createdAt            | DateTime | Data de criação na ferramenta remota.                                                       |
+| updatedAt            | DateTime | Data da última atualização na ferramenta remota.                                            |
+| startDate            | DateTime | Data prevista de início.                                                                    |
+| dueDate              | DateTime | Data limite de entrega.                                                                     |
+| doneRatio            | Number   | Percentual de conclusão da tarefa (0 a 100).                                                |
+| spentHours           | Number   | Total de horas gastas registradas no servidor remoto.                                       |
+| estimatedTimes       | Array    | Estimativas de tempo por atividade (`hours`, `activities`).                                 |
+| statusChanges        | Array    | Histórico de alterações de status.                                                          |
+| participants         | Array    | Participantes e papéis atribuídos `{ id, name, role }`.                                     |
+| timeEntries          | Array    | Snapshots de apontamentos vinculados.                                                       |
+| conflicted           | Boolean  | Flag de detecção de divergência remota.                                                     |
+| conflictData         | Object   | Snapshot do estado do servidor e estado local em conflito.                                  |
+
 
 ---
 
@@ -253,38 +259,54 @@ Objeto **local**, nunca sincronizado. Guarda preferências do usuário para aque
 
 # 6.3 Coleção: metadata
 
-Armazena metadados provenientes da fonte externa.
+Armazena metadados provenientes da fonte externa (status, prioridades, papéis, tipos de atividade).
 
-| Campo            | Tipo     | Descrição                   |
-| ---------------- | -------- | --------------------------- |
-| \_id             | String   | Chave primária              |
-| taskStatuses     | Array    | Status possíveis de tarefas |
-| taskPriorities   | Array    | Prioridades                 |
-| activities       | Array    | Tipos de atividades         |
-| trackStatuses    | Array    | Status de tracking          |
-| participantRoles | Array    | Papéis de participantes     |
-| estimationTypes  | Array    | Tipos de estimativa         |
-| conflicted       | Boolean  | Indica conflito             |
-| conflictData     | Object   | Dados de conflito           |
-| syncedAt         | DateTime | Última sincronização        |
+| Campo                | Tipo     | Descrição                                                                                   |
+| -------------------- | -------- | ------------------------------------------------------------------------------------------- |
+| id                   | String   | **Chave primária local.** Chave composta determinística `connectionInstanceId::sourceId`.     |
+| sourceId             | String   | Identificador de metadados na fonte externa.                                                |
+| connectionInstanceId | String   | Identificador da conexão ativa no workspace.                                               |
+| dataSourceId         | String   | Identificador do plugin/provedor do conector (ex: `mr-tick-redmine`).                       |
+| _deleted             | Boolean  | Flag nativa de soft delete do RxDB.                                                         |
+| syncStatus           | String   | Status de sincronização (`synced`, `pulling`, `conflict`, `local_only`).                     |
+| lastPulledAt         | DateTime | Timestamp ISO do último pull executado.                                                     |
+| taskStatuses         | Array    | Lista de status possíveis de tarefas (`SyncMetadataItem`).                                  |
+| taskPriorities       | Array    | Lista de prioridades configuradas (`SyncMetadataItem`).                                     |
+| activities           | Array    | Lista de atividades de apontamento (`SyncMetadataItem`).                                    |
+| trackStatuses        | Array    | Status de tracking.                                                                         |
+| participantRoles     | Array    | Papéis de participantes no projeto.                                                         |
+| estimationTypes      | Array    | Tipos de estimativa suportados.                                                             |
+| conflicted           | Boolean  | Indica conflito na importação de metadados.                                                 |
 
-Cada item de metadata contém:
+Cada item de metadados (`SyncMetadataItem`) contém:
 
-| Campo  | Tipo   |
-| ------ | ------ |
-| id     | String |
-| name   | String |
-| icon   | String |
-| colors | Object |
+| Campo  | Tipo   | Descrição                                      |
+| ------ | ------ | ---------------------------------------------- |
+| id     | String | Identificador do item (status, atividade, etc) |
+| name   | String | Rótulo legível para exibição                   |
+| icon   | String | Nome ou identificador do ícone                 |
+| colors | Object | Cores de tema (`badge`, `background`, `text`)  |
 
-Estrutura de cores:
+---
 
-| Campo      | Tipo   |
-| ---------- | ------ |
-| badge      | String |
-| background | String |
-| text       | String |
-| border     | String |
+# 6.4 Coleções Locais de UI (Chave Primária `_id`)
+
+Diferente das coleções sincronizáveis com provedores externos (que utilizam `id` determinístico), as coleções exclusivas de interface e configuração local adotam o padrão RxDB com chave primária **`_id`**:
+
+### automations
+- **`_id`**: Chave primária local (UUID).
+- `name`: Nome legível da automação.
+- `type`: Tipo da automação (ex: `window_focus`, `idle_detection`, `git_branch`).
+- `params`: Parâmetros específicos da automação.
+- `enabled`: Estado de ativação local (booleano).
+- `createdAt` / `updatedAt`: Timestamps locais.
+
+### kanbanColumns & kanbanTaskColumns
+- **`_id`**: Chave primária local (UUID).
+- `workspaceId`: Identificador do workspace.
+- `name`, `order`, `color`: Configuração visual das colunas do quadro Kanban.
+- `taskId`, `columnId`, `order`: Ordenação e posicionamento local de tarefas no Kanban.
+
 
 ---
 
