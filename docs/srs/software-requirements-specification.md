@@ -313,17 +313,13 @@ Diferente das coleções sincronizáveis com provedores externos (que utilizam `
 # Diagrama de Classes
 
 <!--<BEGIN_CLASSES_DIAGRAM> -->
-
 ###### diagram-classes-001-tasks.puml
-
 <img src="./diagrams/puml-images/classes/diagram-classes-001-tasks.png" alt="CLASSES_DIAGRAM" />
 
 ###### diagram-classes-002-timeEntries.puml
-
 <img src="./diagrams/puml-images/classes/diagram-classes-002-timeEntries.png" alt="CLASSES_DIAGRAM" />
 
 ###### diagram-classes-003-metadata.puml
-
 <img src="./diagrams/puml-images/classes/diagram-classes-003-metadata.png" alt="CLASSES_DIAGRAM" />
 <!--END_CLASSES_DIAGRAM -->
 
@@ -642,29 +638,22 @@ Configurar integração com a fonte externa e sincronizar dados.
 ### Diagrama de Fluxos
 
 <!--<BEGIN_FLOW> -->
-
 ###### diagram-flow-001-timer.puml
-
 <img src="./diagrams/puml-images/flow/diagram-flow-001-timer.png" alt="FLOW" />
 
 ###### diagram-flow-002-task-creation.puml
-
 <img src="./diagrams/puml-images/flow/diagram-flow-002-task-creation.png" alt="FLOW" />
 
 ###### diagram-flow-003-task-edit.puml
-
 <img src="./diagrams/puml-images/flow/diagram-flow-003-task-edit.png" alt="FLOW" />
 
 ###### diagram-flow-004-plugin-activation.puml
-
 <img src="./diagrams/puml-images/flow/diagram-flow-004-plugin-activation.png" alt="FLOW" />
 
 ###### diagram-flow-005-sync-success.puml
-
 <img src="./diagrams/puml-images/flow/diagram-flow-005-sync-success.png" alt="FLOW" />
 
 ###### diagram-flow-006-sync-conflict.puml
-
 <img src="./diagrams/puml-images/flow/diagram-flow-006-sync-conflict.png" alt="FLOW" />
 <!--END_FLOW -->
 
@@ -798,17 +787,13 @@ App abre
 ### Diagrama de Componentes
 
 <!--<BEGIN_COMPONENT_DIAGRAM> -->
-
 ###### diagram-component-001-custom-extensions.puml
-
 <img src="./diagrams/puml-images/component/diagram-component-001-custom-extensions.png" alt="COMPONENT_DIAGRAM" />
 
 ###### diagram-component-002-addons-market.puml
-
 <img src="./diagrams/puml-images/component/diagram-component-002-addons-market.png" alt="COMPONENT_DIAGRAM" />
 
 ###### diagram-component-003-shared-ui.puml
-
 <img src="./diagrams/puml-images/component/diagram-component-003-shared-ui.png" alt="COMPONENT_DIAGRAM" />
 <!--END_COMPONENT_DIAGRAM -->
 
@@ -831,21 +816,16 @@ Instalar e ativar extensões multicapacidade (DataSources, Watchers, Menus e Tem
 # Diagrama de Infraestrutura
 
 <!--<BEGIN_INFRA_DIAGRAM> -->
-
 ###### diagram-infra-001-architecture.puml
-
 <img src="./diagrams/puml-images/infra/diagram-infra-001-architecture.png" alt="INFRA_DIAGRAM" />
 
 ###### diagram-infra-002-deployment-desktop.puml
-
 <img src="./diagrams/puml-images/infra/diagram-infra-002-deployment-desktop.png" alt="INFRA_DIAGRAM" />
 
 ###### diagram-infra-003-sync-engine.puml
-
 <img src="./diagrams/puml-images/infra/diagram-infra-003-sync-engine.png" alt="INFRA_DIAGRAM" />
 
 ###### diagram-infra-004-rxdb-setup.puml
-
 <img src="./diagrams/puml-images/infra/diagram-infra-004-rxdb-setup.png" alt="INFRA_DIAGRAM" />
 <!--END_INFRA_DIAGRAM -->
 
@@ -854,25 +834,19 @@ Instalar e ativar extensões multicapacidade (DataSources, Watchers, Menus e Tem
 # Diagrama de Integrações
 
 <!--<BEGIN_INTEGRATION_DIAGRAM> -->
-
 ###### diagram-integration-001-jira.puml
-
 <img src="./diagrams/puml-images/integration/diagram-integration-001-jira.png" alt="INTEGRATION_DIAGRAM" />
 
 ###### diagram-integration-002-redmine.puml
-
 <img src="./diagrams/puml-images/integration/diagram-integration-002-redmine.png" alt="INTEGRATION_DIAGRAM" />
 
 ###### diagram-integration-003-other-datasources.puml
-
 <img src="./diagrams/puml-images/integration/diagram-integration-003-other-datasources.png" alt="INTEGRATION_DIAGRAM" />
 
 ###### diagram-integration-004-sync-pull.puml
-
 <img src="./diagrams/puml-images/integration/diagram-integration-004-sync-pull.png" alt="INTEGRATION_DIAGRAM" />
 
 ###### diagram-integration-005-sync-replication.puml
-
 <img src="./diagrams/puml-images/integration/diagram-integration-005-sync-replication.png" alt="INTEGRATION_DIAGRAM" />
 <!--END_INTEGRATION_DIAGRAM -->
 
@@ -881,21 +855,16 @@ Instalar e ativar extensões multicapacidade (DataSources, Watchers, Menus e Tem
 # Diagrama de UML
 
 <!--<BEGIN_UML_DIAGRAM> -->
-
 ###### diagram-uml-001-use-case-setup.puml
-
 <img src="./diagrams/puml-images/uml/diagram-uml-001-use-case-setup.png" alt="UML_DIAGRAM" />
 
 ###### diagram-uml-002-use-case-timer.puml
-
 <img src="./diagrams/puml-images/uml/diagram-uml-002-use-case-timer.png" alt="UML_DIAGRAM" />
 
 ###### diagram-uml-003-sequence-sync.puml
-
 <img src="./diagrams/puml-images/uml/diagram-uml-003-sequence-sync.png" alt="UML_DIAGRAM" />
 
 ###### diagram-uml-004-component-overview.puml
-
 <img src="./diagrams/puml-images/uml/diagram-uml-004-component-overview.png" alt="UML_DIAGRAM" />
 <!--END_UML_DIAGRAM -->
 

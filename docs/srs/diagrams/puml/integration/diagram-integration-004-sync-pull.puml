@@ -1,9 +1,9 @@
 @startuml IntegrationSyncPull
-title MR-TICK - Sincronização Pull (RF004, RF005 - UC001)
+title Pull Synchronization Flow
 participant UI
 participant SyncEngine
 participant CheckpointStore
-participant Plugin
+participant Addon
 participant DataSource
 participant RxDB
 
@@ -11,12 +11,12 @@ UI -> SyncEngine: triggerPull()
 SyncEngine -> CheckpointStore: getLastCheckpoint(datasourceId)
 CheckpointStore -> SyncEngine: {updatedAt, source}
 
-SyncEngine -> Plugin: pull(checkpoint)
-Plugin -> DataSource: GET issues?updated>checkpoint
-DataSource -> Plugin: issues[], metadata[]
-Plugin -> Plugin: Map to internal format (RF005)
+SyncEngine -> Addon: pull(checkpoint)
+Addon -> DataSource: GET issues (checkpoint)
+DataSource -> Addon: issues[], metadata[]
+Addon -> Addon: Map to canonical format
 
-Plugin -> SyncEngine: tasks[], timeEntries[], metadata[]
+Addon -> SyncEngine: tasks[], timeEntries[], metadata[]
 SyncEngine -> RxDB: upsert tasks
 SyncEngine -> RxDB: upsert timeEntries
 SyncEngine -> RxDB: upsert metadata

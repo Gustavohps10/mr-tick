@@ -1,20 +1,19 @@
 @startuml IntegrationRedmine
-title MR-TICK - Integração Redmine (RF003, RF004)
-participant Mr-tick
+title Redmine Integration Flow
+participant MrTick
 participant RedmineAdapter
 participant RedmineAPI
 
-Mr-tick -> RedmineAdapter: Request Sync (lastCheckpoint)
-RedmineAdapter -> RedmineAPI: GET /issues.json?updated_on=>checkpoint
+MrTick -> RedmineAdapter: Request Sync (lastCheckpoint)
+RedmineAdapter -> RedmineAPI: GET /issues.json (checkpoint)
 RedmineAPI -> RedmineAdapter: JSON (issues)
 
-RedmineAdapter -> RedmineAdapter: Map RedmineIssue -> Mr-tickTask
+RedmineAdapter -> RedmineAdapter: Map RedmineIssue -> Task
 RedmineAdapter -> RedmineAdapter: Map status, tracker, priority
-RedmineAdapter -> Mr-tick: Return Normalized Data
+RedmineAdapter -> MrTick: Return Normalized Data
 
 note over RedmineAdapter
   Conversão de metadados
   Redmine -> Padrão interno
-  (RF005)
 end note
 @enduml

@@ -4,7 +4,7 @@ import path from 'node:path'
 import pako from 'pako'
 
 const ROOT_DIR = process.cwd()
-const CONCURRENCY_LIMIT = 5
+const CONCURRENCY_LIMIT = 3
 const basePumlPath = path.resolve(ROOT_DIR, 'docs/srs/diagrams/puml')
 const baseImagePath = path.resolve(ROOT_DIR, 'docs/srs/diagrams/puml-images')
 const mdFile = path.resolve(
@@ -48,6 +48,18 @@ async function exists(p: string) {
   }
 }
 
+async function writeFileWithRetry(file: string, buffer: Buffer, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await fs.writeFile(file, buffer)
+      return
+    } catch (err) {
+      if (i === retries - 1) throw err
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+  }
+}
+
 async function generateDiagram(inputFile: string, outputFile: string) {
   await fs.mkdir(path.dirname(outputFile), { recursive: true })
   const content = await fs.readFile(inputFile, 'utf-8')
@@ -61,7 +73,7 @@ async function generateDiagram(inputFile: string, outputFile: string) {
   if (!response.ok)
     throw new Error(`HTTP ${response.status} em ${path.basename(inputFile)}`)
   const arrayBuffer = await response.arrayBuffer()
-  await fs.writeFile(outputFile, Buffer.from(arrayBuffer))
+  await writeFileWithRetry(outputFile, Buffer.from(arrayBuffer))
   console.log(`✅ Gerado: ${path.basename(outputFile)}`)
 }
 

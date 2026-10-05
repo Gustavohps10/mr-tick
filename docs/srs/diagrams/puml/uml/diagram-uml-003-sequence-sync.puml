@@ -1,10 +1,10 @@
 @startuml SequenceSync
-title MR-TICK - Sequência: Sincronização Completa (UC001 - RF004, RF008)
+title Full Synchronization Sequence
 actor User
 participant UI
 participant SyncEngine
 participant RxDB
-participant Plugin
+participant Addon
 participant DataSource
 
 User -> UI: Solicita sincronizar
@@ -14,23 +14,23 @@ SyncEngine -> SyncEngine: Pull primeiro
 
 SyncEngine -> RxDB: getCheckpoint()
 RxDB -> SyncEngine: checkpoint
-SyncEngine -> Plugin: pull(checkpoint)
-Plugin -> DataSource: GET issues?updated>checkpoint
-DataSource -> Plugin: issues[]
-Plugin -> Plugin: Map to internal
-Plugin -> SyncEngine: tasks[], metadata[]
+SyncEngine -> Addon: pull(checkpoint)
+Addon -> DataSource: GET issues (checkpoint)
+DataSource -> Addon: issues[]
+Addon -> Addon: Map to internal
+Addon -> SyncEngine: tasks[], metadata[]
 
 SyncEngine -> RxDB: upsert tasks, metadata
 SyncEngine -> RxDB: saveCheckpoint()
 
 SyncEngine -> SyncEngine: Push apontamentos
-SyncEngine -> RxDB: getUnsyncedTimeEntries()
+SyncEngine -> RxDB: getPendingTimeEntries()
 RxDB -> SyncEngine: timeEntries[]
 loop cada timeEntry
-    SyncEngine -> Plugin: push(timeEntry)
-    Plugin -> DataSource: POST time_entries
-    DataSource -> Plugin: 201 Created
-    SyncEngine -> RxDB: update syncedAt
+    SyncEngine -> Addon: push(timeEntry)
+    Addon -> DataSource: POST time_entries
+    DataSource -> Addon: 201 Created
+    SyncEngine -> RxDB: update syncStatus=synced, remoteId
 end
 
 SyncEngine -> UI: syncComplete()

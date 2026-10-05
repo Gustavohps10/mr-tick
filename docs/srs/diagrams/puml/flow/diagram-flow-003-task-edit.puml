@@ -7,7 +7,7 @@ participant SyncEngine
 participant DataSource
 
 User -> UI: Seleciona tarefa para editar
-UI -> RxDB: Buscar tarefa por _id
+UI -> RxDB: Buscar tarefa por id (connectionInstanceId::sourceId)
 RxDB -> UI: Retorna dados da tarefa
 UI -> User: Exibe formulário preenchido
 

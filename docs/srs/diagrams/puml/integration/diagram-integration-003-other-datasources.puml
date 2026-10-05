@@ -1,23 +1,22 @@
 @startuml IntegrationOtherDataSources
-title MR-TICK - Outros Data Sources (RF002, RF003)
-participant Mr-tick
-participant PluginHost
+title Other Data Sources Integration Flow
+participant MrTick
+participant AddonLoader
 participant CustomAdapter
 participant ExternalAPI
 
-Mr-tick -> PluginHost: getRegisteredDataSource()
-PluginHost -> CustomAdapter: getAdapter(type: ERP/Outro)
-CustomAdapter -> CustomAdapter: Implementa IDataSourcePlugin
+MrTick -> AddonLoader: getRegisteredDataSource()
+AddonLoader -> CustomAdapter: getAdapter()
+CustomAdapter -> CustomAdapter: Implementa IDataSource
 
-Mr-tick -> CustomAdapter: pull(checkpoint)
-CustomAdapter -> ExternalAPI: GET /api/endpoint (API específica)
-ExternalAPI -> CustomAdapter: JSON/XML resposta
-CustomAdapter -> CustomAdapter: Map ExternalFormat -> Mr-tickTask
-CustomAdapter -> Mr-tick: tasks[], metadata[]
+MrTick -> CustomAdapter: pull(checkpoint)
+CustomAdapter -> ExternalAPI: GET /api/endpoint
+ExternalAPI -> CustomAdapter: JSON / API Response
+CustomAdapter -> CustomAdapter: Map ExternalFormat -> Task
+CustomAdapter -> MrTick: tasks[], metadata[]
 
 note over CustomAdapter
-  Addons customizados para
-  ERPs e outros sistemas
-  Padrão de conversão interno
+  Addons customizados via @mr-tick/sdk
+  Conversao para modelo canonico
 end note
 @enduml

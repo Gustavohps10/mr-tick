@@ -1,30 +1,30 @@
 @startuml IntegrationSyncReplication
-title MR-TICK - Replicação de Apontamentos (RF008)
+title Sync Replication Flow
 participant UI
 participant SyncEngine
 participant RxDB
-participant Plugin
+participant Addon
 participant DataSource
 
 UI -> RxDB: Timer cria timeEntry (local)
-RxDB -> RxDB: Persiste com syncedAt=null
+RxDB -> RxDB: Persiste com syncStatus=pending_push
 
 UI -> SyncEngine: triggerPush() (background)
-SyncEngine -> RxDB: getUnsyncedTimeEntries()
+SyncEngine -> RxDB: getPendingTimeEntries()
 RxDB -> SyncEngine: timeEntries[]
 
 loop Para cada timeEntry
-    SyncEngine -> Plugin: replicateTimeEntry(timeEntry)
-    Plugin -> Plugin: Map TimeEntry -> ExternalFormat
-    Plugin -> DataSource: POST /time_entries (ou equivalente)
+    SyncEngine -> Addon: pushTimeEntry(timeEntry)
+    Addon -> Addon: Map TimeEntry -> ExternalFormat
+    Addon -> DataSource: POST /time_entries
     alt Sucesso
-        DataSource -> Plugin: 201 Created {id}
-        Plugin -> SyncEngine: OK
-        SyncEngine -> RxDB: update syncedAt, externalId
+        DataSource -> Addon: 201 Created {id}
+        Addon -> SyncEngine: OK
+        SyncEngine -> RxDB: update syncStatus=synced, remoteId
     else Conflito 409
-        DataSource -> Plugin: 409 Conflict
-        Plugin -> SyncEngine: conflict
-        SyncEngine -> RxDB: marcar conflicted
+        DataSource -> Addon: 409 Conflict
+        Addon -> SyncEngine: conflict
+        SyncEngine -> RxDB: marcar syncStatus=conflict
         SyncEngine -> UI: notificar conflito
     end
 end

@@ -1,5 +1,5 @@
 @startuml UseCaseTimer
-title MR-TICK - Casos de Uso: Rastreamento de Tempo (UC002 - SRS)
+title Time Tracking Use Cases
 left to right direction
 actor "User" as U
 

@@ -1,5 +1,5 @@
 @startuml ComponentOverview
-title MR-TICK - Visão Geral de Componentes (Local-First)
+title Component Overview (Local-First)
 
 package "Desktop Client (Electron)" {
     [Shared UI (React / Tailwind v4)] as SharedUI
