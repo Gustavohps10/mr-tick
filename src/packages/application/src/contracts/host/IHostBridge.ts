@@ -449,6 +449,7 @@ export interface EnvironmentInfo {
   platform?: 'win32' | 'darwin' | 'linux' | 'web' | string
   isPortable?: boolean
   installPath?: string
+  isTest?: boolean
 }
 
 export interface DisplayInfo {

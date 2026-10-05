@@ -90,6 +90,9 @@ export function openIpcRoutes(
       platform: process.platform,
       isPortable,
       installPath,
+      isTest: Boolean(
+        process.env.PLAYWRIGHT_TEST === '1' || process.env.NODE_ENV === 'test',
+      ),
     })
   })
 

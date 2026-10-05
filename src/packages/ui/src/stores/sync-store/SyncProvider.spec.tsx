@@ -28,7 +28,9 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 vi.mock('@/contexts/DataSourceConnectionsContext', () => ({
   useDataSourceConnections: () => ({ connections: context.connections }),
 }))
-vi.mock('@/hooks', () => ({ useEnvironment: () => ({ isDevelopment: false }) }))
+vi.mock('@/hooks', () => ({
+  useEnvironment: () => ({ isDevelopment: false, isTest: false }),
+}))
 vi.mock('@/hooks/use-host-bridge', () => ({
   useHostBridge: () => context.bridge,
 }))

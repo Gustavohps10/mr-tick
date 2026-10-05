@@ -33,13 +33,15 @@ import { ReplicationStatus, SyncStore } from './types'
 export interface SyncProviderProps {
   children: ReactNode
   useMemoryStorage?: boolean
+  retryTime?: number
 }
 
 export const SyncProvider: React.FC<SyncProviderProps> = ({
   children,
   useMemoryStorage = false,
+  retryTime,
 }) => {
-  const { isDevelopment } = useEnvironment()
+  const { isDevelopment, isTest } = useEnvironment()
   const { workspace } = useWorkspace()
   const bridge = useHostBridge()
   const { connections } = useDataSourceConnections()
@@ -86,11 +88,13 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
       await releaseActiveStore()
       if (cancelled || !workspaceId) return
 
+      const resolvedRetryTime = retryTime ?? (isTest ? 3000 : 30000)
       const store = createSyncStore(
         workspaceId,
         bridge,
         isDevelopment,
         useMemoryStorage,
+        resolvedRetryTime,
       )
       await store.getState().init()
       if (cancelled || !store.getState().isInitialized) {
@@ -117,6 +121,8 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
     workspace?.id,
     bridge,
     isDevelopment,
+    isTest,
+    retryTime,
     useMemoryStorage,
     queryClient,
     enqueueTransition,

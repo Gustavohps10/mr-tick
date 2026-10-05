@@ -27,6 +27,7 @@ export const createSyncStore = (
   client: IHostBridge,
   isDevelopment: boolean,
   useMemoryStorage: boolean = false,
+  retryTime?: number,
 ): StoreApi<SyncStore> => {
   const replications: ReplicationMap = new Map()
 
@@ -53,6 +54,7 @@ export const createSyncStore = (
         identifier: `rep_metadata_${workspaceId}_${connectionInstanceId}`,
         resyncSeconds: config.interval,
         batchSize: config.batch,
+        retryTime,
         hasPush: config.hasPush,
         initialCheckpoint,
         onStatusChange: (status) =>
@@ -78,6 +80,7 @@ export const createSyncStore = (
         identifier: `rep_tasks_${workspaceId}_${connectionInstanceId}`,
         resyncSeconds: config.interval,
         batchSize: config.batch,
+        retryTime,
         hasPush: config.hasPush,
         initialCheckpoint,
         onStatusChange: (status) =>
@@ -103,6 +106,7 @@ export const createSyncStore = (
       identifier: `rep_timeEntries_${workspaceId}_${connectionInstanceId}`,
       resyncSeconds: config.interval,
       batchSize: config.batch,
+      retryTime,
       hasPush: config.hasPush,
       initialCheckpoint,
       onStatusChange: (status) =>

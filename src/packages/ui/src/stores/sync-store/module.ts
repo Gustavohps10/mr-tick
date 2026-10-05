@@ -41,6 +41,7 @@ export class ReplicationModule<
       identifier: string
       batchSize?: number
       resyncSeconds?: number
+      retryTime?: number
       hasPush?: boolean
       initialCheckpoint?: ReplicationCheckpoint
       onStatusChange: (status: Partial<ReplicationStatus>) => void
@@ -64,7 +65,7 @@ export class ReplicationModule<
       collection: this.collection,
       replicationIdentifier: this.options.identifier,
       live: true,
-      retryTime: 30000,
+      retryTime: this.options.retryTime ?? 30000,
       waitForLeadership: false,
       autoStart: true,
       pull: {

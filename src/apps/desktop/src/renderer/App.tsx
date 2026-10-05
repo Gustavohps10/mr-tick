@@ -28,6 +28,7 @@ const defaultEnvironment: EnvironmentInfo = {
     typeof window !== 'undefined' && window.electron?.process?.platform
       ? window.electron.process.platform
       : 'web',
+  isTest: Boolean(import.meta.env.MODE === 'test'),
 }
 
 export function AppDesktop() {
