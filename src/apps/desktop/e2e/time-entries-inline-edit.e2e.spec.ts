@@ -1,62 +1,155 @@
+import { z } from 'zod'
+
+import type { IHostBridge } from '../../../packages/application/src/contracts/host/IHostBridge'
 import { expect, test } from './fixtures/electron-fixture'
+
+interface SyncObservation {
+  at: number
+  status: string | null
+  label: string | null
+}
+declare global {
+  interface Window {
+    api: IHostBridge
+    recordInlineSyncObservation: (observation: SyncObservation) => Promise<void>
+  }
+}
+const inlineDiagnosticsSchema = z.object({
+  updateAttempts: z.number(),
+  createAttempts: z.number(),
+  deleteAttempts: z.number(),
+  entries: z.array(z.object({ comments: z.string().optional() })),
+})
 
 test.describe('E2E - Edição Inline Direta (Ghost Mode)', () => {
   test('deve editar comentário de um apontamento e garantir persistência (TE-04)', async ({
     page,
-  }) => {
-    // 1. Navega para o primeiro workspace configurado
-    const workspaceLink = page.locator('nav a[href*="/workspaces/"]').first()
-    await expect(workspaceLink).toBeVisible({ timeout: 15000 })
-    await workspaceLink.click()
-
-    // 2. Aguarda a sincronização inicial assentar ("Sincronizado")
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
+  }, testInfo) => {
+    const observations: SyncObservation[] = []
+    await page.exposeFunction(
+      'recordInlineSyncObservation',
+      (observation: SyncObservation) => {
+        observations.push(observation)
+      },
     )
-    await expect(syncIndicator).toBeVisible({ timeout: 15000 })
+    await page.addInitScript(() => {
+      let previous: string | null = null
+      const observe = () => {
+        const indicator = document.querySelector(
+          '[data-testid="sync-status-indicator"]',
+        )
+        if (!indicator) return
+        const status = indicator.getAttribute('data-status')
+        const label = indicator.getAttribute('aria-label')
+        const current = JSON.stringify([status, label])
+        if (current === previous) return
+        previous = current
+        void window.recordInlineSyncObservation({
+          at: performance.now(),
+          status,
+          label,
+        })
+      }
+      document.addEventListener('DOMContentLoaded', () => {
+        new MutationObserver(observe).observe(document.documentElement, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          attributeFilter: ['data-status', 'aria-label'],
+        })
+        observe()
+      })
+    })
+    const diagnostics = async () => {
+      const result = await page.evaluate(() =>
+        window.api.addons.executeCommand({
+          body: { commandId: 'fake-db:get-time-entry-sync-diagnostics' },
+        }),
+      )
+      expect(result.isSuccess).toBe(true)
+      return inlineDiagnosticsSchema.parse(result.data)
+    }
+    try {
+      // 1. Navega para o primeiro workspace configurado
+      const workspaceLink = page.locator('nav a[href*="/workspaces/"]').first()
+      await expect(workspaceLink).toBeVisible({ timeout: 15000 })
+      await workspaceLink.click()
 
-    // 3. Aguarda a estabilização completa dos apontamentos carregados
-    const actionTriggers = page.locator(
-      '[data-testid="time-entry-actions-trigger"]',
-    )
-    await expect(actionTriggers.first()).toBeVisible({ timeout: 15000 })
+      // 2. Aguarda a sincronização inicial assentar ("Sincronizado")
+      const syncIndicator = page.locator(
+        '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
+      )
+      await expect(syncIndicator).toBeVisible({ timeout: 15000 })
 
-    // 4. Abre o menu de contexto do primeiro apontamento e clica em "Editar"
-    const editBtn = page.locator('[data-testid="time-entry-edit-btn"]')
-    await expect(async () => {
-      await actionTriggers.first().scrollIntoViewIfNeeded()
-      await actionTriggers.first().click()
-      await expect(editBtn).toBeVisible({ timeout: 2000 })
-    }).toPass({ timeout: 15000 })
-    await editBtn.click()
+      // 3. Aguarda a estabilização completa dos apontamentos carregados
+      const actionTriggers = page.locator(
+        '[data-testid="time-entry-actions-trigger"]',
+      )
+      await expect(actionTriggers.first()).toBeVisible({ timeout: 15000 })
 
-    // 5. Edita o comentário usando o input recém-anotado com data-testid
-    const commentInput = page
-      .locator('[data-testid="time-entry-comment-input"]')
-      .first()
-    await expect(commentInput).toBeVisible()
+      const before = await diagnostics()
 
-    const novoComentario = 'Comentário Editado E2E ' + Date.now()
-    await commentInput.fill(novoComentario)
-    await commentInput.press('Enter')
+      // 4. Abre o menu de contexto do primeiro apontamento e clica em "Editar"
+      const editBtn = page.locator('[data-testid="time-entry-edit-btn"]')
+      await expect(async () => {
+        await actionTriggers.first().scrollIntoViewIfNeeded()
+        await actionTriggers.first().click()
+        await expect(editBtn).toBeVisible({ timeout: 2000 })
+      }).toPass({ timeout: 15000 })
+      await editBtn.click()
 
-    // 6. Clica no botão Salvar da linha em edição
-    const saveBtn = page.locator('[data-testid="time-entry-save-btn"]').first()
-    await expect(saveBtn).toBeVisible()
-    await saveBtn.click()
+      // 5. Edita o comentário usando o input recém-anotado com data-testid
+      const commentInput = page
+        .locator('[data-testid="time-entry-comment-input"]')
+        .first()
+      await expect(commentInput).toBeVisible()
 
-    // 7. Aguarda o modo edição fechar (botão Salvar sumir)
-    await expect(saveBtn).not.toBeVisible()
+      const novoComentario = 'Comentário Editado E2E ' + Date.now()
+      await commentInput.fill(novoComentario)
+      await commentInput.press('Enter')
 
-    // 8. Verifica se o novo comentário aparece na grid
-    await expect(page.locator(`text=${novoComentario}`)).toBeVisible()
+      // 6. Clica no botão Salvar da linha em edição
+      const saveBtn = page
+        .locator('[data-testid="time-entry-save-btn"]')
+        .first()
+      await expect(saveBtn).toBeVisible()
+      await saveBtn.click()
 
-    // 9. Dá reload na página para validar persistência local-first
-    await page.reload()
+      // 7. Aguarda o modo edição fechar (botão Salvar sumir)
+      await expect(saveBtn).not.toBeVisible()
 
-    // 10. Aguarda sincronização e valida que a edição se manteve
-    await expect(syncIndicator).toBeVisible({ timeout: 15000 })
-    await expect(page.locator(`text=${novoComentario}`)).toBeVisible()
+      // 8. Verifica se o novo comentário aparece na grid
+      await expect(page.locator(`text=${novoComentario}`)).toBeVisible()
+
+      // 9. Dá reload na página para validar persistência local-first
+      await page.reload()
+
+      // Local persistence and remote convergence are distinct assertions.
+      await expect(
+        page.getByText(novoComentario, { exact: true }),
+      ).toBeVisible()
+      await expect
+        .poll(
+          async () =>
+            (await diagnostics()).entries.some(
+              (entry) => entry.comments === novoComentario,
+            ),
+          { timeout: 45000 },
+        )
+        .toBe(true)
+      const after = await diagnostics()
+      expect(after.createAttempts).toBe(before.createAttempts)
+      expect(after.deleteAttempts).toBe(before.deleteAttempts)
+      expect(after.updateAttempts).toBeGreaterThanOrEqual(
+        before.updateAttempts + 1,
+      )
+      await expect(syncIndicator).toBeVisible({ timeout: 30000 })
+    } finally {
+      await testInfo.attach('sync-status-timeline', {
+        body: JSON.stringify(observations, null, 2),
+        contentType: 'application/json',
+      })
+    }
   })
 
   test('deve iniciar edição e cancelar, revertendo para o estado original (TE-06)', async ({

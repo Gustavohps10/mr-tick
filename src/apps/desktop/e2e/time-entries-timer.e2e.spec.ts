@@ -38,18 +38,20 @@ test.describe('E2E - Timer Lifecycle e Crash Recovery (TMR-01, TMR-02, TMR-03)',
     // 7. Clica em Resumir (Play)
     await resumeBtn.click()
 
-    // 8. Verifica se o botão de stop aparece na linha da tabela (indicando que está rodando)
-    const rowStopBtn = page
-      .locator('[data-testid="time-entry-stop-btn"]')
-      .first()
-    await expect(rowStopBtn).toBeVisible({ timeout: 10000 })
+    // Stop também existe no estado pausado. Aguarda a retomada persistida antes do reload.
+    const rowPauseBtn = page.getByTestId('time-entry-pause-btn')
+    await expect(rowPauseBtn).toBeVisible({ timeout: 10000 })
+    await expect(resumeBtn).not.toBeVisible()
+    await expect(timerbarPauseBtn).toBeVisible({ timeout: 10000 })
 
     // 9. TMR-03: Simula um crash/reload enquanto o timer está rodando
     await page.reload()
     await page.waitForLoadState('domcontentloaded')
     await expect(syncIndicator).toBeVisible({ timeout: 15000 })
 
-    // 10. Valida que o timer continua rodando após reload (stop btn ou timerbar stop visível)
+    // 10. Pause comprova running recuperado; Stop permite finalizar o timer.
+    await expect(timerbarPauseBtn).toBeVisible({ timeout: 10000 })
+    await expect(rowPauseBtn).toBeVisible({ timeout: 10000 })
     const timerbarStopBtn = page
       .locator('[data-testid="timerbar-stop-btn"]')
       .first()

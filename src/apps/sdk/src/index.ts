@@ -7,6 +7,7 @@ export {
   IDataSourceInstance,
   type MappingFieldDefinition,
 } from './data-source'
+export { createTimeEntrySnapshotPage } from './utils/createTimeEntrySnapshotPage'
 export * from './utils/MarkupConverter'
 export * from './utils/pkce'
 export type {
@@ -31,7 +32,10 @@ export type {
   PaginationOptionsDTO,
   Participants,
   TaskDTO,
+  TimeEntryCreateIdempotency,
   TimeEntryDTO,
+  TimeEntryPullCheckpointDTO,
+  TimeEntryPullPageDTO,
   UpdatedTaskResult,
   UpdatedTimeEntryResult,
   WorkspaceDTO,

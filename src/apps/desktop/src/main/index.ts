@@ -77,6 +77,10 @@ export type IHandlersScope = {
 // --------------------------------------------------
 app.name = 'mr-tick'
 
+const testUserDataPath = process.env.MR_TICK_TEST_USER_DATA_DIR
+if (process.env.NODE_ENV === 'test' && testUserDataPath)
+  app.setPath('userData', testUserDataPath)
+
 const userDataDir = app.getPath('userData')
 const bridgeFilePath = join(userDataDir, 'oauth_bridge.tmp')
 

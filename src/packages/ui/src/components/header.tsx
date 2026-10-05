@@ -20,7 +20,6 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useState } from 'react'
-import { RxError } from 'rxdb'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui'
 import {
@@ -58,6 +57,10 @@ import { useWorkspaceConflicts } from '@/hooks/queries/use-workspace-conflicts'
 import { cn } from '@/lib/utils'
 import { useConflictModalStore } from '@/stores/conflictModalStore'
 import {
+  getReplicationErrorMessage,
+  isReplicationAuthError,
+} from '@/stores/sync-store/ReplicationError'
+import {
   ReplicationStatus,
   useConnectionsWithSync,
   useSyncStore,
@@ -78,83 +81,8 @@ const COLLECTION_LABELS: Record<'metadata' | 'tasks' | 'timeEntries', string> =
 
 const ERROR_CODES = { MISSING_TOKEN: 'MISSING_TOKEN' }
 
-const getRawErrorMessage = (error: Error | RxError | null): string => {
-  if (!error) {
-    return ''
-  }
-  if (
-    'parameters' in error &&
-    error.parameters &&
-    typeof error.parameters === 'object'
-  ) {
-    const params = error.parameters
-    if (
-      'errors' in params &&
-      params.errors &&
-      typeof params.errors === 'object'
-    ) {
-      const errs = params.errors
-      if ('message' in errs && typeof errs.message === 'string') {
-        return errs.message
-      }
-    }
-  }
-  return error.message
-}
-
-const AUTH_ERROR_PATTERNS = [
-  'MISSING_TOKEN',
-  'UNAUTHORIZED',
-  'TOKEN_EXPIRED',
-  'INVALID_TOKEN',
-  '401',
-]
-
-const isAuthError = (error: Error | RxError | null): boolean => {
-  if (!error) return false
-
-  if (
-    'statusCode' in error &&
-    typeof error.statusCode === 'number' &&
-    error.statusCode === 401
-  ) {
-    return true
-  }
-
-  if (
-    'status' in error &&
-    typeof error.status === 'number' &&
-    error.status === 401
-  ) {
-    return true
-  }
-
-  if (
-    'parameters' in error &&
-    error.parameters &&
-    typeof error.parameters === 'object'
-  ) {
-    const params = error.parameters
-    if ('errors' in params && params.errors) {
-      const rawErrors = params.errors
-      const errList = Array.isArray(rawErrors) ? rawErrors : [rawErrors]
-      const hasAuthCode = errList.some((e) => {
-        if (!e || typeof e !== 'object') return false
-        const code =
-          'statusCode' in e
-            ? e.statusCode
-            : 'status' in e
-              ? e.status
-              : undefined
-        return code === 401
-      })
-      if (hasAuthCode) return true
-    }
-  }
-
-  const rawMsg = getRawErrorMessage(error).toUpperCase()
-  return AUTH_ERROR_PATTERNS.some((pattern) => rawMsg.includes(pattern))
-}
+const getRawErrorMessage = getReplicationErrorMessage
+const isAuthError = isReplicationAuthError
 
 export type GlobalSyncStatus =
   | 'initializing'

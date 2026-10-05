@@ -239,7 +239,13 @@ const mockBridgeClient: IHostBridge = {
   },
   timeEntries: {
     listTimeEntries: async () => mockPaginated([]),
-    pull: async () => mockSuccess([]),
+    pull: async (request) =>
+      mockSuccess({
+        items: [],
+        checkpoint: request.body.checkpoint,
+        hasMore: false,
+        snapshotId: 'mock-empty',
+      }),
     push: async () => mockSuccess([]),
   },
   metadata: {

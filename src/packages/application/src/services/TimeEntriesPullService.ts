@@ -5,7 +5,7 @@ import {
   ITimeEntriesPullUseCase,
   PullTimeEntriesInput,
 } from '@/contracts/use-cases'
-import { TimeEntryDTO } from '@/dtos'
+import { TimeEntryPullPageDTO } from '@/dtos'
 
 export class TimeEntriesPullService implements ITimeEntriesPullUseCase {
   public constructor(
@@ -14,7 +14,7 @@ export class TimeEntriesPullService implements ITimeEntriesPullUseCase {
 
   public async execute(
     input: PullTimeEntriesInput,
-  ): Promise<Either<AppError, TimeEntryDTO[]>> {
+  ): Promise<Either<AppError, TimeEntryPullPageDTO>> {
     try {
       const adapter = await this.dataSourceResolver.getDataSource(
         input.workspaceId,

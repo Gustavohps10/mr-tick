@@ -71,6 +71,7 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
     handleAcceptSuggestion,
     handleDismissSuggestion,
     handleResolveConflict,
+    handleConfirmRetryAmbiguousCreation,
     handleOpenConflictResolution,
   } = useTimeEntryMutations(db, memberIdsByConnection)
 
@@ -237,6 +238,7 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
       onAddNewEntry: handleAddNewEntry,
       onResolveConflict: handleResolveConflict,
       onOpenConflict: handleOpenConflictResolution,
+      onConfirmRetryAmbiguousCreation: handleConfirmRetryAmbiguousCreation,
       compact,
     })
   }, [
@@ -263,6 +265,7 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
     isGrouped,
     handleAddNewEntry,
     handleResolveConflict,
+    handleConfirmRetryAmbiguousCreation,
     handleOpenConflictResolution,
   ])
 

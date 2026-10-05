@@ -143,6 +143,113 @@ export default class FakeDataSourceAddon implements IAddon {
     // --- REGISTRO DOS COMANDOS ASSOCIADOS ---
     const store = FakeDatabaseStore.getInstance()
 
+    if (process.env.PLAYWRIGHT_TEST === '1') {
+      context.commands.register('fake-db:pause-one-time-entry-pull', () => {
+        store.pauseTimeEntryPulls(1)
+        return { configured: true }
+      })
+      context.commands.register('fake-db:pause-two-time-entry-pulls', () => {
+        store.pauseTimeEntryPulls(2)
+        return { configured: true }
+      })
+      context.commands.register('fake-db:release-time-entry-pulls', () => ({
+        released: store.releaseTimeEntryPulls(),
+      }))
+      context.commands.register('fake-db:reject-next-time-entry-update', () => {
+        store.configureUpdateFailure(false, 422)
+        return { configured: true }
+      })
+      context.commands.register(
+        'fake-db:delete-last-legacy-confirmed-entry',
+        () => ({
+          deleted: store.deleteLastLegacyConfirmedEntry(),
+        }),
+      )
+      context.commands.register('fake-db:auth-next-time-entry-delete', () => {
+        store.configureDeleteFailure(401, 'SESSION_REQUIRES_LOGIN')
+        return { configured: true }
+      })
+      context.commands.register(
+        'fake-db:legacy-update-and-lose-canonical-read',
+        () => {
+          store.configureLegacyUpdateConfirmation()
+          return { configured: true }
+        },
+      )
+
+      context.commands.register('fake-db:reject-next-time-entry-delete', () => {
+        store.configureDeleteFailure(422)
+        return { configured: true }
+      })
+
+      context.commands.register('fake-db:pause-next-time-entry-update', () => {
+        store.pauseNextTimeEntryUpdate()
+        return { configured: true }
+      })
+      context.commands.register('fake-db:change-paused-update-remote', () => ({
+        changed: store.changePausedUpdateRemote(),
+      }))
+      context.commands.register(
+        'fake-db:release-paused-time-entry-update',
+        () => ({
+          released: store.releasePausedUpdate(),
+        }),
+      )
+
+      context.commands.register('fake-db:pause-next-time-entry-delete', () => {
+        store.pauseNextTimeEntryDelete()
+        return { configured: true }
+      })
+      context.commands.register(
+        'fake-db:release-paused-time-entry-delete',
+        () => ({
+          released: store.releasePausedDelete(),
+        }),
+      )
+
+      context.commands.register('fake-db:fail-next-time-entry-update', () => {
+        store.configureUpdateFailure(false)
+        return { configured: true }
+      })
+      context.commands.register('fake-db:fail-update-and-edit-remote', () => {
+        store.configureUpdateFailure(true)
+        return { configured: true }
+      })
+      context.commands.register('fake-db:fail-next-time-entry-delete', () => {
+        store.configureDeleteFailure()
+        return { configured: true }
+      })
+
+      context.commands.register('fake-db:partial-next-time-entry-list', () => {
+        store.returnPartialNextTimeEntryList()
+        return { configured: true }
+      })
+      context.commands.register('fake-db:fail-next-time-entry-list', () => {
+        store.failNextTimeEntryListRequest()
+        return { configured: true }
+      })
+      context.commands.register('fake-db:get-time-entry-sync-diagnostics', () =>
+        store.getTimeEntrySyncDiagnostics(),
+      )
+      context.commands.register(
+        'fake-db:lose-next-time-entry-create-response',
+        () => {
+          store.setSimulateTimeEntryCreateResponseLoss(true)
+          return { configured: true }
+        },
+      )
+      context.commands.register('fake-db:pause-next-time-entry-create', () => {
+        store.pauseNextTimeEntryCreateRequest()
+        return { configured: true }
+      })
+      context.commands.register(
+        'fake-db:release-paused-time-entry-create',
+        () => ({
+          released: store.releasePausedTimeEntryCreateRequest(),
+        }),
+      )
+    }
+
     context.commands.register('fake-db:delete-today', async () => {
       const count = store.deleteTimeEntriesFromToday()
       await context.notifications.warning(

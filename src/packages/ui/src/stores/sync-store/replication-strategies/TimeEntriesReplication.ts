@@ -1,55 +1,56 @@
-import { IHostBridge, SyncTimeEntryDTO } from '@mr-tick/application'
-import { TimeEntryViewModel } from '@mr-tick/shared/view-models'
-import { RxCollection } from 'rxdb'
+import { IHostBridge } from '@mr-tick/application'
+import {
+  SyncDocumentViewModel,
+  TimeEntryViewModel,
+} from '@mr-tick/shared/view-models'
+import {
+  defaultHashSha256,
+  normalizeMangoQuery,
+  prepareQuery,
+  RxCollection,
+  RxDocument,
+} from 'rxdb'
 
-import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
-import { cleanTaskId } from '@/pages/time-entries/lib/time-entries-utils'
+import {
+  SyncTimeEntryRxDBDTO,
+  TimeEntryRemoteState,
+} from '@/local-db/schemas/time-entries-sync-schema'
 
+import { ReplicationError } from '../ReplicationError'
 import {
   IReplicationStrategy,
   ReplicationCheckpoint,
   RxReplicationWriteToMasterRow,
 } from '../types'
+import { reconcileTimeWindow } from './reconcileTimeWindow'
+import {
+  hasBusinessChanges,
+  snapshotDocument,
+  toPushEntry,
+  toRemoteState,
+} from './timeEntrySyncState'
 
-interface ValidationErrorPayload {
-  messageKey?: string
-  message?: string
-  details?: Record<string, string[]>
+type PushResult = SyncDocumentViewModel<TimeEntryViewModel>
+
+interface PullObservationContext {
+  documents: Map<string, string>
+  retryRequired: boolean
 }
 
-const formatValidationErrorMessage = (
-  validationError: ValidationErrorPayload | null | undefined,
-): string => {
-  if (!validationError) return 'Erro de validação desconhecido'
-
-  let baseMessage = 'Erro de validação'
-  if (validationError.messageKey) baseMessage = validationError.messageKey
-  if (validationError.message) baseMessage = validationError.message
-
-  if (!validationError.details) return baseMessage
-
-  const detailParts: string[] = []
-  for (const [field, errors] of Object.entries(validationError.details)) {
-    if (Array.isArray(errors) && errors.length > 0) {
-      detailParts.push(`${field}: ${errors.join(', ')}`)
-    }
-  }
-
-  if (detailParts.length === 0) return baseMessage
-
-  return `${baseMessage} (${detailParts.join('; ')})`
+interface PushMetadata {
+  document: SyncTimeEntryRxDBDTO
+  creationAttempted: boolean
 }
 
-const dateToISO = (
-  value: Date | string | null | undefined,
-): string | undefined => {
-  if (!value) return undefined
-  if (value instanceof Date) return value.toISOString()
-
-  const parsedDate = new Date(value)
-  if (!Number.isNaN(parsedDate.getTime())) return parsedDate.toISOString()
-
-  return String(value)
+function errorMessage(error: PushResult['validationError']): string {
+  if (!error) return 'SYNC_PUSH_FAILED'
+  const details = error.details
+    ? Object.entries(error.details).map(
+        ([field, errors]) => `${field}: ${errors.join(', ')}`,
+      )
+    : []
+  if (details.length === 0) return error.messageKey
+  return `${error.messageKey} (${details.join('; ')})`
 }
 
 export class TimeEntriesReplication implements IReplicationStrategy<
@@ -59,13 +60,189 @@ export class TimeEntriesReplication implements IReplicationStrategy<
   private readonly inFlightPushDocIds = new Set<string>()
 
   constructor(
-    private client: IHostBridge,
-    private workspaceId: string,
-    private connectionInstanceId: string,
-    private pluginId: string,
-    private collection?: RxCollection<SyncTimeEntryRxDBDTO>,
+    private readonly client: Pick<IHostBridge, 'timeEntries'>,
+    private readonly workspaceId: string,
+    private readonly connectionInstanceId: string,
+    private readonly pluginId: string,
+    private readonly collection?: RxCollection<SyncTimeEntryRxDBDTO>,
   ) {}
 
+  /** Queries include tombstones: a delete can race with a successful POST. */
+  private async localDocument(
+    id: string,
+  ): Promise<RxDocument<SyncTimeEntryRxDBDTO> | undefined> {
+    if (!this.collection) return undefined
+    const stored = await this.collection.storageInstance.findDocumentsById(
+      [id],
+      true,
+    )
+    const data = stored.find((item) => item.id === id)
+    if (!data) return undefined
+    return this.collection._docCache.getCachedRxDocument(data)
+  }
+
+  private async documentsByRemoteIds(
+    ids: string[],
+  ): Promise<RxDocument<SyncTimeEntryRxDBDTO>[]> {
+    const collection = this.collection
+    if (!collection || ids.length === 0) return []
+    // RxCollection.find() always filters deleted documents. Query storage directly
+    // so exact remote identity can locate both active documents and tombstones.
+    const query = normalizeMangoQuery(collection.schema.jsonSchema, {
+      selector: {
+        connectionInstanceId: this.connectionInstanceId,
+        remoteId: { $in: ids },
+      },
+      sort: [{ id: 'asc' }],
+    })
+    const result = await collection.storageInstance.query(
+      prepareQuery(collection.schema.jsonSchema, query),
+    )
+    return result.documents.map((document) =>
+      collection._docCache.getCachedRxDocument(document),
+    )
+  }
+
+  async getDocumentError(): Promise<Error | null> {
+    const collection = this.collection
+    if (!collection) return null
+    const query = normalizeMangoQuery(collection.schema.jsonSchema, {
+      selector: {
+        connectionInstanceId: this.connectionInstanceId,
+        syncStatus: { $in: ['error', 'ambiguous', 'pending_push', 'creating'] },
+      },
+      sort: [{ id: 'asc' }],
+    })
+    const result = await collection.storageInstance.query(
+      prepareQuery(collection.schema.jsonSchema, query),
+    )
+    const messages = result.documents.flatMap((document) =>
+      document.syncError ? [document.syncError] : [],
+    )
+    if (messages.length === 0) return null
+    const failures = result.documents.flatMap((document) =>
+      document.syncFailure ? [document.syncFailure] : [],
+    )
+    return new ReplicationError([...new Set(messages)].join('; '), failures)
+  }
+
+  private applyCanonical(
+    doc: SyncTimeEntryRxDBDTO,
+    state: TimeEntryRemoteState,
+  ): SyncTimeEntryRxDBDTO {
+    const window = reconcileTimeWindow(state)
+    return {
+      ...doc,
+      remoteId: state.id,
+      remoteState: state,
+      remoteUpdatedAt: state.updatedAt,
+      task: state.task,
+      taskData:
+        doc.taskData?.sourceId === state.task.id ? doc.taskData : undefined,
+      activity: state.activity,
+      user: state.user,
+      timeSpent: state.timeSpent,
+      comments: state.comments ? state.comments : null,
+      startDate: window.startDate ? window.startDate : doc.startDate,
+      endDate: window.endDate,
+      createdAt: state.createdAt,
+      updatedAt: state.updatedAt,
+      syncStatus: 'synced',
+      creationAttemptId: null,
+      creationState: null,
+      confirmationState: null,
+      conflictData: undefined,
+      syncError: null,
+      syncFailure: null,
+    }
+  }
+
+  private pullObservation(document: SyncTimeEntryRxDBDTO): string {
+    return JSON.stringify({
+      connectionInstanceId: document.connectionInstanceId,
+      remoteId: document.remoteId,
+      deleted: document._deleted,
+      remoteDeleted: document.remoteDeleted,
+      deletionConfirmed: document.deletionConfirmed,
+      syncStatus: document.syncStatus,
+      business: snapshotDocument(document),
+      remoteState: document.remoteState,
+      creationState: document.creationState,
+      confirmationState: document.confirmationState,
+      creationAttemptId: document.creationAttemptId,
+      lastPushedAt: document.lastPushedAt,
+    })
+  }
+
+  private async observePullDocuments(): Promise<Map<string, string>> {
+    const collection = this.collection
+    if (!collection) return new Map()
+    const query = normalizeMangoQuery(collection.schema.jsonSchema, {
+      selector: { connectionInstanceId: this.connectionInstanceId },
+      sort: [{ id: 'asc' }],
+    })
+    const result = await collection.storageInstance.query(
+      prepareQuery(collection.schema.jsonSchema, query),
+    )
+    return new Map(
+      result.documents.map((document) => [
+        document.id,
+        this.pullObservation(document),
+      ]),
+    )
+  }
+
+  private async modifyObservedPullDocument(
+    document: RxDocument<SyncTimeEntryRxDBDTO>,
+    context: PullObservationContext,
+    state: TimeEntryRemoteState,
+    modify: (draft: SyncTimeEntryRxDBDTO) => SyncTimeEntryRxDBDTO,
+    operation: 'canonical' | 'ambiguity' = 'canonical',
+  ): Promise<RxDocument<SyncTimeEntryRxDBDTO> | undefined> {
+    let applied = false
+    let retryRequired = false
+    const observation = context.documents.get(document.id)
+    const updated = await document.incrementalModify((draft) => {
+      applied = false
+      retryRequired = false
+      if (
+        observation === undefined ||
+        this.pullObservation(draft) !== observation
+      ) {
+        const currentState = draft.remoteState
+        const acknowledged =
+          draft.connectionInstanceId === this.connectionInstanceId &&
+          draft.remoteId === state.id &&
+          currentState &&
+          (currentState.updatedAt > state.updatedAt ||
+            (currentState.updatedAt === state.updatedAt &&
+              !draft._deleted &&
+              !hasBusinessChanges(currentState, state)))
+        retryRequired =
+          draft.syncStatus === 'synced' &&
+          (!draft._deleted ||
+            (Boolean(draft.remoteDeleted) && !draft.deletionConfirmed)) &&
+          !acknowledged
+        return draft
+      }
+      if (
+        draft.connectionInstanceId !== this.connectionInstanceId ||
+        (operation === 'canonical' &&
+          draft.remoteId &&
+          draft.remoteId !== state.id) ||
+        (operation === 'canonical' &&
+          draft.remoteState &&
+          draft.remoteState.updatedAt > state.updatedAt)
+      )
+        return draft
+      const next = modify(draft)
+      applied = next !== draft
+      return next
+    })
+    if (retryRequired) context.retryRequired = true
+    if (!applied) return undefined
+    return updated
+  }
   async pull(
     checkpoint: ReplicationCheckpoint | undefined,
     batchSize: number,
@@ -73,7 +250,37 @@ export class TimeEntriesReplication implements IReplicationStrategy<
     documents: SyncTimeEntryRxDBDTO[]
     checkpoint: ReplicationCheckpoint
   }> {
-    const res = await this.client.timeEntries.pull({
+    let next = checkpoint
+    let snapshotId: string | undefined
+    const documents: SyncTimeEntryRxDBDTO[] = []
+    while (true) {
+      const page = await this.pullBatch(
+        next,
+        batchSize - documents.length,
+        snapshotId,
+      )
+      documents.push(...page.documents)
+      next = page.checkpoint
+      if (!page.hasMore || documents.length >= batchSize)
+        return { documents, checkpoint: next }
+      snapshotId = page.snapshotId
+    }
+  }
+  private async pullBatch(
+    checkpoint: ReplicationCheckpoint | undefined,
+    batchSize: number,
+    expectedSnapshotId: string | undefined,
+  ): Promise<{
+    documents: SyncTimeEntryRxDBDTO[]
+    checkpoint: ReplicationCheckpoint
+    hasMore: boolean
+    snapshotId: string
+  }> {
+    const context: PullObservationContext = {
+      documents: await this.observePullDocuments(),
+      retryRequired: false,
+    }
+    const response = await this.client.timeEntries.pull({
       body: {
         workspaceId: this.workspaceId,
         connectionInstanceId: this.connectionInstanceId,
@@ -81,478 +288,413 @@ export class TimeEntriesReplication implements IReplicationStrategy<
         checkpoint: {
           id: checkpoint ? checkpoint.id : '',
           updatedAt: checkpoint ? new Date(checkpoint.updatedAt) : new Date(0),
+          cursor: checkpoint?.cursor,
         },
       },
     })
-
-    if (!res.isSuccess) {
-      const err = new Error(res.error ? String(res.error) : 'SYNC_PULL_FAILED')
-      Object.assign(err, { statusCode: res.statusCode, status: res.statusCode })
-      throw err
-    }
-
-    const data: TimeEntryViewModel[] = res.data ? res.data : []
-    if (data.length === 0) {
-      if (checkpoint) {
-        return { documents: [], checkpoint }
-      }
-      return {
-        documents: [],
-        checkpoint: {
-          updatedAt: new Date(0).toISOString(),
-          id: '',
-        },
-      }
-    }
-    const last = data[data.length - 1]
-    const nowIso = new Date().toISOString()
-
-    const existingDocs = this.collection
-      ? await this.collection
-          .find({
-            selector: {
-              connectionInstanceId: this.connectionInstanceId,
+    if (!response.isSuccess)
+      return Promise.reject(
+        new ReplicationError(
+          response.error ? response.error : 'SYNC_PULL_FAILED',
+          [
+            {
+              messageKey: response.error ? response.error : 'SYNC_PULL_FAILED',
+              statusCode: response.statusCode,
             },
-          })
-          .exec()
-      : []
+          ],
+        ),
+      )
+    const page = response.data
+    if (!page)
+      return Promise.reject(
+        new ReplicationError('TIME_ENTRY_PULL_PAGE_MISSING', [
+          { messageKey: 'TIME_ENTRY_PULL_PAGE_MISSING', statusCode: 503 },
+        ]),
+      )
+    if (
+      expectedSnapshotId !== undefined &&
+      page.snapshotId !== expectedSnapshotId
+    )
+      return Promise.reject(
+        new ReplicationError('TIME_ENTRY_PULL_SNAPSHOT_CHANGED', [
+          { messageKey: 'TIME_ENTRY_PULL_SNAPSHOT_CHANGED', statusCode: 503 },
+        ]),
+      )
+    const pageTime = new Date(page.checkpoint.updatedAt).getTime()
+    const previousTime = checkpoint
+      ? new Date(checkpoint.updatedAt).getTime()
+      : 0
+    const previousId = checkpoint ? checkpoint.id : ''
+    const unchangedCheckpoint =
+      page.checkpoint.id === previousId &&
+      pageTime === previousTime &&
+      page.checkpoint.cursor === checkpoint?.cursor
+    if (
+      !Number.isFinite(pageTime) ||
+      !page.snapshotId ||
+      page.items.length > batchSize ||
+      (page.hasMore && unchangedCheckpoint)
+    )
+      return Promise.reject(
+        new ReplicationError('TIME_ENTRY_PULL_PAGE_INVALID', [
+          { messageKey: 'TIME_ENTRY_PULL_PAGE_INVALID', statusCode: 503 },
+        ]),
+      )
+    const items = page.items
+    const documents: SyncTimeEntryRxDBDTO[] = []
+    const existing = await this.documentsByRemoteIds(
+      items.flatMap((item) => (item.id ? [item.id] : [])),
+    )
 
-    const existingByRemoteId = new Map<string, SyncTimeEntryRxDBDTO>()
-    const existingByDocId = new Map<string, SyncTimeEntryRxDBDTO>()
-    const seenRemoteIds = new Set<string>()
-
-    for (const doc of existingDocs) {
-      const docData = doc.toMutableJSON()
-      existingByDocId.set(docData.id, docData)
-      if (!docData.remoteId) continue
-      if (seenRemoteIds.has(docData.remoteId)) {
-        await doc.remove()
+    const remoteIdsByCorrelation = new Map<string, Set<string>>()
+    for (const item of items) {
+      if (!item.correlationId || !item.id) continue
+      const ids = remoteIdsByCorrelation.get(item.correlationId)
+      if (ids) {
+        ids.add(item.id)
         continue
       }
-      seenRemoteIds.add(docData.remoteId)
-      existingByRemoteId.set(docData.remoteId, docData)
+      remoteIdsByCorrelation.set(item.correlationId, new Set([item.id]))
     }
 
-    const docs: SyncTimeEntryRxDBDTO[] = []
-
-    for (const item of data) {
-      const remoteId = String(item.id)
-
-      // Primary lookup: match by remoteId field
-      let existingLocalDoc = existingByRemoteId.get(remoteId)
-
-      // Secondary lookup: remote entry id matches a local doc's own id.
-      // Covers the race where push hasn't set remoteId yet but the server
-      // already stored the entry under the local UUID.
-      if (!existingLocalDoc) {
-        const byDocId = existingByDocId.get(remoteId)
-        if (byDocId) existingLocalDoc = byDocId
+    for (const item of items) {
+      if (!item.id) continue
+      const state = toRemoteState(item, item.id)
+      let local = existing.find((doc) => doc.remoteId === item.id)
+      if (!local && item.correlationId)
+        local = await this.localDocument(item.correlationId)
+      if (!local) local = await this.localDocument(item.id)
+      if (local && local.connectionInstanceId !== this.connectionInstanceId)
+        local = undefined
+      const correlationIds = item.correlationId
+        ? remoteIdsByCorrelation.get(item.correlationId)
+        : undefined
+      if (
+        (correlationIds && correlationIds.size > 1) ||
+        (local?.remoteId && local.remoteId !== item.id)
+      ) {
+        if (local)
+          await this.modifyObservedPullDocument(
+            local,
+            context,
+            state,
+            (draft) => ({
+              ...draft,
+              syncStatus: 'ambiguous',
+              syncError: 'MULTIPLE_REMOTE_TIME_ENTRIES_FOR_CORRELATION',
+            }),
+            'ambiguity',
+          )
+        continue
       }
-
-      // Tertiary lookup: match unlinked pending_push document with identical task and start date
-      if (!existingLocalDoc) {
-        const itemStartDate = dateToISO(item.startDate)
-        const itemDatePart = itemStartDate ? itemStartDate.split('T')[0] : ''
-        const itemTaskIdClean = item.task?.id ? cleanTaskId(item.task.id) : ''
-
-        const pendingMatch = existingDocs.find((d) => {
-          const dData = d.toMutableJSON()
-          if (dData.remoteId) return false
-          if (dData.syncStatus !== 'pending_push') return false
-
-          const localTaskIdClean = dData.task?.id
-            ? cleanTaskId(dData.task.id)
-            : ''
-          const taskMatch =
-            Boolean(localTaskIdClean) &&
-            Boolean(itemTaskIdClean) &&
-            localTaskIdClean === itemTaskIdClean
-
-          const localDatePart = dData.startDate
-            ? dData.startDate.split('T')[0]
-            : ''
-          const dateMatch =
-            Boolean(localDatePart) &&
-            Boolean(itemDatePart) &&
-            localDatePart === itemDatePart
-
-          return Boolean(taskMatch && dateMatch)
-        })
-        if (pendingMatch) existingLocalDoc = pendingMatch.toMutableJSON()
-      }
-
-      let docId: string = crypto.randomUUID()
-
-      if (existingLocalDoc) {
-        if (existingLocalDoc.syncStatus === 'conflict') continue
+      if (local) {
+        const current = local.toMutableJSON(true)
         if (
-          existingLocalDoc.syncStatus === 'pending_push' &&
-          existingLocalDoc.remoteId
-        ) {
+          current.syncStatus === 'conflict' ||
+          current.syncStatus === 'local_only'
+        )
+          continue
+        if (current._deleted && current.deletionConfirmed) continue
+        if (current._deleted && current.remoteDeleted) {
+          const restored = await this.modifyObservedPullDocument(
+            local,
+            context,
+            state,
+            (draft) => {
+              if (!draft._deleted || !draft.remoteDeleted) return draft
+              return {
+                ...this.applyCanonical(draft, state),
+                _deleted: false,
+                remoteDeleted: false,
+              }
+            },
+          )
+          if (restored?.syncStatus === 'synced' && !restored._deleted)
+            documents.push(restored.toMutableJSON(true))
           continue
         }
-        if (existingLocalDoc.syncStatus === 'local_only') continue
-
-        docId = existingLocalDoc.id
-      }
-
-      for (const d of existingDocs) {
-        const dData = d.toMutableJSON()
-        if (dData.id !== docId && dData.remoteId === remoteId) {
-          await d.remove()
+        if (current._deleted) {
+          if (current.remoteId) continue
+          // Keep the tombstone and bind its ID so the pending delete reaches the provider.
+          await this.modifyObservedPullDocument(
+            local,
+            context,
+            state,
+            (draft) => ({
+              ...draft,
+              remoteId: state.id,
+              remoteState: state,
+              remoteUpdatedAt: state.updatedAt,
+              syncStatus: 'pending_push',
+            }),
+          )
+          continue
         }
-      }
-
-      const rawStartDate = dateToISO(item.startDate)
-      let resolvedStartDate = rawStartDate
-      let resolvedEndDate = dateToISO(item.endDate) ?? null
-
-      if (existingLocalDoc && existingLocalDoc.startDate) {
-        const localDatePart = existingLocalDoc.startDate.split('T')[0]
-        const remoteDatePart = rawStartDate ? rawStartDate.split('T')[0] : ''
+        // A dirty bound document retains the approved baseline until confirmation
+        // or explicit conflict resolution. Pull is observation, not acknowledgement.
         if (
-          localDatePart &&
-          remoteDatePart &&
-          localDatePart === remoteDatePart
-        ) {
-          resolvedStartDate = existingLocalDoc.startDate
-          if (existingLocalDoc.endDate) {
-            resolvedEndDate = existingLocalDoc.endDate
-          }
+          current.syncStatus !== 'synced' &&
+          current.remoteId &&
+          (Boolean(current.remoteState) ||
+            current.syncStatus === 'pending_push' ||
+            current.syncStatus === 'error' ||
+            current.syncStatus === 'ambiguous')
+        )
+          continue
+        if (current.syncStatus !== 'synced') {
+          const bound = await this.modifyObservedPullDocument(
+            local,
+            context,
+            state,
+            (draft) => {
+              if (draft.remoteId && draft.remoteId !== state.id) return draft
+              if (
+                draft.syncStatus === 'conflict' ||
+                draft.syncStatus === 'local_only'
+              )
+                return draft
+              const hasEdits = draft.creationState
+                ? hasBusinessChanges(
+                    snapshotDocument(draft),
+                    draft.creationState,
+                  )
+                : true
+              if (hasEdits || draft._deleted)
+                return {
+                  ...draft,
+                  remoteId: state.id,
+                  remoteState: state,
+                  remoteUpdatedAt: state.updatedAt,
+                  syncStatus: 'pending_push',
+                  creationAttemptId: null,
+                  creationState: null,
+                  syncError: null,
+                  syncFailure: null,
+                }
+              return {
+                ...this.applyCanonical(draft, state),
+                lastPulledAt: new Date().toISOString(),
+              }
+            },
+          )
+          if (bound?.syncStatus === 'synced')
+            documents.push(bound.toMutableJSON(true))
+          continue
         }
+        const canonical = this.applyCanonical(current, state)
+        const observedCurrent =
+          context.documents.get(current.id) === this.pullObservation(current)
+        const sameCanonical =
+          JSON.stringify(current.remoteState) === JSON.stringify(state) &&
+          JSON.stringify({
+            ...snapshotDocument(current),
+            taskData: current.taskData,
+          }) ===
+            JSON.stringify({
+              ...snapshotDocument(canonical),
+              taskData: canonical.taskData,
+            })
+        if (
+          observedCurrent &&
+          sameCanonical &&
+          !current.remoteDeleted &&
+          !current.deletionConfirmed &&
+          !current.conflictData &&
+          !current.creationState &&
+          !current.creationAttemptId &&
+          !current.confirmationState &&
+          !current.syncError &&
+          !current.syncFailure
+        )
+          continue
+        const pulled = await this.modifyObservedPullDocument(
+          local,
+          context,
+          state,
+          (draft) => {
+            if (draft.syncStatus !== 'synced' || draft._deleted) return draft
+            return {
+              ...this.applyCanonical(draft, state),
+              lastPulledAt: new Date().toISOString(),
+            }
+          },
+        )
+        if (pulled?.syncStatus === 'synced' && !pulled.deleted)
+          documents.push(pulled.toMutableJSON(true))
+        continue
       }
-
-      if (!resolvedStartDate) {
-        const rawCreatedAt = dateToISO(item.createdAt)
-        resolvedStartDate = rawCreatedAt ? rawCreatedAt : nowIso
-      }
-
-      const parsedCreatedAt = dateToISO(item.createdAt)
-      const createdAtIso = parsedCreatedAt ? parsedCreatedAt : nowIso
-
-      const parsedUpdatedAt = dateToISO(item.updatedAt)
-      const updatedAtIso = parsedUpdatedAt ? parsedUpdatedAt : nowIso
-
-      // Support both legacy seconds (> 24) and decimal hours
-      let resolvedTimeSpent = item.timeSpent
-      if (resolvedTimeSpent > 24) {
-        resolvedTimeSpent = Number((resolvedTimeSpent / 3600).toFixed(4))
-      }
-
-      let timeStatus: 'running' | 'paused' | 'finished' | 'suggestion' =
-        'finished'
-      if (existingLocalDoc && existingLocalDoc.timeStatus) {
-        timeStatus = existingLocalDoc.timeStatus
-      }
-
-      let source: 'manual' | 'timer' | 'ai_suggestion' | 'addon' = 'manual'
-      if (existingLocalDoc && existingLocalDoc.source) {
-        source = existingLocalDoc.source
-      }
-
-      let type: 'increasing' | 'decreasing' | 'manual' = 'manual'
-      if (existingLocalDoc && existingLocalDoc.type) {
-        type = existingLocalDoc.type
-      }
-
-      let resolvedTaskData = existingLocalDoc
-        ? existingLocalDoc.taskData
-        : undefined
-
-      const incomingTaskData =
-        item &&
-        'taskData' in item &&
-        item.taskData &&
-        typeof item.taskData === 'object'
-          ? (item.taskData as Record<string, unknown>)
-          : undefined
-
-      const incomingTitle =
-        incomingTaskData &&
-        typeof incomingTaskData.title === 'string' &&
-        incomingTaskData.title.trim() !== ''
-          ? incomingTaskData.title.trim()
-          : undefined
-
-      const rawItemTaskName =
-        item.task &&
-        'name' in item.task &&
-        typeof item.task.name === 'string' &&
-        item.task.name.trim() !== ''
-          ? item.task.name.trim()
-          : ''
-
-      const effectiveTitle = incomingTitle || rawItemTaskName
-
-      if (!resolvedTaskData && effectiveTitle && item.task?.id) {
-        const sourceId = cleanTaskId(item.task.id)
-        const incomingTracker =
-          incomingTaskData &&
-          typeof incomingTaskData.tracker === 'object' &&
-          incomingTaskData.tracker !== null &&
-          'id' in incomingTaskData.tracker
-            ? { id: String((incomingTaskData.tracker as { id: unknown }).id) }
-            : undefined
-
-        resolvedTaskData = {
-          id: `${this.connectionInstanceId}::${sourceId}`,
-          sourceId,
-          connectionInstanceId: this.connectionInstanceId,
-          dataSourceId: this.pluginId,
-          _deleted: false,
-          syncStatus: 'synced',
-          lastPulledAt: nowIso,
-          lastPushedAt: null,
-          lastReconciledAt: nowIso,
-          title: effectiveTitle,
-          status: { id: '1', name: 'Ativa' },
-          tracker: incomingTracker,
-          createdAt: nowIso,
-          updatedAt: nowIso,
-          timeEntryIds: [docId],
-        }
-      }
-
-      if (resolvedTaskData && !resolvedTaskData.title && effectiveTitle) {
-        resolvedTaskData = {
-          ...resolvedTaskData,
-          title: effectiveTitle,
-        }
-      }
-
-      docs.push({
-        id: docId,
-        remoteId,
-        dataSourceId: this.pluginId,
+      const now = new Date().toISOString()
+      documents.push({
+        id:
+          'import-' +
+          (await defaultHashSha256(
+            JSON.stringify([this.connectionInstanceId, state.id]),
+          )),
+        remoteId: state.id,
+        remoteState: state,
+        remoteUpdatedAt: state.updatedAt,
         connectionInstanceId: this.connectionInstanceId,
+        dataSourceId: this.pluginId,
         _deleted: false,
         syncStatus: 'synced',
-        lastPulledAt: nowIso,
-        lastPushedAt: existingLocalDoc ? existingLocalDoc.lastPushedAt : null,
-        task: item.task,
-        taskData: resolvedTaskData,
-        activity: item.activity,
-        user: item.user,
-        timeSpent: resolvedTimeSpent,
-        comments: typeof item.comments === 'string' ? item.comments : null,
-        startDate: resolvedStartDate,
-        endDate: resolvedEndDate,
-        createdAt: createdAtIso,
-        updatedAt: updatedAtIso,
-        timeStatus,
-        source,
-        addonSource: existingLocalDoc
-          ? existingLocalDoc.addonSource
-          : undefined,
-        type,
-        journal: existingLocalDoc ? existingLocalDoc.journal : undefined,
-        timerConfig: existingLocalDoc
-          ? existingLocalDoc.timerConfig
-          : undefined,
+        lastPulledAt: now,
+        lastPushedAt: null,
+        task: state.task,
+        activity: state.activity,
+        user: state.user,
+        timeSpent: state.timeSpent,
+        comments: state.comments ? state.comments : null,
+        startDate: state.startDate ? state.startDate : state.createdAt,
+        endDate: state.endDate ? state.endDate : null,
+        createdAt: state.createdAt,
+        updatedAt: state.updatedAt,
+        timeStatus: 'finished',
+        source: 'addon',
+        type: 'manual',
       })
     }
-
-    if (this.collection?.database?.collections?.tasks) {
-      const tasksCol = this.collection.database.collections.tasks
-      for (const doc of docs) {
-        const rawTaskId = doc.taskData?.id || doc.task?.id
-        if (doc.taskData?.title && rawTaskId) {
-          try {
-            const pureId = cleanTaskId(rawTaskId)
-            const compositeId = `${this.connectionInstanceId}::${pureId}`
-            const existingTask = await tasksCol.findOne(compositeId).exec()
-            if (existingTask) {
-              if (!existingTask.title && doc.taskData.title) {
-                await existingTask.incrementalPatch({
-                  title: doc.taskData.title,
-                })
-              }
-            } else {
-              await tasksCol.insert({
-                id: compositeId,
-                sourceId: pureId,
-                connectionInstanceId: this.connectionInstanceId,
-                dataSourceId: this.pluginId,
-                _deleted: false,
-                syncStatus: 'synced',
-                lastPulledAt: nowIso,
-                lastPushedAt: null,
-                lastReconciledAt: nowIso,
-                title: doc.taskData.title,
-                status: { id: 'unknown', name: 'Ativa' },
-                tracker: doc.taskData.tracker?.id
-                  ? { id: String(doc.taskData.tracker.id) }
-                  : undefined,
-                createdAt: doc.createdAt ?? nowIso,
-                updatedAt: doc.updatedAt ?? nowIso,
-                timeEntryIds: [doc.id],
-              })
-            }
-          } catch {
-            // Silencia se houver concorrência na inserção
-          }
-        }
+    if (context.retryRequired)
+      return {
+        documents,
+        checkpoint: checkpoint
+          ? checkpoint
+          : { id: '', updatedAt: new Date(0).toISOString() },
+        hasMore: false,
+        snapshotId: page.snapshotId,
       }
-    }
-
-    const parsedLastUpdatedAt = dateToISO(last.updatedAt)
-    const lastUpdatedAtIso = parsedLastUpdatedAt ? parsedLastUpdatedAt : nowIso
-
     return {
-      documents: docs,
+      documents,
       checkpoint: {
-        updatedAt: lastUpdatedAtIso,
-        id: String(last.id),
+        ...page.checkpoint,
+        updatedAt: new Date(page.checkpoint.updatedAt).toISOString(),
       },
+      hasMore: page.hasMore,
+      snapshotId: page.snapshotId,
     }
   }
+  private pushIdentityMatches(
+    document: SyncTimeEntryRxDBDTO,
+    sent: SyncTimeEntryRxDBDTO,
+  ): boolean {
+    if (
+      document.connectionInstanceId !== sent.connectionInstanceId ||
+      document.syncStatus === 'local_only'
+    )
+      return false
+    if (sent.remoteId && document.remoteId !== sent.remoteId) return false
+    if (
+      sent.creationAttemptId &&
+      !document.remoteId &&
+      document.creationAttemptId !== sent.creationAttemptId
+    )
+      return false
+    return true
+  }
 
+  private async modifyPushDocument(
+    document: RxDocument<SyncTimeEntryRxDBDTO>,
+    sent: SyncTimeEntryRxDBDTO,
+    modify: (draft: SyncTimeEntryRxDBDTO) => SyncTimeEntryRxDBDTO,
+  ): Promise<boolean> {
+    let applied = false
+    await document.incrementalModify((draft) => {
+      applied = false
+      if (!this.pushIdentityMatches(draft, sent)) return draft
+      const next = modify(draft)
+      applied = next !== draft
+      return next
+    })
+    return applied
+  }
+
+  private async modifyPushFailureDocument(
+    document: RxDocument<SyncTimeEntryRxDBDTO>,
+    sent: SyncTimeEntryRxDBDTO,
+    modify: (draft: SyncTimeEntryRxDBDTO) => SyncTimeEntryRxDBDTO,
+  ): Promise<boolean> {
+    return this.modifyPushDocument(document, sent, (draft) => {
+      if (
+        draft.lastPushedAt !== sent.lastPushedAt ||
+        JSON.stringify(draft.remoteState) !==
+          JSON.stringify(sent.remoteState) ||
+        draft.deletionConfirmed !== sent.deletionConfirmed ||
+        draft.syncStatus === 'conflict' ||
+        (draft.syncStatus === 'synced' && !sent._deleted)
+      )
+        return draft
+      return modify(draft)
+    })
+  }
   async push(
     rows: RxReplicationWriteToMasterRow<SyncTimeEntryRxDBDTO>[],
   ): Promise<SyncTimeEntryRxDBDTO[]> {
-    const eligibleRows: RxReplicationWriteToMasterRow<SyncTimeEntryRxDBDTO>[] =
-      []
-
+    const metadata = new Map<string, PushMetadata>()
     for (const row of rows) {
-      const doc = row.newDocumentState
-      if (this.inFlightPushDocIds.has(doc.id)) continue
+      const rowDoc = row.newDocumentState
+      if (this.inFlightPushDocIds.has(rowDoc.id)) continue
+      if (rowDoc.connectionInstanceId !== this.connectionInstanceId) continue
+      const local = await this.localDocument(rowDoc.id)
+      let doc = local ? local.toMutableJSON(true) : rowDoc
       if (doc.connectionInstanceId !== this.connectionInstanceId) continue
-      if (doc.syncStatus === 'local_only') continue
-      if (doc.syncStatus === 'conflict') continue
-      if (!doc._deleted && doc.syncStatus !== 'pending_push') continue
       if (
-        !doc._deleted &&
-        (!doc.task || !doc.task.id || doc.task.id.trim() === '')
+        doc._deleted &&
+        doc.syncStatus === 'synced' &&
+        row.assumedMasterState?._deleted
+      )
+        continue
+      if (
+        doc.syncStatus !== 'pending_push' &&
+        doc.syncStatus !== 'creating' &&
+        !(doc._deleted && doc.syncStatus === 'synced')
       )
         continue
       if (
         !doc._deleted &&
-        (!doc.activity || !doc.activity.id || doc.activity.id.trim() === '')
+        ((!doc.remoteId && !doc.task.id.trim()) || !doc.activity.id.trim())
       )
         continue
-
-      if (this.collection) {
-        const liveDoc = await this.collection.findOne(doc.id).exec()
-        if (!liveDoc && !doc._deleted) continue
-        if (liveDoc) {
-          const liveData = liveDoc.toMutableJSON()
-          if (!doc._deleted && liveData.syncStatus !== 'pending_push') {
-            continue
+      if (doc._deleted && (doc.remoteDeleted || doc.deletionConfirmed)) continue
+      let creationAttempted =
+        doc.syncStatus === 'creating' || Boolean(doc.creationState)
+      if (
+        !doc._deleted &&
+        !doc.remoteId &&
+        doc.syncStatus === 'pending_push' &&
+        local
+      ) {
+        const attemptId = crypto.randomUUID()
+        const claimed = await local.incrementalModify((draft) => {
+          if (
+            draft.connectionInstanceId !== this.connectionInstanceId ||
+            draft.syncStatus !== 'pending_push' ||
+            draft.remoteId ||
+            draft._deleted
+          )
+            return draft
+          return {
+            ...draft,
+            syncStatus: 'creating',
+            creationAttemptId: attemptId,
+            creationState: snapshotDocument(draft),
           }
-          if (!doc.remoteId && liveData.remoteId) {
-            doc.remoteId = liveData.remoteId
-          }
-          if (!doc.conflictData && liveData.conflictData) {
-            doc.conflictData = liveData.conflictData
-          }
-        }
+        })
+        doc = claimed.toMutableJSON(true)
+        if (doc.creationAttemptId !== attemptId) continue
+        creationAttempted = false
       }
-
-      eligibleRows.push(row)
+      if (doc.connectionInstanceId !== this.connectionInstanceId) continue
+      // A version is only meaningful with the business data from the same snapshot.
+      if (!doc.remoteState && row.assumedMasterState?.remoteState)
+        doc = { ...doc, remoteState: row.assumedMasterState.remoteState }
+      metadata.set(doc.id, { document: doc, creationAttempted })
+      this.inFlightPushDocIds.add(doc.id)
     }
-
-    if (eligibleRows.length === 0) return []
-
-    for (const row of eligibleRows) {
-      this.inFlightPushDocIds.add(row.newDocumentState.id)
-    }
-
+    if (metadata.size === 0) return []
     try {
-      const entries: SyncTimeEntryDTO[] = eligibleRows.map((row) => {
-        const doc = row.newDocumentState
-        const assumedState = row.assumedMasterState
-
-        let entryId = doc.id
-        if (doc.remoteId) {
-          entryId = doc.remoteId
-        }
-
-        const entry: SyncTimeEntryDTO = {
-          id: entryId,
-          _deleted: doc._deleted,
-          task: { id: cleanTaskId(doc.task.id) },
-          activity: { id: doc.activity.id, name: doc.activity.name },
-          user: { id: doc.user.id, name: doc.user.name },
-          timeSpent: doc.timeSpent,
-          comments: doc.comments ? doc.comments : undefined,
-          startDate: doc.startDate ? new Date(doc.startDate) : undefined,
-          endDate: doc.endDate ? new Date(doc.endDate) : undefined,
-          createdAt: new Date(doc.createdAt),
-          updatedAt: new Date(doc.updatedAt),
-        }
-
-        const serverConflictState = doc.conflictData?.server
-        if (serverConflictState) {
-          let assumedId = serverConflictState.id
-            ? serverConflictState.id
-            : doc.id
-          if (doc.remoteId) {
-            assumedId = doc.remoteId
-          }
-          const serverUpdated = serverConflictState.updatedAt
-            ? new Date(serverConflictState.updatedAt)
-            : new Date(doc.updatedAt)
-
-          entry.assumedMasterState = {
-            id: assumedId,
-            task: serverConflictState.task
-              ? { id: cleanTaskId(serverConflictState.task.id) }
-              : { id: cleanTaskId(doc.task.id) },
-            activity: serverConflictState.activity
-              ? {
-                  id: serverConflictState.activity.id,
-                  name: serverConflictState.activity.name,
-                }
-              : { id: doc.activity.id, name: doc.activity.name },
-            user: { id: doc.user.id, name: doc.user.name },
-            timeSpent:
-              serverConflictState.timeSpent !== undefined
-                ? serverConflictState.timeSpent
-                : doc.timeSpent,
-            comments: serverConflictState.comments
-              ? serverConflictState.comments
-              : undefined,
-            startDate: serverConflictState.startDate
-              ? new Date(serverConflictState.startDate)
-              : undefined,
-            endDate: serverConflictState.endDate
-              ? new Date(serverConflictState.endDate)
-              : undefined,
-            createdAt: new Date(doc.createdAt),
-            updatedAt: serverUpdated,
-          }
-        } else if (assumedState) {
-          let assumedId = assumedState.id
-          if (assumedState.remoteId) {
-            assumedId = assumedState.remoteId
-          }
-          const assumedUpdatedAt = new Date(assumedState.updatedAt)
-
-          entry.assumedMasterState = {
-            id: assumedId,
-            task: { id: cleanTaskId(assumedState.task.id) },
-            activity: {
-              id: assumedState.activity.id,
-              name: assumedState.activity.name,
-            },
-            user: { id: assumedState.user.id, name: assumedState.user.name },
-            timeSpent: assumedState.timeSpent,
-            comments: assumedState.comments ? assumedState.comments : undefined,
-            startDate: assumedState.startDate
-              ? new Date(assumedState.startDate)
-              : undefined,
-            endDate: assumedState.endDate
-              ? new Date(assumedState.endDate)
-              : undefined,
-            createdAt: new Date(assumedState.createdAt),
-            updatedAt: assumedUpdatedAt,
-          }
-        }
-
-        return entry
-      })
-
-      const res = await this.client.timeEntries.push({
+      const entries = [...metadata.values()].map((item) =>
+        toPushEntry(item.document, item.creationAttempted),
+      )
+      const response = await this.client.timeEntries.push({
         body: {
           workspaceId: this.workspaceId,
           pluginId: this.pluginId,
@@ -560,129 +702,265 @@ export class TimeEntriesReplication implements IReplicationStrategy<
           entries,
         },
       })
-
-      if (!res.isSuccess) {
-        const err = new Error(
-          res.error ? String(res.error) : 'SYNC_PUSH_FAILED',
+      if (!response.isSuccess)
+        return Promise.reject(
+          new ReplicationError(
+            response.error ? response.error : 'SYNC_PUSH_FAILED',
+            [
+              {
+                messageKey: response.error
+                  ? response.error
+                  : 'SYNC_PUSH_FAILED',
+                statusCode: response.statusCode,
+              },
+            ],
+          ),
         )
-        Object.assign(err, {
-          statusCode: res.statusCode,
-          status: res.statusCode,
-        })
-        throw err
-      }
-
-      const serverItems = res.data ? res.data : []
-      const nowIso = new Date().toISOString()
-
-      for (const item of serverItems) {
-        const matchingRow = eligibleRows.find((row) => {
-          const rowDoc = row.newDocumentState
-          if (
-            'originalId' in item &&
-            typeof item.originalId === 'string' &&
-            (rowDoc.id === item.originalId ||
-              rowDoc.remoteId === item.originalId)
-          ) {
-            return true
-          }
-          return rowDoc.id === item.id || rowDoc.remoteId === item.id
-        })
-        if (!matchingRow) continue
-
-        if (item.validationError) {
-          const friendlyError = formatValidationErrorMessage(
-            item.validationError,
-          )
-
-          if (this.collection) {
-            const docId = matchingRow.newDocumentState.id
-            const localDoc = await this.collection.findOne(docId).exec()
-            if (localDoc) {
-              await localDoc.incrementalPatch({
-                syncStatus: 'error',
-                syncError: friendlyError,
-              })
-            }
-          }
-          continue
-        }
-
-        if (item.conflicted) {
-          const conflictData = item.conflictData
-            ? {
-                server: item.conflictData.server
-                  ? {
-                      id: item.conflictData.server.id,
-                      startDate: dateToISO(item.conflictData.server.startDate),
-                      endDate: dateToISO(item.conflictData.server.endDate)
-                        ? dateToISO(item.conflictData.server.endDate)
-                        : null,
-                      timeSpent: item.conflictData.server.timeSpent,
-                      comments: item.conflictData.server.comments,
-                      updatedAt: dateToISO(item.conflictData.server.updatedAt),
-                      task: item.conflictData.server.task,
-                      activity: item.conflictData.server.activity,
-                    }
-                  : undefined,
-                local: item.conflictData.local
-                  ? {
-                      id: item.conflictData.local.id,
-                      startDate: dateToISO(item.conflictData.local.startDate),
-                      endDate: dateToISO(item.conflictData.local.endDate)
-                        ? dateToISO(item.conflictData.local.endDate)
-                        : null,
-                      timeSpent: item.conflictData.local.timeSpent,
-                      comments: item.conflictData.local.comments,
-                      updatedAt: dateToISO(item.conflictData.local.updatedAt),
-                      task: item.conflictData.local.task,
-                      activity: item.conflictData.local.activity,
-                    }
-                  : undefined,
+      const results = response.data ? response.data : []
+      let retryError: Error | undefined
+      for (const item of results) {
+        const sent = [...metadata.values()].find(
+          (candidate) =>
+            candidate.document.id === item.originalId ||
+            candidate.document.id === item.id ||
+            candidate.document.remoteId === item.id,
+        )
+        if (!sent) continue
+        const local = await this.localDocument(sent.document.id)
+        if (!local) continue
+        if (item.confirmationPending) {
+          const applied = await this.modifyPushFailureDocument(
+            local,
+            sent.document,
+            (draft) => {
+              if (
+                draft.lastPushedAt !== sent.document.lastPushedAt ||
+                draft.syncStatus === 'conflict' ||
+                draft.syncStatus === 'local_only' ||
+                (draft.remoteId && draft.remoteId !== item.remoteId)
+              )
+                return draft
+              return {
+                ...draft,
+                remoteId: item.remoteId,
+                confirmationState: draft.confirmationState
+                  ? draft.confirmationState
+                  : sent.document.creationState
+                    ? sent.document.creationState
+                    : snapshotDocument(sent.document),
+                creationState: null,
+                creationAttemptId: null,
+                syncStatus: item.syncRetryable ? 'pending_push' : 'error',
+                syncError: errorMessage(item.validationError),
+                syncFailure: item.validationError ? item.validationError : null,
               }
-            : undefined
-
-          if (this.collection) {
-            const docId = matchingRow.newDocumentState.id
-            const localDoc = await this.collection.findOne(docId).exec()
-            if (localDoc) {
-              await localDoc.incrementalPatch({
-                syncStatus: 'conflict',
-                conflictData,
-                lastPulledAt: nowIso,
-              })
-            }
-          }
+            },
+          )
+          if (!applied) continue
+          if (item.syncRetryable)
+            retryError = new ReplicationError(
+              errorMessage(item.validationError),
+              item.validationError ? [item.validationError] : [],
+            )
           continue
         }
-
-        // Sucesso na gravação remota do item
-        if (this.collection) {
-          const docId = matchingRow.newDocumentState.id
-          const localDoc = await this.collection.findOne(docId).exec()
-          if (localDoc) {
-            const finalRemoteId = item.id ? String(item.id) : null
-            const parsedUpdatedAt = dateToISO(item.updatedAt)
-            const finalUpdatedAt = parsedUpdatedAt ? parsedUpdatedAt : nowIso
-
-            await localDoc.incrementalPatch({
-              remoteId: finalRemoteId,
-              syncStatus: 'synced',
-              conflictData: undefined,
-              lastPushedAt: nowIso,
-              lastPulledAt: finalUpdatedAt,
-              updatedAt: finalUpdatedAt,
-              syncError: null,
-            })
-          }
+        if (item.syncRetryable) {
+          const applied = await this.modifyPushFailureDocument(
+            local,
+            sent.document,
+            (draft) => {
+              if (
+                (draft.syncStatus === 'synced' && !sent.document._deleted) ||
+                draft.lastPushedAt !== sent.document.lastPushedAt ||
+                draft.syncStatus === 'conflict' ||
+                draft.syncStatus === 'local_only' ||
+                draft.remoteState?.updatedAt !==
+                  sent.document.remoteState?.updatedAt
+              )
+                return draft
+              return {
+                ...draft,
+                syncStatus: 'pending_push',
+                syncError: errorMessage(item.validationError),
+                syncFailure: item.validationError ? item.validationError : null,
+              }
+            },
+          )
+          if (!applied) continue
+          retryError = new ReplicationError(
+            errorMessage(item.validationError),
+            item.validationError ? [item.validationError] : [],
+          )
+          continue
         }
+        if (item.creationPending) {
+          const applied = await this.modifyPushFailureDocument(
+            local,
+            sent.document,
+            (draft) => ({
+              ...draft,
+              syncStatus:
+                item.creationAttempted === false ? 'pending_push' : 'creating',
+              syncError: errorMessage(item.validationError),
+              syncFailure: item.validationError ? item.validationError : null,
+              creationState:
+                item.creationAttempted === false ? null : draft.creationState,
+              creationAttemptId:
+                item.creationAttempted === false
+                  ? null
+                  : draft.creationAttemptId,
+              remoteId: item.remoteId ? item.remoteId : draft.remoteId,
+            }),
+          )
+          if (!applied) continue
+          retryError = new ReplicationError(
+            errorMessage(item.validationError),
+            item.validationError ? [item.validationError] : [],
+          )
+          continue
+        }
+        if (item.creationAmbiguous) {
+          await this.modifyPushFailureDocument(
+            local,
+            sent.document,
+            (draft) => {
+              if (draft.remoteId && !sent.document.remoteId) return draft
+              return {
+                ...draft,
+                syncStatus: 'ambiguous',
+                remoteId: item.remoteId ? item.remoteId : draft.remoteId,
+                confirmationState: null,
+                syncError: errorMessage(item.validationError),
+                syncFailure: item.validationError ? item.validationError : null,
+              }
+            },
+          )
+          continue
+        }
+        if (item.conflicted) {
+          const server = item.conflictData?.server
+          if (!server || !server.id) continue
+          const serverState = toRemoteState(server, server.id)
+          await this.modifyPushFailureDocument(
+            local,
+            sent.document,
+            (draft) => ({
+              ...draft,
+              syncStatus: 'conflict',
+              syncError: item.validationError
+                ? errorMessage(item.validationError)
+                : null,
+              syncFailure: item.validationError ? item.validationError : null,
+              conflictData: {
+                server: serverState,
+                local: snapshotDocument(draft),
+              },
+            }),
+          )
+          continue
+        }
+        if (item.validationError) {
+          await this.modifyPushFailureDocument(
+            local,
+            sent.document,
+            (draft) => ({
+              ...draft,
+              syncStatus: 'error',
+              syncError: errorMessage(item.validationError),
+              syncFailure: item.validationError ? item.validationError : null,
+              creationState: null,
+              creationAttemptId: null,
+            }),
+          )
+          continue
+        }
+        if (!item.id) continue
+        const state = toRemoteState(item, item.id)
+        const now = new Date().toISOString()
+        await this.modifyPushDocument(local, sent.document, (draft) => {
+          if (draft.connectionInstanceId !== this.connectionInstanceId)
+            return draft
+          if (sent.document._deleted) {
+            if (!draft._deleted || draft.remoteId !== sent.document.remoteId)
+              return draft
+            return {
+              ...draft,
+              syncStatus: 'synced',
+              deletionConfirmed: true,
+              remoteId: state.id,
+              creationAttemptId: null,
+              creationState: null,
+              confirmationState: null,
+              syncError: null,
+              syncFailure: null,
+              lastPushedAt: now,
+            }
+          }
+          // Timestamp precision alone cannot order confirmations from concurrent windows.
+          const confirmationChanged =
+            draft.lastPushedAt !== sent.document.lastPushedAt ||
+            JSON.stringify(draft.remoteState) !==
+              JSON.stringify(sent.document.remoteState)
+          if (
+            draft.remoteState &&
+            (draft.remoteState.updatedAt > state.updatedAt ||
+              (confirmationChanged &&
+                draft.remoteState.updatedAt === state.updatedAt))
+          )
+            return draft
+          if (
+            draft.syncStatus === 'synced' &&
+            draft.remoteState &&
+            !hasBusinessChanges(draft.remoteState, state)
+          )
+            return draft
+          const wasCreation = !sent.document.remoteId
+          const creationState = sent.document.creationState
+            ? sent.document.creationState
+            : snapshotDocument(sent.document)
+          const changedDuringRequest = hasBusinessChanges(
+            snapshotDocument(draft),
+            snapshotDocument(sent.document),
+          )
+          const editedBeforeRecovery =
+            wasCreation &&
+            sent.creationAttempted &&
+            hasBusinessChanges(snapshotDocument(sent.document), creationState)
+          const editedBeforeConfirmation = sent.document.confirmationState
+            ? hasBusinessChanges(
+                snapshotDocument(sent.document),
+                sent.document.confirmationState,
+              )
+            : false
+          const deletionPending = draft._deleted && !sent.document._deleted
+          if (
+            changedDuringRequest ||
+            editedBeforeRecovery ||
+            editedBeforeConfirmation ||
+            deletionPending
+          )
+            return {
+              ...draft,
+              remoteId: state.id,
+              remoteState: state,
+              remoteUpdatedAt: state.updatedAt,
+              syncStatus: 'pending_push',
+              creationAttemptId: null,
+              creationState: null,
+              confirmationState: null,
+              syncError: null,
+              syncFailure: null,
+              lastPushedAt: now,
+            }
+          return { ...this.applyCanonical(draft, state), lastPushedAt: now }
+        })
       }
+      // RxDB retries rejected batches using its own backoff. This is the protocol boundary;
+      // application/provider failures have already been represented as typed results.
+      if (retryError) return Promise.reject(retryError)
+      return []
     } finally {
-      for (const row of eligibleRows) {
-        this.inFlightPushDocIds.delete(row.newDocumentState.id)
-      }
+      for (const id of metadata.keys()) this.inFlightPushDocIds.delete(id)
     }
-
-    return []
   }
 }

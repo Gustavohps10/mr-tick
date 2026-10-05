@@ -22,6 +22,7 @@ export interface TaskDTO {
   }
   tracker?: {
     id: string
+    name?: string
   }
   createdAt: Date
   updatedAt: Date

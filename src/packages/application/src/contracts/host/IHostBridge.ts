@@ -1,4 +1,6 @@
 import { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
+
+import { TimeEntryPullCheckpointDTO, TimeEntryPullPageDTO } from '@/dtos'
 export type { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
 export type {
   AddonInstallerViewModel,
@@ -160,10 +162,10 @@ export interface ITimeEntriesAPI {
     payload: IRequest<{
       workspaceId: string
       connectionInstanceId: string
-      checkpoint: { updatedAt: Date; id: string }
+      checkpoint: TimeEntryPullCheckpointDTO
       batch: number
     }>,
-  ) => Promise<ViewModel<TimeEntryViewModel[]>>
+  ) => Promise<ViewModel<TimeEntryPullPageDTO>>
 
   push: (
     payload: IRequest<PushTimeEntriesInput>,

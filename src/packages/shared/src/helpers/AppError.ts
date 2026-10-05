@@ -54,6 +54,14 @@ export abstract class AppError {
     return new InternalServerError(messageKey, details, type)
   }
 
+  static Http(
+    statusCode: number,
+    messageKey: string,
+    details?: FieldErrors,
+  ): AppError {
+    return new HttpError(messageKey, statusCode, details)
+  }
+
   // ===== HELPERS =====
 
   getFieldErrors(field: string): string[] {
@@ -104,5 +112,11 @@ class InternalServerError extends AppError {
     type: AppErrorType = 'danger',
   ) {
     super(messageKey, 500, details, type)
+  }
+}
+
+class HttpError extends AppError {
+  constructor(messageKey: string, statusCode: number, details?: FieldErrors) {
+    super(messageKey, statusCode, details)
   }
 }

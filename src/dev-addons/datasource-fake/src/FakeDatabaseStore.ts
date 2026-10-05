@@ -19,6 +19,7 @@ import {
 
 interface SerializedTimeEntryDTO {
   id?: string
+  correlationId?: string
   comments?: string
   timeSpent: number
   startDate?: string
@@ -60,6 +61,7 @@ interface SerializedDatabaseData {
 function serializeTimeEntry(entry: TimeEntryDTO): SerializedTimeEntryDTO {
   return {
     id: entry.id,
+    correlationId: entry.correlationId,
     comments: entry.comments,
     timeSpent: entry.timeSpent,
     startDate: entry.startDate ? entry.startDate.toISOString() : undefined,
@@ -77,6 +79,7 @@ function deserializeTimeEntry(
 ): TimeEntryDTO {
   return {
     id: serialized.id,
+    correlationId: serialized.correlationId,
     comments: serialized.comments,
     timeSpent: serialized.timeSpent,
     startDate: serialized.startDate
@@ -154,6 +157,212 @@ export class FakeDatabaseStore {
   private members: MemberDTO[] = [FAKE_MEMBER]
   private isLoaded: boolean = false
   private simulateAuthError: boolean = false
+  private simulateTimeEntryCreateResponseLoss: boolean = false
+  private pauseNextTimeEntryCreate = false
+  private timeEntryCreateGate: Promise<void> | undefined
+  private releaseTimeEntryCreateGate: (() => void) | undefined
+  private timeEntryPullAttempts = 0
+  private timeEntryFindByIdAttempts = 0
+  private timeEntryFindByCorrelationAttempts = 0
+  private timeEntryCreateAttempts = 0
+  private timeEntryCreatesInFlight = 0
+  private partialNextTimeEntryList = false
+  private timeEntryPartialLists = 0
+  private failNextTimeEntryList = false
+  private timeEntryListFailures = 0
+  private timeEntryDeleteAttempts = 0
+  private pausedDeleteId: string | undefined
+  private tombstonePulls = 0
+  private pauseNextDelete = false
+  private deleteGate: Promise<void> | undefined
+  private releaseDeleteGate: (() => void) | undefined
+
+  public pauseNextTimeEntryDelete(): void {
+    this.pauseNextDelete = true
+  }
+
+  public async waitForDeleteRelease(id: string): Promise<void> {
+    if (!this.pauseNextDelete) return
+    this.pauseNextDelete = false
+    this.pausedDeleteId = id
+    const entry = this.findTimeEntryById(id)
+    if (entry) this.saveTimeEntry({ ...entry, updatedAt: new Date() })
+    this.deleteGate = new Promise<void>((resolve) => {
+      this.releaseDeleteGate = resolve
+    })
+    await this.deleteGate
+    this.deleteGate = undefined
+    this.pausedDeleteId = undefined
+    this.releaseDeleteGate = undefined
+  }
+
+  public releasePausedDelete(): boolean {
+    if (!this.releaseDeleteGate) return false
+    this.releaseDeleteGate()
+    return true
+  }
+
+  private pauseNextUpdate = false
+  private updateGate: Promise<void> | undefined
+  private releaseUpdateGate: (() => void) | undefined
+  private pausedUpdateId: string | undefined
+
+  public pauseNextTimeEntryUpdate(): void {
+    this.pauseNextUpdate = true
+  }
+
+  public async waitForUpdateRelease(id: string): Promise<void> {
+    if (!this.pauseNextUpdate) return
+    this.pauseNextUpdate = false
+    this.pausedUpdateId = id
+    this.updateGate = new Promise<void>((resolve) => {
+      this.releaseUpdateGate = resolve
+    })
+    await this.updateGate
+    this.updateGate = undefined
+    this.pausedUpdateId = undefined
+    this.releaseUpdateGate = undefined
+  }
+
+  public changePausedUpdateRemote(): boolean {
+    if (!this.pausedUpdateId) return false
+    const entry = this.findTimeEntryById(this.pausedUpdateId)
+    if (!entry) return false
+    this.saveTimeEntry({
+      ...entry,
+      comments: 'EXTERNAL_DURING_UPDATE',
+      updatedAt: new Date(),
+    })
+    return true
+  }
+
+  public releasePausedUpdate(): boolean {
+    if (!this.releaseUpdateGate) return false
+    this.releaseUpdateGate()
+    return true
+  }
+
+  private lastLegacyConfirmedId: string | null = null
+  private legacyNextUpdateResult = false
+  private legacyWriteNormalization = false
+  private loseCanonicalRead = false
+  private canonicalReadFailures = 0
+
+  public configureLegacyUpdateConfirmation(): void {
+    this.legacyNextUpdateResult = true
+    this.legacyWriteNormalization = true
+  }
+
+  public getLegacyWriteNormalization(): boolean {
+    return this.legacyWriteNormalization
+  }
+
+  public consumeLegacyUpdateResult(id: string): boolean {
+    if (!this.legacyNextUpdateResult) return false
+    this.legacyNextUpdateResult = false
+    this.lastLegacyConfirmedId = id
+    this.loseCanonicalRead = true
+    return true
+  }
+
+  public deleteLastLegacyConfirmedEntry(): boolean {
+    if (!this.lastLegacyConfirmedId) return false
+    return this.deleteTimeEntry(this.lastLegacyConfirmedId)
+  }
+
+  public consumeCanonicalReadFailure(): boolean {
+    if (!this.loseCanonicalRead) return false
+    this.loseCanonicalRead = false
+    this.canonicalReadFailures++
+    return true
+  }
+
+  private updateFailureStatus = 503
+  private failNextUpdate = false
+  private failNextDelete = false
+  private deleteFailureStatus = 503
+  private deleteFailureMessage = 'FAKE_TIME_ENTRY_DELETE_UNAVAILABLE'
+  private externalChangeOnUpdateFailure = false
+  private updateFailures = 0
+  private deleteFailures = 0
+  private updateAttempts = 0
+
+  public getUpdateFailureStatus(): number {
+    return this.updateFailureStatus
+  }
+
+  public configureUpdateFailure(
+    externalChange: boolean,
+    statusCode = 503,
+  ): void {
+    this.updateFailureStatus = statusCode
+    this.failNextUpdate = true
+    this.externalChangeOnUpdateFailure = externalChange
+  }
+
+  public configureDeleteFailure(
+    statusCode: number = 503,
+    messageKey: string = 'FAKE_TIME_ENTRY_DELETE_UNAVAILABLE',
+  ): void {
+    this.deleteFailureMessage = messageKey
+    this.deleteFailureStatus = statusCode
+    this.failNextDelete = true
+  }
+
+  public consumeUpdateFailure(id: string): boolean {
+    this.updateAttempts++
+    if (!this.failNextUpdate) return false
+    this.failNextUpdate = false
+    this.updateFailures++
+    if (this.externalChangeOnUpdateFailure) {
+      this.externalChangeOnUpdateFailure = false
+      const entry = this.findTimeEntryById(id)
+      if (entry)
+        this.saveTimeEntry({
+          ...entry,
+          comments: 'EXTERNAL_EDIT_AFTER_FAILED_UPDATE',
+          updatedAt: new Date(),
+        })
+    }
+    return true
+  }
+
+  public consumeDeleteFailure():
+    { statusCode: number; messageKey: string } | undefined {
+    if (!this.failNextDelete) return undefined
+    this.failNextDelete = false
+    this.deleteFailures++
+    return {
+      statusCode: this.deleteFailureStatus,
+      messageKey: this.deleteFailureMessage,
+    }
+  }
+
+  public returnPartialNextTimeEntryList(): void {
+    this.partialNextTimeEntryList = true
+  }
+
+  public consumeTimeEntryPartialList(): boolean {
+    if (!this.partialNextTimeEntryList) return false
+    this.partialNextTimeEntryList = false
+    this.timeEntryPartialLists++
+    return true
+  }
+
+  public failNextTimeEntryListRequest(): void {
+    this.failNextTimeEntryList = true
+  }
+
+  public consumeTimeEntryListFailure(): boolean {
+    if (!this.failNextTimeEntryList) return false
+    this.failNextTimeEntryList = false
+    this.timeEntryListFailures++
+    return true
+  }
+
+  public recordTimeEntryDeleteAttempt(): void {
+    this.timeEntryDeleteAttempts++
+  }
 
   private constructor() {
     this.isInMemory = process.env.FAKE_DB_IN_MEMORY === 'true'
@@ -182,6 +391,138 @@ export class FakeDatabaseStore {
 
   public getSimulateAuthError(): boolean {
     return this.simulateAuthError
+  }
+
+  private retainedPulls = 0
+  private pullPauseRemaining = 0
+  private pullGate: Promise<void> | undefined
+  private releasePullGate: (() => void) | undefined
+
+  public pauseTimeEntryPulls(count: number): void {
+    this.pullPauseRemaining = count
+    this.retainedPulls = 0
+    this.pullGate = new Promise<void>((resolve) => {
+      this.releasePullGate = resolve
+    })
+  }
+
+  public async waitForTimeEntryPullRelease(): Promise<void> {
+    if (this.pullPauseRemaining === 0) return
+    this.pullPauseRemaining--
+    this.retainedPulls++
+    await this.pullGate
+  }
+
+  public releaseTimeEntryPulls(): boolean {
+    const release = this.releasePullGate
+    if (!release) return false
+    this.releasePullGate = undefined
+    this.pullGate = undefined
+    release()
+    return true
+  }
+  public recordTimeEntryPullAttempt(): void {
+    this.timeEntryPullAttempts++
+  }
+
+  public recordTimeEntryFindByIdAttempt(): void {
+    this.timeEntryFindByIdAttempts++
+  }
+
+  public recordTimeEntryFindByCorrelationAttempt(): void {
+    this.timeEntryFindByCorrelationAttempts++
+  }
+
+  public startTimeEntryCreate(): void {
+    this.timeEntryCreateAttempts++
+    this.timeEntryCreatesInFlight++
+  }
+
+  public finishTimeEntryCreate(): void {
+    this.timeEntryCreatesInFlight--
+  }
+
+  public pauseNextTimeEntryCreateRequest(): void {
+    this.pauseNextTimeEntryCreate = true
+  }
+
+  public waitForTimeEntryCreateRelease(): Promise<void> {
+    if (!this.pauseNextTimeEntryCreate) return Promise.resolve()
+    this.pauseNextTimeEntryCreate = false
+    this.timeEntryCreateGate = new Promise<void>((resolve) => {
+      this.releaseTimeEntryCreateGate = resolve
+    })
+    return this.timeEntryCreateGate
+  }
+
+  public releasePausedTimeEntryCreateRequest(): boolean {
+    const release = this.releaseTimeEntryCreateGate
+    if (!release) return false
+    this.releaseTimeEntryCreateGate = undefined
+    this.timeEntryCreateGate = undefined
+    release()
+    return true
+  }
+
+  public setSimulateTimeEntryCreateResponseLoss(value: boolean): void {
+    this.simulateTimeEntryCreateResponseLoss = value
+  }
+
+  public consumeTimeEntryCreateResponseLoss(): boolean {
+    if (!this.simulateTimeEntryCreateResponseLoss) return false
+    this.simulateTimeEntryCreateResponseLoss = false
+    return true
+  }
+
+  public getTimeEntrySyncDiagnostics(): {
+    retainedPulls: number
+    pullAttempts: number
+    findByIdAttempts: number
+    findByCorrelationAttempts: number
+    createAttempts: number
+    createsInFlight: number
+    createPaused: boolean
+    timeEntryCount: number
+    partialLists: number
+    listFailures: number
+    deleteAttempts: number
+    tombstonePulls: number
+    deletePaused: boolean
+    updatePaused: boolean
+    canonicalReadFailures: number
+    updateFailures: number
+    deleteFailures: number
+    updateAttempts: number
+    entries: { id?: string; comments?: string }[]
+    remoteIds: string[]
+  } {
+    return {
+      retainedPulls: this.retainedPulls,
+      pullAttempts: this.timeEntryPullAttempts,
+      findByIdAttempts: this.timeEntryFindByIdAttempts,
+      findByCorrelationAttempts: this.timeEntryFindByCorrelationAttempts,
+      createAttempts: this.timeEntryCreateAttempts,
+      createsInFlight: this.timeEntryCreatesInFlight,
+      createPaused: Boolean(this.timeEntryCreateGate),
+      timeEntryCount: this.timeEntries.length,
+      partialLists: this.timeEntryPartialLists,
+      listFailures: this.timeEntryListFailures,
+      deleteAttempts: this.timeEntryDeleteAttempts,
+      tombstonePulls: this.tombstonePulls,
+      deletePaused: Boolean(this.deleteGate),
+      updatePaused: Boolean(this.updateGate),
+      canonicalReadFailures: this.canonicalReadFailures,
+      updateFailures: this.updateFailures,
+      deleteFailures: this.deleteFailures,
+      updateAttempts: this.updateAttempts,
+      entries: this.timeEntries.map((entry) => ({
+        id: entry.id,
+        comments: entry.comments,
+      })),
+      remoteIds: this.timeEntries.flatMap((entry) =>
+        entry.id ? [entry.id] : [],
+      ),
+    }
   }
 
   private ensureLoaded(): void {
@@ -275,6 +616,15 @@ export class FakeDatabaseStore {
     return this.timeEntries.find((entry) => entry.id === id)
   }
 
+  public findTimeEntryByCorrelationId(
+    correlationId: string,
+  ): TimeEntryDTO | undefined {
+    this.ensureLoaded()
+    return this.timeEntries.find(
+      (entry) => entry.correlationId === correlationId,
+    )
+  }
+
   public findTimeEntriesByRange(
     memberId: string,
     startDate: Date | string,
@@ -292,43 +642,13 @@ export class FakeDatabaseStore {
     })
   }
 
-  public pullTimeEntries(
-    checkpointId: string,
-    checkpointUpdatedAt: Date | undefined,
-    batchSize: number,
-  ): TimeEntryDTO[] {
-    this.ensureLoaded()
-    const sorted = [...this.timeEntries].sort((a, b) => {
-      const timeDiff = a.updatedAt.getTime() - b.updatedAt.getTime()
-      if (timeDiff !== 0) return timeDiff
-      const aId = a.id ?? ''
-      const bId = b.id ?? ''
-      if (aId < bId) return -1
-      if (aId > bId) return 1
-      return 0
-    })
-
-    let filtered = sorted
-    if (checkpointUpdatedAt && checkpointUpdatedAt.getTime() > 0) {
-      const checkTime = checkpointUpdatedAt.getTime()
-      filtered = sorted.filter((entry) => {
-        const entryTime = entry.updatedAt.getTime()
-        if (entryTime > checkTime) return true
-        if (entryTime === checkTime && checkpointId && entry.id) {
-          return entry.id > checkpointId
-        }
-        return false
-      })
-    } else if (checkpointId) {
-      const startIndex = sorted.findIndex((entry) => entry.id === checkpointId)
-      if (startIndex >= 0) {
-        filtered = sorted.slice(startIndex + 1)
-      }
-    }
-
-    return filtered.slice(0, batchSize)
+  public recordTimeEntryPullPage(items: TimeEntryDTO[]): void {
+    if (
+      this.pausedDeleteId &&
+      items.some((entry) => entry.id === this.pausedDeleteId)
+    )
+      this.tombstonePulls++
   }
-
   public saveTimeEntry(entity: TimeEntryDTO): void {
     this.ensureLoaded()
     const existingIndex = this.timeEntries.findIndex(
@@ -354,6 +674,7 @@ export class FakeDatabaseStore {
 
     const dto: TimeEntryDTO = {
       id: entity.id,
+      correlationId: entity.correlationId,
       comments: entity.comments,
       timeSpent: entity.timeSpent,
       startDate: entity.startDate,
@@ -620,6 +941,19 @@ export class FakeDatabaseStore {
   }
 
   public resetToSeed(): void {
+    this.failNextTimeEntryList = false
+    this.partialNextTimeEntryList = false
+    this.timeEntryPartialLists = 0
+    this.timeEntryListFailures = 0
+    this.timeEntryDeleteAttempts = 0
+    this.timeEntryPullAttempts = 0
+    this.timeEntryFindByIdAttempts = 0
+    this.timeEntryFindByCorrelationAttempts = 0
+    this.timeEntryCreateAttempts = 0
+    this.timeEntryCreatesInFlight = 0
+    this.releasePausedTimeEntryCreateRequest()
+    this.pauseNextTimeEntryCreate = false
+    this.simulateTimeEntryCreateResponseLoss = false
     this.timeEntries = FAKE_TIME_ENTRIES.map((e) => ({
       id: e.id,
       task: { id: e.task.id },

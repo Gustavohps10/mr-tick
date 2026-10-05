@@ -1,3 +1,4 @@
+import { SyncFailureViewModel } from '@mr-tick/shared/view-models'
 import { RxJsonSchema } from 'rxdb'
 
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
@@ -31,22 +32,32 @@ export interface AddonSourceInfo {
 }
 
 export type RecordSyncStatus =
-  'synced' | 'pending_push' | 'conflict' | 'local_only' | 'error'
+  | 'synced'
+  | 'pending_push'
+  | 'creating'
+  | 'ambiguous'
+  | 'conflict'
+  | 'local_only'
+  | 'error'
 
-export interface ConflictDataSnapshot {
-  id?: string
-  startDate?: string
-  endDate?: string | null
-  timeSpent?: number
-  comments?: string | null
-  updatedAt?: string
-  task?: { id: string }
-  activity?: { id: string; name?: string }
-}
+export type ConflictDataSnapshot = TimeEntryRemoteState
 
 export interface ConflictData {
   server?: ConflictDataSnapshot
   local?: ConflictDataSnapshot
+}
+
+export interface TimeEntryRemoteState {
+  id: string
+  task: { id: string }
+  activity: { id: string; name?: string }
+  user: { id: string; name?: string }
+  timeSpent: number
+  comments?: string | null
+  startDate?: string
+  endDate?: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface SyncTimeEntryRxDBDTO {
@@ -58,10 +69,26 @@ export interface SyncTimeEntryRxDBDTO {
 
   // ── Rastreabilidade de sincronização ─────────
   syncStatus: RecordSyncStatus
+  /** A tombstone acknowledging remote absence must never be sent as a DELETE. */
+  remoteDeleted?: boolean
+  /** Durable acknowledgement of an explicitly requested remote deletion. */
+  deletionConfirmed?: boolean
+  creationAttemptId?: string | null
+  creationState?: TimeEntryRemoteState | null
+  /** Submitted state of a confirmed write awaiting its canonical read. */
+  confirmationState?: TimeEntryRemoteState | null
+  remoteState?: TimeEntryRemoteState | null
   syncError?: string | null
+  syncFailure?: SyncFailureViewModel | null
   remoteId?: string | null
   lastPulledAt?: string | null
   lastPushedAt?: string | null
+  /**
+   * `updatedAt` do registro no destino remoto na última vez que ele foi lido ou
+   * gravado. É a versão conhecida do servidor: o conflito só existe se o
+   * servidor mudou depois dela. Nunca recebe hora do cliente.
+   */
+  remoteUpdatedAt?: string | null
 
   // ── Dados de negócio ─────────────────────────
   task: { id: string }
@@ -116,13 +143,29 @@ export const timeEntriesSyncSchema: RxJsonSchema<SyncTimeEntryRxDBDTO> = {
     _deleted: { type: 'boolean' },
     syncStatus: {
       type: 'string',
-      enum: ['synced', 'pending_push', 'conflict', 'local_only', 'error'],
+      enum: [
+        'synced',
+        'pending_push',
+        'creating',
+        'ambiguous',
+        'conflict',
+        'local_only',
+        'error',
+      ],
       maxLength: 20,
     },
+    remoteDeleted: { type: 'boolean' },
+    deletionConfirmed: { type: 'boolean' },
+    creationAttemptId: { type: ['string', 'null'], maxLength: 100 },
+    creationState: { type: ['object', 'null'] },
+    confirmationState: { type: ['object', 'null'] },
+    remoteState: { type: ['object', 'null'] },
     syncError: { type: ['string', 'null'], maxLength: 500 },
+    syncFailure: { type: ['object', 'null'] },
     remoteId: { type: ['string', 'null'], maxLength: 100 },
     lastPulledAt: { type: ['string', 'null'], format: 'date-time' },
     lastPushedAt: { type: ['string', 'null'], format: 'date-time' },
+    remoteUpdatedAt: { type: ['string', 'null'], format: 'date-time' },
     task: {
       type: 'object',
       properties: {

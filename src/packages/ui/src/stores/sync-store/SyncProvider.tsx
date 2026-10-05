@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -43,209 +44,134 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
   const bridge = useHostBridge()
   const { connections } = useDataSourceConnections()
   const queryClient = useQueryClient()
-
   const [activeStore, setActiveStore] = useState<StoreApi<SyncStore> | null>(
     null,
   )
-
-  const currentWorkspaceId = useRef<string | null>(null)
   const activeStoreRef = useRef<StoreApi<SyncStore> | null>(null)
-  activeStoreRef.current = activeStore
-
   const cacheSyncHandleRef = useRef<RxDBQueryCacheSyncHandle | null>(null)
-
   const startedConnections = useRef<
     Map<ConnectionInstanceId, { dataSourceId: string }>
   >(new Map())
+  const transitionTail = useRef<Promise<void>>(Promise.resolve())
+
+  // Opening, closing and connecting share one owner. An old teardown must finish
+  // before a new store can open the same RxDB database.
+  const enqueueTransition = useCallback((operation: () => Promise<void>) => {
+    transitionTail.current = transitionTail.current
+      .then(operation)
+      .catch((error: Error) => {
+        console.error(
+          '[SYNC][provider] Falha na transição de sincronização:',
+          error,
+        )
+      })
+  }, [])
+
+  const releaseActiveStore = useCallback(async () => {
+    const previous = activeStoreRef.current
+    activeStoreRef.current = null
+    startedConnections.current.clear()
+    cacheSyncHandleRef.current?.unsubscribe()
+    cacheSyncHandleRef.current = null
+    setActiveStore(null)
+    if (previous) await previous.getState().destroy()
+  }, [])
 
   useEffect(() => {
-    let isCancelled = false
-    const runId = Math.random().toString(36).slice(2, 8)
+    let cancelled = false
+    const workspaceId = workspace?.id
 
-    const handleWorkspaceChange = async () => {
-      const nextWorkspaceId = workspace?.id ?? null
+    enqueueTransition(async () => {
+      if (cancelled) return
+      await releaseActiveStore()
+      if (cancelled || !workspaceId) return
 
-      console.log('[SYNC][provider] handleWorkspaceChange disparado', {
-        runId,
-        nextWorkspaceId,
-        workspaceIdAnterior: currentWorkspaceId.current,
-        jaTemStoreAtiva: !!activeStoreRef.current,
+      const store = createSyncStore(
+        workspaceId,
+        bridge,
         isDevelopment,
-      })
-
-      if (
-        currentWorkspaceId.current === nextWorkspaceId &&
-        activeStoreRef.current
-      ) {
-        console.log(
-          '[SYNC][provider] mesmo workspace + store já ativa, ignorando',
-          { runId, nextWorkspaceId },
-        )
+        useMemoryStorage,
+      )
+      await store.getState().init()
+      if (cancelled || !store.getState().isInitialized) {
+        await store.getState().destroy()
         return
       }
 
-      if (activeStoreRef.current) {
-        console.log('[SYNC][provider] destruindo store anterior', { runId })
-        const storeToDestroy = activeStoreRef.current
-        activeStoreRef.current = null
-        setActiveStore(null)
-        startedConnections.current.clear()
-        if (cacheSyncHandleRef.current) {
-          cacheSyncHandleRef.current.unsubscribe()
-          cacheSyncHandleRef.current = null
-        }
-        await storeToDestroy.getState().destroy()
-        console.log('[SYNC][provider] store anterior destruída', { runId })
-      }
-
-      currentWorkspaceId.current = nextWorkspaceId
-
-      if (!nextWorkspaceId) {
-        console.log('[SYNC][provider] sem workspace selecionado, encerrando', {
-          runId,
-        })
-        return
-      }
-
-      try {
-        console.log('[SYNC][provider] criando nova store para workspace', {
-          runId,
-          nextWorkspaceId,
-        })
-
-        const isMemoryActive = useMemoryStorage ? true : false
-
-        const newStore = createSyncStore(
-          nextWorkspaceId,
-          bridge,
-          isDevelopment,
-          isMemoryActive,
-        )
-
-        console.log('[SYNC][provider] inicializando nova store...', { runId })
-        await newStore.getState().init()
-
-        if (isCancelled) {
-          console.log(
-            '[SYNC][provider] effect cancelado durante init, destruindo store criada',
-            { runId, nextWorkspaceId },
-          )
-          await newStore.getState().destroy()
-          return
-        }
-
-        if (currentWorkspaceId.current !== nextWorkspaceId) {
-          console.log(
-            '[SYNC][provider] workspace mudou durante init, destruindo store obsoleta',
-            { runId, nextWorkspaceId, current: currentWorkspaceId.current },
-          )
-          await newStore.getState().destroy()
-          return
-        }
-
-        console.log('[SYNC][provider] store pronta, ativando no context', {
-          runId,
-          nextWorkspaceId,
-        })
-        startedConnections.current.clear()
-        activeStoreRef.current = newStore
-        setActiveStore(newStore)
-
-        const db = newStore.getState().db
-        if (db) {
-          if (cacheSyncHandleRef.current) {
-            cacheSyncHandleRef.current.unsubscribe()
-          }
-          cacheSyncHandleRef.current = setupRxDBQueryCacheSync(db, queryClient)
-
-          const tempTimeEntryStore = createTimeEntryStore(bridge)
-          await tempTimeEntryStore.getState().recoverRunningEntry(db)
-          console.log('[SYNC][provider] recoverRunningEntry concluído', {
-            runId,
-          })
-        }
-      } catch (err) {
-        console.error(
-          `[SYNC][provider] Erro ao inicializar store (workspace: ${nextWorkspaceId}, runId: ${runId}):`,
-          err,
-        )
-      }
-    }
-
-    handleWorkspaceChange()
+      activeStoreRef.current = store
+      setActiveStore(store)
+      const db = store.getState().db
+      if (!db) return
+      cacheSyncHandleRef.current = setupRxDBQueryCacheSync(db, queryClient)
+      const timeEntryStore = createTimeEntryStore(bridge)
+      await timeEntryStore.getState().recoverRunningEntry(db)
+    })
 
     return () => {
-      console.log('[SYNC][provider] cleanup do effect disparado', { runId })
-      isCancelled = true
-      if (cacheSyncHandleRef.current) {
-        cacheSyncHandleRef.current.unsubscribe()
-        cacheSyncHandleRef.current = null
-      }
+      cancelled = true
+      cacheSyncHandleRef.current?.unsubscribe()
+      cacheSyncHandleRef.current = null
+      enqueueTransition(releaseActiveStore)
     }
-  }, [workspace?.id, bridge, isDevelopment, useMemoryStorage])
+  }, [
+    workspace?.id,
+    bridge,
+    isDevelopment,
+    useMemoryStorage,
+    queryClient,
+    enqueueTransition,
+    releaseActiveStore,
+  ])
 
   useEffect(() => {
-    const handleConnectionsChange = async () => {
-      const store = activeStoreRef.current
-      if (!store) return
-
+    let cancelled = false
+    const store = activeStore
+    enqueueTransition(async () => {
+      if (cancelled || !store || store !== activeStoreRef.current) return
       const { isInitialized, connectDataSource, disconnectDataSource } =
         store.getState()
       if (!isInitialized) return
 
-      for (const conn of connections) {
-        const connId = conn.connectionId
-        const isAlreadyStarted = startedConnections.current.has(connId)
-
-        if (conn.status === 'connected' && !isAlreadyStarted) {
-          if (!conn.dataSourceId) continue
-
-          startedConnections.current.set(connId, {
-            dataSourceId: conn.dataSourceId,
-          })
-
-          console.log('[SYNC] STARTING', connId)
-
-          try {
-            await connectDataSource({
-              connectionInstanceId: connId,
-              dataSourceId: conn.dataSourceId,
-            })
-          } catch (err) {
-            console.error(`[SYNC] Erro ao conectar ${connId}:`, err)
-          }
-        }
+      for (const connection of connections) {
+        if (cancelled) return
+        const id = connection.connectionId
+        if (
+          connection.status !== 'connected' ||
+          startedConnections.current.has(id) ||
+          !connection.dataSourceId
+        )
+          continue
+        startedConnections.current.set(id, {
+          dataSourceId: connection.dataSourceId,
+        })
+        await connectDataSource({
+          connectionInstanceId: id,
+          dataSourceId: connection.dataSourceId,
+        })
       }
 
-      for (const [connId] of startedConnections.current.entries()) {
-        const currentConn = connections.find((c) => c.connectionId === connId)
-
-        if (!currentConn || currentConn.status !== 'connected') {
-          startedConnections.current.delete(connId)
-
-          console.log('[SYNC] STOPPING', connId)
-
-          try {
-            await disconnectDataSource(connId)
-          } catch (err) {
-            console.error(`[SYNC] Erro ao desconectar ${connId}:`, err)
-          }
-        }
+      for (const [id] of startedConnections.current) {
+        if (cancelled) return
+        const connection = connections.find(
+          (candidate) => candidate.connectionId === id,
+        )
+        if (connection?.status === 'connected') continue
+        startedConnections.current.delete(id)
+        await disconnectDataSource(id)
       }
+    })
+    return () => {
+      cancelled = true
     }
-
-    handleConnectionsChange()
-  }, [connections, activeStore])
+  }, [connections, activeStore, enqueueTransition])
 
   if (!activeStore) return <>{children}</>
-
   return (
     <SyncStoreContext.Provider value={activeStore}>
       {children}
     </SyncStoreContext.Provider>
   )
 }
-
 const SyncStoreContext = createContext<StoreApi<SyncStore> | undefined>(
   undefined,
 )

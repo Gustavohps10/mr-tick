@@ -1,16 +1,16 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
-import { TimeEntryDTO } from '@/dtos'
+import { TimeEntryPullCheckpointDTO, TimeEntryPullPageDTO } from '@/dtos'
 
 export type PullTimeEntriesInput = {
   workspaceId: string
   connectionInstanceId: string
-  checkpoint: { updatedAt: Date; id: string }
+  checkpoint: TimeEntryPullCheckpointDTO
   batch: number
 }
 
 export interface ITimeEntriesPullUseCase {
   execute(
     input: PullTimeEntriesInput,
-  ): Promise<Either<AppError, TimeEntryDTO[]>>
+  ): Promise<Either<AppError, TimeEntryPullPageDTO>>
 }

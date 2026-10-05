@@ -2,6 +2,7 @@ import { IHostBridge } from '@mr-tick/application'
 
 import { SyncMetadataRxDBDTO } from '@/local-db/schemas/metadata-sync-schema'
 
+import { ReplicationError } from '../ReplicationError'
 import { IReplicationStrategy, ReplicationCheckpoint } from '../types'
 
 export class MetadataReplication implements IReplicationStrategy<
@@ -34,11 +35,15 @@ export class MetadataReplication implements IReplicationStrategy<
       },
     })
 
-    if (!res.isSuccess) {
-      const err = new Error(res.error ? String(res.error) : 'SYNC_PULL_FAILED')
-      Object.assign(err, { statusCode: res.statusCode, status: res.statusCode })
-      throw err
-    }
+    if (!res.isSuccess)
+      return Promise.reject(
+        new ReplicationError(res.error ? res.error : 'SYNC_PULL_FAILED', [
+          {
+            statusCode: res.statusCode,
+            messageKey: res.error ? res.error : 'SYNC_PULL_FAILED',
+          },
+        ]),
+      )
 
     if (!res.data)
       return {
