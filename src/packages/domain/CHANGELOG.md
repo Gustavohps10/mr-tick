@@ -1,5 +1,13 @@
 # @mr-tick/domain
 
+## 1.0.4
+
+### Patch Changes
+
+- Updated dependencies [df0ddc8]
+- Updated dependencies [df0ddc8]
+  - @mr-tick/shared@1.2.0
+
 ## 1.0.3
 
 ### Patch Changes
