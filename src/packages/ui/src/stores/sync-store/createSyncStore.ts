@@ -10,6 +10,7 @@ import {
   IReplicationModule,
   ReplicationModule,
 } from './module'
+import { reconcileTimeEntries } from './reconcileTimeEntries'
 import {
   dropAppStorage,
   ensurePlugins,
@@ -267,7 +268,7 @@ export const createSyncStore = (
       const { db } = get()
       if (!db || db.closed) return
 
-      const timeEntriesCol = db.collections?.timeEntries ?? db.timeEntries
+      const timeEntriesCol = db.timeEntries
       if (!timeEntriesCol) {
         console.warn(
           '[SYNC][reconcile] Coleção timeEntries ainda não disponível no db',
@@ -288,6 +289,7 @@ export const createSyncStore = (
       console.log(
         `[SYNC][reconcile] Iniciando varredura (Sweep Window: ${windowDays} dias) para ${connectionInstanceId}...`,
       )
+      let completed = false
       try {
         const startDate = new Date(Date.now() - windowDays * 86400000)
         startDate.setHours(0, 0, 0, 0)
@@ -296,59 +298,28 @@ export const createSyncStore = (
         endDate.setDate(endDate.getDate() + 1)
         endDate.setHours(23, 59, 59, 999)
 
-        const localDocs = await timeEntriesCol
-          .find({
-            selector: {
-              connectionInstanceId,
+        const result = await reconcileTimeEntries(timeEntriesCol, client, {
+          workspaceId,
+          connectionInstanceId,
+          startDate,
+          endDate,
+        })
+        if (result.isFailure()) {
+          const failure = result.failure
+          set((state) => ({
+            statuses: {
+              ...state.statuses,
+              [`timeEntries_${connectionInstanceId}`]: {
+                ...state.statuses[`timeEntries_${connectionInstanceId}`],
+                error: Object.assign(new Error(failure.messageKey), {
+                  statusCode: failure.statusCode,
+                }),
+              },
             },
-          })
-          .exec()
-
-        const windowEntries = localDocs.filter((doc) => {
-          const rawDate = doc.startDate ?? doc.createdAt
-          if (!rawDate) return false
-          const entryTime = new Date(rawDate).getTime()
-          return !Number.isNaN(entryTime) && entryTime >= startDate.getTime()
-        })
-
-        if (windowEntries.length === 0) return
-
-        const res = await client.timeEntries.listTimeEntries({
-          body: {
-            workspaceId,
-            connectionInstanceId,
-            startDate,
-            endDate,
-          },
-        })
-
-        const items = Array.isArray(res.data) ? res.data : []
-        const remoteIds = new Set<string>()
-        for (const item of items) {
-          if (item && item.id) {
-            remoteIds.add(String(item.id))
-          }
+          }))
+          return
         }
-
-        for (const localDoc of windowEntries) {
-          if (localDoc.syncStatus !== 'synced' || localDoc._deleted) continue
-
-          const remoteIdentifier = localDoc.remoteId
-          if (
-            !remoteIdentifier ||
-            remoteIdentifier.trim() === '' ||
-            remoteIdentifier.startsWith('local-')
-          ) {
-            continue
-          }
-
-          if (!remoteIds.has(String(remoteIdentifier))) {
-            console.log(
-              `[SYNC][reconcile] Removendo registro deletado remotamente: ${localDoc.id} (remoteId: ${remoteIdentifier})`,
-            )
-            await localDoc.remove()
-          }
-        }
+        completed = true
       } catch (err) {
         console.error('[SYNC][reconcile] Erro durante a varredura:', err)
       } finally {
@@ -358,7 +329,10 @@ export const createSyncStore = (
             [`timeEntries_${connectionInstanceId}`]: {
               ...state.statuses[`timeEntries_${connectionInstanceId}`],
               isReconciling: false,
-              lastReconciledAt: new Date(),
+              lastReconciledAt: completed
+                ? new Date()
+                : state.statuses[`timeEntries_${connectionInstanceId}`]
+                    .lastReconciledAt,
             },
           },
         }))

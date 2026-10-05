@@ -268,6 +268,7 @@ export function TimeEntriesTimesheetView({
     handleAcceptSuggestion,
     handleDismissSuggestion,
     handleResolveConflict,
+    handleConfirmRetryAmbiguousCreation,
     handleOpenConflictResolution,
   } = useTimeEntryMutations(db, memberIdsByConnection)
 
@@ -618,6 +619,7 @@ export function TimeEntriesTimesheetView({
       onAddNewEntry: handleAddNewEntryInModal,
       onResolveConflict: handleResolveConflict,
       onOpenConflict: handleOpenConflictResolution,
+      onConfirmRetryAmbiguousCreation: handleConfirmRetryAmbiguousCreation,
       compact,
     })
   }, [
@@ -643,6 +645,7 @@ export function TimeEntriesTimesheetView({
     handleStopTimer,
     handleAddNewEntryInModal,
     handleResolveConflict,
+    handleConfirmRetryAmbiguousCreation,
     handleOpenConflictResolution,
   ])
 

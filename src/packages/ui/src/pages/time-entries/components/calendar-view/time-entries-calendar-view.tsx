@@ -134,6 +134,7 @@ export function TimeEntriesCalendarView({
     handleAcceptSuggestion,
     handleDismissSuggestion,
     handleResolveConflict,
+    handleConfirmRetryAmbiguousCreation,
     handleOpenConflictResolution,
   } = useTimeEntryMutations(db, memberIdsByConnection)
 
@@ -300,6 +301,7 @@ export function TimeEntriesCalendarView({
       onAddNewEntry: handleAddNewEntry,
       onResolveConflict: handleResolveConflict,
       onOpenConflict: handleOpenConflictResolution,
+      onConfirmRetryAmbiguousCreation: handleConfirmRetryAmbiguousCreation,
       compact,
     })
   }, [
@@ -325,6 +327,7 @@ export function TimeEntriesCalendarView({
     handleStopTimer,
     handleAddNewEntry,
     handleResolveConflict,
+    handleConfirmRetryAmbiguousCreation,
     handleOpenConflictResolution,
   ])
 

@@ -4,6 +4,7 @@ import { TaskViewModel } from '@mr-tick/shared/view-models'
 import { mapTaskViewModelToRxDB } from '@/lib/tasks-enrichment'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 
+import { ReplicationError } from '../ReplicationError'
 import { IReplicationStrategy, ReplicationCheckpoint } from '../types'
 
 const dateToISO = (
@@ -52,11 +53,15 @@ export class TasksReplication implements IReplicationStrategy<
       },
     })
 
-    if (!res.isSuccess) {
-      const err = new Error(res.error ? String(res.error) : 'SYNC_PULL_FAILED')
-      Object.assign(err, { statusCode: res.statusCode, status: res.statusCode })
-      throw err
-    }
+    if (!res.isSuccess)
+      return Promise.reject(
+        new ReplicationError(res.error ? res.error : 'SYNC_PULL_FAILED', [
+          {
+            statusCode: res.statusCode,
+            messageKey: res.error ? res.error : 'SYNC_PULL_FAILED',
+          },
+        ]),
+      )
 
     const data: TaskViewModel[] = res.data ?? []
     if (data.length === 0) {

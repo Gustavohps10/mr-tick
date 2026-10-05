@@ -1,5 +1,25 @@
+import type { Page } from '@playwright/test'
+
 import { expect, test } from './fixtures/electron-fixture'
 
+async function openDetectedConflict(page: Page) {
+  const dialog = page.getByRole('dialog', {
+    name: 'Conflito de Sincronização',
+    exact: true,
+  })
+  // Automatic push may have detected the conflict before a manual sync can be opened.
+  // Observe the conflict itself and use the row's action, without toggling another popover.
+  await expect(async () => {
+    if (await dialog.isVisible()) return
+    const conflictButton = page
+      .getByRole('button', { name: 'Conflito', exact: true })
+      .first()
+    await expect(conflictButton).toBeVisible({ timeout: 2000 })
+    await conflictButton.click()
+    await expect(dialog).toBeVisible({ timeout: 2000 })
+  }).toPass({ timeout: 20000 })
+  return dialog
+}
 test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-04, SYNC-05)', () => {
   test('deve detectar conflito ao editar um apontamento alterado remotamente e permitir resolução', async ({
     page,
@@ -61,38 +81,7 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
     // Aguarda o botão salvar sumir (indicando que saiu do modo de edição)
     await expect(saveBtn).not.toBeVisible({ timeout: 10000 })
 
-    // 6. Força Sincronização
-    await page.keyboard.press('Escape')
-    const syncIndicatorPopover = page
-      .locator('[data-testid="sync-status-indicator"]')
-      .first()
-    await expect(syncIndicatorPopover).toBeVisible()
-    await syncIndicatorPopover.click({ force: true })
-
-    const forceSyncBtn = page
-      .getByRole('button', { name: 'Sincronizar tudo' })
-      .first()
-    await expect(forceSyncBtn).toBeVisible()
-    await forceSyncBtn.click({ force: true })
-
-    // 7. Espera o botão de resolver conflito aparecer e abre o modal
-    const resolverBtn = page.getByRole('button', { name: 'Resolver' }).first()
-    const conflictModal = page.locator(
-      '[role="dialog"]:has-text("Conflito de Sincronização")',
-    )
-
-    await expect(async () => {
-      const isModalVisible = await conflictModal.isVisible()
-      if (isModalVisible) return
-
-      const isResolverVisible = await resolverBtn.isVisible()
-      if (!isResolverVisible) {
-        await syncIndicatorPopover.click({ force: true })
-      }
-      await expect(resolverBtn).toBeVisible({ timeout: 2000 })
-      await resolverBtn.click({ force: true })
-      await expect(conflictModal).toBeVisible({ timeout: 3000 })
-    }).toPass({ timeout: 20000 })
+    const conflictModal = await openDetectedConflict(page)
 
     // 8. Escolhe "Selecionar Tudo Local" e "Aceitar Mesclagem"
     const keepLocalBtn = conflictModal.locator(
@@ -106,6 +95,11 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
     )
     await expect(acceptBtn).toBeVisible({ timeout: 5000 })
     await acceptBtn.click()
+
+    await expect(conflictModal).not.toBeVisible()
+    await expect(
+      page.getByText('Local Edit Overwrite E2E', { exact: true }).first(),
+    ).toBeVisible()
 
     // 9. Conflito resolvido, verifica se o estado voltou a Sincronizado
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
@@ -168,45 +162,7 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
     await saveBtn.click()
     await expect(saveBtn).not.toBeVisible({ timeout: 10000 })
 
-    // 5. Força sincronização para detectar conflito
-    await page.keyboard.press('Escape')
-    const syncIndicatorPopover = page
-      .locator('[data-testid="sync-status-indicator"]')
-      .first()
-    await expect(syncIndicatorPopover).toBeVisible()
-
-    const forceSyncBtn = page
-      .getByRole('button', { name: 'Sincronizar tudo' })
-      .first()
-
-    await expect(async () => {
-      const isVisible = await forceSyncBtn.isVisible()
-      if (!isVisible) {
-        await syncIndicatorPopover.click({ force: true })
-      }
-      expect(await forceSyncBtn.isVisible()).toBe(true)
-    }).toPass({ timeout: 10000 })
-
-    await forceSyncBtn.click({ force: true })
-
-    // 6. Abre modal de resolução de conflito
-    const resolverBtn = page.getByRole('button', { name: 'Resolver' }).first()
-    const conflictModal = page.locator(
-      '[role="dialog"]:has-text("Conflito de Sincronização")',
-    )
-
-    await expect(async () => {
-      const isModalVisible = await conflictModal.isVisible()
-      if (isModalVisible) return
-
-      const isResolverVisible = await resolverBtn.isVisible()
-      if (!isResolverVisible) {
-        await syncIndicatorPopover.click({ force: true })
-      }
-      await expect(resolverBtn).toBeVisible({ timeout: 2000 })
-      await resolverBtn.click({ force: true })
-      await expect(conflictModal).toBeVisible({ timeout: 3000 })
-    }).toPass({ timeout: 20000 })
+    const conflictModal = await openDetectedConflict(page)
 
     // 7. Escolhe "Selecionar Tudo Remoto" e "Aceitar Mesclagem"
     const keepRemoteBtn = conflictModal.locator(

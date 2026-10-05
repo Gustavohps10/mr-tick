@@ -47,6 +47,10 @@ export class ReplicationModule<
     },
   ) {}
 
+  private async documentError(): Promise<Error | null> {
+    if (!this.strategy.getDocumentError) return null
+    return this.strategy.getDocumentError()
+  }
   async start() {
     if (this.instance) return
 
@@ -70,7 +74,10 @@ export class ReplicationModule<
           checkpoint: ReplicationCheckpoint | undefined,
           batch: number,
         ) => {
-          this.options.onStatusChange({ isPulling: true, error: null })
+          this.options.onStatusChange({
+            isPulling: true,
+            error: await this.documentError(),
+          })
           try {
             const result = await this.strategy.pull(checkpoint, batch)
             this.options.onStatusChange({
@@ -78,7 +85,7 @@ export class ReplicationModule<
               lastPulledAt: new Date(),
               lastReplication: new Date(),
               lastPullResult: 'success',
-              error: null,
+              error: await this.documentError(),
             })
             return result
           } catch (err) {
@@ -97,20 +104,26 @@ export class ReplicationModule<
       replicationConfig.push = {
         batchSize: 20,
         handler: async (rows: RxReplicationWriteToMasterRow<DocType>[]) => {
-          this.options.onStatusChange({ isPushing: true, error: null })
+          this.options.onStatusChange({
+            isPushing: true,
+            error: await this.documentError(),
+          })
           try {
             const result = await this.strategy.push(rows)
 
-            const hasErrors = result.length > 0
+            const documentError = await this.documentError()
+            const hasErrors = documentError !== null || result.length > 0
 
             this.options.onStatusChange({
               isPushing: false,
               lastPushedAt: new Date(),
               lastReplication: new Date(),
               lastPushResult: hasErrors ? 'error' : 'success',
-              error: hasErrors
-                ? new Error('Alguns registros não puderam ser enviados')
-                : null,
+              error: documentError
+                ? documentError
+                : hasErrors
+                  ? new Error('Alguns registros não puderam ser enviados')
+                  : null,
             })
             return result
           } catch (err) {
@@ -170,10 +183,16 @@ export class ReplicationModule<
     }
 
     if (shouldPull) {
-      this.options.onStatusChange({ isPulling: true, error: null })
+      this.options.onStatusChange({
+        isPulling: true,
+        error: await this.documentError(),
+      })
     }
     if (shouldPush) {
-      this.options.onStatusChange({ isPushing: true, error: null })
+      this.options.onStatusChange({
+        isPushing: true,
+        error: await this.documentError(),
+      })
     }
 
     try {

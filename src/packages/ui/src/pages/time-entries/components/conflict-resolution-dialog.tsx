@@ -33,21 +33,16 @@ import { useWorkspaceConflicts } from '@/hooks/queries/use-workspace-conflicts'
 import { cn } from '@/lib/utils'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import {
+  ConflictFieldSelection,
+  ConflictResolutionSide,
+  resolveTimeEntryConflict,
+} from '@/pages/time-entries/lib/resolve-time-entry-conflict'
+import {
   decimalToHMS,
   SuggestionRow,
 } from '@/pages/time-entries/lib/time-entries-utils'
 import { useConflictModalStore } from '@/stores/conflictModalStore'
 import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
-
-export type ConflictResolutionSide = 'local' | 'remote'
-
-export interface ConflictFieldSelection {
-  periodAndDuration: ConflictResolutionSide
-  comments: ConflictResolutionSide
-  task: ConflictResolutionSide
-  activity: ConflictResolutionSide
-}
-
 const DEFAULT_SELECTION: ConflictFieldSelection = {
   periodAndDuration: 'local',
   comments: 'local',
@@ -226,57 +221,19 @@ export function GlobalConflictResolutionDialog() {
 
       const docData = doc.toMutableJSON()
 
-      const chosenDuration =
-        selection.periodAndDuration === 'local' ? localDuration : serverDuration
-      const chosenComments =
-        selection.comments === 'local' ? localComments : serverComments
-      const chosenStartDate =
-        selection.periodAndDuration === 'local'
-          ? localStartDate
-          : serverStartDate
-      const chosenEndDate =
-        selection.periodAndDuration === 'local' ? localEndDate : serverEndDate
-      const chosenTaskId =
-        selection.task === 'local' ? localTaskId : serverTaskId
-      const chosenActivityId =
-        selection.activity === 'local' ? localActivityId : serverActivityId
-      const chosenActivityName =
-        selection.activity === 'local' ? localActivityName : serverActivityName
-
-      const hasAnyLocalSelection =
-        selection.periodAndDuration === 'local' ||
-        selection.comments === 'local' ||
-        selection.task === 'local' ||
-        selection.activity === 'local'
-
-      const updatedDoc = await doc.incrementalModify((draft) => {
-        draft.timeSpent = chosenDuration
-        draft.comments = chosenComments
-
-        if (chosenStartDate !== undefined) {
-          draft.startDate = chosenStartDate
-        }
-        draft.endDate = chosenEndDate
-
-        if (chosenTaskId) {
-          draft.task = { id: chosenTaskId }
-        }
-        if (chosenActivityId) {
-          draft.activity = {
-            id: chosenActivityId,
-            ...(chosenActivityName ? { name: chosenActivityName } : {}),
-          }
-        }
-
-        if (hasAnyLocalSelection) {
-          draft.syncStatus = 'pending_push'
-        } else {
-          draft.syncStatus = 'synced'
-          draft.conflictData = undefined
-        }
-        draft.updatedAt = new Date().toISOString()
-        return draft
-      })
+      if (!serverSnapshot) {
+        toast.error('Snapshot remoto indisponível para resolução de conflito')
+        return
+      }
+      const updatedDoc = await doc.incrementalModify((draft) =>
+        resolveTimeEntryConflict(draft, serverSnapshot, selection),
+      )
+      if (updatedDoc.syncStatus === 'conflict') {
+        toast.error(
+          'O conflito mudou. Revise os dados atuais antes de resolver.',
+        )
+        return
+      }
 
       const updatedJson = updatedDoc.toMutableJSON()
       toast.success('Conflito mesclado com sucesso!')
@@ -303,7 +260,7 @@ export function GlobalConflictResolutionDialog() {
       bridge.events.emit('time-entry:sync', updatedJson)
       bridge.events.emit('time-entry:conflict-resolved', updatedJson)
 
-      if (hasAnyLocalSelection && forceSync) {
+      if (updatedJson.syncStatus === 'pending_push' && forceSync) {
         await forceSync(docData.connectionInstanceId, 'push')
       }
 

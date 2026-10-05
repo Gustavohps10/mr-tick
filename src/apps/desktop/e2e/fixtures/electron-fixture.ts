@@ -3,12 +3,9 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
   rmSync,
   symlinkSync,
-  writeFileSync,
 } from 'node:fs'
-import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -25,24 +22,7 @@ const currentDir = dirname(currentFilePath)
 const desktopRoot = resolve(currentDir, '../..')
 
 function getElectronUserDataPath(): string {
-  const platform = process.platform
-
-  switch (platform) {
-    case 'win32': {
-      const appData = process.env.APPDATA
-      if (appData) return join(appData, 'mr-tick')
-      return join(homedir(), 'AppData', 'Roaming', 'mr-tick')
-    }
-    case 'darwin':
-      return join(homedir(), 'Library', 'Application Support', 'mr-tick')
-    case 'linux': {
-      const xdgConfig = process.env.XDG_CONFIG_HOME
-      if (xdgConfig) return join(xdgConfig, 'mr-tick')
-      return join(homedir(), '.config', 'mr-tick')
-    }
-    default:
-      return join(homedir(), '.config', 'mr-tick')
-  }
+  return resolve(desktopRoot, 'test-results', 'electron-user-data')
 }
 
 function cleanDirectoryIfExists(dirPath: string): void {
@@ -69,69 +49,6 @@ function ensureSeedWorkspaces(): void {
   copyFileSync(seedPath, targetWorkspacesFile)
 }
 
-function syncDevAddonManifest(addonDir: string): void {
-  const manifestPath = join(addonDir, 'manifest.yaml')
-  if (!existsSync(manifestPath)) return
-
-  const desktopPkgPath = resolve(desktopRoot, 'package.json')
-  const addonPkgPath = join(addonDir, 'package.json')
-
-  let appVersion: string | null = null
-  let addonVersion: string | null = null
-
-  if (existsSync(desktopPkgPath)) {
-    try {
-      const raw = readFileSync(desktopPkgPath, 'utf-8')
-      const match = raw.match(/"version"\s*:\s*"([^"]+)"/)
-      if (match && match[1]) appVersion = match[1].trim()
-    } catch {
-      // silencia
-    }
-  }
-
-  if (existsSync(addonPkgPath)) {
-    try {
-      const raw = readFileSync(addonPkgPath, 'utf-8')
-      const match = raw.match(/"version"\s*:\s*"([^"]+)"/)
-      if (match && match[1]) addonVersion = match[1].trim()
-    } catch {
-      // silencia
-    }
-  }
-
-  if (!appVersion && !addonVersion) return
-
-  try {
-    const content = readFileSync(manifestPath, 'utf-8')
-    let updatedContent = content
-
-    if (addonVersion) {
-      updatedContent = updatedContent.replace(
-        /(version:\s*)['"]?[^'"\r\n]+['"]?/,
-        `$1${addonVersion}`,
-      )
-    }
-
-    const hasUniversalApiVersion =
-      /(?:requiredApiVersion|RequiredApiVersion)\s*:\s*['"]?(-1|\*)['"]?/.test(
-        content,
-      )
-
-    if (appVersion && !hasUniversalApiVersion) {
-      updatedContent = updatedContent.replace(
-        /(requiredApiVersion:\s*)['"]?[^'"\r\n]+['"]?/,
-        `$1'>=${appVersion}'`,
-      )
-    }
-
-    if (updatedContent === content) return
-
-    writeFileSync(manifestPath, updatedContent, 'utf-8')
-  } catch {
-    // silencia
-  }
-}
-
 function ensureTestAddon(): void {
   const userDataPath = getElectronUserDataPath()
   const addonsDir = join(userDataPath, 'addons')
@@ -142,8 +59,6 @@ function ensureTestAddon(): void {
   )
 
   if (!existsSync(sourceAddonDir)) return
-
-  syncDevAddonManifest(sourceAddonDir)
 
   mkdirSync(addonsDir, { recursive: true })
 
@@ -186,6 +101,7 @@ export const test = baseTest.extend<ElectronTestFixtures>({
         NODE_ENV: 'test',
         FAKE_DB_IN_MEMORY: 'true',
         PLAYWRIGHT_TEST: '1',
+        MR_TICK_TEST_USER_DATA_DIR: getElectronUserDataPath(),
       },
     })
 

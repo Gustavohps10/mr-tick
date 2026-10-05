@@ -87,6 +87,7 @@ export interface CreateColumnsOptions {
     resolution: 'local' | 'remote',
   ) => Promise<void> | void
   onOpenConflict?: (row: SuggestionRow) => void
+  onConfirmRetryAmbiguousCreation?: (rowId: string) => Promise<void> | void
   compact?: boolean
 }
 
@@ -280,6 +281,7 @@ export function createTimeEntriesColumns(
     onAddNewEntry,
     onResolveConflict,
     onOpenConflict,
+    onConfirmRetryAmbiguousCreation,
     compact = false,
   } = options
 
@@ -748,6 +750,7 @@ export function createTimeEntriesColumns(
             isGroupMaster={isGroupMaster}
             onResolveConflict={onResolveConflict}
             onOpenConflict={onOpenConflict}
+            onConfirmRetryAmbiguousCreation={onConfirmRetryAmbiguousCreation}
             compact={compact}
           />
         )

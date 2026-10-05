@@ -8,7 +8,11 @@ import { SyncMetadataRxDBDTO } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 
-export type ReplicationCheckpoint = { updatedAt: string; id: string }
+export type ReplicationCheckpoint = {
+  updatedAt: string
+  id: string
+  cursor?: string
+}
 
 export type SyncReplicationDoc =
   SyncMetadataRxDBDTO | SyncTaskRxDBDTO | SyncTimeEntryRxDBDTO
@@ -44,6 +48,8 @@ export interface RxReplicationWriteToMasterRow<RxDocType> {
 }
 
 export interface IReplicationStrategy<T, C = ReplicationCheckpoint> {
+  /** Durable document failures remain visible even when RxDB acknowledges the batch. */
+  getDocumentError?: () => Promise<Error | null>
   pull: (
     checkpoint: C | undefined,
     batchSize: number,

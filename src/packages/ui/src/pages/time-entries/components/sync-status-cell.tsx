@@ -3,8 +3,6 @@
 import { format, parseISO } from 'date-fns'
 import {
   AlertTriangle,
-  ArrowDown,
-  ArrowUp,
   CloudAlert,
   CloudOff,
   Lightbulb,
@@ -13,6 +11,18 @@ import {
 } from 'lucide-react'
 import React from 'react'
 
+import { LottieJumpArrow } from '@/components/lottie-jump-arrow'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -32,6 +42,7 @@ export interface SyncStatusCellProps {
     resolution: 'local' | 'remote',
   ) => Promise<void> | void
   onOpenConflict?: (row: SuggestionRow) => void
+  onConfirmRetryAmbiguousCreation?: (rowId: string) => Promise<void> | void
   compact?: boolean
 }
 
@@ -50,8 +61,10 @@ export function SyncStatusCell({
   original,
   isGroupMaster,
   onOpenConflict,
+  onConfirmRetryAmbiguousCreation,
   compact = false,
 }: SyncStatusCellProps) {
+  const [isAmbiguousRetryOpen, setIsAmbiguousRetryOpen] = React.useState(false)
   const openConflictModal = useConflictModalStore(
     (state) => state.openConflictModal,
   )
@@ -195,6 +208,64 @@ export function SyncStatusCell({
     )
   }
 
+  if (original.syncStatus === 'ambiguous') {
+    return (
+      <div className="flex justify-center">
+        <AlertDialog
+          open={isAmbiguousRetryOpen}
+          onOpenChange={setIsAmbiguousRetryOpen}
+        >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AlertDialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="sync-status-creation-ambiguous"
+                  className="border-destructive/50 text-destructive h-6 gap-1 px-2 text-[10px]"
+                >
+                  <AlertTriangle className="h-3 w-3" />
+                  {compact ? 'INCERTO' : 'Criação incerta'}
+                </Button>
+              </AlertDialogTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs text-xs">
+              <p className="font-semibold">Resultado da criação incerto</p>
+              <p>{original.syncError}</p>
+            </TooltipContent>
+          </Tooltip>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Confirmar nova tentativa de criação?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                O servidor pode ter criado o apontamento antes da falha de
+                comunicação. Verifique no servidor remoto se ele não existe.
+                Continue somente se confirmou que a criação não foi concluída;
+                caso contrário, poderá gerar um duplicado.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              {onConfirmRetryAmbiguousCreation && (
+                <AlertDialogAction
+                  data-testid="confirm-retry-ambiguous-create"
+                  onClick={() =>
+                    void onConfirmRetryAmbiguousCreation(original.id)
+                  }
+                >
+                  Confirmar ausência e criar
+                </AlertDialogAction>
+              )}
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    )
+  }
+
   if (hasTaskAndConn && isMissingActivity) {
     return (
       <div className="flex justify-center">
@@ -249,6 +320,7 @@ export function SyncStatusCell({
 
   // Painel bidirecional de sincronização (Pull ↓ e Push ↑)
   const hasPulled = Boolean(original.lastPulledAt)
+  const isCreating = original.syncStatus === 'creating'
   const isPendingPush = original.syncStatus === 'pending_push'
   const isSyncError = original.syncStatus === 'error'
   const hasPushed =
@@ -272,12 +344,19 @@ export function SyncStatusCell({
         color: 'text-destructive',
       }
     }
+    if (isCreating) {
+      return {
+        title: 'Enviando apontamento (Push)',
+        detail: 'A criação no servidor remoto está em andamento.',
+        color: 'text-emerald-500',
+      }
+    }
     if (isPendingPush) {
       return {
         title: 'Preparado para Envio (Push)',
         detail:
           'Apontamento vinculado à tarefa remota. Alterações locais aguardando envio.',
-        color: 'animate-pulse text-amber-500',
+        color: 'text-amber-500',
       }
     }
     if (hasPushed) {
@@ -296,17 +375,19 @@ export function SyncStatusCell({
 
   const pushTestId = isSyncError
     ? 'sync-status-error'
-    : isPendingPush
-      ? 'sync-status-pending-push'
-      : hasPushed
-        ? 'sync-status-synced'
-        : 'sync-status-unpushed'
+    : isCreating
+      ? 'sync-status-creating'
+      : isPendingPush
+        ? 'sync-status-pending-push'
+        : hasPushed
+          ? 'sync-status-synced'
+          : 'sync-status-unpushed'
 
   return (
     <div
       className={cn(
         'flex items-center justify-center',
-        compact ? 'gap-0.5' : 'gap-1.5',
+        compact ? 'gap-0.5' : 'gap-1',
       )}
     >
       {/* Indicador Pull (↓) */}
@@ -320,7 +401,15 @@ export function SyncStatusCell({
                 : 'text-muted-foreground/30',
             )}
           >
-            <ArrowDown className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+            <LottieJumpArrow
+              direction="down"
+              style={{ width: 8 }}
+              className={cn(
+                hasPulled
+                  ? 'text-emerald-500/90 hover:text-emerald-500'
+                  : 'text-muted-foreground/30',
+              )}
+            />
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
@@ -330,15 +419,6 @@ export function SyncStatusCell({
           </p>
         </TooltipContent>
       </Tooltip>
-
-      <span
-        className={cn(
-          'text-muted-foreground/30 select-none',
-          compact ? 'text-[6px]' : 'text-[8px]',
-        )}
-      >
-        •
-      </span>
 
       {/* Indicador Push (↑) */}
       <Tooltip>
@@ -353,7 +433,12 @@ export function SyncStatusCell({
             {isSyncError ? (
               <XCircle className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
             ) : (
-              <ArrowUp className={cn(compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+              <LottieJumpArrow
+                direction="up"
+                animating={isCreating}
+                style={{ width: 8 }}
+                className={pushInfo.color}
+              />
             )}
           </span>
         </TooltipTrigger>
