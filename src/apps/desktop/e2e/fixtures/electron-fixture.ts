@@ -21,8 +21,13 @@ const currentFilePath = fileURLToPath(import.meta.url)
 const currentDir = dirname(currentFilePath)
 const desktopRoot = resolve(currentDir, '../..')
 
-function getElectronUserDataPath(): string {
-  return resolve(desktopRoot, 'test-results', 'electron-user-data')
+function getElectronUserDataPath(workerIndex: number): string {
+  return resolve(
+    desktopRoot,
+    'test-results',
+    'electron-user-data',
+    `worker-${workerIndex}`,
+  )
 }
 
 function cleanDirectoryIfExists(dirPath: string): void {
@@ -34,14 +39,12 @@ function cleanDirectoryIfExists(dirPath: string): void {
   }
 }
 
-function cleanTestStorage(): void {
-  const userDataPath = getElectronUserDataPath()
+function cleanTestStorage(userDataPath: string): void {
   cleanDirectoryIfExists(join(userDataPath, 'IndexedDB'))
   cleanDirectoryIfExists(join(userDataPath, 'Local Storage'))
 }
 
-function ensureSeedWorkspaces(): void {
-  const userDataPath = getElectronUserDataPath()
+function ensureSeedWorkspaces(userDataPath: string): void {
   const targetWorkspacesFile = join(userDataPath, 'workspaces.json')
 
   mkdirSync(userDataPath, { recursive: true })
@@ -49,8 +52,7 @@ function ensureSeedWorkspaces(): void {
   copyFileSync(seedPath, targetWorkspacesFile)
 }
 
-function ensureTestAddon(): void {
-  const userDataPath = getElectronUserDataPath()
+function ensureTestAddon(userDataPath: string): void {
   const addonsDir = join(userDataPath, 'addons')
   const targetAddonDir = join(addonsDir, 'mr-tick-datasource-fake')
   const sourceAddonDir = resolve(
@@ -86,22 +88,23 @@ interface ElectronTestFixtures {
 
 export const test = baseTest.extend<ElectronTestFixtures>({
   electronApp: async ({}, use, testInfo) => {
-    cleanTestStorage()
-    ensureSeedWorkspaces()
-    ensureTestAddon()
+    const userDataPath = getElectronUserDataPath(testInfo.workerIndex)
+    cleanTestStorage(userDataPath)
+    ensureSeedWorkspaces(userDataPath)
+    ensureTestAddon(userDataPath)
 
     const isVerbose = process.env.E2E_VERBOSE === 'true'
     const logs: string[] = []
 
     const app = await electronLauncher.launch({
-      args: ['.', '--window-size=1600,900'],
+      args: ['.', '--window-size=1600,900', `--user-data-dir=${userDataPath}`],
       cwd: desktopRoot,
       env: {
         ...process.env,
         NODE_ENV: 'test',
         FAKE_DB_IN_MEMORY: 'true',
         PLAYWRIGHT_TEST: '1',
-        MR_TICK_TEST_USER_DATA_DIR: getElectronUserDataPath(),
+        MR_TICK_TEST_USER_DATA_DIR: userDataPath,
       },
     })
 

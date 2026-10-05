@@ -7,7 +7,11 @@ export default defineConfig({
     timeout: 10000,
   },
   fullyParallel: false,
-  workers: 1,
+  workers: process.env.CI
+    ? 2
+    : process.env.WORKERS
+      ? Number(process.env.WORKERS)
+      : 2,
   forbidOnly: Boolean(process.env.CI),
   retries: 4,
   reporter: [
