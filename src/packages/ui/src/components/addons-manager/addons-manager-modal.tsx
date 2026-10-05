@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { useHostBridge } from '@/hooks/use-host-bridge'
-import { cn } from '@/lib'
+import { cn } from '@/lib/utils'
 
 import { AddonInstallModal, AddonInstallTarget } from './addon-install-modal'
 import { AddonSettingsRenderer } from './addon-settings-renderer'

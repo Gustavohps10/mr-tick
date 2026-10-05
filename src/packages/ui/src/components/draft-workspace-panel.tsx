@@ -18,7 +18,7 @@ import { toast } from 'sonner'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui'
 import { useWorkspace, workspaceKeys } from '@/contexts/WorkspaceContext'
 import { useHostBridge } from '@/hooks'
-import { cn } from '@/lib'
+import { cn } from '@/lib/utils'
 import { dropWorkspaceStorage } from '@/stores/syncStore'
 
 export function DraftWorkspacesPanel({

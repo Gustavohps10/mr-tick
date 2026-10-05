@@ -1,6 +1,6 @@
 'use client'
 
-import { Separator } from '@mr-tick/ui/components'
+import { Separator } from '@mr-tick/ui/separator'
 import { BookOpenTextIcon, Github, Star } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'

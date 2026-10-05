@@ -34,7 +34,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { resolveEntityMapping } from '@/hooks/use-field-mappings'
-import { cn } from '@/lib'
+import { cn } from '@/lib/utils'
 import { SyncMetadataItem } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'

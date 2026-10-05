@@ -1,11 +1,7 @@
 import '@/renderer/index.css'
 
 import type { EnvironmentInfo } from '@mr-tick/application'
-import {
-  AddonThemeBridge,
-  AddonToastBridge,
-  Toaster,
-} from '@mr-tick/ui/components'
+import { AddonThemeBridge, AddonToastBridge } from '@mr-tick/ui/components'
 import { queryClient } from '@mr-tick/ui/lib'
 import {
   EnvironmentProvider,
@@ -14,6 +10,7 @@ import {
   ThemeProvider,
   TooltipProvider,
 } from '@mr-tick/ui/providers'
+import { Toaster } from '@mr-tick/ui/sonner'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { NuqsAdapter } from 'nuqs/adapters/react-router/v6'
 import { useEffect, useState } from 'react'

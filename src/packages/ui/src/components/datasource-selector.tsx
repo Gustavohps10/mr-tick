@@ -4,7 +4,7 @@ import { AddonManifest } from '@mr-tick/application'
 import { Check } from 'lucide-react'
 
 import { Badge, Button, ScrollArea } from '@/components/ui'
-import { cn } from '@/lib'
+import { cn } from '@/lib/utils'
 
 export function DataSourceSelector({
   addons,

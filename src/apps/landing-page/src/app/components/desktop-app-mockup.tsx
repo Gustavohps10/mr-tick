@@ -12,13 +12,10 @@ import {
   Header,
   PageHeaderBreadcrumb,
   TitleBar,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
   UltimateTimeTracker,
 } from '@mr-tick/ui/components'
 import { useCurrentWidgetPosition } from '@mr-tick/ui/hooks'
-import { cn, queryClient } from '@mr-tick/ui/lib'
+import { queryClient } from '@mr-tick/ui/lib'
 import { Metrics, TimeEntries } from '@mr-tick/ui/pages'
 import {
   DataSourceConnectionsProvider,
@@ -31,6 +28,8 @@ import {
   TooltipProvider,
   WorkspaceProvider,
 } from '@mr-tick/ui/providers'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@mr-tick/ui/tooltip'
+import { cn } from '@mr-tick/ui/utils'
 import { QueryClientProvider } from '@tanstack/react-query'
 import {
   CalendarDays,

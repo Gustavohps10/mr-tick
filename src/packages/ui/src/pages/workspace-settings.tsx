@@ -28,7 +28,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { cn } from '@/lib'
+import { cn } from '@/lib/utils'
 import { useSyncDrop } from '@/stores/syncStore'
 
 // ---------------------------------------------------------------------------

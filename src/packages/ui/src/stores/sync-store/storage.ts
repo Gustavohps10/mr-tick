@@ -1,4 +1,5 @@
 import { addRxPlugin, createRxDatabase, RXDB_VERSION, RxError } from 'rxdb'
+import { RxDBLeaderElectionPlugin } from 'rxdb/plugins/leader-election'
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { getRxStorageMemory } from 'rxdb/plugins/storage-memory'
 import { wrappedValidateAjvStorage } from 'rxdb/plugins/validate-ajv'
@@ -56,8 +57,6 @@ export const ensurePlugins = async (isDevelopment: boolean): Promise<void> => {
   if (!leaderElectionPluginPromise) {
     leaderElectionPluginPromise = (async () => {
       console.log('[SYNC][plugins] carregando RxDBLeaderElectionPlugin')
-      const { RxDBLeaderElectionPlugin } =
-        await import('rxdb/plugins/leader-election')
       addRxPlugin(RxDBLeaderElectionPlugin)
       console.log(
         '[SYNC][plugins] RxDBLeaderElectionPlugin carregado com sucesso',

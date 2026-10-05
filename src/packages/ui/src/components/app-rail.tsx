@@ -16,7 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useHostBridge } from '@/hooks'
 import { useTimerSettings } from '@/hooks/use-timer-settings'
-import { cn } from '@/lib'
+import { cn } from '@/lib/utils'
 
 const sidebarButtonVariants = cva(
   'group relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg shadow-sm transition-colors duration-150',
