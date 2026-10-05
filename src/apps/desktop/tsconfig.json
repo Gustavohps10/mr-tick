@@ -9,8 +9,7 @@
       "@mr-tick/IoC": ["../../packages/IoC.ts"],
       "@mr-tick/application/*": ["../../packages/application/src/*"],
       "@mr-tick/shared/*": ["../../packages/shared/src/*"],
-      "@mr-tick/adapters/*": ["../../packages/adapters/src/*"],
-      "@mr-tick/ui/*": ["../../packages/ui/src/*"]
+      "@mr-tick/adapters/*": ["../../packages/adapters/src/*"]
     },
     "types": ["electron-vite/node", "node"]
   },
@@ -21,7 +20,8 @@
     "src/renderer/**/*",
     "src/renderer/@types",
     "../../packages/IoC.ts",
-    "../sdk/package.json"
+    "../sdk/package.json",
+    "../../packages/ui/package.json"
   ],
   "references": [
     { "path": "../../packages/application" },

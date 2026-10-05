@@ -1,6 +1,6 @@
 'use client'
 
-import { Button } from '@mr-tick/ui/components'
+import { Button } from '@mr-tick/ui/button'
 import {
   ArrowRight,
   Download,

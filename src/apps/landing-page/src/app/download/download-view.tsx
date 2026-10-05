@@ -6,11 +6,9 @@ import {
   CommandGroup,
   CommandItem,
   CommandList,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@mr-tick/ui/components'
-import { cn } from '@mr-tick/ui/lib'
+} from '@mr-tick/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@mr-tick/ui/popover'
+import { cn } from '@mr-tick/ui/utils'
 import {
   AlertTriangle,
   ArrowUpRight,

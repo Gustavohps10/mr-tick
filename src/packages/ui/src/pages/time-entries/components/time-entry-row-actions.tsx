@@ -21,7 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib'
+import { cn } from '@/lib/utils'
 import { SuggestionRow } from '@/pages/time-entries/lib/time-entries-utils'
 
 interface TimeEntryRowActionsProps {

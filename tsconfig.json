@@ -18,9 +18,6 @@
       "@mr-tick/sdk": ["src/apps/sdk/src"],
       "@mr-tick/sdk/*": ["src/apps/sdk/src/*"],
 
-      "@mr-tick/ui": ["src/packages/ui/src"],
-      "@mr-tick/ui/*": ["src/packages/ui/src/*"],
-
       "@/*": [
         "src/packages/ui/src/*",
         "src/packages/application/src/*",

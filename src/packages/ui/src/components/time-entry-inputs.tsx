@@ -13,7 +13,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 
 import { Input } from '@/components/ui/input'
-import { cn } from '@/lib'
+import { cn } from '@/lib/utils'
 
 const parseFlexTime = (val: string): number | null => {
   if (!val) return 0

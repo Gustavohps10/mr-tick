@@ -9,7 +9,9 @@
     "dist",
     "test",
     "**/*.spec.ts",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "**/*.spec.tsx",
+    "**/*.test.tsx"
   ],
   "compilerOptions": {
     "composite": false,

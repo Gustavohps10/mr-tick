@@ -54,7 +54,7 @@ import { Button, Input, Label, Progress, Textarea } from '@/components/ui'
 import { DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { workspaceKeys } from '@/contexts/WorkspaceContext'
 import { useHostBridge } from '@/hooks'
-import { cn } from '@/lib'
+import { cn } from '@/lib/utils'
 
 // ---------------------------------------------------------------------------
 // Schemas

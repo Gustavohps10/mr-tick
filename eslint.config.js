@@ -14,6 +14,7 @@ export default defineConfig([
   {
     ignores: [
       '**/node_modules/**',
+      '**/.temp/**',
       '**/dist/**',
       '**/out/**',
       '**/.next/**',

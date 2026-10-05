@@ -2,15 +2,14 @@ import image from '@rollup/plugin-image'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
-import { readdirSync } from 'fs'
 import { resolve } from 'path'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 
-const uiSubpaths = readdirSync(resolve(__dirname, '../../packages/ui/src'), {
-  withFileTypes: true,
-})
-  .filter((dirent) => dirent.isDirectory())
-  .map((dirent) => `@mr-tick/ui/${dirent.name}`)
+import uiPackage from '../../packages/ui/package.json'
+
+const uiSubpaths = Object.keys(uiPackage.exports).map(
+  (subpath) => `@mr-tick/ui/${subpath.slice(2)}`,
+)
 
 export default defineConfig({
   main: {

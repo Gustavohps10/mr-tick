@@ -1,12 +1,7 @@
 'use client'
 
-import {
-  Button,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@mr-tick/ui/components'
+import { Button } from '@mr-tick/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@mr-tick/ui/tabs'
 import { Building2, Check, Sparkles, User, X } from 'lucide-react'
 import * as React from 'react'
 

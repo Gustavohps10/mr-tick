@@ -1,12 +1,12 @@
 'use client'
 
+import { Separator } from '@mr-tick/ui/separator'
 import {
-  Separator,
   Sheet,
   SheetContent,
   SheetTitle,
   SheetTrigger,
-} from '@mr-tick/ui/components'
+} from '@mr-tick/ui/sheet'
 import { BookOpenTextIcon, Github, Menu, Star } from 'lucide-react'
 import Link from 'next/link'
 import * as React from 'react'

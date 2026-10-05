@@ -19,7 +19,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useHostBridge } from '@/hooks/use-host-bridge'
-import { cn } from '@/lib'
+import { cn } from '@/lib/utils'
 
 export interface AddonInstallTarget {
   id: string

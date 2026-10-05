@@ -1,13 +1,29 @@
-import { cpSync, readFileSync } from 'fs'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+
+import { cpSync, readdirSync } from 'fs'
 import { defineConfig } from 'tsup'
 
-const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
+import pkg from './package.json'
+
+const componentEntries = readdirSync('src/components/ui', {
+  withFileTypes: true,
+})
+  .filter(
+    (entry) =>
+      entry.isFile() &&
+      /\.tsx?$/.test(entry.name) &&
+      !entry.name.startsWith('index.') &&
+      !/\.(spec|test)\./.test(entry.name),
+  )
+  .map((entry) => `src/components/ui/${entry.name}`)
+  .sort()
 const allDeps = [
-  ...Object.keys(pkg.dependencies || {}),
-  ...Object.keys(pkg.peerDependencies || {}),
+  ...Object.keys(pkg.dependencies),
+  ...Object.keys(pkg.peerDependencies),
 ]
 
-export default defineConfig({
+export default defineConfig((options) => ({
   entry: [
     'src/components/index.ts',
     'src/hooks/index.ts',
@@ -17,12 +33,15 @@ export default defineConfig({
     'src/pages/index.ts',
     'src/assets/index.ts',
     'src/styles/globals.css',
+    'src/lib/utils.ts',
+    ...componentEntries,
   ],
   format: ['esm'],
-  dts: true,
-  clean: true,
+  dts: false,
+  clean: !options.watch,
   splitting: true,
-  treeshake: true,
+  // The extra Rollup pass strips client boundaries; esbuild handles tree shaking.
+  treeshake: false,
   minify: false,
 
   banner: {
@@ -30,13 +49,20 @@ export default defineConfig({
   },
   onSuccess: async () => {
     cpSync('src/assets', 'dist/ui', { recursive: true })
+    if (options.watch)
+      execFileSync(
+        process.execPath,
+        [
+          fileURLToPath(import.meta.resolve('tsx/cli')),
+          'scripts/build-declarations.ts',
+        ],
+        { stdio: 'inherit' },
+      )
   },
 
   esbuildOptions(options) {
     options.jsx = 'automatic'
-    options.banner = {
-      js: '"use client";',
-    }
+    options.treeShaking = true
     return options
   },
 
@@ -73,4 +99,4 @@ export default defineConfig({
   },
 
   tsconfig: './tsconfig.build.json',
-})
+}))
