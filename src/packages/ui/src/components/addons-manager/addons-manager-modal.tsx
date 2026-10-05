@@ -417,8 +417,8 @@ export function AddonsManagerModal({
         </div>
         {id === 'updates' && addonsWithUpdates.length > 0 && (
           <Badge
-            variant="outline"
-            className="border-amber-500/40 bg-amber-500/15 px-1.5 py-0 text-[10px] font-bold text-amber-600 dark:text-amber-400"
+            variant="secondary"
+            className="border-primary/20 bg-primary/10 text-primary px-1.5 py-0 text-[10px] font-bold"
           >
             {addonsWithUpdates.length}
           </Badge>
@@ -596,9 +596,9 @@ export function AddonsManagerModal({
                             (u) => u.installed.id === addon.id,
                           ) && (
                             <Badge
-                              variant="outline"
+                              variant="secondary"
                               data-testid={`addon-update-badge-${addon.id}`}
-                              className="border-amber-500/40 bg-amber-500/15 px-1.5 py-0 text-[9px] text-amber-600 dark:text-amber-400"
+                              className="border-primary/20 bg-primary/10 text-primary border px-1.5 py-0 text-[9px] font-medium"
                             >
                               Atualização
                             </Badge>
@@ -635,10 +635,30 @@ export function AddonsManagerModal({
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-foreground truncate text-2xl font-bold">
                       {activeBrowseAddon.name}
                     </h2>
+                    {activeInstalledAddon && (
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-500"
+                      >
+                        <Check className="mr-1 h-3 w-3" /> Instalado · v
+                        {activeInstalledAddon.version}
+                      </Badge>
+                    )}
+                    {addonsWithUpdates.some(
+                      (u) => u.installed.id === activeBrowseAddon.id,
+                    ) && (
+                      <Badge
+                        variant="secondary"
+                        data-testid={`addon-update-badge-${activeBrowseAddon.id}`}
+                        className="border-primary/20 bg-primary/10 text-primary border px-2 py-0.5 text-xs font-medium"
+                      >
+                        Atualização
+                      </Badge>
+                    )}
                   </div>
 
                   <p className="text-muted-foreground mt-0.5 text-xs">
@@ -681,52 +701,34 @@ export function AddonsManagerModal({
                     )}
                   </div>
 
-                  {/* Botão de Ação */}
-                  <div className="mt-4">
+                  {/* Botões de Ação */}
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
                     {activeInstalledAddon ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          className="border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-500"
-                        >
-                          <Check className="mr-1 h-3.5 w-3.5" /> Instalado
-                        </Badge>
+                      <>
                         {addonsWithUpdates.some(
                           (u) => u.installed.id === activeBrowseAddon.id,
                         ) && (
-                          <>
-                            <Badge
-                              variant="outline"
-                              data-testid={`addon-update-badge-${activeBrowseAddon.id}`}
-                              className="border-amber-500/40 bg-amber-500/15 px-2 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400"
-                            >
-                              Atualização
-                            </Badge>
-                            <Button
-                              data-testid={`addon-update-btn-${activeBrowseAddon.id}`}
-                              size="sm"
-                              disabled={
-                                updatingAddonId === activeBrowseAddon.id
-                              }
-                              onClick={() => {
-                                const updateInfo = addonsWithUpdates.find(
-                                  (u) =>
-                                    u.installed.id === activeBrowseAddon.id,
-                                )
-                                handleUpdateAddon(
-                                  activeBrowseAddon.id,
-                                  updateInfo?.available.downloadUrl ||
-                                    activeBrowseAddon.downloadUrl,
-                                )
-                              }}
-                              className="cursor-pointer gap-1.5 bg-amber-600 px-3 text-xs text-white hover:bg-amber-700"
-                            >
-                              <ArrowUpCircle className="h-3.5 w-3.5" />
-                              {updatingAddonId === activeBrowseAddon.id
-                                ? 'Atualizando...'
-                                : 'Atualizar plugin'}
-                            </Button>
-                          </>
+                          <Button
+                            data-testid={`addon-update-btn-${activeBrowseAddon.id}`}
+                            size="sm"
+                            disabled={updatingAddonId === activeBrowseAddon.id}
+                            onClick={() => {
+                              const updateInfo = addonsWithUpdates.find(
+                                (u) => u.installed.id === activeBrowseAddon.id,
+                              )
+                              handleUpdateAddon(
+                                activeBrowseAddon.id,
+                                updateInfo?.available.downloadUrl ||
+                                  activeBrowseAddon.downloadUrl,
+                              )
+                            }}
+                            className="cursor-pointer gap-1.5 text-xs font-semibold"
+                          >
+                            <ArrowUpCircle className="h-3.5 w-3.5" />
+                            {updatingAddonId === activeBrowseAddon.id
+                              ? 'Atualizando...'
+                              : 'Atualizar plugin'}
+                          </Button>
                         )}
                         <Button
                           variant="outline"
@@ -749,12 +751,12 @@ export function AddonsManagerModal({
                           onClick={() =>
                             handleUninstallAddon(activeBrowseAddon.id)
                           }
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer text-xs"
+                          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer text-xs"
                         >
                           <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                           {isUninstalling ? 'Desinstalando...' : 'Desinstalar'}
                         </Button>
-                      </div>
+                      </>
                     ) : (
                       <div className="flex flex-wrap items-center gap-2">
                         <Select
@@ -1006,9 +1008,9 @@ export function AddonsManagerModal({
                         {available.name}
                       </h4>
                       <Badge
-                        variant="outline"
+                        variant="secondary"
                         data-testid={`addon-update-badge-${installed.id}`}
-                        className="border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400"
+                        className="border-primary/20 bg-primary/10 text-primary border text-[10px] font-medium"
                       >
                         Atualização
                       </Badge>
@@ -1048,7 +1050,7 @@ export function AddonsManagerModal({
                     onClick={() =>
                       handleUpdateAddon(installed.id, available.downloadUrl)
                     }
-                    className="cursor-pointer gap-1.5 bg-amber-600 text-xs text-white hover:bg-amber-700"
+                    className="cursor-pointer gap-1.5 text-xs font-semibold"
                   >
                     <ArrowUpCircle className="h-3.5 w-3.5" />
                     {updatingAddonId === installed.id

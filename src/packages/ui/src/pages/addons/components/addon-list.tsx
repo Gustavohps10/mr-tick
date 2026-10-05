@@ -308,9 +308,9 @@ function AddonRow({
 
             {addon.updateAvailable ? (
               <Badge
-                variant="outline"
+                variant="secondary"
                 data-testid={`addon-update-badge-${addon.id}`}
-                className="border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400"
+                className="border-primary/20 bg-primary/10 text-primary border text-[10px] font-medium"
               >
                 Atualização
               </Badge>
