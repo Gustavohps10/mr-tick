@@ -4,7 +4,6 @@
 "@mr-tick/ui": patch
 "@mr-tick/desktop": patch
 "@mr-tick/datasource-fake": patch
-"@mr-tick/landing-page": patch
 ---
 
 Replace time-entry pull arrays with a required snapshot page contract carrying a provider-owned cursor, snapshot identity and explicit continuation. Add stateless SDK snapshot pagination so changes to an existing ID at an unchanged timestamp are revisited. Migrate the host bridge, desktop, fake provider and landing mock together; no legacy pull-contract branch remains.
