@@ -59,8 +59,53 @@ jobs:
       - name: Build
         run: yarn build
 
+  build-desktop:
+    name: Build Desktop for E2E
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-desktop-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-desktop-
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Build Desktop App
+        run: yarn turbo run build --filter=@mr-tick/desktop
+
+      - name: Build Test Addon
+        run: yarn addon:build datasource-fake
+
+      - name: Upload Desktop Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-e2e-build
+          path: |
+            src/apps/desktop/out
+            src/packages/*/dist
+            src/apps/sdk/dist
+            src/dev-addons/datasource-fake/dist
+          retention-days: 1
+
   e2e:
     name: End-to-End Tests (Desktop) (${{ matrix.shard }}/4)
+    needs: [build-desktop]
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -82,11 +127,10 @@ jobs:
       - name: Install Dependencies
         run: yarn install --immutable
 
-      - name: Build Desktop App
-        run: yarn turbo run build --filter=@mr-tick/desktop
-
-      - name: Build Test Addon
-        run: yarn addon:build datasource-fake
+      - name: Download Desktop Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-e2e-build
 
       - name: Link Test Addon
         run: yarn addon:link datasource-fake
