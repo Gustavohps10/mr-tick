@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { Outlet, useNavigate, useParams } from 'react-router-dom'
 
@@ -10,23 +11,58 @@ import { SyncProvider } from '@/stores/syncStore'
 import { TimeEntryProvider } from '@/stores/timeEntryStore'
 
 export function WidgetLayout() {
-  const { workspaceId } = useParams<{ workspaceId: string }>()
+  const { workspaceId: paramWorkspaceId } = useParams<{ workspaceId: string }>()
   const { widgetPosition, selectedWorkspaceId, setSelectedWorkspaceId } =
     useTimerSettings()
   const bridge = useHostBridge()
   const navigate = useNavigate()
 
-  const effectiveWorkspaceId =
-    selectedWorkspaceId && selectedWorkspaceId !== workspaceId
-      ? selectedWorkspaceId
-      : workspaceId
+  const candidateId =
+    selectedWorkspaceId ||
+    (paramWorkspaceId && paramWorkspaceId !== 'default'
+      ? paramWorkspaceId
+      : null)
+
+  const candidateQuery = useQuery({
+    queryKey: ['widget-workspace', candidateId],
+    queryFn: async () => {
+      if (!candidateId) return null
+      return bridge.workspaces.getById({ body: { workspaceId: candidateId } })
+    },
+    enabled: Boolean(candidateId),
+    retry: false,
+  })
 
   useEffect(() => {
-    if (selectedWorkspaceId && selectedWorkspaceId !== workspaceId)
-      navigate(`/workspaces/${selectedWorkspaceId}/widgets/timer`, {
-        replace: true,
-      })
-  }, [workspaceId, selectedWorkspaceId, navigate])
+    if (
+      candidateQuery.data &&
+      ((!candidateQuery.data.isSuccess &&
+        candidateQuery.data.statusCode === 404) ||
+        (candidateQuery.data.isSuccess &&
+          candidateQuery.data.data?.status !== 'configured'))
+    )
+      setSelectedWorkspaceId(null)
+  }, [candidateQuery.data, setSelectedWorkspaceId])
+
+  const isUnconfigured =
+    candidateQuery.data?.isSuccess &&
+    candidateQuery.data.data?.status !== 'configured'
+
+  const shouldFetchCatalog =
+    !candidateId ||
+    candidateQuery.data?.statusCode === 404 ||
+    Boolean(isUnconfigured)
+
+  const listQuery = useQuery({
+    queryKey: ['widget-workspaces-catalog'],
+    queryFn: async () => {
+      const response = await bridge.workspaces.listAll()
+      if (!response.isSuccess || !response.data) return []
+      return response.data
+    },
+    enabled: shouldFetchCatalog,
+    retry: false,
+  })
 
   useEffect(() => {
     if (!bridge?.events?.on) return
@@ -34,17 +70,69 @@ export function WidgetLayout() {
     const unsub = bridge.events.on<{ workspaceId: string }>(
       'workspace:switched',
       ({ workspaceId: targetId }) => {
-        if (!targetId || targetId === workspaceId) return
+        if (!targetId) return
         setSelectedWorkspaceId(targetId)
         navigate(`/workspaces/${targetId}/widgets/timer`)
       },
     )
 
     return () => unsub?.()
-  }, [bridge, navigate, workspaceId, setSelectedWorkspaceId])
+  }, [bridge, navigate, setSelectedWorkspaceId])
+
+  if (
+    candidateQuery.data &&
+    !candidateQuery.data.isSuccess &&
+    candidateQuery.data.statusCode !== 404
+  ) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-2 p-4">
+        <span className="text-destructive text-sm font-medium">
+          {candidateQuery.data.error}
+        </span>
+        <button
+          onClick={() => {
+            void candidateQuery.refetch()
+          }}
+          className="bg-primary text-primary-foreground rounded px-3 py-1 text-xs"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    )
+  }
+
+  if (shouldFetchCatalog) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-2 p-4">
+        {listQuery.data
+          ?.filter((ws) => ws.status === 'configured')
+          .map((ws) => (
+            <button
+              key={ws.id}
+              onClick={() => {
+                setSelectedWorkspaceId(ws.id)
+                navigate(`/workspaces/${ws.id}/widgets/timer`)
+              }}
+              className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded px-3 py-1.5 text-xs font-medium"
+            >
+              {ws.name}
+            </button>
+          ))}
+      </div>
+    )
+  }
+
+  if (
+    !candidateQuery.data?.isSuccess ||
+    !candidateQuery.data.data ||
+    candidateQuery.data.data.status !== 'configured'
+  )
+    return null
+
+  const validatedWorkspace = candidateQuery.data.data
 
   return (
-    <WorkspaceProvider workspaceId={effectiveWorkspaceId}>
+    <WorkspaceProvider workspaceId={validatedWorkspace.id}>
       <DataSourceConnectionsProvider>
         <SyncProvider>
           <TimeEntryProvider>

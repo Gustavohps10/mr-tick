@@ -126,15 +126,13 @@ export function TimerWidget() {
     const isTargetValid = configuredWorkspaces.some((w) => w.id === targetId)
 
     if (!isTargetValid) {
-      // Se não tem em cache, avalia se o atual na URL serve. Se não servir (ex: "default"), pega o primeiro da lista.
       const isUrlValid = configuredWorkspaces.some((w) => w.id === workspaceId)
-      targetId = isUrlValid ? workspaceId! : configuredWorkspaces[0].id
+      if (!isUrlValid || !workspaceId) return
 
-      // Salva o novo workspace selecionado no cache
+      targetId = workspaceId
       setSelectedWorkspaceId(targetId)
     }
 
-    // Se o target for diferente do workspace atual da URL (por exemplo, app abriu na rota root), fazemos o redirect invisível
     if (targetId && workspaceId !== targetId) {
       navigate(`/workspaces/${targetId}/widgets/timer`, { replace: true })
     }

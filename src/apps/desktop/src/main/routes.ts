@@ -31,9 +31,7 @@ function getWindowByType(
   }
   return (
     BrowserWindow.getAllWindows().find((win) => {
-      if (win.isDestroyed()) return false
-      const customWin = win as unknown as { windowType?: string }
-      return customWin.windowType === windowType
+      return win.windowType === windowType
     }) ?? null
   )
 }

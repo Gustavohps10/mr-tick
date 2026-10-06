@@ -29,4 +29,8 @@ test-results*/
 # Dev Addons
 src/dev-addons/*
 !src/dev-addons/*.md
-!src/dev-addons/datasource-fake/
+!src/dev-addons/datasource-fake/
+
+# E2E Native Test Harness Executables
+src/apps/desktop/e2e/harness/*.exe
+!src/apps/desktop/e2e/harness/timerbar_native_test.exe

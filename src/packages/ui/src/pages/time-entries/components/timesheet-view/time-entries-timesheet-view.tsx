@@ -63,6 +63,7 @@ import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { TimeEntriesDayCard } from '@/pages/time-entries/components/time-entries-day-card'
+import { TimeEntriesLoading } from '@/pages/time-entries/components/time-entries-loading'
 import { createTimeEntriesColumns } from '@/pages/time-entries/components/time-entries-table-columns'
 import { useTimeEntriesData } from '@/pages/time-entries/hooks/use-time-entries-data'
 import { useTimeEntryMutations } from '@/pages/time-entries/hooks/use-time-entry-mutations'
@@ -234,6 +235,7 @@ export function TimeEntriesTimesheetView({
   const {
     db,
     memberIdsByConnection,
+    isLoading,
     timeEntries,
     activities,
     tasksById,
@@ -658,6 +660,8 @@ export function TimeEntriesTimesheetView({
     },
     [setEditingRows],
   )
+
+  if (isLoading) return <TimeEntriesLoading />
 
   return (
     <TooltipProvider delayDuration={150}>

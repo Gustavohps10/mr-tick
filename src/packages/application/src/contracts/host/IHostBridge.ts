@@ -477,6 +477,7 @@ export interface AppSettings {
   startMinimized?: boolean
   activeThemeId?: string | null
   allowBeta?: boolean
+  lastSelectedWorkspaceId?: string | null
 }
 
 export interface RawKeyInputEvent {

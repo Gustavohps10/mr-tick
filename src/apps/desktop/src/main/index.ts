@@ -52,6 +52,9 @@ const requireNative = createRequire(import.meta.url)
 
 export interface NativeOverlay {
   applyOverlayStyles: (handle: Buffer) => boolean
+  removeOverlayStyles?: (handle: Buffer) => void
+  cleanupOverlay?: () => void
+  isKeyboardInterceptionActive?: () => boolean
   setKeyEventListener: (
     callback: (data: { vkCode: number; key: string }) => void,
   ) => void
@@ -173,6 +176,7 @@ if (!gotTheLock) {
         : join(__dirname, '../../native-prebuilds/window_overlay.node')
 
       nativeOverlay = requireNative(binaryPath)
+      globalThis.nativeOverlayInstance = nativeOverlay
       console.log('✅ [C++ plugin] ✓ Carregado: window_overlay.node')
     } catch (err) {
       console.error(
@@ -254,7 +258,7 @@ if (!gotTheLock) {
         backgroundThrottling: false,
       },
     })
-    ;(mainWindow as unknown as { windowType: string }).windowType = 'main'
+    mainWindow.windowType = 'main'
 
     mainWindow.on('ready-to-show', () => {
       const settings = getSettings()
@@ -333,7 +337,6 @@ if (!gotTheLock) {
     const targetDisplay =
       allDisplays.find((d) => d.id === targetDisplayId) || primaryDisplay
     const { x, y, width, height } = targetDisplay.workArea
-
     secondaryWindow = new BrowserWindow({
       width,
       height,
@@ -354,8 +357,7 @@ if (!gotTheLock) {
         sandbox: false,
       },
     })
-    ;(secondaryWindow as unknown as { windowType: string }).windowType =
-      'widget'
+    secondaryWindow.windowType = 'widget'
 
     if (process.platform === 'win32' && nativeOverlay) {
       const handle = secondaryWindow.getNativeWindowHandle()
@@ -377,11 +379,21 @@ if (!gotTheLock) {
     })
 
     secondaryWindow.on('closed', () => {
+      if (process.platform === 'win32' && nativeOverlay) {
+        try {
+          if (typeof nativeOverlay.cleanupOverlay === 'function') {
+            nativeOverlay.cleanupOverlay()
+          }
+        } catch (err) {
+          console.error('[Mr-tick Core] Erro ao limpar overlay nativo:', err)
+        }
+      }
       secondaryWindow = null
     })
 
-    const workspaceId = activeWorkspaceId ?? 'default'
-    const widgetHashPath = `/workspaces/${workspaceId}/widgets/timer`
+    const widgetHashPath = activeWorkspaceId
+      ? `/workspaces/${activeWorkspaceId}/widgets/timer`
+      : `/widgets/timer`
 
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
       secondaryWindow.loadURL(
@@ -573,10 +585,13 @@ if (!gotTheLock) {
 
     const getTargetWorkspaceId = async (): Promise<string | undefined> => {
       try {
-        const allWs = await workspacesRepository.findAll()
-        const configuredWs = allWs.items.find((w) => w.status === 'configured')
-        if (configuredWs) return configuredWs.id
-        return undefined
+        const settings = getSettings()
+        if (!settings.lastSelectedWorkspaceId) return undefined
+        const workspace = await workspacesRepository.findById(
+          settings.lastSelectedWorkspaceId,
+        )
+        if (!workspace || workspace.status !== 'configured') return undefined
+        return workspace.id
       } catch {
         return undefined
       }
@@ -590,7 +605,10 @@ if (!gotTheLock) {
       },
     )
     createWindow()
-    if (process.env.NODE_ENV !== 'test') {
+    if (
+      process.env.NODE_ENV !== 'test' ||
+      process.env.MR_TICK_OPEN_WIDGET_IN_TEST === 'true'
+    ) {
       const targetWsId = await getTargetWorkspaceId()
       createSecondaryWindow(targetWsId)
     }
@@ -601,6 +619,15 @@ if (!gotTheLock) {
 
     app.on('before-quit', () => {
       updaterService.stopAutoCheck()
+      if (process.platform === 'win32' && nativeOverlay) {
+        try {
+          if (typeof nativeOverlay.cleanupOverlay === 'function') {
+            nativeOverlay.cleanupOverlay()
+          }
+        } catch (err) {
+          console.error('[Mr-tick Core] Erro ao liberar overlay no quit:', err)
+        }
+      }
       if (tray) {
         tray.destroy()
         tray = null

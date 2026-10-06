@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStore } from 'zustand/vanilla'
 
 vi.mock('@/hooks/use-host-bridge', () => ({
@@ -111,10 +111,12 @@ const mockTasksById: Record<string, SyncTaskRxDBDTO> = {
   'mr-tick-fake::DOC-131': mockTasks[1],
 }
 
+const queryState = vi.hoisted(() => ({ isLoading: false }))
 vi.mock('@/pages/time-entries/hooks/use-time-entries-data', () => ({
   useTimeEntriesData: () => {
     return {
       db: null,
+      isLoading: queryState.isLoading,
       memberIdsByConnection: { 'conn-1': 'user-1' },
       timeEntries: [
         {
@@ -176,6 +178,9 @@ vi.mock('@/pages/time-entries/hooks/use-time-entries-data', () => ({
 }))
 
 describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
+  beforeEach(() => {
+    queryState.isLoading = false
+  })
   const mockConnectionsValue: DataSourceConnectionsContextType = {
     isLoading: false,
     workspaceId: undefined,
@@ -240,6 +245,35 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
   }))
 
   const testReferenceDate = new Date('2026-09-29T12:00:00.000Z')
+  for (const View of [TimeEntriesCalendarView, TimeEntriesTimesheetView]) {
+    it(`${View.name} distinguishes pending data from loaded totals`, () => {
+      queryState.isLoading = true
+      const queryClient = new QueryClient()
+      const renderView = () => (
+        <QueryClientProvider client={queryClient}>
+          <WorkspaceContext.Provider value={mockWorkspaceValue}>
+            <TimeEntryContext.Provider value={mockTimeEntryStore}>
+              <DataSourceConnectionsContext.Provider
+                value={mockConnectionsValue}
+              >
+                <View compact initialDate={testReferenceDate} />
+              </DataSourceConnectionsContext.Provider>
+            </TimeEntryContext.Provider>
+          </WorkspaceContext.Provider>
+        </QueryClientProvider>
+      )
+      const { rerender } = render(renderView())
+      expect(
+        screen.getByRole('status', { name: 'Carregando apontamentos' }),
+      ).toBeTruthy()
+      expect(screen.queryByText('Total:')).toBeNull()
+      expect(screen.queryByText('Tarefa / Atividade')).toBeNull()
+      queryState.isLoading = false
+      rerender(renderView())
+      expect(screen.queryByRole('status')).toBeNull()
+      expect(screen.getAllByText('1h 30m').length).toBeGreaterThan(0)
+    })
+  }
 
   it('renders TimeEntriesCalendarView compact mode with clean task IDs and full month data', () => {
     const queryClient = new QueryClient({

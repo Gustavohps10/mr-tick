@@ -108,6 +108,7 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
               <TableRow
                 key={row.id}
                 data-testid="time-entry-row"
+                data-entry-id={row.original.id}
                 data-state={row.getIsExpanded() ? 'expanded' : 'collapsed'}
                 onDoubleClick={() => {
                   const isGroupMaster =

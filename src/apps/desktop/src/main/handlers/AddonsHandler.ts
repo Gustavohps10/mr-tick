@@ -33,6 +33,7 @@ import { type IpcMainInvokeEvent } from 'electron'
 
 import { HandlerBase } from '@/main/handlers/HandlerBase'
 import { AddonLoader } from '@/main/services/AddonLoader'
+import { getSettings, saveSettings } from '@/main/settings'
 
 export class AddonsHandler implements HandlerBase<AddonsHandler> {
   private readonly updatingAddonIds = new Set<string>()
@@ -354,6 +355,14 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   ): Promise<ViewModel<void>> {
     if (this.addonLoader && body?.workspaceId) {
       this.addonLoader.setActiveWorkspace(body.workspaceId)
+    }
+    if (body?.workspaceId) {
+      try {
+        const current = getSettings()
+        saveSettings({ ...current, lastSelectedWorkspaceId: body.workspaceId })
+      } catch (err) {
+        console.error('❌ [AddonsHandler] Erro ao salvar workspace ativo:', err)
+      }
     }
     return { isSuccess: true, statusCode: 200 }
   }

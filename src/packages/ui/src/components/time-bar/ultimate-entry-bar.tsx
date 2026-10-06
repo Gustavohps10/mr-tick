@@ -581,6 +581,7 @@ export const UltimateTimeTracker = ({
     initialClientX: number
     initialClientY: number
     animationFrameId: number | null
+    latestOffset: FreeOffset
   } | null>(null)
 
   useEffect(() => {
@@ -677,105 +678,77 @@ export const UltimateTimeTracker = ({
               y: 0,
             }
 
+      dragState.latestOffset = nextOffset
       scheduleTransform(nextOffset)
     }
 
-    const finishDrag = (event: PointerEvent) => {
-      if (event.pointerId !== activePointerId) return
+    const endDrag = (event?: PointerEvent) => {
+      const dragState = dragStateRef.current
+      if (!dragState) return
+      const pointerId = activePointerId
+      activePointerId = null
+      dragStateRef.current = null
+      isDraggingWidgetRef.current = false
 
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', finishDrag)
-      window.removeEventListener('pointercancel', finishDrag)
+      window.removeEventListener('pointercancel', cancelDrag)
+      window.removeEventListener('blur', onBlur)
+      dragHandle.removeEventListener('lostpointercapture', cancelDrag)
 
-      if (
-        activePointerId !== null &&
-        dragHandle.hasPointerCapture(activePointerId)
-      ) {
-        dragHandle.releasePointerCapture(activePointerId)
-      }
-      activePointerId = null
-
-      const dragState = dragStateRef.current
-      if (!dragState) {
-        isDraggingWidgetRef.current = false
-        return
-      }
-
-      if (dragState.animationFrameId !== null) {
+      if (dragState.animationFrameId !== null)
         cancelAnimationFrame(dragState.animationFrameId)
-      }
+      if (pointerId !== null && dragHandle.hasPointerCapture(pointerId))
+        dragHandle.releasePointerCapture(pointerId)
 
-      const rawDx = event.clientX - dragState.initialClientX
-      const rawDy = event.clientY - dragState.initialClientY
-
-      const { dx, dy } = getClampedDelta(
-        dragState.initialRect,
-        dragState.parentRect,
-        rawDx,
-        rawDy,
-      )
-
-      const previousOffset = currentOffsetRef.current
-      const nextOffset: FreeOffset = isWidgetWindow
-        ? {
-            x: previousOffset.x + dx,
-            y: previousOffset.y + dy,
-          }
-        : isVertical
-          ? {
-              x: 0,
-              y: previousOffset.y + dy,
-            }
-          : {
-              x: previousOffset.x + dx,
-              y: 0,
-            }
-
+      const nextOffset = dragState.latestOffset
       const nextOffsets: FreeOffsets = {
         ...freeOffsetsRef.current,
-        [widgetPosition as WidgetPosition]: nextOffset,
+        [widgetPosition]: nextOffset,
       }
-
       currentOffsetRef.current = nextOffset
       freeOffsetsRef.current = nextOffsets
-
       element.style.transform = `translate3d(${nextOffset.x}px, ${nextOffset.y}px, 0)`
       element.style.transition = ''
       element.classList.remove('z-30', 'shadow-xl')
 
-      dragStateRef.current = null
-      isDraggingWidgetRef.current = false
-
       if (isWidgetWindow) {
-        const finalTarget =
-          typeof document.elementFromPoint === 'function'
-            ? document.elementFromPoint(event.clientX, event.clientY)
-            : null
+        let finalTarget: Element | null = null
+        if (event && typeof document.elementFromPoint === 'function')
+          finalTarget = document.elementFromPoint(event.clientX, event.clientY)
         const isStillInteractive = Boolean(
           finalTarget?.closest(
             '[data-widget-card], [data-widget-interactive], [data-radix-popper-content-wrapper], [role="dialog"], [role="menu"]',
           ),
         )
-        if (!isStillInteractive) {
+        if (!isStillInteractive)
           bridge.system.setIgnoreMouseEvents({
             body: { ignore: true, forward: true },
           })
-        }
       }
-
       setFreeOffsets(nextOffsets)
-
       const storageKey = isWidgetWindow
         ? WIDGET_FREE_DRAG_STORAGE_KEY
         : WORKSPACE_DOCK_DRAG_STORAGE_KEY
-
       window.localStorage.setItem(storageKey, JSON.stringify(nextOffsets))
     }
 
+    const finishDrag = (event: PointerEvent) => {
+      if (event.pointerId !== activePointerId) return
+      onPointerMove(event)
+      endDrag(event)
+    }
+    const cancelDrag = (event: PointerEvent) => {
+      if (event.pointerId !== activePointerId) return
+      endDrag()
+    }
+    const onBlur = () => endDrag()
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0 && event.pointerType === 'mouse') return
 
-      const target = event.target as HTMLElement
+      if (activePointerId !== null) return
+      const target = event.target
+      if (!(target instanceof Element)) return
       if (
         target.closest(
           'button, input, select, [role="button"], [data-no-drag], a, textarea',
@@ -791,18 +764,14 @@ export const UltimateTimeTracker = ({
       const boundary = getDragBoundaryElement(element)
       const parentRect = boundary
         ? boundary.getBoundingClientRect()
-        : ({
-            left: 0,
-            top: 0,
-            right: window.innerWidth,
-            bottom: window.innerHeight,
-          } as DOMRect)
+        : new DOMRect(0, 0, window.innerWidth, window.innerHeight)
 
       dragStateRef.current = {
         initialRect,
         parentRect,
         initialClientX: event.clientX,
         initialClientY: event.clientY,
+        latestOffset: currentOffsetRef.current,
         animationFrameId: null,
       }
 
@@ -812,7 +781,9 @@ export const UltimateTimeTracker = ({
 
       window.addEventListener('pointermove', onPointerMove)
       window.addEventListener('pointerup', finishDrag)
-      window.addEventListener('pointercancel', finishDrag)
+      window.addEventListener('pointercancel', cancelDrag)
+      window.addEventListener('blur', onBlur)
+      dragHandle.addEventListener('lostpointercapture', cancelDrag)
 
       event.preventDefault()
     }
@@ -823,7 +794,9 @@ export const UltimateTimeTracker = ({
       dragHandle.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', finishDrag)
-      window.removeEventListener('pointercancel', finishDrag)
+      window.removeEventListener('pointercancel', cancelDrag)
+      window.removeEventListener('blur', onBlur)
+      dragHandle.removeEventListener('lostpointercapture', cancelDrag)
 
       if (dragStateRef.current?.animationFrameId !== null) {
         cancelAnimationFrame(dragStateRef.current?.animationFrameId ?? -1)

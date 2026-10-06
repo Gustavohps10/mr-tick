@@ -84,10 +84,12 @@ function ensureTestAddon(userDataPath: string): void {
 interface ElectronTestFixtures {
   electronApp: ElectronApplication
   page: Page
+  electronNodeEnv: string
 }
 
 export const test = baseTest.extend<ElectronTestFixtures>({
-  electronApp: async ({}, use, testInfo) => {
+  electronNodeEnv: ['test', { option: true }],
+  electronApp: async ({ electronNodeEnv }, use, testInfo) => {
     const userDataPath = getElectronUserDataPath(testInfo.workerIndex)
     cleanTestStorage(userDataPath)
     ensureSeedWorkspaces(userDataPath)
@@ -95,17 +97,21 @@ export const test = baseTest.extend<ElectronTestFixtures>({
 
     const isVerbose = process.env.E2E_VERBOSE === 'true'
     const logs: string[] = []
+    const appEnv = {
+      ...process.env,
+      NODE_ENV: electronNodeEnv,
+      FAKE_DB_IN_MEMORY: 'true',
+      PLAYWRIGHT_TEST: '1',
+      MR_TICK_TEST_USER_DATA_DIR: userDataPath,
+    }
+    delete appEnv.MR_TICK_OPEN_WIDGET_IN_TEST
+    if (testInfo.file.includes('timerbar-'))
+      appEnv.MR_TICK_OPEN_WIDGET_IN_TEST = 'true'
 
     const app = await electronLauncher.launch({
       args: ['.', '--window-size=1600,900', `--user-data-dir=${userDataPath}`],
       cwd: desktopRoot,
-      env: {
-        ...process.env,
-        NODE_ENV: 'test',
-        FAKE_DB_IN_MEMORY: 'true',
-        PLAYWRIGHT_TEST: '1',
-        MR_TICK_TEST_USER_DATA_DIR: userDataPath,
-      },
+      env: appEnv,
     })
 
     app.process().stdout?.on('data', (data: Buffer) => {
