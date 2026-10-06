@@ -11,9 +11,22 @@ import { TimeEntryProvider } from '@/stores/timeEntryStore'
 
 export function WidgetLayout() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
-  const { widgetPosition, setSelectedWorkspaceId } = useTimerSettings()
+  const { widgetPosition, selectedWorkspaceId, setSelectedWorkspaceId } =
+    useTimerSettings()
   const bridge = useHostBridge()
   const navigate = useNavigate()
+
+  const effectiveWorkspaceId =
+    selectedWorkspaceId && selectedWorkspaceId !== workspaceId
+      ? selectedWorkspaceId
+      : workspaceId
+
+  useEffect(() => {
+    if (selectedWorkspaceId && selectedWorkspaceId !== workspaceId)
+      navigate(`/workspaces/${selectedWorkspaceId}/widgets/timer`, {
+        replace: true,
+      })
+  }, [workspaceId, selectedWorkspaceId, navigate])
 
   useEffect(() => {
     if (!bridge?.events?.on) return
@@ -31,7 +44,7 @@ export function WidgetLayout() {
   }, [bridge, navigate, workspaceId, setSelectedWorkspaceId])
 
   return (
-    <WorkspaceProvider workspaceId={workspaceId}>
+    <WorkspaceProvider workspaceId={effectiveWorkspaceId}>
       <DataSourceConnectionsProvider>
         <SyncProvider>
           <TimeEntryProvider>

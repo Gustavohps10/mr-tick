@@ -239,6 +239,22 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       // In workspace mode, TimerSettings must not invoke moveToDisplay
       expect(mockMoveToDisplay).not.toHaveBeenCalled()
     })
+
+    it('repositions widget to target display on initial load in Widget Mode (GEO-03)', async () => {
+      window.location.hash = '#/workspaces/ws-1/widgets/timer'
+      mockGetDisplays.mockResolvedValueOnce([
+        { id: 1, isPrimary: true, name: 'Display 1' },
+        { id: 2, isPrimary: false, name: 'Display 2' },
+      ])
+
+      renderWithProviders(<TimerSettings />)
+
+      await waitFor(() => {
+        expect(mockMoveToDisplay).toHaveBeenCalledWith({
+          body: { displayId: 1, windowType: 'widget' },
+        })
+      })
+    })
   })
 
   // -------------------------------------------------------------------------

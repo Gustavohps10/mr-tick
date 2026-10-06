@@ -571,12 +571,29 @@ if (!gotTheLock) {
       }
     }
 
+    const getTargetWorkspaceId = async (): Promise<string | undefined> => {
+      try {
+        const allWs = await workspacesRepository.findAll()
+        const configuredWs = allWs.items.find((w) => w.status === 'configured')
+        if (configuredWs) return configuredWs.id
+        return undefined
+      } catch {
+        return undefined
+      }
+    }
+
     tray = createTray(
       () => secondaryWindow,
-      () => createSecondaryWindow(),
+      async () => {
+        const targetWsId = await getTargetWorkspaceId()
+        createSecondaryWindow(targetWsId)
+      },
     )
     createWindow()
-    if (process.env.NODE_ENV !== 'test') createSecondaryWindow()
+    if (process.env.NODE_ENV !== 'test') {
+      const targetWsId = await getTargetWorkspaceId()
+      createSecondaryWindow(targetWsId)
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()

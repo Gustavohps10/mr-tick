@@ -164,9 +164,17 @@ export function useTimeEntriesQuery({
     return null
   }, [statuses, query.data])
 
+  const isDbReady = Boolean(db?.timeEntries)
+  const isQueryLoading =
+    !isDbReady ||
+    query.isLoading ||
+    Boolean(enabled && query.isPending && !query.data)
+
+  const timeEntriesData = query.data ? query.data : []
+
   return {
-    data: query.data ?? [],
-    isLoading: query.isLoading,
+    data: timeEntriesData,
+    isLoading: isQueryLoading,
     isError: query.isError,
     error: query.error,
     isSyncing,
