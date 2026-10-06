@@ -308,8 +308,9 @@ function AddonRow({
 
             {addon.updateAvailable ? (
               <Badge
-                variant="outline"
-                className="border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400"
+                variant="secondary"
+                data-testid={`addon-update-badge-${addon.id}`}
+                className="border-primary/20 bg-primary/10 text-primary border text-[10px] font-medium"
               >
                 Atualização
               </Badge>
@@ -370,6 +371,7 @@ function AddonRow({
                     <Button
                       variant="ghost"
                       size="icon"
+                      data-testid={`addon-actions-menu-${addon.id}`}
                       className="h-8 w-8 rounded-lg"
                     >
                       <MoreHorizontal className="h-4 w-4" />
@@ -383,9 +385,12 @@ function AddonRow({
                       </DropdownMenuItem>
                     )}
                     {addon.updateAvailable && (
-                      <DropdownMenuItem onClick={() => onUpdate(addon)}>
+                      <DropdownMenuItem
+                        data-testid={`addon-update-btn-${addon.id}`}
+                        onClick={() => onUpdate(addon)}
+                      >
                         <ArrowUpCircle className="mr-2 h-4 w-4" />
-                        Atualizar plugin
+                        Atualizar addon
                       </DropdownMenuItem>
                     )}
                   </DropdownMenuContent>

@@ -3,7 +3,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { ICredentialsStorage, TimeEntryRecordDTO } from '@mr-tick/application'
+import {
+  IAddonReloader,
+  ICredentialsStorage,
+  TimeEntryRecordDTO,
+} from '@mr-tick/application'
 import {
   AddonActionResponse,
   AddonContext,
@@ -172,7 +176,7 @@ export class AddonEventEmitter implements IAddonEventsAPI {
   }
 }
 
-export class AddonLoader {
+export class AddonLoader implements IAddonReloader {
   private activeAddons = new Map<string, ActiveAddonInfo>()
   private activeTimerControllerAddonId: string | null = null
   private toastListeners: Array<(toastData: AddonToastEventData) => void> = []
@@ -203,6 +207,10 @@ export class AddonLoader {
   ) {
     this.registerThemeCommands()
     this.restoreActiveTheme()
+  }
+
+  public getHostSdkVersion(): string {
+    return this.hostSdkVersion || sdkPkg.version
   }
 
   private registerThemeCommands(): void {

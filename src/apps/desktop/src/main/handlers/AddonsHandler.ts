@@ -4,6 +4,7 @@ import {
   IAddonsFacade,
   IDataSourceResolver,
   IImportAddonUseCase,
+  IUpdateAddonUseCase,
   type MappingFieldDefinition,
 } from '@mr-tick/application'
 import {
@@ -34,12 +35,14 @@ import { HandlerBase } from '@/main/handlers/HandlerBase'
 import { AddonLoader } from '@/main/services/AddonLoader'
 
 export class AddonsHandler implements HandlerBase<AddonsHandler> {
+  private readonly updatingAddonIds = new Set<string>()
   constructor(
     private readonly importAddonService: IImportAddonUseCase,
+    private readonly updateAddonService: IUpdateAddonUseCase,
     private readonly addonsFacade: IAddonsFacade,
     private readonly jobEmitter: IEventEmitter<IJobEvents>,
     private readonly dataSourceResolver: IDataSourceResolver,
-    private readonly addonLoader?: AddonLoader,
+    private readonly addonLoader: AddonLoader,
   ) {}
 
   public async getSidebarMenus(): Promise<ViewModel<SidebarMenuItem[]>> {
@@ -408,7 +411,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       return createResponseViewModel(result.forwardFailure())
     }
 
-    const installedItems = result.success
+    const installedItems = result.success.filter(
+      (item, index, items) =>
+        items.findIndex((candidate) => candidate.id === item.id) === index,
+    )
 
     const viewModels = installedItems.map((item) => ({
       ...item,
@@ -437,6 +443,12 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       }
     }
 
+    if (this.updatingAddonIds.has(body.addonId))
+      return {
+        isSuccess: false,
+        statusCode: 409,
+        error: 'ATUALIZACAO_ADDON_EM_ANDAMENTO',
+      }
     const result = await this.addonsFacade.uninstallAddon(
       body.addonId,
       body.version,
@@ -491,9 +503,9 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
 
   public async install(
     _event: IpcMainInvokeEvent,
-    { body }: IRequest<{ downloadUrl: string }>,
+    { body }: IRequest<{ downloadUrl: string; jobId?: string }>,
   ): Promise<ViewModel<IJobResult>> {
-    const jobId = crypto.randomUUID()
+    const jobId = body.jobId ?? crypto.randomUUID()
 
     this.runInstallationJob(jobId, body.downloadUrl).catch((err) => {
       console.error(`[Fatal Job Error ${jobId}]:`, err)
@@ -503,6 +515,73 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       isSuccess: true,
       statusCode: 200,
       data: { jobId },
+    }
+  }
+
+  public async update(
+    event: IpcMainInvokeEvent,
+    { body }: IRequest<{ addonId: string; downloadUrl: string; jobId: string }>,
+  ): Promise<ViewModel<IJobResult>> {
+    if (!body?.addonId || !body?.downloadUrl || !body?.jobId) {
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'PARAMETROS_INVALIDOS',
+      }
+    }
+
+    if (this.updatingAddonIds.has(body.addonId))
+      return {
+        isSuccess: false,
+        statusCode: 409,
+        error: 'ATUALIZACAO_ADDON_EM_ANDAMENTO',
+      }
+    this.updatingAddonIds.add(body.addonId)
+    const jobId = body.jobId
+
+    this.runUpdateJob(jobId, body.addonId, body.downloadUrl).catch((err) => {
+      console.error(`[Fatal Update Job Error ${jobId}]:`, err)
+    })
+
+    return {
+      isSuccess: true,
+      statusCode: 200,
+      data: { jobId },
+    }
+  }
+
+  private async runUpdateJob(
+    jobId: string,
+    addonId: string,
+    downloadUrl: string,
+  ): Promise<void> {
+    try {
+      this.jobEmitter.emit(jobId, { status: 'progress', value: 0 })
+
+      const result = await this.updateAddonService.execute(
+        { addonId, downloadUrl },
+        (event) => {
+          this.jobEmitter.emit(jobId, event)
+        },
+      )
+
+      if (result.isFailure()) {
+        this.jobEmitter.emit(jobId, {
+          status: 'error',
+          error: result.failure.messageKey,
+        })
+        return
+      }
+
+      this.jobEmitter.emit(jobId, { status: 'progress', value: 100 })
+      this.jobEmitter.emit(jobId, { status: 'done' })
+    } catch {
+      this.jobEmitter.emit(jobId, {
+        status: 'error',
+        error: 'UPDATE_FAILED',
+      })
+    } finally {
+      this.updatingAddonIds.delete(addonId)
     }
   }
 

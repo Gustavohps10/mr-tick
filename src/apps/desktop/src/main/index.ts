@@ -487,6 +487,7 @@ if (!gotTheLock) {
       fileStorage: nodeFileStorage,
       dataSourceResolver: localDataSourceResolver,
       httpClient: electronHttpClient,
+      addonReloader: addonLoader,
     }
 
     const serviceProvider = new ContainerBuilder()

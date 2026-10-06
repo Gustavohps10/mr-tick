@@ -34,4 +34,9 @@ export interface AddonManifestDTO {
   releaseDate?: string
   changelog?: string[]
   packages?: AddonPackageDTO[]
+  updateAvailable?: boolean
+  latestVersion?: string
+  latestDownloadUrl?: string
+  incompatibleUpdate?: boolean
+  incompatibleReason?: string
 }

@@ -1,13 +1,14 @@
-﻿import axios from 'axios'
+import axios from 'axios'
 import { describe, expect, it, vi } from 'vitest'
 
+import { HardDiskStorage } from '../tools/HardDiskStorage'
 import { AddonsFacade } from './AddonsFacade'
 
 vi.mock('axios')
 
 describe('AddonsFacade', () => {
   it('should parse unified manifest YAML correctly', async () => {
-    const facade = new AddonsFacade()
+    const facade = new AddonsFacade(new HardDiskStorage('./storage'))
     const yamlContent = `
 id: mr-tick-datasource-redmine
 name: Redmine Integration
@@ -44,7 +45,7 @@ changelog:
   })
 
   it('should maintain backward compatibility with legacy PascalCase manifests', async () => {
-    const facade = new AddonsFacade()
+    const facade = new AddonsFacade(new HardDiskStorage('./storage'))
     const legacyYaml = `
 AddonId: mr-tick-legacy
 Name: Legacy Addon
@@ -68,7 +69,7 @@ IconUrl: https://example.com/legacy.png
   })
 
   it('should fetch available addons in a single HTTP request without N+1', async () => {
-    const facade = new AddonsFacade()
+    const facade = new AddonsFacade(new HardDiskStorage('./storage'))
     const mockConsolidatedCatalog = [
       {
         id: 'mr-tick-datasource-redmine',
@@ -106,5 +107,110 @@ IconUrl: https://example.com/legacy.png
       )
       expect(result.success[1].id).toBe('mr-tick-watcher-discord')
     }
+  })
+
+  describe('checkUpdates', () => {
+    it('should mark updateAvailable: true when remote version is higher and compatible with host', () => {
+      const facade = new AddonsFacade(new HardDiskStorage('./storage'))
+      const installed = [
+        {
+          id: 'mr-tick-datasource-redmine',
+          name: 'Redmine',
+          version: '0.7.0',
+          categories: ['dataSource'],
+          creator: 'Community',
+          description: 'Plugin Redmine',
+          downloadUrl: 'https://example.com/redmine-0.7.0.tladdon',
+          installed: true,
+          path: '/addons/mr-tick-datasource-redmine/0.7.0',
+          logo: '',
+          downloads: 10,
+          stars: 5,
+        },
+      ]
+
+      const available = [
+        {
+          id: 'mr-tick-datasource-redmine',
+          name: 'Redmine',
+          version: '0.8.0',
+          requiredApiVersion: '>=0.8.0',
+          categories: ['dataSource'],
+          creator: 'Community',
+          description: 'Plugin Redmine v0.8.0',
+          downloadUrl: 'https://example.com/redmine-0.8.0.tladdon',
+          installed: false,
+          path: '',
+          logo: '',
+          downloads: 100,
+          stars: 5,
+          changelog: ['Suporte a novo motor de sync'],
+        },
+      ]
+
+      const result = facade.checkUpdates(installed, available, '0.8.4')
+
+      expect(result).toHaveLength(1)
+      expect(result[0].updateAvailable).toBe(true)
+      expect(result[0].latestVersion).toBe('0.8.0')
+      expect(result[0].downloadUrl).toBe(
+        'https://example.com/redmine-0.8.0.tladdon',
+      )
+      expect(result[0].changelog).toEqual(['Suporte a novo motor de sync'])
+    })
+
+    it('should mark incompatibleUpdate: true when remote version requires newer host SDK', () => {
+      const facade = new AddonsFacade(new HardDiskStorage('./storage'))
+      const installed = [
+        {
+          id: 'mr-tick-datasource-redmine',
+          name: 'Redmine',
+          version: '0.7.0',
+          categories: ['dataSource'],
+          creator: 'Community',
+          description: 'Plugin Redmine',
+          downloadUrl: 'https://example.com/redmine-0.7.0.tladdon',
+          installed: true,
+          path: '/addons/mr-tick-datasource-redmine/0.7.0',
+          logo: '',
+          downloads: 10,
+          stars: 5,
+        },
+      ]
+
+      const available = [
+        {
+          id: 'mr-tick-datasource-redmine',
+          name: 'Redmine',
+          version: '1.0.0',
+          requiredApiVersion: '>=2.0.0',
+          categories: ['dataSource'],
+          creator: 'Community',
+          description: 'Plugin Redmine 2.0',
+          downloadUrl: 'https://example.com/redmine-1.0.0.tladdon',
+          installed: false,
+          path: '',
+          logo: '',
+          downloads: 100,
+          stars: 5,
+        },
+      ]
+
+      const result = facade.checkUpdates(installed, available, '1.0.0')
+
+      expect(result).toHaveLength(1)
+      expect(result[0].updateAvailable).toBe(false)
+      expect(result[0].incompatibleUpdate).toBe(true)
+      expect(result[0].incompatibleReason).toContain('>=2.0.0')
+    })
+  })
+
+  describe('backupAddon, restoreAddonBackup and removeAddonBackup', () => {
+    it('deve ter os métodos backupAddon, restoreAddonBackup e removeAddonBackup definidos na facade', () => {
+      const facade = new AddonsFacade(new HardDiskStorage('./storage'))
+      expect(typeof facade.backupAddon).toBe('function')
+      expect(typeof facade.restoreAddonBackup).toBe('function')
+      expect(typeof facade.removeAddonBackup).toBe('function')
+    })
   })
 })

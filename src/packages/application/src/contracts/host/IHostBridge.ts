@@ -217,6 +217,12 @@ export interface AddonManifest {
   tags?: string[]
   category?:
     'DataSources' | 'Watchers' | 'Calendars' | 'Punch' | 'Themes' | string
+  updateAvailable?: boolean
+  latestVersion?: string
+  latestDownloadUrl?: string
+  changelog?: string[]
+  incompatibleUpdate?: boolean
+  incompatibleReason?: string
 }
 
 export interface AddonInstaller {
@@ -376,7 +382,11 @@ export interface IAddonsAPI {
   ): Promise<ViewModel<AddonInstallerViewModel>>
 
   install(
-    payload: IRequest<{ downloadUrl: string }>,
+    payload: IRequest<{ downloadUrl: string; jobId?: string }>,
+  ): Promise<ViewModel<IJobResult>>
+
+  update(
+    payload: IRequest<{ addonId: string; downloadUrl: string; jobId: string }>,
   ): Promise<ViewModel<IJobResult>>
 
   uninstall(

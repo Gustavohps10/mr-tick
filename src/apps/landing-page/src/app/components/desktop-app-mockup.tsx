@@ -190,6 +190,7 @@ const mockBridgeClient: IHostBridge = {
         packages: [],
       }),
     install: async () => mockSuccess({ jobId: 'mock-job' }),
+    update: async () => mockSuccess({ jobId: 'mock-job' }),
     uninstall: async () => mockSuccess(undefined),
     getSidebarMenus: async () => mockSuccess([]),
     getTimerbarMenus: async () => mockSuccess([]),

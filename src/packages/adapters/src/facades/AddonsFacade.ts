@@ -6,8 +6,11 @@ import {
 } from '@mr-tick/application'
 import {
   AppError,
+  compareSemVer,
   DEFAULT_MIN_API_VERSION,
   Either,
+  isApiVersionCompatible,
+  parseSemVer,
 } from '@mr-tick/shared/helpers'
 import { IJobEvent } from '@mr-tick/shared/transport'
 import axios from 'axios'
@@ -93,18 +96,17 @@ function isPathResolvableStorage(
 ): storage is IFileStorage & IPathResolvableStorage {
   return (
     'getAbsolutePath' in storage &&
-    typeof (storage as Partial<IPathResolvableStorage>).getAbsolutePath ===
-      'function'
+    typeof storage.getAbsolutePath === 'function'
   )
 }
 
 export class AddonsFacade implements IAddonsFacade {
-  constructor(private readonly fileStorage?: IFileStorage) {}
+  constructor(private readonly fileStorage: IFileStorage) {}
 
   private getAddonsBasePaths(): string[] {
     const paths: string[] = [resolve('./addons'), resolve('./storage/addons')]
 
-    if (this.fileStorage && isPathResolvableStorage(this.fileStorage)) {
+    if (isPathResolvableStorage(this.fileStorage)) {
       const storageAddonsPath = this.fileStorage.getAbsolutePath('addons')
       if (storageAddonsPath && !paths.includes(storageAddonsPath)) {
         paths.push(storageAddonsPath)
@@ -204,6 +206,13 @@ export class AddonsFacade implements IAddonsFacade {
         }
       }
 
+      installedAddons.sort((left, right) => {
+        const leftVersion = parseSemVer(left.version)
+        const rightVersion = parseSemVer(right.version)
+        if (!leftVersion) return rightVersion ? 1 : 0
+        if (!rightVersion) return -1
+        return compareSemVer(rightVersion, leftVersion)
+      })
       return Either.success(installedAddons)
     } catch {
       return Either.failure(
@@ -214,11 +223,28 @@ export class AddonsFacade implements IAddonsFacade {
 
   public async getInstalledById(
     addonId: string,
+    version?: string,
   ): Promise<Either<AppError, AddonManifestDTO>> {
     const result = await this.listInstalled()
     if (result.isFailure()) return result.forwardFailure()
 
-    const addon = result.success.find((a: AddonManifestDTO) => a.id === addonId)
+    const matches = result.success.filter(
+      (item) => item.id === addonId && (!version || item.version === version),
+    )
+    const addon = matches.reduce<AddonManifestDTO | undefined>(
+      (latest, item) => {
+        if (!latest) return item
+        const candidateVersion = parseSemVer(item.version)
+        const latestVersion = parseSemVer(latest.version)
+        if (
+          candidateVersion &&
+          (!latestVersion || compareSemVer(candidateVersion, latestVersion) > 0)
+        )
+          return item
+        return latest
+      },
+      undefined,
+    )
     if (!addon)
       return Either.failure(AppError.NotFound('LOCAL_ADDON_NOT_FOUND'))
 
@@ -251,6 +277,7 @@ export class AddonsFacade implements IAddonsFacade {
 
             if (matchesId && matchesVersion) {
               const targetFolder = join(manifestPath, '..')
+              if (await this.isLinkedAddonFolder(targetFolder)) continue
               await fs.rm(targetFolder, { recursive: true, force: true })
               removedCount++
             }
@@ -269,6 +296,87 @@ export class AddonsFacade implements IAddonsFacade {
       return Either.success()
     } catch {
       return Either.failure(AppError.Internal('ERRO_AO_DESINSTALAR_ADDON'))
+    }
+  }
+
+  public async backupAddon(
+    addonId: string,
+    version?: string,
+  ): Promise<Either<AppError, string>> {
+    try {
+      const installedResult = await this.listInstalled()
+      if (installedResult.isFailure()) return installedResult.forwardFailure()
+
+      const targetAddon = installedResult.success.find((item) => {
+        const matchesId = item.id === addonId
+        const matchesVersion = !version || item.version === version
+        return matchesId && matchesVersion
+      })
+
+      if (!targetAddon || !targetAddon.path) {
+        return Either.failure(
+          AppError.NotFound('ADDON_INSTALADO_NAO_ENCONTRADO'),
+        )
+      }
+
+      if (await this.isLinkedAddonFolder(targetAddon.path))
+        return Either.failure(
+          AppError.ValidationError(
+            'Addon vinculado para desenvolvimento: instale uma cópia pelo catálogo para permitir atualizações.',
+          ),
+        )
+      const backupPath = `${targetAddon.path}.backup`
+      await fs.cp(targetAddon.path, backupPath, {
+        recursive: true,
+        force: true,
+      })
+
+      return Either.success(backupPath)
+    } catch {
+      return Either.failure(AppError.Internal('ERRO_AO_CRIAR_BACKUP_ADDON'))
+    }
+  }
+
+  public async restoreAddonBackup(
+    addonId: string,
+    backupPath: string,
+  ): Promise<Either<AppError, void>> {
+    try {
+      try {
+        await fs.access(backupPath)
+      } catch {
+        return Either.failure(AppError.NotFound('BACKUP_NAO_ENCONTRADO'))
+      }
+
+      const targetFolder = backupPath.endsWith('.backup')
+        ? backupPath.slice(0, -7)
+        : backupPath
+
+      try {
+        await fs.rm(targetFolder, { recursive: true, force: true })
+      } catch {
+        // Silencia caso diretório não exista
+      }
+
+      await fs.cp(backupPath, targetFolder, {
+        recursive: true,
+        force: true,
+      })
+
+      return Either.success()
+    } catch {
+      return Either.failure(AppError.Internal('ERRO_AO_RESTAURAR_BACKUP_ADDON'))
+    }
+  }
+
+  public async removeAddonBackup(
+    backupPath: string,
+  ): Promise<Either<AppError, void>> {
+    try {
+      await fs.rm(backupPath, { recursive: true, force: true })
+      return Either.success()
+    } catch {
+      return Either.failure(AppError.Internal('ERRO_AO_REMOVER_BACKUP_ADDON'))
     }
   }
 
@@ -460,12 +568,21 @@ export class AddonsFacade implements IAddonsFacade {
     }
   }
 
+  private async isLinkedAddonFolder(addonPath: string): Promise<boolean> {
+    const actualPath = await fs.realpath(addonPath)
+    const expectedPath = resolve(addonPath)
+    if (process.platform === 'win32')
+      return actualPath.toLowerCase() !== expectedPath.toLowerCase()
+    return actualPath !== expectedPath
+  }
+
   private async findManifestFiles(dir: string): Promise<string[]> {
     const manifestPaths: string[] = []
 
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true })
       for (const entry of entries) {
+        if (entry.name.endsWith('.backup')) continue
         const fullPath = join(dir, entry.name)
         let isDirectory = entry.isDirectory()
 
@@ -512,5 +629,56 @@ export class AddonsFacade implements IAddonsFacade {
       }
     }
     return null
+  }
+
+  public checkUpdates(
+    installed: AddonManifestDTO[],
+    available: AddonManifestDTO[],
+    hostSdkVersion?: string,
+  ): AddonManifestDTO[] {
+    const availableMap = new Map<string, AddonManifestDTO>()
+    for (const item of available) {
+      availableMap.set(item.id, item)
+    }
+
+    return installed.map((installedItem) => {
+      const remote = availableMap.get(installedItem.id)
+      if (!remote) return { ...installedItem, updateAvailable: false }
+
+      const installedSemVer = parseSemVer(installedItem.version)
+      const remoteSemVer = parseSemVer(remote.version)
+      if (!installedSemVer || !remoteSemVer)
+        return { ...installedItem, updateAvailable: false }
+
+      if (compareSemVer(remoteSemVer, installedSemVer) <= 0)
+        return { ...installedItem, updateAvailable: false }
+
+      let activeHostVersion = DEFAULT_MIN_API_VERSION
+      if (hostSdkVersion) {
+        activeHostVersion = hostSdkVersion
+      }
+
+      const isCompatible = isApiVersionCompatible(
+        remote.requiredApiVersion,
+        activeHostVersion,
+      )
+
+      if (!isCompatible) {
+        return {
+          ...installedItem,
+          updateAvailable: false,
+          incompatibleUpdate: true,
+          incompatibleReason: `Requer Mr. Tick API ${remote.requiredApiVersion ?? 'mais recente'}`,
+        }
+      }
+
+      return {
+        ...installedItem,
+        updateAvailable: true,
+        latestVersion: remote.version,
+        downloadUrl: remote.downloadUrl,
+        changelog: remote.changelog,
+      }
+    })
   }
 }

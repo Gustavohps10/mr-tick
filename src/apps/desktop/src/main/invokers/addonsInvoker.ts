@@ -24,6 +24,9 @@ export const addonsInvoker: IAddonsAPI = {
     >,
   ) => IpcInvoker.invoke('ADDONS_INSTALL', payload),
 
+  update: (payload: Parameters<IAddonsAPI['update']>[0]) =>
+    IpcInvoker.invoke('ADDONS_UPDATE', payload),
+
   uninstall: (payload: IRequest<{ addonId: string; version?: string }>) =>
     IpcInvoker.invoke('ADDONS_UNINSTALL', payload),
 

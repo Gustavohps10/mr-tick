@@ -34,4 +34,9 @@ export interface AddonManifestViewModel {
   releaseDate?: string
   changelog?: string[]
   packages?: AddonPackageViewModel[]
+  updateAvailable?: boolean
+  latestVersion?: string
+  latestDownloadUrl?: string
+  incompatibleUpdate?: boolean
+  incompatibleReason?: string
 }

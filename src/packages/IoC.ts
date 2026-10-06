@@ -9,6 +9,7 @@ import {
   DisconnectDataSourceService,
   GetCurrentUserService,
   GetWorkspaceService,
+  IAddonReloader,
   ICredentialsStorage,
   IDataSourceResolver,
   IFileStorage,
@@ -25,6 +26,7 @@ import {
   TimeEntriesPullService,
   TimeEntriesPushService,
   UnlinkDataSourceService,
+  UpdateAddonService,
   UpdateWorkspaceIdentityService,
 } from '@mr-tick/application'
 import { IEventEmitter, IJobEvents } from '@mr-tick/shared/transport'
@@ -83,6 +85,7 @@ export interface PlatformDependencies {
   dataSourceResolver: IDataSourceResolver
   fileStorage: IFileStorage
   httpClient: IHttpClient
+  addonReloader: IAddonReloader
 }
 
 /**
@@ -110,6 +113,7 @@ export class ContainerBuilder {
       dataSourceResolver: asValue(deps.dataSourceResolver),
       fileStorage: asValue(deps.fileStorage),
       httpClient: asValue(deps.httpClient),
+      addonReloader: asValue(deps.addonReloader),
     }
 
     this.container.register(registrations)
@@ -142,6 +146,7 @@ export class ContainerBuilder {
       ).scoped(),
       deleteWorkspaceService: asClass(DeleteWorkspaceService).scoped(),
       importAddonService: asClass(ImportAddonService).scoped(),
+      updateAddonService: asClass(UpdateAddonService).scoped(),
       timeEntriesPullService: asClass(TimeEntriesPullService).scoped(),
       timeEntriesPushService: asClass(TimeEntriesPushService).scoped(),
       metadataPullService: asClass(MetadataPullService).scoped(),

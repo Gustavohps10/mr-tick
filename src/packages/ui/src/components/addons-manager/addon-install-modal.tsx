@@ -1,7 +1,6 @@
 'use client'
 
 import { isApiVersionCompatible } from '@mr-tick/shared/helpers'
-import { IJobEvent } from '@mr-tick/shared/transport'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Loader2, Terminal, XCircle } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
@@ -19,6 +18,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useHostBridge } from '@/hooks/use-host-bridge'
+import { runAddonJob } from '@/lib/run-addon-job'
 import { cn } from '@/lib/utils'
 
 export interface AddonInstallTarget {
@@ -36,6 +36,8 @@ interface AddonInstallModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess?: () => void
+  operation?: 'install' | 'update'
+  onSettled?: () => void
 }
 
 interface InstallationLogEntry {
@@ -50,8 +52,12 @@ export function AddonInstallModal({
   open,
   onOpenChange,
   onSuccess,
+  operation = 'install',
+  onSettled,
 }: AddonInstallModalProps) {
   const bridge = useHostBridge()
+  const isUpdate = operation === 'update'
+  const operationLabel = isUpdate ? 'Atualização' : 'Instalação'
   const queryClient = useQueryClient()
   const logEndRef = useRef<HTMLDivElement>(null)
   const installationStartedRef = useRef(false)
@@ -77,20 +83,35 @@ export function AddonInstallModal({
 
   const handleClose = () => {
     if (!isDone && isExecutingJob) {
-      toast.warning('Aguarde o término da instalação em andamento.')
+      toast.warning('Aguarde o término da operação em andamento.')
       return
     }
     onOpenChange(false)
   }
 
   const handleStartInstallation = async () => {
+    const failToStart = (message: string) => {
+      setIsError(true)
+      setIsDone(true)
+      setIsExecutingJob(false)
+      setLogs([
+        {
+          id: crypto.randomUUID(),
+          message,
+          type: 'error',
+          timestamp: new Date(),
+        },
+      ])
+      toast.error(message)
+      onSettled?.()
+    }
     if (!addon?.downloadUrl) {
-      toast.error('URL de download não configurada para esta versão.')
+      failToStart('URL de download não configurada para esta versão.')
       return
     }
 
     if (!isApiVersionCompatible(addon.requiredApiVersion, sdkVersion)) {
-      toast.error(
+      failToStart(
         `Versão incompatível com a versão atual da API do aplicativo (${sdkVersion})`,
       )
       return
@@ -104,94 +125,57 @@ export function AddonInstallModal({
     setLogs([
       {
         id: crypto.randomUUID(),
-        message: `Iniciando instalação de ${addon.name} (v${addon.version})...`,
+        message: `Iniciando ${operationLabel.toLowerCase()} de ${addon.name} (v${addon.version})...`,
         type: 'info',
         timestamp: new Date(),
       },
     ])
 
-    const installResponse = await bridge.addons.install({
-      body: { downloadUrl: addon.downloadUrl },
-    })
-
-    if (!installResponse.isSuccess || !installResponse.data?.jobId) {
-      setIsError(true)
-      setIsDone(true)
-      setIsExecutingJob(false)
-      setLogs((prevLogs) => [
-        ...prevLogs,
-        {
-          id: crypto.randomUUID(),
-          message: `Falha ao iniciar job: ${installResponse.error ?? 'Erro desconhecido'}`,
-          type: 'error',
-          timestamp: new Date(),
-        },
-      ])
-      return
-    }
-
-    const jobId = installResponse.data.jobId
-
-    const unsubscribeEvents = bridge.events.on(
-      jobId,
-      (event: IJobEvent<string>) => {
-        if (event.status === 'progress') {
-          setProgress(event.value)
-          return
-        }
-
-        if (event.status === 'data') {
-          const messageText =
-            typeof event.data === 'string' ? event.data : 'Processando...'
-          setLogs((prevLogs) => [
-            ...prevLogs,
+    const result = await runAddonJob(
+      bridge,
+      addon.id,
+      addon.downloadUrl,
+      (event) => {
+        if (event.status === 'progress') setProgress(event.value)
+        if (event.status === 'data')
+          setLogs((previous) => [
+            ...previous,
             {
               id: crypto.randomUUID(),
-              message: messageText,
+              message:
+                typeof event.data === 'string' ? event.data : 'Processando...',
               type: 'info',
               timestamp: new Date(),
             },
           ])
-          return
-        }
-
-        if (event.status === 'done') {
-          unsubscribeEvents()
-          setProgress(100)
-          setIsDone(true)
-          setIsExecutingJob(false)
-          setLogs((prevLogs) => [
-            ...prevLogs,
-            {
-              id: crypto.randomUUID(),
-              message: 'Instalação concluída com sucesso!',
-              type: 'success',
-              timestamp: new Date(),
-            },
-          ])
-          queryClient.invalidateQueries({ queryKey: ['plugins'] })
-          onSuccess?.()
-          return
-        }
-
-        if (event.status === 'error') {
-          unsubscribeEvents()
-          setIsDone(true)
-          setIsError(true)
-          setIsExecutingJob(false)
-          setLogs((prevLogs) => [
-            ...prevLogs,
-            {
-              id: crypto.randomUUID(),
-              message: `Erro fatal: ${event.error}`,
-              type: 'error',
-              timestamp: new Date(),
-            },
-          ])
-          return
-        }
       },
+      operation,
     )
+    setIsDone(true)
+    setIsExecutingJob(false)
+    setIsError(result.isFailure())
+    const message = result.isFailure()
+      ? result.failure.messageKey
+      : isUpdate
+        ? 'Addon atualizado com sucesso!'
+        : 'Addon instalado com sucesso!'
+    setLogs((previous) => [
+      ...previous,
+      {
+        id: crypto.randomUUID(),
+        message,
+        type: result.isFailure() ? 'error' : 'success',
+        timestamp: new Date(),
+      },
+    ])
+    if (result.isFailure()) toast.error(message)
+    if (result.isSuccess()) {
+      setProgress(100)
+      toast.success(message)
+      onSuccess?.()
+    }
+    onSettled?.()
+    await queryClient.invalidateQueries({ queryKey: ['plugins'] })
   }
 
   startInstallationRef.current = handleStartInstallation
@@ -217,7 +201,7 @@ export function AddonInstallModal({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent
         data-testid="addon-install-modal-content"
-        className="overflow-hidden border-none p-0 shadow-2xl sm:max-w-lg"
+        className="w-[95vw] max-w-3xl overflow-hidden border-none p-0 shadow-2xl sm:max-w-3xl"
         onPointerDownOutside={(event) => {
           if (!isDone) event.preventDefault()
         }}
@@ -230,12 +214,12 @@ export function AddonInstallModal({
             <DialogHeader className="mb-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-xl border">
+                  <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-lg border">
                     <Terminal className="text-primary h-5 w-5" />
                   </div>
                   <div>
                     <DialogTitle className="text-base font-bold">
-                      Console de Instalação
+                      Console de {operationLabel}
                     </DialogTitle>
                     <DialogDescription className="font-mono text-xs">
                       {addon?.id}@{addon?.version}
@@ -270,7 +254,7 @@ export function AddonInstallModal({
             {/* Barra de Progresso */}
             <div className="mb-4 space-y-2">
               <div className="text-muted-foreground flex justify-between font-mono text-[10px] tracking-widest uppercase">
-                <span>Progresso de Instalação</span>
+                <span>Progresso de {operationLabel}</span>
                 <span className="font-bold">{progress}%</span>
               </div>
               <Progress value={progress} className="h-2" />
@@ -285,14 +269,13 @@ export function AddonInstallModal({
                   <div className="h-2 w-2 rounded-full bg-[#28C840]" />
                 </div>
                 <span className="text-muted-foreground text-[10px]">
-                  installation.log
+                  {isUpdate ? 'update.log' : 'installation.log'}
                 </span>
               </div>
 
               <ScrollArea className="h-52 p-3">
                 <div className="space-y-1.5">
-                  {logs.map((log, index) => {
-                    const isLast = index === logs.length - 1
+                  {logs.map((log) => {
                     return (
                       <div key={log.id} className="flex gap-2 leading-relaxed">
                         <span className="text-muted-foreground/60 shrink-0">
@@ -332,7 +315,11 @@ export function AddonInstallModal({
               {!isDone && (
                 <>
                   <Loader2 className="text-primary h-3.5 w-3.5 animate-spin" />
-                  <span>Instalando pacotes...</span>
+                  <span>
+                    {isUpdate
+                      ? 'Atualizando addon...'
+                      : 'Instalando pacotes...'}
+                  </span>
                 </>
               )}
             </div>
