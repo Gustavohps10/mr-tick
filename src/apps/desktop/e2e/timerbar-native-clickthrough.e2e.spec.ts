@@ -53,6 +53,10 @@ async function openWorkspace(page: Page): Promise<void> {
 }
 
 test.describe('Timerbar Native Win32 Click-Through & Focus Contract', () => {
+  test.skip(
+    process.platform !== 'win32',
+    'Este teste depende do harness nativo Win32 e só roda localmente no Windows.',
+  )
   let harnessClient: NativeHarnessClient | null = null
 
   test.beforeEach(async () => {
@@ -67,7 +71,7 @@ test.describe('Timerbar Native Win32 Click-Through & Focus Contract', () => {
     }
   })
 
-  test('validação nativa Win32 com SendInput: click-through em região transparente vs contenção nos controles', async ({
+  test('validação nativa Win32 com SendInput: click-through em região transparente vs contenção nos controles @local-windows', async ({
     electronApp,
     page,
   }, testInfo) => {

@@ -150,10 +150,14 @@ test('widget Electron real: paridade, abas e edição refletida entre janelas', 
   })
 })
 
-test('popover real: 20 reaberturas por volume fake, sem retries e com amostras brutas', async ({
+test('popover real: 20 reaberturas por volume fake, sem retries e com amostras brutas @local-windows', async ({
   electronApp,
   page,
 }, testInfo) => {
+  test.skip(
+    process.platform !== 'win32',
+    'Stress de performance do popover é executado somente localmente no Windows.',
+  )
   test.setTimeout(240000)
   await openWorkspace(page)
   await expect

@@ -14,6 +14,7 @@ export default defineConfig({
       : 4,
   forbidOnly: Boolean(process.env.CI),
   retries: 4,
+  ...(process.env.CI ? { grepInvert: /@local-windows/ } : {}),
   reporter: [
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
