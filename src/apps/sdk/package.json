@@ -22,7 +22,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup --format esm,cjs --dts",
+    "build": "tsup --format esm,cjs",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist .turbo"
   },

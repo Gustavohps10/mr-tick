@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { createStore } from 'zustand/vanilla'
 
+import { TimeEntriesColumnsProvider } from '@/pages/time-entries/components/time-entries-columns-context'
+
 vi.mock('@/hooks/use-host-bridge', () => ({
   useHostBridge: () => ({
     timer: {
@@ -38,7 +40,10 @@ import { setupRxDBQueryCacheSync } from '@/local-db/rxdb-query-cache-sync'
 import { SyncMetadataItem } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { TimeEntriesDayCard } from '@/pages/time-entries/components/time-entries-day-card'
-import { createTimeEntriesColumns } from '@/pages/time-entries/components/time-entries-table-columns'
+import {
+  type CreateColumnsOptions,
+  createTimeEntriesColumns,
+} from '@/pages/time-entries/components/time-entries-table-columns'
 import { SuggestionRow } from '@/pages/time-entries/lib/time-entries-utils'
 import { AppDatabase } from '@/stores/sync-store/types'
 import { TimeEntryContext, TimeEntryStore } from '@/stores/timeEntryStore'
@@ -101,7 +106,7 @@ describe('TimeEntries Row Observability & Flicker Tests', () => {
         Record<string, boolean>
       >({})
 
-      const columns = createTimeEntriesColumns({
+      const columnOptions: CreateColumnsOptions = {
         activities: mockActivities,
         tasksById: {},
         editingRows,
@@ -118,7 +123,8 @@ describe('TimeEntries Row Observability & Flicker Tests', () => {
         onDuplicateRow: (row) => {},
         onAcceptSuggestion: (row) => {},
         onDismissSuggestion: (id) => {},
-      })
+      }
+      const columns = createTimeEntriesColumns(columnOptions)
 
       const mockConnectionsValue: DataSourceConnectionsContextType = {
         isLoading: false,
@@ -173,16 +179,18 @@ describe('TimeEntries Row Observability & Flicker Tests', () => {
                 <DataSourceConnectionsContext.Provider
                   value={mockConnectionsValue}
                 >
-                  <TimeEntriesDayCard
-                    day={testDay}
-                    entries={entries}
-                    draftEntries={draftEntries}
-                    tempData={tempData}
-                    columns={columns}
-                    expandedRows={{}}
-                    onExpandedChange={() => {}}
-                    isGrouped={true}
-                  />
+                  <TimeEntriesColumnsProvider value={columnOptions}>
+                    <TimeEntriesDayCard
+                      day={testDay}
+                      entries={entries}
+                      draftEntries={draftEntries}
+                      tempData={tempData}
+                      columns={columns}
+                      expandedRows={{}}
+                      onExpandedChange={() => {}}
+                      isGrouped={true}
+                    />
+                  </TimeEntriesColumnsProvider>
                 </DataSourceConnectionsContext.Provider>
               </TimeEntryContext.Provider>
             </WorkspaceContext.Provider>
@@ -321,7 +329,7 @@ describe('TimeEntries Row Observability & Flicker Tests', () => {
         }))
       }
 
-      const columns = createTimeEntriesColumns({
+      const columnOptions: CreateColumnsOptions = {
         activities: mockActivities,
         tasksById: {},
         editingRows,
@@ -350,7 +358,8 @@ describe('TimeEntries Row Observability & Flicker Tests', () => {
         onDuplicateRow: (row) => {},
         onAcceptSuggestion: (row) => {},
         onDismissSuggestion: (id) => {},
-      })
+      }
+      const columns = createTimeEntriesColumns(columnOptions)
 
       const mockConnectionsValue: DataSourceConnectionsContextType = {
         isLoading: false,
@@ -405,20 +414,22 @@ describe('TimeEntries Row Observability & Flicker Tests', () => {
                 <DataSourceConnectionsContext.Provider
                   value={mockConnectionsValue}
                 >
-                  <TimeEntriesDayCard
-                    day={testDay}
-                    entries={entries}
-                    draftEntries={draftEntries}
-                    tempData={tempData}
-                    columns={columns}
-                    expandedRows={{}}
-                    onExpandedChange={() => {}}
-                    isGrouped={true}
-                    onAddNewEntry={handleAddNewEntry}
-                    onRowDoubleClick={(row) => {
-                      setEditingRows((prev) => ({ ...prev, [row.id]: true }))
-                    }}
-                  />
+                  <TimeEntriesColumnsProvider value={columnOptions}>
+                    <TimeEntriesDayCard
+                      day={testDay}
+                      entries={entries}
+                      draftEntries={draftEntries}
+                      tempData={tempData}
+                      columns={columns}
+                      expandedRows={{}}
+                      onExpandedChange={() => {}}
+                      isGrouped={true}
+                      onAddNewEntry={handleAddNewEntry}
+                      onRowDoubleClick={(row) => {
+                        setEditingRows((prev) => ({ ...prev, [row.id]: true }))
+                      }}
+                    />
+                  </TimeEntriesColumnsProvider>
                 </DataSourceConnectionsContext.Provider>
               </TimeEntryContext.Provider>
             </WorkspaceContext.Provider>

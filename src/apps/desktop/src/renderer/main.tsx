@@ -1,19 +1,20 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 
-import { AppDesktop } from '@/renderer/App'
+async function startRenderer(): Promise<void> {
+  if (window.location.hash === '#/runtime') {
+    const { startLocalRuntimeRenderer } = await import('./local-runtime')
+    await startLocalRuntimeRenderer()
+    return
+  }
+  const root = document.getElementById('root')
+  if (!root) return
+  const { AppDesktop } = await import('@/renderer/App')
+  createRoot(root).render(
+    <React.StrictMode>
+      <AppDesktop />
+    </React.StrictMode>,
+  )
+}
 
-// if (import.meta.env.MODE === 'development') {
-//   // @ts-ignore
-//   import('@welldone-software/why-did-you-render').then(
-//     ({ default: whyDidYouRender }) => {
-//       whyDidYouRender(React, { trackAllPureComponents: true })
-//     },
-//   )
-// }
-
-createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <AppDesktop />
-  </React.StrictMode>,
-)
+void startRenderer()

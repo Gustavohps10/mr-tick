@@ -89,6 +89,7 @@ import {
 import { cn } from '@/lib/utils'
 import { SyncMetadataRxDBDTO } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
+import { requestEntryPersistence } from '@/local-runtime/persistence-client'
 import { extractPureTaskId } from '@/pages/time-entries/lib/time-entries-utils'
 import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
 import { useTimeEntryStore } from '@/stores/timeEntryStore'
@@ -910,14 +911,23 @@ export const UltimateTimeTracker = ({
 
       const doc = await db.timeEntries.findOne(activeEntry.id).exec()
       if (doc) {
-        const updated = await doc.patch({
-          task: { id: pureId },
-          taskData: task,
-          connectionInstanceId: connId,
-          dataSourceId: task.dataSourceId || activeEntry.dataSourceId,
-          updatedAt: new Date().toISOString(),
+        const edit = await requestEntryPersistence(bridge, db, {
+          action: 'editRecord',
+          entryId: doc.id,
+          changes: {
+            task: { id: pureId },
+            taskData: task,
+            connectionInstanceId: connId,
+            dataSourceId: task.dataSourceId || activeEntry.dataSourceId,
+            updatedAt: new Date().toISOString(),
+          },
         })
-        const updatedJson = updated.toMutableJSON()
+        if (edit.isFailure()) {
+          toast.error(edit.failure.messageKey)
+          return
+        }
+        const updatedJson = edit.success
+        if (!updatedJson) return
         setActive(updatedJson)
         bridge.events.emit('time-entry:sync', updatedJson)
       }
@@ -949,11 +959,20 @@ export const UltimateTimeTracker = ({
 
       const doc = await db.timeEntries.findOne(activeEntry.id).exec()
       if (doc) {
-        const updated = await doc.patch({
-          task: { id: newTaskId },
-          updatedAt: new Date().toISOString(),
+        const edit = await requestEntryPersistence(bridge, db, {
+          action: 'editRecord',
+          entryId: doc.id,
+          changes: {
+            task: { id: newTaskId },
+            updatedAt: new Date().toISOString(),
+          },
         })
-        const updatedJson = updated.toMutableJSON()
+        if (edit.isFailure()) {
+          toast.error(edit.failure.messageKey)
+          return
+        }
+        const updatedJson = edit.success
+        if (!updatedJson) return
         setActive(updatedJson)
         bridge.events.emit('time-entry:sync', updatedJson)
       }
@@ -971,11 +990,20 @@ export const UltimateTimeTracker = ({
 
       const doc = await db.timeEntries.findOne(activeEntry.id).exec()
       if (doc) {
-        const updated = await doc.patch({
-          comments: desc,
-          updatedAt: new Date().toISOString(),
+        const edit = await requestEntryPersistence(bridge, db, {
+          action: 'editRecord',
+          entryId: doc.id,
+          changes: {
+            comments: desc,
+            updatedAt: new Date().toISOString(),
+          },
         })
-        const updatedJson = updated.toMutableJSON()
+        if (edit.isFailure()) {
+          toast.error(edit.failure.messageKey)
+          return
+        }
+        const updatedJson = edit.success
+        if (!updatedJson) return
         setActive(updatedJson)
         bridge.events.emit('time-entry:sync', updatedJson)
       }
@@ -995,11 +1023,20 @@ export const UltimateTimeTracker = ({
       if (activeEntry && db) {
         const doc = await db.timeEntries.findOne(activeEntry.id).exec()
         if (doc) {
-          const updated = await doc.patch({
-            activity: { id: actId },
-            updatedAt: new Date().toISOString(),
+          const edit = await requestEntryPersistence(bridge, db, {
+            action: 'editRecord',
+            entryId: doc.id,
+            changes: {
+              activity: { id: actId },
+              updatedAt: new Date().toISOString(),
+            },
           })
-          const updatedJson = updated.toMutableJSON()
+          if (edit.isFailure()) {
+            toast.error(edit.failure.messageKey)
+            return
+          }
+          const updatedJson = edit.success
+          if (!updatedJson) return
           setActive(updatedJson)
           bridge.events.emit('time-entry:sync', updatedJson)
         }
@@ -1018,11 +1055,20 @@ export const UltimateTimeTracker = ({
       if (activeEntry && db) {
         const doc = await db.timeEntries.findOne(activeEntry.id).exec()
         if (doc) {
-          const updated = await doc.patch({
-            connectionInstanceId: connId,
-            updatedAt: new Date().toISOString(),
+          const edit = await requestEntryPersistence(bridge, db, {
+            action: 'editRecord',
+            entryId: doc.id,
+            changes: {
+              connectionInstanceId: connId,
+              updatedAt: new Date().toISOString(),
+            },
           })
-          const updatedJson = updated.toMutableJSON()
+          if (edit.isFailure()) {
+            toast.error(edit.failure.messageKey)
+            return
+          }
+          const updatedJson = edit.success
+          if (!updatedJson) return
           setActive(updatedJson)
           bridge.events.emit('time-entry:sync', updatedJson)
         }
@@ -1073,14 +1119,12 @@ export const UltimateTimeTracker = ({
 
     const mode = timerDirection === 'up' ? 'countup' : 'countdown'
     const connectionInstanceId =
-      selectedTask?.connectionInstanceId ||
-      selectedConnectionId ||
-      'default-conn'
+      selectedTask?.connectionInstanceId || selectedConnectionId || ''
     const dataSourceId =
       selectedTask?.dataSourceId ||
       syncConnections.find((c) => c.connectionId === connectionInstanceId)
         ?.dataSourceId ||
-      'default'
+      ''
 
     const currentActivity = activities.find((a) => a.id === selectedActivity)
     const currentConnection = syncConnections.find(
@@ -1150,14 +1194,12 @@ export const UltimateTimeTracker = ({
     setTimerError(null)
 
     const connectionInstanceId =
-      selectedTask?.connectionInstanceId ||
-      selectedConnectionId ||
-      'default-conn'
+      selectedTask?.connectionInstanceId || selectedConnectionId || ''
     const dataSourceId =
       selectedTask?.dataSourceId ||
       syncConnections.find((c) => c.connectionId === connectionInstanceId)
         ?.dataSourceId ||
-      'default'
+      ''
 
     const currentActivity = activities.find((a) => a.id === selectedActivity)
     const currentConnection = syncConnections.find(

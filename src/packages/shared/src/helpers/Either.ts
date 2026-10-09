@@ -1,70 +1,83 @@
-export class Either<Failure, Success> {
-  private readonly _isSuccess: boolean
+export interface Either<Failure, Success> {
+  forwardFailure<NextSuccess>(): Either<Failure, NextSuccess>
+  isFailure(): boolean
+  isSuccess(): boolean
+  readonly failure: Failure
+  readonly success: Success
+  map<NextSuccess>(
+    transform: (value: Success) => NextSuccess,
+  ): Either<Failure, NextSuccess>
+  flatMap<NextSuccess>(
+    transform: (value: Success) => Either<Failure, NextSuccess>,
+  ): Either<Failure, NextSuccess>
+  getOrElse(defaultValue: Success): Success
+  unwrap(): Failure | Success
+}
 
-  private constructor(
-    private readonly _failure: Failure | undefined,
-    private readonly _success: Success | undefined,
-    isSuccess: boolean,
-  ) {
-    this._isSuccess = isSuccess
+type EitherState<Failure, Success> =
+  { kind: 'failure'; value: Failure } | { kind: 'success'; value: Success }
+
+class EitherValue<Failure, Success> implements Either<Failure, Success> {
+  constructor(private readonly state: EitherState<Failure, Success>) {}
+
+  forwardFailure<NextSuccess>(): Either<Failure, NextSuccess> {
+    return failure<Failure, NextSuccess>(this.failure)
   }
 
-  forwardFailure<Success>(): Either<Failure, Success> {
-    return Either.failure<Failure>(this.failure)
-  }
-
-  // ========= Success Factory Methods =========
-  static success(): Either<never, void>
-  static success<Success>(value: Success): Either<never, Success>
-  static success<Success>(value?: Success): Either<never, Success | void> {
-    return new Either<never, any>(undefined, value, true)
-  }
-
-  // ========= Failure Factory Methods =========
-  static failure<Failure, Success = never>(
-    value: Failure,
-  ): Either<Failure, Success> {
-    return new Either<Failure, Success>(value, undefined, false)
-  }
-
-  // ========= Status Checkers =========
   isFailure(): boolean {
-    return !this._isSuccess
+    return this.state.kind === 'failure'
   }
 
   isSuccess(): boolean {
-    return this._isSuccess
+    return this.state.kind === 'success'
   }
 
-  // ========= Value Getters =========
   get failure(): Failure {
-    if (!this.isFailure()) throw new Error('No failure value')
-    return this._failure!
+    if (this.state.kind === 'failure') return this.state.value
+    throw new Error('No failure value')
   }
 
   get success(): Success {
-    if (!this.isSuccess()) throw new Error('No success value')
-    return this._success!
+    if (this.state.kind === 'success') return this.state.value
+    throw new Error('No success value')
   }
 
-  // ========= Transformations =========
-  map<U>(fn: (s: Success) => U): Either<Failure, U> {
-    return this.isSuccess()
-      ? new Either<Failure, U>(undefined, fn(this.success), true)
-      : new Either<Failure, U>(this.failure, undefined, false)
+  map<NextSuccess>(
+    transform: (value: Success) => NextSuccess,
+  ): Either<Failure, NextSuccess> {
+    if (this.state.kind === 'failure')
+      return failure<Failure, NextSuccess>(this.state.value)
+    return success(transform(this.state.value))
   }
 
-  flatMap<U>(fn: (s: Success) => Either<Failure, U>): Either<Failure, U> {
-    return this.isSuccess()
-      ? fn(this.success)
-      : new Either<Failure, U>(this.failure, undefined, false)
+  flatMap<NextSuccess>(
+    transform: (value: Success) => Either<Failure, NextSuccess>,
+  ): Either<Failure, NextSuccess> {
+    if (this.state.kind === 'failure')
+      return failure<Failure, NextSuccess>(this.state.value)
+    return transform(this.state.value)
   }
 
   getOrElse(defaultValue: Success): Success {
-    return this.isSuccess() ? this.success : defaultValue
+    if (this.state.kind === 'failure') return defaultValue
+    return this.state.value
   }
 
   unwrap(): Failure | Success {
-    return this.isSuccess() ? this.success : this.failure!
+    return this.state.value
   }
 }
+
+function success(): Either<never, void>
+function success<Success>(value: Success): Either<never, Success>
+function success<Success>(value?: Success): Either<never, Success | void> {
+  return new EitherValue<never, Success | void>({ kind: 'success', value })
+}
+
+function failure<Failure, Success = never>(
+  value: Failure,
+): Either<Failure, Success> {
+  return new EitherValue<Failure, Success>({ kind: 'failure', value })
+}
+
+export const Either = { success, failure }

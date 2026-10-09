@@ -1,135 +1,21 @@
-import { SyncFailureViewModel } from '@mr-tick/shared/view-models'
-import { RxJsonSchema } from 'rxdb'
+import type { LocalTimeEntrySnapshot } from '@mr-tick/application'
+import type { RxJsonSchema } from 'rxdb'
 
-import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
+export type {
+  AddonSourceInfo,
+  ConflictData,
+  ConflictDataSnapshot,
+  RecordSyncStatus,
+  TimeEntryRemoteState,
+  TimerConfig,
+  TimerJournalEntry,
+} from '@mr-tick/application'
 
-// ─────────────────────────────────────────────
-// Tipos auxiliares de negócio e rastreabilidade
-// ─────────────────────────────────────────────
+export type SyncTimeEntryRxDBDTO = LocalTimeEntrySnapshot
 
-export interface TimerJournalEntry {
-  id: string
-  action: 'start' | 'pause' | 'resume' | 'stop' | 'adjust'
-  timestamp: string
-  secondsAtMoment: number
-  note?: string
-  event: 'started' | 'adjusted' | 'paused' | 'resumed' | 'stopped'
-  at: string
-  secondsAtEvent: number
-}
-
-export interface TimerConfig {
-  mode: 'countup' | 'countdown'
-  manualInitialSeconds?: number
-}
-
-export interface AddonSourceInfo {
-  pluginId: string
-  name?: string
-  imageUrl?: string
-  rawId?: string
-  lastSyncedAt?: string
-}
-
-export type RecordSyncStatus =
-  | 'synced'
-  | 'pending_push'
-  | 'creating'
-  | 'ambiguous'
-  | 'conflict'
-  | 'local_only'
-  | 'error'
-
-export type ConflictDataSnapshot = TimeEntryRemoteState
-
-export interface ConflictData {
-  server?: ConflictDataSnapshot
-  local?: ConflictDataSnapshot
-}
-
-export interface TimeEntryRemoteState {
-  id: string
-  task: { id: string }
-  activity: { id: string; name?: string }
-  user: { id: string; name?: string }
-  timeSpent: number
-  comments?: string | null
-  startDate?: string
-  endDate?: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface SyncTimeEntryRxDBDTO {
-  // ── Identificadores e integridade ────────────
-  id: string
-  connectionInstanceId: string
-  dataSourceId: string
-  _deleted: boolean
-
-  // ── Rastreabilidade de sincronização ─────────
-  syncStatus: RecordSyncStatus
-  /** A tombstone acknowledging remote absence must never be sent as a DELETE. */
-  remoteDeleted?: boolean
-  /** Durable acknowledgement of an explicitly requested remote deletion. */
-  deletionConfirmed?: boolean
-  creationAttemptId?: string | null
-  creationState?: TimeEntryRemoteState | null
-  /** Submitted state of a confirmed write awaiting its canonical read. */
-  confirmationState?: TimeEntryRemoteState | null
-  remoteState?: TimeEntryRemoteState | null
-  syncError?: string | null
-  syncFailure?: SyncFailureViewModel | null
-  remoteId?: string | null
-  lastPulledAt?: string | null
-  lastPushedAt?: string | null
-  /**
-   * `updatedAt` do registro no destino remoto na última vez que ele foi lido ou
-   * gravado. É a versão conhecida do servidor: o conflito só existe se o
-   * servidor mudou depois dela. Nunca recebe hora do cliente.
-   */
-  remoteUpdatedAt?: string | null
-
-  // ── Dados de negócio ─────────────────────────
-  task: { id: string }
-  taskData?: SyncTaskRxDBDTO
-  activity: { id: string; name?: string }
-  user: { id: string; name?: string }
-
-  /**
-   * Âncora temporal do timer.
-   */
-  startDate: string
-
-  /**
-   * Fim da sessão de tempo. Pode ser nulo se ainda estiver correndo.
-   */
-  endDate?: string | null
-
-  /**
-   * Tempo acumulado em horas.
-   */
-  timeSpent: number
-
-  comments?: string | null
-  createdAt: string
-  updatedAt: string
-  timeStatus?: 'running' | 'paused' | 'finished' | 'suggestion'
-  source?: 'manual' | 'timer' | 'ai_suggestion' | 'addon'
-  addonSource?: AddonSourceInfo
-  type?: 'increasing' | 'decreasing' | 'manual'
-  conflictData?: ConflictData
-
-  // ── Campos locais (nunca sincronizados) ───────
-  journal?: TimerJournalEntry[]
-  timerConfig?: TimerConfig
-}
-
-// ─────────────────────────────────────────────
-// Schema RxDB
-// ─────────────────────────────────────────────
-
-export const timeEntriesSyncSchema: RxJsonSchema<SyncTimeEntryRxDBDTO> = {
+export const legacyTimeEntriesSyncSchema: RxJsonSchema<
+  Omit<SyncTimeEntryRxDBDTO, 'lastLocalCommandId'>
+> = {
   title: 'timeEntries schema',
   version: 0,
   description:
@@ -287,4 +173,13 @@ export const timeEntriesSyncSchema: RxJsonSchema<SyncTimeEntryRxDBDTO> = {
     'updatedAt',
   ],
   indexes: ['connectionInstanceId', 'updatedAt', 'startDate', 'syncStatus'],
+}
+
+export const timeEntriesSyncSchema: RxJsonSchema<SyncTimeEntryRxDBDTO> = {
+  ...legacyTimeEntriesSyncSchema,
+  version: 1,
+  properties: {
+    ...legacyTimeEntriesSyncSchema.properties,
+    lastLocalCommandId: { type: 'string', maxLength: 200 },
+  },
 }

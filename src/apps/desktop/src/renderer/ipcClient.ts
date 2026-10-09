@@ -1,6 +1,9 @@
 import { IHostBridge } from '@mr-tick/application'
 
 const ipcClient: IHostBridge = {
+  localPersistence: window.api.localPersistence,
+  localSync: window.api.localSync,
+  localRuntime: window.api.localRuntime,
   workspaces: window.api.workspaces,
   session: window.api.session,
   tasks: window.api.tasks,
@@ -11,7 +14,6 @@ const ipcClient: IHostBridge = {
   system: window.api.system,
   updater: window.api.updater,
   addons: window.api.addons,
-  timer: window.api.timer,
   events: window.api.events,
 }
 

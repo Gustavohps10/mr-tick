@@ -1,4 +1,4 @@
-import { ICredentialsStorage } from '@mr-tick/application'
+import { ICredentialsStorage, ILocalRuntimeAPI } from '@mr-tick/application'
 import {
   exchangeAuthorizationCode,
   formatStoredToken,
@@ -9,6 +9,13 @@ import { shell } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AddonLoader } from './AddonLoader'
+
+const unavailableRuntime: ILocalRuntimeAPI = {
+  request: async () => ({
+    ok: false,
+    error: { messageKey: 'RUNTIME_UNAVAILABLE', statusCode: 503 },
+  }),
+}
 
 vi.mock('electron', () => ({
   shell: {
@@ -35,7 +42,11 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       replaceToken: vi.fn().mockResolvedValue(undefined),
     }
 
-    addonLoader = new AddonLoader(fakeCredentialsStorage)
+    addonLoader = new AddonLoader(
+      fakeCredentialsStorage,
+      unavailableRuntime,
+      '1.4.0',
+    )
   })
 
   afterEach(() => {

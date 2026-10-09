@@ -1,11 +1,15 @@
+import { randomUUID } from 'node:crypto'
+
 import {
   type AddonContext,
   type AddonSettingsGroup,
   type IAddon,
   type IDataSource,
 } from '@mr-tick/sdk'
+import { z } from 'zod'
 
 import { FakeAuthenticationStrategy } from './FakeAuthenticationStrategy'
+import { FAKE_MEMBER, FAKE_METADATA, FAKE_TASKS } from './fakeData'
 import { FakeDatabaseStore } from './FakeDatabaseStore'
 import { FakeMemberProvider } from './FakeMemberProvider'
 import { FakeMetadataProvider } from './FakeMetadataProvider'
@@ -66,7 +70,20 @@ export const FakeDataSource: IDataSource = {
   }),
 }
 
+interface TimerDiagnosticEvent {
+  seconds?: number
+  action: 'start' | 'pause' | 'resume' | 'stop'
+  workspaceId?: string
+  taskId?: string
+  taskName?: string
+}
 export default class FakeDataSourceAddon implements IAddon {
+  private readonly runtimeProbeOperation = {
+    commandId: randomUUID(),
+    entryId: randomUUID(),
+  }
+  private readonly timerEventDiagnostics: TimerDiagnosticEvent[] = []
+  private readonly timerEventUnsubscribers: Array<() => void> = []
   activate(context: AddonContext): void {
     console.log('🟢 [FakeDataSourceAddon] Registrando FakeDataSource...')
     context.dataSources.register(FakeDataSource)
@@ -144,6 +161,192 @@ export default class FakeDataSourceAddon implements IAddon {
     const store = FakeDatabaseStore.getInstance()
 
     if (process.env.PLAYWRIGHT_TEST === '1') {
+      context.commands.register('fake-db:runtime-create-entry', async () => {
+        const workspaceId = process.env.MR_TICK_RUNTIME_PROBE_WORKSPACE
+        const connectionInstanceId =
+          process.env.MR_TICK_RUNTIME_PROBE_CONNECTION
+        if (
+          workspaceId === undefined ||
+          workspaceId.length === 0 ||
+          connectionInstanceId === undefined ||
+          connectionInstanceId.length === 0
+        )
+          return { ok: false, error: 'RUNTIME_PROBE_SCOPE_REQUIRED' }
+        const task = FAKE_TASKS.find((item) => item.id === 'DEV-9999')
+        const activity = FAKE_METADATA.activities.find(
+          (item) => item.id === 'act-coding',
+        )
+        if (task === undefined || activity === undefined)
+          return { ok: false, error: 'RUNTIME_PROBE_FIXTURE_CONTEXT_MISSING' }
+        const result = await context.timeEntries.create(
+          workspaceId,
+          {
+            taskId: task.id,
+            activityId: activity.id,
+            activityName: activity.name,
+            connectionInstanceId,
+            dataSourceId: context.addonId,
+            userId: String(FAKE_MEMBER.id),
+            userName: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
+            timeSpentSeconds: 900,
+            startDate: '2026-10-08T10:00:00.000Z',
+            endDate: '2026-10-08T10:15:00.000Z',
+            comments: 'SDK runtime proof',
+          },
+          this.runtimeProbeOperation,
+        )
+        if (result.isFailure())
+          return {
+            ok: false,
+            error: result.failure.messageKey,
+            statusCode: result.failure.statusCode,
+          }
+        return {
+          ok: true,
+          entry: result.success,
+          operation: this.runtimeProbeOperation,
+        }
+      })
+      context.commands.register('fake-db:runtime-get-entry', async () => {
+        const workspaceId = process.env.MR_TICK_RUNTIME_PROBE_WORKSPACE
+        if (workspaceId === undefined || workspaceId.length === 0)
+          return { ok: false, error: 'RUNTIME_PROBE_SCOPE_REQUIRED' }
+        const result = await context.timeEntries.getById(
+          workspaceId,
+          this.runtimeProbeOperation.entryId,
+        )
+        if (result.isFailure())
+          return {
+            ok: false,
+            error: result.failure.messageKey,
+            statusCode: result.failure.statusCode,
+          }
+        return { ok: true, entry: result.success }
+      })
+      context.commands.register(
+        'fake-db:runtime-quick-timer',
+        async (taskId, expectedTitle) => {
+          const workspaceId = process.env.MR_TICK_RUNTIME_PROBE_WORKSPACE
+          const connectionInstanceId =
+            process.env.MR_TICK_RUNTIME_PROBE_CONNECTION
+          if (
+            workspaceId === undefined ||
+            workspaceId.length === 0 ||
+            connectionInstanceId === undefined ||
+            connectionInstanceId.length === 0
+          )
+            return { ok: false, error: 'RUNTIME_PROBE_SCOPE_REQUIRED' }
+          if (typeof taskId !== 'string' || typeof expectedTitle !== 'string')
+            return { ok: false, error: 'RUNTIME_PROBE_TASK_CONTEXT_REQUIRED' }
+          const task = FAKE_TASKS.find((item) => item.id === taskId)
+          const activity = FAKE_METADATA.activities.find(
+            (item) => item.id === 'act-coding',
+          )
+          if (task === undefined || activity === undefined)
+            return { ok: false, error: 'RUNTIME_PROBE_FIXTURE_CONTEXT_MISSING' }
+          if (task.title !== expectedTitle)
+            return { ok: false, error: 'RUNTIME_PROBE_TASK_TITLE_MISMATCH' }
+          const entryId = randomUUID()
+          const started = await context.timer.start(
+            workspaceId,
+            {
+              taskId: task.id,
+              activityId: activity.id,
+              activityName: activity.name,
+              connectionInstanceId,
+              dataSourceId: context.addonId,
+              userId: String(FAKE_MEMBER.id),
+              userName: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
+              timeSpentSeconds: 0,
+              startDate: new Date().toISOString(),
+              comments: 'Quick SDK timer proof',
+              mode: 'countup',
+            },
+            { commandId: randomUUID(), entryId },
+          )
+          if (started.isFailure())
+            return { ok: false, error: started.failure.messageKey }
+          const paused = await context.timer.pause(workspaceId, {
+            commandId: randomUUID(),
+            entryId,
+          })
+          if (paused.isFailure())
+            return { ok: false, error: paused.failure.messageKey }
+          const resumed = await context.timer.resume(workspaceId, {
+            commandId: randomUUID(),
+            entryId,
+          })
+          if (resumed.isFailure())
+            return { ok: false, error: resumed.failure.messageKey }
+          const stopped = await context.timer.stop(workspaceId, {
+            commandId: randomUUID(),
+            entryId,
+          })
+          if (stopped.isFailure())
+            return { ok: false, error: stopped.failure.messageKey }
+          return { ok: true, entryId, taskId: task.id, taskName: task.title }
+        },
+      )
+      this.timerEventUnsubscribers.push(
+        context.events.on('timer:start', (payload) => {
+          this.timerEventDiagnostics.push({
+            action: 'start',
+            seconds: payload.baseSeconds,
+            workspaceId: payload.workspaceId,
+            taskId: payload.taskId,
+            taskName: payload.taskName,
+          })
+        }),
+        context.events.on('timer:pause', (payload) => {
+          this.timerEventDiagnostics.push({
+            action: 'pause',
+            seconds: payload.currentSeconds,
+            workspaceId: payload.workspaceId,
+            taskId: payload.taskId,
+            taskName: payload.taskName,
+          })
+        }),
+        context.events.on('timer:resume', (payload) => {
+          this.timerEventDiagnostics.push({
+            action: 'resume',
+            seconds: payload.currentSeconds,
+            workspaceId: payload.workspaceId,
+            taskId: payload.taskId,
+            taskName: payload.taskName,
+          })
+        }),
+        context.events.on('timer:stop', (payload) => {
+          this.timerEventDiagnostics.push({
+            action: 'stop',
+            seconds: payload.currentSeconds,
+            workspaceId: payload.workspaceId,
+            taskId: payload.taskId,
+            taskName: payload.taskName,
+          })
+        }),
+      )
+      context.commands.register('fake-db:get-timer-event-diagnostics', () => ({
+        events: this.timerEventDiagnostics.map((event) => ({ ...event })),
+      }))
+      context.commands.register('fake-db:reset-timer-event-diagnostics', () => {
+        this.timerEventDiagnostics.length = 0
+        return { configured: true }
+      })
+      context.commands.register(
+        'fake-db:rename-activity-metadata',
+        (...args) => {
+          const input = z
+            .tuple([z.object({ activityId: z.string().min(1) })])
+            .safeParse(args)
+          if (!input.success)
+            return { ok: false, error: 'FAKE_METADATA_COMMAND_INVALID' }
+          const [scope] = input.data
+          const renamed = store.renameActivityMetadata(scope.activityId)
+          if (!renamed)
+            return { ok: false, error: 'FAKE_METADATA_ACTIVITY_NOT_FOUND' }
+          return { ok: true, ...renamed }
+        },
+      )
       context.commands.register('fake-db:pause-one-time-entry-pull', () => {
         store.pauseTimeEntryPulls(1)
         return { configured: true }
@@ -176,6 +379,14 @@ export default class FakeDataSourceAddon implements IAddon {
           return { configured: true }
         },
       )
+
+      context.commands.register('fake-db:pause-canonical-recovery', () => {
+        store.pauseCanonicalReadRecovery()
+        return { configured: true }
+      })
+      context.commands.register('fake-db:release-canonical-recovery', () => ({
+        released: store.releaseCanonicalReadRecovery(),
+      }))
 
       context.commands.register('fake-db:reject-next-time-entry-delete', () => {
         store.configureDeleteFailure(422)
@@ -347,6 +558,9 @@ export default class FakeDataSourceAddon implements IAddon {
   }
 
   deactivate(): void {
+    for (const unsubscribe of this.timerEventUnsubscribers) unsubscribe()
+    this.timerEventUnsubscribers.length = 0
+    this.timerEventDiagnostics.length = 0
     console.log('🛑 [FakeDataSourceAddon] Desativado.')
   }
 }

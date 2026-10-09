@@ -29,10 +29,14 @@ import {
   WorkspaceViewModel,
 } from '@mr-tick/shared/view-models'
 
-import { StartTimerDTO, TimerResumeDTO } from '../../dtos'
 import type { MappingFieldDefinition } from '../data/providers/IMetadataProvider'
 export type { MappingFieldDefinition } from '../data/providers/IMetadataProvider'
 import { FileData } from '../infra'
+import type {
+  ILocalPersistenceAPI,
+  ILocalRuntimeAPI,
+  ILocalSyncAPI,
+} from '../local-runtime'
 import {
   PushTimeEntriesInput,
   UpdateWorkspaceIdentityInput,
@@ -511,25 +515,6 @@ export interface ISystemAPI {
   toggleTheme(payload: IRequest<{ theme: ThemeMode }>): Promise<void>
 }
 
-export interface ITimerAPI {
-  start(input: StartTimerDTO): void
-  pause(): void
-  resume(input?: TimerResumeDTO): void
-  stop(): void
-}
-
-export interface UpdaterInfo {
-  version: string
-  releaseDate: string
-}
-
-export interface UpdaterProgress {
-  percent: number
-  transferred: number
-  total: number
-  bytesPerSecond: number
-}
-
 export interface IUpdaterAPI {
   checkForUpdates(): Promise<void>
   downloadUpdate(): Promise<void>
@@ -537,6 +522,9 @@ export interface IUpdaterAPI {
 }
 
 export interface IHostBridge {
+  localRuntime: ILocalRuntimeAPI
+  localPersistence: ILocalPersistenceAPI
+  localSync: ILocalSyncAPI
   workspaces: IWorkspacesAPI
   session: ISessionAPI
   tasks: ITaskAPI
@@ -547,6 +535,5 @@ export interface IHostBridge {
   system: ISystemAPI
   updater: IUpdaterAPI
   addons: IAddonsAPI
-  timer: ITimerAPI
   events: IEventsAPI
 }

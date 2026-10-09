@@ -7,17 +7,49 @@ async function openDetectedConflict(page: Page) {
     name: 'Conflito de Sincronização',
     exact: true,
   })
-  // Automatic push may have detected the conflict before a manual sync can be opened.
-  // Observe the conflict itself and use the row's action, without toggling another popover.
   await expect(async () => {
     if (await dialog.isVisible()) return
     const conflictButton = page
       .getByRole('button', { name: 'Conflito', exact: true })
       .first()
-    await expect(conflictButton).toBeVisible({ timeout: 5000 })
-    await conflictButton.click()
+    if (await conflictButton.isVisible().catch(() => false)) {
+      await conflictButton.click()
+      await expect(dialog).toBeVisible({ timeout: 3000 })
+      return
+    }
+    const resolverBtn = page.getByRole('button', { name: 'Resolver' }).first()
+    if (await resolverBtn.isVisible().catch(() => false)) {
+      await resolverBtn.click()
+      await expect(dialog).toBeVisible({ timeout: 3000 })
+      return
+    }
+    const statusBtn = page
+      .locator('[data-testid="sync-status-indicator"]')
+      .first()
+    if (await statusBtn.isVisible().catch(() => false)) {
+      await statusBtn.click({ force: true })
+      const syncAllBtn = page.locator('[data-testid="sync-all-button"]').first()
+      if (await syncAllBtn.isVisible().catch(() => false)) {
+        await syncAllBtn.click({ force: true })
+      }
+      const popoverResolver = page
+        .getByRole('button', { name: 'Resolver' })
+        .first()
+      if (await popoverResolver.isVisible().catch(() => false)) {
+        await popoverResolver.click()
+        await expect(dialog).toBeVisible({ timeout: 3000 })
+        return
+      }
+      await page.keyboard.press('Escape')
+    }
+    await expect(conflictButton.or(resolverBtn)).toBeVisible({ timeout: 3000 })
+    if (await conflictButton.isVisible().catch(() => false)) {
+      await conflictButton.click()
+    } else if (await resolverBtn.isVisible().catch(() => false)) {
+      await resolverBtn.click()
+    }
     await expect(dialog).toBeVisible({ timeout: 5000 })
-  }).toPass({ timeout: 20000 })
+  }).toPass({ timeout: 25000 })
   return dialog
 }
 test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-04, SYNC-05)', () => {

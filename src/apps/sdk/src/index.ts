@@ -7,6 +7,7 @@ export {
   IDataSourceInstance,
   type MappingFieldDefinition,
 } from './data-source'
+export * from './runtime/AddonRuntimeCapabilities'
 export { createTimeEntrySnapshotPage } from './utils/createTimeEntrySnapshotPage'
 export * from './utils/MarkupConverter'
 export * from './utils/pkce'

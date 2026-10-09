@@ -1,281 +1,185 @@
+import type { TimerStateDTO } from '@mr-tick/application'
+import { isNonEmptyString, isRecord } from '@mr-tick/shared/helpers'
 import { BrowserWindow, ipcMain } from 'electron'
 
-import { AddonLoader } from '@/main/services/AddonLoader'
+import type { AddonLoader } from '@/main/services/AddonLoader'
 import { formatTrayTime, updateTrayTimer } from '@/main/tray'
 
+interface TimerProjection {
+  workspaceId: string
+  timer: TimerStateDTO | null
+  entryId?: string
+  taskId?: string
+  taskName?: string
+  comments?: string
+  action?: 'timerStart' | 'timerPause' | 'timerResume' | 'timerStop' | 'update'
+}
+
+interface ProjectedTimer {
+  snapshot: TimerStateDTO
+  receivedAt: number
+}
+
+interface BroadcastMessage {
+  channel: string
+  workspaceId?: string
+  generation?: string
+  data?: object | string | number | boolean | null
+}
+
+function workspaceOf(window: BrowserWindow): string | null {
+  const url = window.webContents.getURL()
+  if (!url) return null
+  const match = new URL(url).hash.match(/#\/workspaces\/([^/?#]+)/)
+  if (!match) return null
+  return decodeURIComponent(match[1])
+}
+
+/** Native UI projection. It never starts, stops or persists a time entry. */
 export class TimerRuntime {
-  private intervalId: NodeJS.Timeout | null = null
-  private baseSeconds: number = 0
-  private elapsedSeconds: number = 0
-  private currentSeconds: number = 0
-  private mode: 'countup' | 'countdown' = 'countup'
-  private status: 'running' | 'paused' | 'idle' = 'idle'
-  private addonLoader?: AddonLoader
-  private lastActivePayload: any = null
+  private readonly timers = new Map<string, ProjectedTimer>()
+  private interval: NodeJS.Timeout | null = null
 
-  public init(addonLoader?: AddonLoader): void {
-    this.addonLoader = addonLoader
-    console.log('✅ [TimerRuntime] init() called')
-
-    ipcMain.on('timer:start', (_event, payload) => {
-      const baseSeconds = payload?.baseSeconds ?? payload?.initialSeconds ?? 0
-      const elapsedSeconds = payload?.elapsedSeconds ?? 0
-      const mode = payload?.mode ?? 'countup'
-
-      console.log('[TimerRuntime] timer:start received', {
-        baseSeconds,
-        elapsedSeconds,
-        mode,
-      })
-
-      this.start(baseSeconds, elapsedSeconds, mode)
-      this.broadcast('timer:started', {
-        baseSeconds,
-        elapsedSeconds,
-        mode,
-      })
-    })
-
-    ipcMain.on('timer:pause', () => {
-      console.log('[TimerRuntime] timer:pause received')
-      this.pause()
-      this.broadcast('timer:paused', {
-        currentSeconds: this.currentSeconds,
-      })
-    })
-
-    ipcMain.on('timer:resume', (_event, payload) => {
-      const baseSeconds = payload?.baseSeconds ?? payload?.initialSeconds ?? 0
-      const elapsedSeconds = payload?.elapsedSeconds ?? 0
-
-      console.log('[TimerRuntime] timer:resume received', {
-        baseSeconds,
-        elapsedSeconds,
-        mode: this.mode,
-      })
-
-      this.start(baseSeconds, elapsedSeconds, this.mode)
-      this.broadcast('timer:resumed', {
-        baseSeconds,
-        elapsedSeconds,
-        mode: this.mode,
-      })
-    })
-
-    ipcMain.on('timer:stop', (_event, payload) => {
-      console.log('[TimerRuntime] timer:stop received')
-      this.stop()
-      this.broadcast('timer:stopped', {})
-
-      // Use the cached payload to emit timer:stop to addons!
-      if (this.addonLoader && this.lastActivePayload) {
-        const workspaceId =
-          payload?.workspaceId || this.lastActivePayload.workspaceId
-        console.log(
-          `[AddonBridge] Emitting timer:stop for workspace ${workspaceId}`,
-        )
-        this.addonLoader.systemEventEmitter.emit('timer:stop', {
-          ...this.lastActivePayload,
-          workspaceId,
-          currentSeconds: this.currentSeconds,
-        })
-        this.lastActivePayload = null // clear it
-      }
-    })
-
-    ipcMain.on('events:broadcast', (_event, payload) => {
-      if (payload?.channel) {
-        this.broadcast(payload.channel, payload.data)
-
-        // --- ADDON EVENTS BRIDGE ---
-        if (this.addonLoader) {
-          try {
-            if (payload.channel === 'time-entry:sync') {
-              const data = payload.data
-              if (!data) return // skip if null (like on stop)
-
-              const workspaceId =
-                payload.workspaceId ||
-                data?.workspaceId ||
-                data?.dataSourceId?.split('::')[0]
-
-              const eventPayload = {
-                workspaceId,
-                timeEntryId: data?.id,
-                taskId: data?.taskId || data?.task?.id,
-                taskName: data?.taskData?.title || data?.taskData?.name, // fix task name field
-                comments: data?.comments || data?.activity?.name,
-              }
-
-              const lastJournalEvent =
-                data?.journal?.[data.journal.length - 1]?.event
-
-              if (data?.timeStatus === 'running') {
-                this.lastActivePayload = eventPayload
-
-                if (
-                  lastJournalEvent === 'started' ||
-                  lastJournalEvent === 'adjusted' ||
-                  !lastJournalEvent
-                ) {
-                  console.log(
-                    `[AddonBridge] Emitting timer:start for workspace ${workspaceId}`,
-                  )
-                  this.addonLoader.systemEventEmitter.emit('timer:start', {
-                    ...eventPayload,
-                    mode: data.timerConfig?.mode || 'countup',
-                    baseSeconds: data.timerConfig?.manualInitialSeconds || 0,
-                  })
-                } else if (lastJournalEvent === 'resumed') {
-                  console.log(
-                    `[AddonBridge] Emitting timer:resume for workspace ${workspaceId}`,
-                  )
-                  this.addonLoader.systemEventEmitter.emit('timer:resume', {
-                    ...eventPayload,
-                    currentSeconds: this.currentSeconds,
-                  })
-                }
-              } else if (data?.timeStatus === 'paused') {
-                this.lastActivePayload = eventPayload
-                console.log(
-                  `[AddonBridge] Emitting timer:pause for workspace ${workspaceId}`,
-                )
-                this.addonLoader.systemEventEmitter.emit('timer:pause', {
-                  ...eventPayload,
-                  currentSeconds: this.currentSeconds,
-                })
-              } else if (
-                data?.timeStatus === 'updated' &&
-                this.lastActivePayload
-              ) {
-                // Keep the cache updated
-                this.lastActivePayload = {
-                  ...this.lastActivePayload,
-                  ...eventPayload,
-                }
-                console.log(
-                  `[AddonBridge] Emitting timer:update for workspace ${workspaceId}`,
-                )
-                this.addonLoader.systemEventEmitter.emit(
-                  'timer:update',
-                  eventPayload,
-                )
-              }
-            } else if (payload.channel === 'timeEntry:created') {
-              console.log(`[AddonBridge] Emitting timeEntry:created`)
-              this.addonLoader.systemEventEmitter.emit(
-                'timeEntry:created',
-                payload.data,
-              )
-            } else if (payload.channel === 'timeEntry:updated') {
-              console.log(`[AddonBridge] Emitting timeEntry:updated`)
-              this.addonLoader.systemEventEmitter.emit(
-                'timeEntry:updated',
-                payload.data,
-              )
-            } else if (payload.channel === 'timeEntry:deleted') {
-              console.log(`[AddonBridge] Emitting timeEntry:deleted`)
-              this.addonLoader.systemEventEmitter.emit(
-                'timeEntry:deleted',
-                payload.data,
-              )
-            }
-          } catch (err) {
-            console.error('[TimerRuntime] Error emitting addon event:', err)
-          }
-        }
-      }
-    })
-  }
-
-  public broadcast(channel: string, data?: unknown): void {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) {
-        win.webContents.send(channel, data)
-      }
-    }
-  }
-
-  private formatSeconds(sec: number): string {
-    const m = Math.floor(sec / 60)
-    const s = sec % 60
-    if (m < 100) {
-      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-    }
-    return `${m}m`
-  }
-
-  private start(
-    baseSeconds: number,
-    elapsedSeconds: number,
-    mode: 'countup' | 'countdown',
+  init(
+    addonLoader: AddonLoader,
+    acceptsGeneration: (generation: string) => boolean,
   ): void {
-    this.stopExisting()
-
-    this.baseSeconds = baseSeconds
-    this.elapsedSeconds = elapsedSeconds
-    this.mode = mode
-    this.status = 'running'
-
-    this.intervalId = setInterval(() => {
-      this.elapsedSeconds++
-
-      this.currentSeconds =
-        this.mode === 'countup'
-          ? this.baseSeconds + this.elapsedSeconds
-          : this.baseSeconds - this.elapsedSeconds
-
-      // Atualiza o Tray com o formato correto de horas/minutos/segundos
-      updateTrayTimer({
-        elapsedText: formatTrayTime(this.currentSeconds),
-        status: this.status,
-      }).catch(console.error)
-
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.isDestroyed()) {
-          win.webContents.send('timer:tick', { seconds: this.currentSeconds })
-        }
+    ipcMain.on('events:broadcast', (event, payload: BroadcastMessage) => {
+      if (!isRecord(payload) || !isNonEmptyString(payload.channel)) return
+      const sender = BrowserWindow.fromWebContents(event.sender)
+      if (!sender) return
+      if (
+        payload.channel.startsWith('local-runtime:') &&
+        (sender.windowType !== 'runtime' ||
+          !payload.generation ||
+          !acceptsGeneration(payload.generation))
+      )
+        return
+      if (payload.channel === 'local-runtime:timer-projection') return
+      for (const client of BrowserWindow.getAllWindows()) {
+        if (!['main', 'widget'].includes(client.windowType ?? '')) continue
+        if (
+          payload.channel !== 'workspace:switched' &&
+          payload.workspaceId &&
+          workspaceOf(client) !== payload.workspaceId
+        )
+          continue
+        client.webContents.send(payload.channel, payload.data)
       }
-
-      // Removed auto-stop for countdown so it can go negative
-    }, 1000)
+    })
+    ipcMain.on(
+      'events:broadcast',
+      (
+        event,
+        payload: { channel: string; generation: string; data: TimerProjection },
+      ) => {
+        if (!payload || payload.channel !== 'local-runtime:timer-projection')
+          return
+        const sender = BrowserWindow.fromWebContents(event.sender)
+        if (
+          !sender ||
+          sender.windowType !== 'runtime' ||
+          !acceptsGeneration(payload.generation)
+        )
+          return
+        const projection = payload.data
+        if (!isRecord(projection) || !isNonEmptyString(projection.workspaceId))
+          return
+        const previous = this.timers.get(projection.workspaceId)
+        if (projection.timer) {
+          this.timers.set(projection.workspaceId, {
+            snapshot: projection.timer,
+            receivedAt: Date.now(),
+          })
+        }
+        if (!projection.timer) this.timers.delete(projection.workspaceId)
+        this.publishTicks()
+        const timer = projection.timer
+        const details = {
+          workspaceId: projection.workspaceId,
+          taskId: projection.taskId ?? previous?.snapshot.taskId,
+          taskName: projection.taskName,
+          comments: projection.comments ?? previous?.snapshot.comments,
+        }
+        if (projection.action === 'timerStart' && timer)
+          addonLoader.systemEventEmitter.emit('timer:start', {
+            ...details,
+            mode: timer.mode,
+            baseSeconds: timer.baseSeconds,
+          })
+        if (projection.action === 'timerPause' && timer)
+          addonLoader.systemEventEmitter.emit('timer:pause', {
+            ...details,
+            currentSeconds: timer.currentSeconds,
+          })
+        if (projection.action === 'timerResume' && timer)
+          addonLoader.systemEventEmitter.emit('timer:resume', {
+            ...details,
+            currentSeconds: timer.currentSeconds,
+          })
+        if (projection.action === 'timerStop')
+          addonLoader.systemEventEmitter.emit('timer:stop', {
+            ...details,
+            currentSeconds: previous ? this.seconds(previous) : 0,
+          })
+        if (projection.action === 'update')
+          addonLoader.systemEventEmitter.emit('timer:update', details)
+      },
+    )
+    this.interval = setInterval(() => this.publishTicks(), 1000)
   }
 
-  private stopExisting(): void {
-    if (this.intervalId) {
-      clearInterval(this.intervalId)
-      this.intervalId = null
+  dispose(): void {
+    if (this.interval) clearInterval(this.interval)
+    this.interval = null
+    this.timers.clear()
+  }
+
+  private seconds(timer: ProjectedTimer): number {
+    if (timer.snapshot.status !== 'running')
+      return timer.snapshot.currentSeconds
+    const elapsed = Math.max(
+      0,
+      Math.floor((Date.now() - timer.receivedAt) / 1000),
+    )
+    if (timer.snapshot.mode === 'countdown')
+      return timer.snapshot.currentSeconds - elapsed
+    return timer.snapshot.currentSeconds + elapsed
+  }
+
+  private publishTicks(): void {
+    for (const client of BrowserWindow.getAllWindows()) {
+      if (!['main', 'widget'].includes(client.windowType ?? '')) continue
+      const workspaceId = workspaceOf(client)
+      if (!workspaceId) continue
+      const timer = this.timers.get(workspaceId)
+      if (!timer) continue
+      const seconds = this.seconds(timer)
+      client.webContents.send('timer:tick', { seconds, workspaceId })
     }
-  }
-
-  private pause(): void {
-    console.log('[TimerRuntime] pause()', {
-      currentSeconds: this.currentSeconds,
-    })
-
-    this.stopExisting()
-    this.status = 'paused'
-    updateTrayTimer({
-      elapsedText: formatTrayTime(this.currentSeconds),
-      status: 'paused',
-    }).catch(console.error)
-  }
-
-  private stop(): void {
-    console.log('[TimerRuntime] stop()', {
-      previousSeconds: this.currentSeconds,
-    })
-
-    this.stopExisting()
-    this.currentSeconds = 0
-    this.status = 'idle'
-    updateTrayTimer({
+    const running = Array.from(this.timers.values()).find(
+      (timer) => timer.snapshot.status === 'running',
+    )
+    if (running) {
+      void updateTrayTimer({
+        elapsedText: formatTrayTime(this.seconds(running)),
+        status: 'running',
+      }).catch(console.error)
+      return
+    }
+    const paused = Array.from(this.timers.values()).find(
+      (timer) => timer.snapshot.status === 'paused',
+    )
+    if (paused) {
+      void updateTrayTimer({
+        elapsedText: formatTrayTime(this.seconds(paused)),
+        status: 'paused',
+      }).catch(console.error)
+      return
+    }
+    void updateTrayTimer({
       elapsedText: formatTrayTime(0),
       status: 'idle',
     }).catch(console.error)
-
-    console.log('[TimerRuntime] reset currentSeconds to 0')
   }
 }
-
-export const timerRuntime = new TimerRuntime()

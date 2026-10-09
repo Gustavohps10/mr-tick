@@ -10,7 +10,7 @@ export class MetadataReplication implements IReplicationStrategy<
   ReplicationCheckpoint
 > {
   constructor(
-    private client: IHostBridge,
+    private client: Pick<IHostBridge, 'metadata'>,
     private workspaceId: string,
     private connectionInstanceId: string,
     private pluginId: string,

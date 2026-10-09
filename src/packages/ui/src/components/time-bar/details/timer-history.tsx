@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react'
 import React, { memo, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,6 +38,7 @@ import { Separator } from '@/components/ui/separator'
 import { useHostBridge } from '@/hooks'
 import { cn } from '@/lib/utils'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
+import { requestEntryPersistence } from '@/local-runtime/persistence-client'
 import { useSyncStore } from '@/stores/syncStore'
 import { JournalEntry, useTimeEntryStore } from '@/stores/timeEntryStore'
 
@@ -182,36 +184,25 @@ export const TimerHistory = memo(
       if (!db || !activeEntry) return
 
       const doc = await db.timeEntries.findOne(activeEntry.id).exec()
-      if (doc) {
-        await doc.patch({
+      if (!doc) return
+      const edit = await requestEntryPersistence(bridge, db, {
+        action: 'editRecord',
+        entryId: doc.id,
+        changes: {
           journal: newJournal,
           startDate: newStartDate,
           timeStatus: newStatus,
-          updatedAt: new Date().toISOString(),
-        })
+        },
+      })
+      if (edit.isFailure()) {
+        toast.error(edit.failure.messageKey)
+        return
       }
-
-      const updatedEntry = {
-        ...activeEntry,
-        journal: newJournal,
-        startDate: newStartDate,
-        timeStatus: newStatus,
-      }
+      const updatedEntry = edit.success
+      if (!updatedEntry) return
 
       if (isStoreActive) {
         setActive(updatedEntry)
-
-        if (newStatus === 'running') {
-          const elapsed = differenceInSeconds(
-            new Date(),
-            parseISO(newStartDate),
-          )
-          bridge.timer.start({
-            baseSeconds: activeEntry.timerConfig?.manualInitialSeconds ?? 0,
-            elapsedSeconds: Math.max(0, elapsed),
-            mode: activeEntry.timerConfig?.mode ?? 'countup',
-          })
-        }
       }
 
       bridge.events.emit('time-entry:sync', updatedEntry)

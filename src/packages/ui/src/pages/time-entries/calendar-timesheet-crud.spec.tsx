@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStore } from 'zustand/vanilla'
 
+import { TimeEntriesColumnsProvider } from '@/pages/time-entries/components/time-entries-columns-context'
+
 vi.mock('@/hooks/use-host-bridge', () => ({
   useHostBridge: () => ({
     timer: {
@@ -39,7 +41,10 @@ import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { TimeEntriesCalendarView } from '@/pages/time-entries/components/calendar-view/time-entries-calendar-view'
 import { TimeEntriesDayCard } from '@/pages/time-entries/components/time-entries-day-card'
-import { createTimeEntriesColumns } from '@/pages/time-entries/components/time-entries-table-columns'
+import {
+  type CreateColumnsOptions,
+  createTimeEntriesColumns,
+} from '@/pages/time-entries/components/time-entries-table-columns'
 import { TimeEntriesTimesheetView } from '@/pages/time-entries/components/timesheet-view/time-entries-timesheet-view'
 import { SuggestionRow } from '@/pages/time-entries/lib/time-entries-utils'
 import { TimeEntryContext, TimeEntryStore } from '@/stores/timeEntryStore'
@@ -410,7 +415,7 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
         setDraftEntries((prev) => [...prev, newDraft])
       }
 
-      const columns = createTimeEntriesColumns({
+      const columnOptions: CreateColumnsOptions = {
         activities: mockActivities,
         tasksById: mockTasksById,
         mappings: {},
@@ -466,7 +471,8 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
         onAcceptSuggestion: async () => {},
         onDismissSuggestion: async () => {},
         onAddNewEntry: handleAddNew,
-      })
+      }
+      const columns = createTimeEntriesColumns(columnOptions)
 
       return (
         <TooltipProvider>
@@ -495,17 +501,19 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
                     >
                       Excluir
                     </button>
-                    <TimeEntriesDayCard
-                      day={testDay}
-                      entries={entries}
-                      draftEntries={draftEntries}
-                      tempData={tempData}
-                      columns={columns}
-                      expandedRows={{}}
-                      onExpandedChange={() => {}}
-                      isGrouped={true}
-                      onAddNewEntry={handleAddNew}
-                    />
+                    <TimeEntriesColumnsProvider value={columnOptions}>
+                      <TimeEntriesDayCard
+                        day={testDay}
+                        entries={entries}
+                        draftEntries={draftEntries}
+                        tempData={tempData}
+                        columns={columns}
+                        expandedRows={{}}
+                        onExpandedChange={() => {}}
+                        isGrouped={true}
+                        onAddNewEntry={handleAddNew}
+                      />
+                    </TimeEntriesColumnsProvider>
                   </div>
                 </DataSourceConnectionsContext.Provider>
               </TimeEntryContext.Provider>

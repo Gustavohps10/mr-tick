@@ -205,6 +205,13 @@ export function TaskPopover({
 
   const setSelectedConnectionId = useCallback(
     (connId: string) => {
+      console.log(
+        '[POPOVER-DEBUG setSelectedConnectionId]',
+        JSON.stringify({
+          connId,
+          hasPropOnConnectionChange: Boolean(propOnConnectionChange),
+        }),
+      )
       setInternalConnectionId(connId)
       if (propOnConnectionChange) {
         propOnConnectionChange(connId)

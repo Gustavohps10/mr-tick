@@ -27,6 +27,7 @@ export default defineConfig({
             '**/e2e/**',
             '**/*.e2e.spec.ts',
             'src/packages/ui/**',
+            'src/apps/desktop/test-results*/**',
           ],
         },
       },

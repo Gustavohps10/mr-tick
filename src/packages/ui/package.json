@@ -204,6 +204,10 @@
     "./utils": {
       "types": "./dist/lib/utils.d.ts",
       "import": "./dist/lib/utils.js"
+    },
+    "./local-runtime": {
+      "types": "./src/local-runtime/index.ts",
+      "import": "./dist/local-runtime/index.js"
     }
   },
   "scripts": {

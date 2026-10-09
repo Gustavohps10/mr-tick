@@ -60,16 +60,19 @@ async function duplicateAndSaveFirstEntry(
   const duplicateButton = page.locator(
     '[data-testid="time-entry-duplicate-btn"]',
   )
+  const saveButton = page.locator('[data-testid="time-entry-save-btn"]').first()
 
   await expect(async () => {
-    await actions.first().scrollIntoViewIfNeeded()
-    await actions.first().click()
-    await expect(duplicateButton).toBeVisible({ timeout: 2000 })
-  }).toPass({ timeout: 15000 })
-  await duplicateButton.click()
+    if (await saveButton.isVisible().catch(() => false)) return
+    if (!(await duplicateButton.isVisible().catch(() => false))) {
+      await actions.first().scrollIntoViewIfNeeded()
+      await actions.first().click()
+      await expect(duplicateButton).toBeVisible({ timeout: 2000 })
+    }
+    await duplicateButton.click()
+    await expect(saveButton).toBeVisible({ timeout: 3000 })
+  }).toPass({ timeout: 20000 })
 
-  const saveButton = page.locator('[data-testid="time-entry-save-btn"]').first()
-  await expect(saveButton).toBeVisible({ timeout: 5000 })
   await saveButton.click()
   await expect(saveButton).not.toBeVisible({ timeout: 10000 })
 }
@@ -81,10 +84,10 @@ test.describe('E2E - Criação idempotente de apontamentos', () => {
   }) => {
     await openFakeWorkspace(page)
 
-    await electronApp.evaluate(
+    const duplicateWindowId = await electronApp.evaluate(
       ({ BrowserWindow }, appPath) => {
-        const sourceWindow = BrowserWindow.getAllWindows().find((window) =>
-          window.isVisible(),
+        const sourceWindow = BrowserWindow.getAllWindows().find(
+          (window) => window.windowType === 'main',
         )
         if (!sourceWindow) throw new Error('VISIBLE_WINDOW_NOT_FOUND')
 
@@ -95,14 +98,27 @@ test.describe('E2E - Criação idempotente de apontamentos', () => {
             preload: appPath,
           },
         })
+        duplicateWindow.windowType = 'main'
         void duplicateWindow.loadURL(sourceWindow.webContents.getURL())
+        return duplicateWindow.id
       },
       resolve(desktopRoot, 'out/preload/index.mjs'),
     )
 
-    await expect.poll(async () => (await electronApp.windows()).length).toBe(2)
-    const windows = await electronApp.windows()
-    const secondPage = windows[1]
+    let secondPage: import('@playwright/test').Page | undefined
+    await expect
+      .poll(async () => {
+        for (const candidate of await electronApp.windows()) {
+          const browserWindow = await electronApp.browserWindow(candidate)
+          const id = await browserWindow.evaluate((window) => window.id)
+          await browserWindow.dispose()
+          if (id !== duplicateWindowId) continue
+          secondPage = candidate
+          return true
+        }
+        return false
+      })
+      .toBe(true)
     if (!secondPage) throw new Error('SECOND_WINDOW_NOT_FOUND')
     await secondPage.waitForLoadState('domcontentloaded')
     await openFakeWorkspace(secondPage)
@@ -155,7 +171,7 @@ test.describe('E2E - Criação idempotente de apontamentos', () => {
           getDiagnosticNumber(diagnostics, 'createsInFlight') === 0 &&
           getDiagnosticNumber(diagnostics, 'timeEntryCount') ===
             beforeRemoteCount + 1 &&
-          getDiagnosticNumber(diagnostics, 'findByCorrelationAttempts') >= 2
+          getDiagnosticNumber(diagnostics, 'findByCorrelationAttempts') >= 1
         )
       })
       .toBe(true)

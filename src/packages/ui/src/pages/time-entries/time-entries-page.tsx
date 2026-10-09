@@ -6,13 +6,19 @@ import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { TaskLookup } from '@/components/task-lookup'
+import { useHostBridge } from '@/hooks'
 import { useFieldMappings } from '@/hooks/use-field-mappings'
 import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
+import { requestEntryPersistence } from '@/local-runtime/persistence-client'
+import { TimeEntriesColumnsProvider } from '@/pages/time-entries/components/time-entries-columns-context'
 import { TimeEntriesDayCard } from '@/pages/time-entries/components/time-entries-day-card'
 import { TimeEntriesHeader } from '@/pages/time-entries/components/time-entries-header'
 import { TimeEntriesSkeleton } from '@/pages/time-entries/components/time-entries-skeleton'
-import { createTimeEntriesColumns } from '@/pages/time-entries/components/time-entries-table-columns'
+import {
+  type CreateColumnsOptions,
+  createTimeEntriesColumns,
+} from '@/pages/time-entries/components/time-entries-table-columns'
 import { useTimeEntriesData } from '@/pages/time-entries/hooks/use-time-entries-data'
 import { useTimeEntryMutations } from '@/pages/time-entries/hooks/use-time-entry-mutations'
 import {
@@ -26,6 +32,7 @@ export interface TimeEntriesProps {
 }
 
 export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
+  const bridge = useHostBridge()
   const { mappings } = useFieldMappings()
   const {
     db,
@@ -131,10 +138,15 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
         for (const sug of suggestions) {
           const doc = await db.timeEntries.findOne(sug.id).exec()
           if (doc) {
-            await doc.patch({
-              timeStatus: 'finished',
-              updatedAt: new Date().toISOString(),
+            const accepted = await requestEntryPersistence(bridge, db, {
+              action: 'editRecord',
+              entryId: doc.id,
+              changes: { timeStatus: 'finished' },
             })
+            if (accepted.isFailure()) {
+              toast.error(accepted.failure.messageKey)
+              return
+            }
           }
         }
         toast.success(
@@ -145,7 +157,7 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
         toast.error('Erro ao aceitar sugestões')
       }
     },
-    [db],
+    [db, bridge],
   )
 
   const handleDismissAllSuggestions = useCallback(
@@ -155,7 +167,14 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
         for (const sug of suggestions) {
           const doc = await db.timeEntries.findOne(sug.id).exec()
           if (doc) {
-            await doc.remove()
+            const dismissed = await requestEntryPersistence(bridge, db, {
+              action: 'deleteRecord',
+              entryId: doc.id,
+            })
+            if (dismissed.isFailure()) {
+              toast.error(dismissed.failure.messageKey)
+              return
+            }
           }
         }
         toast.info(`${suggestions.length} sugestões descartadas`)
@@ -164,7 +183,7 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
         toast.error('Erro ao descartar sugestões')
       }
     },
-    [db],
+    [db, bridge],
   )
 
   const handlePauseTimer = useCallback(
@@ -211,8 +230,8 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
     [db, activeTimeEntry, setActive, stopCurrentTimeEntry],
   )
 
-  const columns = useMemo(() => {
-    return createTimeEntriesColumns({
+  const columnOptions = useMemo<CreateColumnsOptions>(() => {
+    return {
       activities,
       tasksById,
       mappings,
@@ -240,12 +259,13 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
       onOpenConflict: handleOpenConflictResolution,
       onConfirmRetryAmbiguousCreation: handleConfirmRetryAmbiguousCreation,
       compact,
-    })
+    }
   }, [
     activities,
     tasksById,
     mappings,
     editingRows,
+    tempData,
     compact,
     getRowData,
     setEditingRows,
@@ -268,6 +288,10 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
     handleConfirmRetryAmbiguousCreation,
     handleOpenConflictResolution,
   ])
+  const columns = useMemo(
+    () => createTimeEntriesColumns(columnOptions),
+    [columnOptions],
+  )
 
   const handleRowDoubleClick = useCallback((row: SuggestionRow) => {
     setEditingRows((prev) => ({
@@ -313,23 +337,28 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
             </div>
           )}
           {daysInRange.map((day) => (
-            <TimeEntriesDayCard
+            <TimeEntriesColumnsProvider
+              value={columnOptions}
               key={day.toISOString()}
-              day={day}
-              entries={timeEntries}
-              draftEntries={draftEntries}
-              tempData={tempData}
-              columns={columns}
-              expandedRows={expandedRows}
-              onExpandedChange={handleExpandedChange}
-              isGrouped={isGrouped}
-              isPulling={isPulling}
-              compact={compact}
-              onAcceptAllSuggestions={handleAcceptAllSuggestions}
-              onDismissAllSuggestions={handleDismissAllSuggestions}
-              onAddNewEntry={handleAddNewEntry}
-              onRowDoubleClick={handleRowDoubleClick}
-            />
+            >
+              <TimeEntriesDayCard
+                key={day.toISOString()}
+                day={day}
+                entries={timeEntries}
+                draftEntries={draftEntries}
+                tempData={tempData}
+                columns={columns}
+                expandedRows={expandedRows}
+                onExpandedChange={handleExpandedChange}
+                isGrouped={isGrouped}
+                isPulling={isPulling}
+                compact={compact}
+                onAcceptAllSuggestions={handleAcceptAllSuggestions}
+                onDismissAllSuggestions={handleDismissAllSuggestions}
+                onAddNewEntry={handleAddNewEntry}
+                onRowDoubleClick={handleRowDoubleClick}
+              />
+            </TimeEntriesColumnsProvider>
           ))}
         </div>
       )}

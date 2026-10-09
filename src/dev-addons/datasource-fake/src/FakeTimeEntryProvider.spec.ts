@@ -76,3 +76,41 @@ describe('Fake provider stored state and fault injection', () => {
     ).toBe(1)
   })
 })
+
+describe('Canonical recovery gate ordering', () => {
+  beforeAll(() => vi.stubEnv('FAKE_DB_IN_MEMORY', 'true'))
+  afterAll(() => vi.unstubAllEnvs())
+
+  it('returns the first canonical failure before retaining recovery and releases idempotently', async () => {
+    const store = FakeDatabaseStore.getInstance()
+    store.resetToSeed()
+    const provider = new FakeTimeEntryProvider(context)
+    const created = await provider.create(entry)
+    const remoteId = created.success.id
+    store.pauseCanonicalReadRecovery()
+    try {
+      store.configureLegacyUpdateConfirmation()
+      expect(store.consumeLegacyUpdateResult(remoteId)).toBe(true)
+      const initial = await provider.findById(remoteId)
+      expect(initial.isFailure()).toBe(true)
+      expect(initial.failure.statusCode).toBe(503)
+      expect(store.getTimeEntrySyncDiagnostics().retainedCanonicalReads).toBe(0)
+      let settled = false
+      const recovery = provider.findById(remoteId).then((result) => {
+        settled = true
+        return result
+      })
+      expect(store.getTimeEntrySyncDiagnostics().retainedCanonicalReads).toBe(1)
+      expect(store.getTimeEntrySyncDiagnostics().canonicalReadPaused).toBe(true)
+      expect(settled).toBe(false)
+      expect(store.releaseCanonicalReadRecovery()).toBe(true)
+      expect(store.releaseCanonicalReadRecovery()).toBe(false)
+      expect((await recovery).success?.id).toBe(remoteId)
+      expect(store.getTimeEntrySyncDiagnostics().canonicalReadPaused).toBe(
+        false,
+      )
+    } finally {
+      store.releaseCanonicalReadRecovery()
+    }
+  })
+})

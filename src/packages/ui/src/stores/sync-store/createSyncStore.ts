@@ -1,4 +1,3 @@
-import { IHostBridge } from '@mr-tick/application'
 import { RXDB_VERSION, RxError } from 'rxdb'
 import { createStore, type StoreApi } from 'zustand'
 
@@ -18,13 +17,18 @@ import {
   getOrCreateDatabase,
   removeDatabaseFromCache,
 } from './storage'
-import { AppDatabase, ReplicationCheckpoint, SyncStore } from './types'
+import {
+  AppDatabase,
+  ReplicationBridge,
+  ReplicationCheckpoint,
+  SyncStore,
+} from './types'
 
 type ReplicationMap = Map<ConnectionInstanceId, Map<string, IReplicationModule>>
 
 export const createSyncStore = (
   workspaceId: string,
-  client: IHostBridge,
+  client: ReplicationBridge,
   isDevelopment: boolean,
   useMemoryStorage: boolean = false,
   retryTime?: number,

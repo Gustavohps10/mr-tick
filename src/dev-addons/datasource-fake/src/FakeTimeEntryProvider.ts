@@ -121,6 +121,7 @@ export class FakeTimeEntryProvider implements ITimeEntryProvider {
       return Either.failure(
         AppError.Http(503, 'FAKE_CANONICAL_READ_UNAVAILABLE'),
       )
+    await this.store.waitForCanonicalReadRelease(id)
     const dto = this.store.findTimeEntryById(id)
     if (!dto) return Either.success(null)
     return Either.success(dto)

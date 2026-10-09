@@ -44,9 +44,12 @@ import { WorkspacesHandler } from '@/main/handlers/WorkspacesHandler'
 import { DataSourceResolver } from '@/main/resolvers/data-source-resolver'
 import { openIpcRoutes } from '@/main/routes'
 import { AddonLoader } from '@/main/services/AddonLoader'
+import { LocalRuntimeDispatcher } from '@/main/services/LocalRuntimeDispatcher'
 import { UpdaterService } from '@/main/services/UpdaterService'
 import { getSettings } from '@/main/settings'
 import { createTray } from '@/main/tray'
+
+import sdkPackage from '../../../sdk/package.json'
 
 const requireNative = createRequire(import.meta.url)
 
@@ -442,7 +445,22 @@ if (!gotTheLock) {
 
     const userDataPath = app.getPath('userData')
     const credentialsStorage = new KeytarTokenStorage()
-    const addonLoader = new AddonLoader(credentialsStorage)
+    const runtimeWindow = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.mjs'),
+        sandbox: false,
+        contextIsolation: true,
+        backgroundThrottling: false,
+      },
+    })
+    runtimeWindow.windowType = 'runtime'
+    const localRuntime = new LocalRuntimeDispatcher(runtimeWindow)
+    const addonLoader = new AddonLoader(
+      credentialsStorage,
+      localRuntime,
+      sdkPackage.version,
+    )
     globalAddonLoader = addonLoader
 
     // Cold-start link
@@ -454,7 +472,9 @@ if (!gotTheLock) {
     }
 
     const timerRuntime = new TimerRuntime()
-    timerRuntime.init(addonLoader)
+    timerRuntime.init(addonLoader, (generation) =>
+      localRuntime.acceptsGeneration(generation),
+    )
 
     const workspacesRepository = new JSONWorkspacesRepository(userDataPath)
     const eventEmitter = new ElectronJobEventEmitter(() => mainWindow)
@@ -604,6 +624,21 @@ if (!gotTheLock) {
         createSecondaryWindow(targetWsId)
       },
     )
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      await runtimeWindow.loadURL(
+        `${process.env['ELECTRON_RENDERER_URL']}#/runtime`,
+      )
+    }
+    if (!is.dev || !process.env['ELECTRON_RENDERER_URL']) {
+      await runtimeWindow.loadFile(join(__dirname, '../renderer/index.html'), {
+        hash: '/runtime',
+      })
+    }
+    const runtimeReady = await localRuntime.whenReady()
+    if (!runtimeReady)
+      console.error(
+        '[LocalRuntime] Executor did not become ready before startup deadline',
+      )
     createWindow()
     if (
       process.env.NODE_ENV !== 'test' ||
@@ -614,10 +649,11 @@ if (!gotTheLock) {
     }
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      if (!mainWindow || mainWindow.isDestroyed()) createWindow()
     })
 
     app.on('before-quit', () => {
+      timerRuntime.dispose()
       updaterService.stopAutoCheck()
       if (process.platform === 'win32' && nativeOverlay) {
         try {

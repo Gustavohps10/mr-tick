@@ -1,4 +1,3 @@
-import { IHostBridge } from '@mr-tick/application'
 import { ReplicationOptions, RxCollection, RxError } from 'rxdb'
 import {
   replicateRxCollection,
@@ -15,6 +14,7 @@ import { TasksReplication } from './replication-strategies/TasksReplication'
 import { TimeEntriesReplication } from './replication-strategies/TimeEntriesReplication'
 import {
   IReplicationStrategy,
+  ReplicationBridge,
   ReplicationCheckpoint,
   ReplicationStatus,
   RxReplicationWriteToMasterRow,
@@ -228,7 +228,7 @@ export interface CollectionConfigMetadata {
   name: 'metadata'
   hasPush: false
   strategyFactory: (
-    client: IHostBridge,
+    client: ReplicationBridge,
     workspaceId: string,
     connectionInstanceId: string,
     dataSourceId: string,
@@ -241,7 +241,7 @@ export interface CollectionConfigTasks {
   name: 'tasks'
   hasPush: false
   strategyFactory: (
-    client: IHostBridge,
+    client: ReplicationBridge,
     workspaceId: string,
     connectionInstanceId: string,
     dataSourceId: string,
@@ -254,7 +254,7 @@ export interface CollectionConfigTimeEntries {
   name: 'timeEntries'
   hasPush: true
   strategyFactory: (
-    client: IHostBridge,
+    client: ReplicationBridge,
     workspaceId: string,
     connectionInstanceId: string,
     dataSourceId: string,

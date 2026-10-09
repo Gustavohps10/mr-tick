@@ -1,5 +1,6 @@
 import { electronAPI } from '@electron-toolkit/preload'
-import { IHostBridge } from '@mr-tick/application'
+import type { IHostBridge } from '@mr-tick/application'
+import { isWorkspaceScoped } from '@mr-tick/shared/helpers'
 import { contextBridge, ipcRenderer } from 'electron'
 
 import {
@@ -16,6 +17,15 @@ import {
 } from '@/main/invokers'
 
 const api: IHostBridge = {
+  localPersistence: {
+    request: (input) => ipcRenderer.invoke('local-runtime:persistence', input),
+  },
+  localSync: {
+    request: (input) => ipcRenderer.invoke('local-runtime:sync', input),
+  },
+  localRuntime: {
+    request: (input) => ipcRenderer.invoke('local-runtime:request', input),
+  },
   workspaces: workspacesInvoker,
   session: sessionInvoker,
   tasks: tasksInvoker,
@@ -39,49 +49,13 @@ const api: IHostBridge = {
       return unsubscribe
     },
     emit: <T = void>(channel: string, data?: T) => {
-      let workspaceId = 'default'
+      let workspaceId: string | undefined
       if (typeof window !== 'undefined') {
         const match = window.location.hash.match(/#\/workspaces\/([^\/]+)/)
-        if (match) {
-          workspaceId = match[1]
-        }
+        if (match) workspaceId = match[1]
       }
+      if (isWorkspaceScoped(data)) workspaceId = data.workspaceId
       ipcRenderer.send('events:broadcast', { channel, data, workspaceId })
-    },
-  },
-
-  timer: {
-    start: (input) => {
-      let workspaceId = 'default'
-      if (typeof window !== 'undefined') {
-        const match = window.location.hash.match(/#\/workspaces\/([^\/]+)/)
-        if (match) workspaceId = match[1]
-      }
-      ipcRenderer.send('timer:start', { ...input, workspaceId })
-    },
-    pause: () => {
-      let workspaceId = 'default'
-      if (typeof window !== 'undefined') {
-        const match = window.location.hash.match(/#\/workspaces\/([^\/]+)/)
-        if (match) workspaceId = match[1]
-      }
-      ipcRenderer.send('timer:pause', { workspaceId })
-    },
-    resume: (input) => {
-      let workspaceId = 'default'
-      if (typeof window !== 'undefined') {
-        const match = window.location.hash.match(/#\/workspaces\/([^\/]+)/)
-        if (match) workspaceId = match[1]
-      }
-      ipcRenderer.send('timer:resume', { ...input, workspaceId })
-    },
-    stop: () => {
-      let workspaceId = 'default'
-      if (typeof window !== 'undefined') {
-        const match = window.location.hash.match(/#\/workspaces\/([^\/]+)/)
-        if (match) workspaceId = match[1]
-      }
-      ipcRenderer.send('timer:stop', { workspaceId })
     },
   },
 }

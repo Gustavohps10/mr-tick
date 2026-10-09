@@ -30,6 +30,7 @@ export default defineConfig((options) => ({
     'src/lib/index.ts',
     'src/layouts/index.ts',
     'src/providers/index.ts',
+    'src/local-runtime/index.ts',
     'src/pages/index.ts',
     'src/assets/index.ts',
     'src/styles/globals.css',

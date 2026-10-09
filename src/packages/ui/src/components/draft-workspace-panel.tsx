@@ -57,7 +57,11 @@ export function DraftWorkspacesPanel({
         (prev) => prev?.filter((w) => w.id !== workspaceId) ?? [],
       )
 
-      await dropWorkspaceStorage(workspaceId)
+      const dropped = await dropWorkspaceStorage(bridge, workspaceId)
+      if (dropped.isFailure()) {
+        toast.error(dropped.failure.messageKey)
+        return
+      }
       toast.success('Rascunho removido')
 
       if (draftWorkspaces.length <= 1) setIsOpen(false)

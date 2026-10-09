@@ -2,10 +2,17 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { ICredentialsStorage } from '@mr-tick/application'
+import { ICredentialsStorage, ILocalRuntimeAPI } from '@mr-tick/application'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AddonLoader } from './AddonLoader'
+
+const unavailableRuntime: ILocalRuntimeAPI = {
+  request: async () => ({
+    ok: false,
+    error: { messageKey: 'RUNTIME_UNAVAILABLE', statusCode: 503 },
+  }),
+}
 
 vi.mock('electron', () => ({
   shell: {
@@ -36,7 +43,11 @@ describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
     }
 
     // Cria AddonLoader configurado com hostAppVersion '0.4.0'
-    addonLoader = new AddonLoader(fakeCredentialsStorage, '0.4.0')
+    addonLoader = new AddonLoader(
+      fakeCredentialsStorage,
+      unavailableRuntime,
+      '0.4.0',
+    )
 
     // Cria diretório temporário para simular addon no disco
     testAddonDir = join(

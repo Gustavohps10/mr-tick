@@ -28,7 +28,7 @@ export class TasksReplication implements IReplicationStrategy<
   ReplicationCheckpoint
 > {
   constructor(
-    private client: IHostBridge,
+    private client: Pick<IHostBridge, 'tasks'>,
     private workspaceId: string,
     private connectionInstanceId: string,
     private pluginId: string,

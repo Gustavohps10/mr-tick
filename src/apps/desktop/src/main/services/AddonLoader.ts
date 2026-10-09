@@ -6,16 +6,18 @@ import { pathToFileURL } from 'node:url'
 import {
   IAddonReloader,
   ICredentialsStorage,
-  TimeEntryRecordDTO,
+  ILocalRuntimeAPI,
 } from '@mr-tick/application'
 import {
   AddonActionResponse,
   AddonContext,
+  AddonRuntimeCapabilities,
   AddonSettingsField,
   AddonSettingsSchema,
   AddonSettingsSchemaProvider,
   AddonSettingsTab,
   AddonTheme,
+  AddonTimerControlLock,
   CommandArgument,
   CommandHandler,
   CommandResult,
@@ -32,17 +34,16 @@ import {
   IOAuthAPI,
   IRegistry,
   ISettingsRegistry,
-  ITimeEntriesAPI,
-  ITimerAPI,
   OAuthAuthorizeOptions,
   OAuthResult,
   SidebarMenuItem,
   TimerbarMenuItem,
 } from '@mr-tick/sdk'
 import {
-  AppError,
-  Either,
   isApiVersionCompatible,
+  isRecord,
+  isString,
+  isWorkspaceScoped,
 } from '@mr-tick/shared/helpers'
 import { ISystemEvents } from '@mr-tick/shared/transport'
 import { BrowserWindow, shell } from 'electron'
@@ -178,7 +179,7 @@ export class AddonEventEmitter implements IAddonEventsAPI {
 
 export class AddonLoader implements IAddonReloader {
   private activeAddons = new Map<string, ActiveAddonInfo>()
-  private activeTimerControllerAddonId: string | null = null
+  private readonly timerControlLock = new AddonTimerControlLock()
   private toastListeners: Array<(toastData: AddonToastEventData) => void> = []
 
   public readonly sidebarRegistry = new MemoryRegistry<SidebarMenuItem>()
@@ -203,14 +204,15 @@ export class AddonLoader implements IAddonReloader {
 
   constructor(
     private credentialsStorage: ICredentialsStorage,
-    private hostSdkVersion?: string,
+    private readonly localRuntime: ILocalRuntimeAPI,
+    private readonly hostSdkVersion: string,
   ) {
     this.registerThemeCommands()
     this.restoreActiveTheme()
   }
 
   public getHostSdkVersion(): string {
-    return this.hostSdkVersion || sdkPkg.version
+    return this.hostSdkVersion
   }
 
   private registerThemeCommands(): void {
@@ -329,8 +331,9 @@ export class AddonLoader implements IAddonReloader {
         if (!raw) return null
         try {
           const data = JSON.parse(raw)
-          if (data && typeof data === 'object' && key in data) {
-            return data[key]
+          if (isRecord(data)) {
+            const value = data[key]
+            if (isString(value)) return value
           }
         } catch {
           // ignore
@@ -414,228 +417,13 @@ export class AddonLoader implements IAddonReloader {
       dismiss: async (toastId) => this.dismissToast(toastId),
     }
 
-    const timer: ITimerAPI = {
-      getActiveEntry: async () => Either.success(null),
-      requestControlLock: async () => {
-        if (
-          this.activeTimerControllerAddonId === null ||
-          this.activeTimerControllerAddonId === addonId
-        ) {
-          this.activeTimerControllerAddonId = addonId
-          return Either.success(true)
-        }
-        return Either.success(false)
-      },
-      releaseControlLock: async () => {
-        if (this.activeTimerControllerAddonId === addonId) {
-          this.activeTimerControllerAddonId = null
-        }
-        return Either.success(undefined)
-      },
-      isControlLockHeld: async () => {
-        return Either.success(this.activeTimerControllerAddonId === addonId)
-      },
-      start: async (payload) => {
-        if (
-          this.activeTimerControllerAddonId &&
-          this.activeTimerControllerAddonId !== addonId
-        ) {
-          return Either.failure(
-            AppError.Unauthorized(
-              `[TimerAPI] Controle exclusivo retido pelo addon ${this.activeTimerControllerAddonId}`,
-            ),
-          )
-        }
-        console.log(
-          `⏱️ [TimerAPI] Iniciar timer por addon ${addonId}:`,
-          payload,
-        )
-        return Either.success(undefined)
-      },
-      pause: async () => {
-        if (
-          this.activeTimerControllerAddonId &&
-          this.activeTimerControllerAddonId !== addonId
-        ) {
-          return Either.failure(
-            AppError.Unauthorized(
-              `[TimerAPI] Controle exclusivo retido pelo addon ${this.activeTimerControllerAddonId}`,
-            ),
-          )
-        }
-        console.log(`⏱️ [TimerAPI] Pausar timer por addon ${addonId}`)
-        return Either.success(undefined)
-      },
-      resume: async () => {
-        if (
-          this.activeTimerControllerAddonId &&
-          this.activeTimerControllerAddonId !== addonId
-        ) {
-          return Either.failure(
-            AppError.Unauthorized(
-              `[TimerAPI] Controle exclusivo retido pelo addon ${this.activeTimerControllerAddonId}`,
-            ),
-          )
-        }
-        console.log(`⏱️ [TimerAPI] Retomar timer por addon ${addonId}`)
-        return Either.success(undefined)
-      },
-      stop: async () => {
-        if (
-          this.activeTimerControllerAddonId &&
-          this.activeTimerControllerAddonId !== addonId
-        ) {
-          return Either.failure(
-            AppError.Unauthorized(
-              `[TimerAPI] Controle exclusivo retido pelo addon ${this.activeTimerControllerAddonId}`,
-            ),
-          )
-        }
-        console.log(`⏱️ [TimerAPI] Parar timer por addon ${addonId}`)
-        return Either.success(undefined)
-      },
-      logTime: async (payload) => {
-        if (payload.timeSpentSeconds <= 0) {
-          return Either.failure(
-            AppError.ValidationError(
-              '[TimerAPI] Apontamento não pode ser menor ou igual a zero.',
-            ),
-          )
-        }
-        if (payload.timeSpentSeconds > 86400) {
-          return Either.failure(
-            AppError.ValidationError(
-              '[TimerAPI] Apontamento não pode exceder 24h (86400s).',
-            ),
-          )
-        }
-        console.log(`⏱️ [TimerAPI] Lançar horas por addon ${addonId}:`, payload)
-        return Either.success(undefined)
-      },
-    }
-
-    const timeEntries: ITimeEntriesAPI = {
-      list: async () => Either.success([]),
-      getById: async () => Either.success(null),
-      create: async (payload) => {
-        if (payload.timeSpentSeconds <= 0) {
-          return Either.failure(
-            AppError.ValidationError('[TimeEntriesAPI] Duração inválida.'),
-          )
-        }
-        const record: TimeEntryRecordDTO = {
-          id: `entry_${Date.now()}`,
-          taskId: payload.taskId,
-          comments: payload.comments,
-          timeSpentSeconds: payload.timeSpentSeconds,
-          pauseSeconds: payload.pauseSeconds ?? 0,
-          status: payload.status ?? 'finished',
-          source: payload.source ?? 'addon',
-          createdAt: new Date().toISOString(),
-        }
-        return Either.success(record)
-      },
-      createSuggestion: async (payload) => {
-        const now = new Date()
-        const nowIso = now.toISOString()
-
-        const endDate = payload.endDate || nowIso
-        let startDate = payload.startDate
-
-        if (!startDate) {
-          const seconds = payload.timeSpentSeconds || 0
-          startDate = new Date(
-            new Date(endDate).getTime() - seconds * 1000,
-          ).toISOString()
-        }
-
-        let timeSpentSeconds = payload.timeSpentSeconds
-        if (!timeSpentSeconds && startDate && endDate) {
-          timeSpentSeconds = Math.max(
-            0,
-            Math.round(
-              (new Date(endDate).getTime() - new Date(startDate).getTime()) /
-                1000,
-            ),
-          )
-        }
-
-        if (timeSpentSeconds <= 0) {
-          return Either.failure(
-            AppError.ValidationError('[TimeEntriesAPI] Duração inválida.'),
-          )
-        }
-
-        const addonSource = this.getAddonSourceInfo(addonId)
-
-        console.log(
-          `🤖 [TimeEntriesAPI] Sugestão de apontamento criada por addon ${addonId}:`,
-          payload,
-        )
-        const item: TimeEntryRecordDTO = {
-          id: `sug_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          taskId: payload.taskId,
-          comments: payload.comments,
-          startDate,
-          endDate,
-          timeSpentSeconds,
-          pauseSeconds: payload.pauseSeconds ?? 0,
-          status: 'suggestion',
-          source: payload.source ?? 'ai_suggestion',
-          addonSource,
-          createdAt: nowIso,
-        }
-
-        try {
-          const windows = BrowserWindow.getAllWindows()
-          windows.forEach((win) => {
-            if (!win.isDestroyed()) {
-              win.webContents.send('addons:suggestion-created', item)
-            }
-          })
-        } catch (err) {
-          console.error('❌ [AddonLoader] Erro ao enviar IPC de sugestão:', err)
-        }
-
-        return Either.success(item)
-      },
-      acceptSuggestion: async (id) => {
-        console.log(`✅ [TimeEntriesAPI] Sugestão aceita: ${id}`)
-        const record: TimeEntryRecordDTO = {
-          id,
-          timeSpentSeconds: 3600,
-          pauseSeconds: 0,
-          status: 'finished',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-        return Either.success(record)
-      },
-      dismissSuggestion: async (id) => {
-        console.log(`🗑️ [TimeEntriesAPI] Sugestão descartada: ${id}`)
-        return Either.success(true)
-      },
-      update: async (id, payload) => {
-        if (payload.pauseSeconds !== undefined && payload.pauseSeconds < 0) {
-          return Either.failure(
-            AppError.ValidationError(
-              '[TimeEntriesAPI] Tempo de pausa não pode ser negativo.',
-            ),
-          )
-        }
-        const record: TimeEntryRecordDTO = {
-          id,
-          timeSpentSeconds: payload.timeSpentSeconds ?? 3600,
-          pauseSeconds: payload.pauseSeconds ?? 0,
-          status: payload.status ?? 'finished',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-        return Either.success(record)
-      },
-      delete: async () => Either.success(true),
-    }
-
+    const capabilities = new AddonRuntimeCapabilities(
+      this.localRuntime,
+      this.getAddonSourceInfo(addonId),
+      this.timerControlLock,
+    )
+    const timer = capabilities.timer
+    const timeEntries = capabilities.timeEntries
     const oauth: IOAuthAPI = {
       generatePKCE: () => generatePKCE(),
       generateState: (prefix?: string) => generateOAuthState(prefix || addonId),
@@ -858,6 +646,7 @@ export class AddonLoader implements IAddonReloader {
   }
 
   public async deactivateAddon(addonId: string): Promise<void> {
+    this.timerControlLock.release(addonId)
     for (const [state, req] of this.pendingOAuthRequests.entries()) {
       if (req.addonId === addonId) {
         clearTimeout(req.timeoutId)
@@ -1096,11 +885,8 @@ export class AddonLoader implements IAddonReloader {
     if (!item) {
       return { isSuccess: false, error: 'ADDON_NOT_ACTIVE' }
     }
-    if (payload && typeof payload === 'object' && 'workspaceId' in payload) {
-      const wsId = payload.workspaceId
-      if (typeof wsId === 'string') {
-        this.setActiveWorkspace(wsId)
-      }
+    if (isWorkspaceScoped(payload)) {
+      this.setActiveWorkspace(payload.workspaceId)
     }
 
     const scopedCommandId = `${addonId}:${actionId}`
@@ -1113,47 +899,27 @@ export class AddonLoader implements IAddonReloader {
         targetCommandId,
         payload ?? {},
       )
-      if (
-        typeof result === 'object' &&
-        result !== null &&
-        'isSuccess' in result &&
-        typeof result.isSuccess === 'boolean'
-      ) {
+      if (isRecord(result) && typeof result.isSuccess === 'boolean') {
+        const display = isRecord(result.display)
+          ? {
+              title: isString(result.display.title)
+                ? result.display.title
+                : undefined,
+              message: isString(result.display.message)
+                ? result.display.message
+                : undefined,
+              avatarUrl: isString(result.display.avatarUrl)
+                ? result.display.avatarUrl
+                : undefined,
+              data: isRecord(result.display.data)
+                ? extractStringMap(result.display.data)
+                : undefined,
+            }
+          : undefined
         const response: AddonActionResponse = {
           isSuccess: result.isSuccess,
-          error:
-            'error' in result && typeof result.error === 'string'
-              ? result.error
-              : undefined,
-          display:
-            'display' in result &&
-            typeof result.display === 'object' &&
-            result.display !== null
-              ? {
-                  title:
-                    'title' in result.display &&
-                    typeof result.display.title === 'string'
-                      ? result.display.title
-                      : undefined,
-                  message:
-                    'message' in result.display &&
-                    typeof result.display.message === 'string'
-                      ? result.display.message
-                      : undefined,
-                  avatarUrl:
-                    'avatarUrl' in result.display &&
-                    typeof result.display.avatarUrl === 'string'
-                      ? result.display.avatarUrl
-                      : undefined,
-                  data:
-                    'data' in result.display &&
-                    typeof result.display.data === 'object' &&
-                    result.display.data !== null &&
-                    !Array.isArray(result.display.data)
-                      ? extractStringMap(result.display.data)
-                      : undefined,
-                }
-              : undefined,
+          error: isString(result.error) ? result.error : undefined,
+          display,
         }
         return response
       }
@@ -1266,12 +1032,12 @@ function parseSettingsRecord(
   }
 }
 
-function extractStringMap(data: object): Record<string, string> {
+function extractStringMap(
+  data: Record<string, unknown>,
+): Record<string, string> {
   const result: Record<string, string> = {}
   for (const [key, value] of Object.entries(data)) {
-    if (typeof value === 'string') {
-      result[key] = value
-    }
+    if (isString(value)) result[key] = value
   }
   return result
 }

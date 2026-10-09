@@ -48,6 +48,7 @@ import {
 } from '@/pages/time-entries/lib/time-entries-utils'
 
 import { SyncStatusCell } from './sync-status-cell'
+import { useTimeEntriesColumnsOptions } from './time-entries-columns-context'
 
 export interface CreateColumnsOptions {
   activities: SyncMetadataItem[]
@@ -253,9 +254,128 @@ function resolveRowTempData(
   return {}
 }
 
-export function createTimeEntriesColumns(
-  options: CreateColumnsOptions,
-): ColumnDef<SuggestionRow>[] {
+function ExpandCell({ row }: { row: TanStackRow<SuggestionRow> }) {
+  const { isGrouped = true, compact = false } = useTimeEntriesColumnsOptions()
+
+  if (row.original.isSuggestion || row.original.timeStatus === 'suggestion') {
+    const source = row.original.addonSource
+    const sourceName = source?.name
+      ? `@${source.name.toLowerCase().replace(/\s+/g, '')}`
+      : '@addon'
+
+    return (
+      <div className="flex items-center justify-start pl-1">
+        <div
+          className="border-border/80 bg-background/80 text-foreground inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs"
+          title={`Fonte: ${source?.name || 'Addon'}`}
+        >
+          {source?.imageUrl ? (
+            <img
+              src={source.imageUrl}
+              alt={source.name}
+              className="h-3.5 w-3.5 rounded-sm object-cover"
+            />
+          ) : (
+            <Sparkles className="text-primary h-3.5 w-3.5" />
+          )}
+          <span>{sourceName}</span>
+        </div>
+      </div>
+    )
+  }
+
+  const isRunning = row.original.timeStatus === 'running'
+  const isPaused = row.original.timeStatus === 'paused'
+
+  if (row.depth > 0) {
+    if (isRunning) {
+      return (
+        <div className="flex h-5 w-5 items-center justify-center pl-1 text-emerald-500">
+          <span className="relative flex h-2 w-2">
+            <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
+            <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
+          </span>
+        </div>
+      )
+    }
+
+    if (isPaused) {
+      return (
+        <div className="flex h-5 w-5 items-center justify-center pl-1 text-amber-500">
+          <Pause className="h-3 w-3 fill-current" />
+        </div>
+      )
+    }
+
+    return null
+  }
+
+  const isGroupMaster =
+    (row.original.subRows?.length ?? 0) > 1 && !row.getParentRow()
+
+  if (!isGroupMaster) {
+    // Em modo sem agrupar, não exibe o número 1
+    if (!isGrouped) {
+      return null
+    }
+
+    return (
+      <div
+        className={cn(
+          'flex items-center justify-start',
+          compact ? 'pl-[19px]' : 'pl-[22px]',
+        )}
+      >
+        <Badge
+          variant="outline"
+          className="bg-muted/20 border-border/40 text-muted-foreground/70 flex h-4 min-w-[18px] items-center justify-center px-1 font-mono text-[10px]"
+        >
+          1
+        </Badge>
+      </div>
+    )
+  }
+
+  const count = row.original.subRows?.length ?? 0
+
+  return (
+    <div className="flex items-center justify-start gap-1">
+      <button
+        type="button"
+        onClick={row.getToggleExpandedHandler()}
+        className={cn(
+          'hover:bg-muted/70 flex h-6 cursor-pointer items-center rounded-sm font-semibold transition-all select-none active:scale-95',
+          compact ? 'gap-1.5 px-0.5 text-xs' : 'gap-1 px-1 text-xs',
+        )}
+        title={row.getIsExpanded() ? 'Recolher grupo' : 'Expandir grupo'}
+      >
+        {row.getIsExpanded() ? (
+          <ChevronDown
+            className={cn(
+              'text-foreground/80 shrink-0',
+              compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
+            )}
+          />
+        ) : (
+          <ChevronRight
+            className={cn(
+              'text-foreground/80 shrink-0',
+              compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
+            )}
+          />
+        )}
+        <Badge
+          variant="outline"
+          className="bg-muted/40 border-border/60 text-foreground flex h-4 min-w-[18px] items-center justify-center px-1 font-mono text-[10px] font-bold"
+        >
+          {count || 1}
+        </Badge>
+      </button>
+    </div>
+  )
+}
+
+function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
   const {
     activities,
     tasksById,
@@ -265,25 +385,869 @@ export function createTimeEntriesColumns(
     setEditingRows,
     setTempData,
     tempData,
-    setRowBeingEdited,
-    setTaskLookupOpen,
+  } = useTimeEntriesColumnsOptions()
+
+  const original = row.original
+  const rowKey = getRowKey(original)
+  const isGroupMaster =
+    (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
+
+  const isEditing =
+    !isGroupMaster &&
+    (Boolean(original.isSuggestion) ||
+      Boolean(editingRows[rowKey] || editingRows[original.id]))
+
+  const data = resolveRowTempData(rowKey, original.id, tempData, getRowData)
+
+  const mergedRow = { ...original, ...data }
+
+  const rawTaskId = mergedRow.task?.id ?? ''
+  const cleanId = extractPureTaskId(rawTaskId)
+  const currentTaskId = cleanId ? `#${cleanId}` : ''
+
+  const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
+    setTempData((p) => ({
+      ...p,
+      [rowKey]: {
+        ...p[rowKey],
+        ...updates,
+      },
+      [original.id]: {
+        ...p[original.id],
+        ...updates,
+      },
+    }))
+  }
+
+  const taskTitle =
+    mergedRow.taskData?.title ||
+    (cleanId && tasksById ? tasksById[cleanId]?.title : '') ||
+    ''
+
+  const associatedTask =
+    (cleanId && tasksById ? tasksById[cleanId] : undefined) ||
+    mergedRow.taskData
+  const trackerObj = associatedTask?.tracker
+  const resolvedTracker = resolveEntityMapping(trackerObj, 'tracker', mappings)
+  const TrackerIconComponent = getActivityIcon(resolvedTracker.icon)
+
+  const resolvedConnectionInstanceId =
+    original.connectionInstanceId ||
+    associatedTask?.connectionInstanceId ||
+    mergedRow.connectionInstanceId
+
+  const resolvedDataSourceId =
+    original.dataSourceId ||
+    associatedTask?.dataSourceId ||
+    mergedRow.dataSourceId
+
+  if (isEditing) {
+    const isRemote = Boolean(
+      (mergedRow.remoteId &&
+        mergedRow.remoteId.trim() !== '' &&
+        !mergedRow.remoteId.startsWith('local-')) ||
+      mergedRow.syncStatus === 'synced',
+    )
+    const currentDescription = mergedRow.comments ?? ''
+    const currentActivity = mergedRow.activity?.id ?? ''
+    const currentConnectionId =
+      mergedRow.connectionInstanceId || resolvedConnectionInstanceId || ''
+
+    const formattedActivities = activities.map((act) => ({
+      id: act.id,
+      name: act.name,
+    }))
+
+    const hasSelectedTask = Boolean(cleanId && cleanId !== '')
+    const displayLabel = hasSelectedTask
+      ? taskTitle
+        ? `#${cleanId} - ${taskTitle}`
+        : `#${cleanId}`
+      : 'Escolher tarefa'
+
+    return (
+      <div className="flex w-full justify-start pl-1">
+        <TaskPopover
+          side="bottom"
+          align="start"
+          isRemote={isRemote}
+          taskId={currentTaskId}
+          onTaskIdChange={(id) => {
+            const clean = extractPureTaskId(id)
+            if (isRemote && !clean) return
+            updateField({ task: { id: clean } })
+          }}
+          description={currentDescription}
+          onDescriptionChange={(val) => updateField({ comments: val })}
+          selectedActivity={currentActivity}
+          onActivityChange={(val) => {
+            if (!val) {
+              if (isRemote) return
+              updateField({ activity: { id: '', name: '' } })
+              return
+            }
+            const foundActivity = activities.find((a) => a.id === val)
+            let activityName: string | undefined = undefined
+            if (foundActivity) activityName = foundActivity.name
+            updateField({ activity: { id: val, name: activityName } })
+          }}
+          selectedConnectionId={currentConnectionId}
+          onConnectionChange={(val) =>
+            updateField({ connectionInstanceId: val })
+          }
+          activities={formattedActivities}
+          onSelectTask={(task) => {
+            const resolvedTaskId = extractPureTaskId(task.sourceId || task.id)
+            updateField({
+              task: { id: resolvedTaskId },
+              taskData: task,
+              connectionInstanceId: task.connectionInstanceId,
+              dataSourceId: task.dataSourceId,
+            })
+          }}
+          trigger={
+            <Button
+              data-testid="time-entry-task-popover-trigger"
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn(
+                'bg-background flex h-7 w-full max-w-[190px] items-center justify-between gap-1.5 px-2 text-xs font-medium shadow-2xs transition-all',
+                hasSelectedTask
+                  ? 'border-primary/40 hover:border-primary font-sans'
+                  : 'border-primary/50 bg-primary/5 hover:bg-primary/10 text-primary border-dashed font-sans',
+              )}
+              title="Clique para abrir detalhes e selecionar tarefa"
+            >
+              <div className="flex min-w-0 items-center gap-1.5 truncate">
+                {hasSelectedTask ? (
+                  <>
+                    <DataSourceLogo
+                      connectionInstanceId={currentConnectionId}
+                      className="h-3.5 w-3.5 shrink-0 rounded-xs"
+                      fallback={
+                        <MessageSquareDiff className="text-primary h-3.5 w-3.5 shrink-0" />
+                      }
+                    />
+                    {TrackerIconComponent && (
+                      <TrackerIconComponent
+                        size={12}
+                        className="shrink-0"
+                        style={{ color: resolvedTracker.badgeColor }}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <Plus className="text-primary h-3.5 w-3.5 shrink-0" />
+                )}
+                <span className="truncate">{displayLabel}</span>
+              </div>
+            </Button>
+          }
+        />
+      </div>
+    )
+  }
+
+  if (isGroupMaster) {
+    if (!cleanId) {
+      return (
+        <div className="flex w-full justify-start pl-1">
+          <span className="text-muted-foreground/80 border-border/70 inline-flex items-center gap-1 rounded border border-dashed px-2 py-0.5 font-sans text-[11px] font-medium">
+            Sem tarefa
+          </span>
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex w-full justify-start pl-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="border-border/60 bg-secondary/70 hover:bg-secondary inline-flex max-w-[180px] cursor-help items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-colors">
+              <DataSourceLogo
+                connectionInstanceId={resolvedConnectionInstanceId}
+                dataSourceId={resolvedDataSourceId}
+                className="h-3.5 w-3.5 shrink-0 rounded-xs"
+              />
+              {TrackerIconComponent && (
+                <TrackerIconComponent
+                  size={12}
+                  className="shrink-0"
+                  style={{ color: resolvedTracker.badgeColor }}
+                />
+              )}
+              <span className="shrink-0 font-mono font-bold">{`#${cleanId}`}</span>
+              {taskTitle && (
+                <>
+                  <span className="text-muted-foreground/50 shrink-0 font-mono">
+                    -
+                  </span>
+                  <span className="text-muted-foreground truncate font-sans text-[11px] font-normal">
+                    {taskTitle}
+                  </span>
+                </>
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-[320px]">
+            <p className="font-mono text-xs font-bold">{`#${cleanId}`}</p>
+            {taskTitle && (
+              <p className="text-muted-foreground mt-0.5 text-xs">
+                {taskTitle}
+              </p>
+            )}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    )
+  }
+
+  // Se a linha (sublinha ou isolada) não tem tarefa definida, exibe botão para escolher
+  if (!cleanId) {
+    return (
+      <div className="flex w-full justify-start pl-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setEditingRows((prev) => ({ ...prev, [rowKey]: true }))
+              }}
+              className="hover:border-primary text-muted-foreground hover:text-primary bg-muted/20 hover:bg-primary/10 border-muted-foreground/40 inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-dashed px-2 font-sans text-[11px] font-medium transition-all"
+            >
+              <Plus className="h-3 w-3" />
+              <span>Escolher...</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p className="text-xs">Clique para definir uma tarefa</p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    )
+  }
+
+  // Em modo agrupado, sublinhas que já possuem tarefa definida pelo grupo não exibem o ticket repetido
+  if (row.depth > 0) {
+    return null
+  }
+
+  return (
+    <div className="flex w-full justify-start pl-1">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="border-border/60 bg-secondary/70 hover:bg-secondary inline-flex max-w-[180px] cursor-help items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-colors">
+            <DataSourceLogo
+              connectionInstanceId={resolvedConnectionInstanceId}
+              dataSourceId={resolvedDataSourceId}
+              className="h-3.5 w-3.5 shrink-0 rounded-xs"
+            />
+            {TrackerIconComponent && (
+              <TrackerIconComponent
+                size={12}
+                className="shrink-0"
+                style={{ color: resolvedTracker.badgeColor }}
+              />
+            )}
+            <span className="shrink-0 font-mono font-bold">{`#${cleanId}`}</span>
+            {taskTitle && (
+              <>
+                <span className="text-muted-foreground/50 shrink-0 font-mono">
+                  -
+                </span>
+                <span className="text-muted-foreground truncate font-sans text-[11px] font-normal">
+                  {taskTitle}
+                </span>
+              </>
+            )}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-[320px]">
+          <p className="font-mono text-xs font-bold">{`#${cleanId}`}</p>
+          {taskTitle && (
+            <p className="text-muted-foreground mt-0.5 text-xs">{taskTitle}</p>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  )
+}
+
+function SyncStatusTableCell({ row }: { row: TanStackRow<SuggestionRow> }) {
+  const {
+    onResolveConflict,
+    onOpenConflict,
+    onConfirmRetryAmbiguousCreation,
+    compact = false,
+  } = useTimeEntriesColumnsOptions()
+
+  const original = row.original
+  const isGroupMaster =
+    (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
+
+  return (
+    <SyncStatusCell
+      original={original}
+      isGroupMaster={isGroupMaster}
+      onResolveConflict={onResolveConflict}
+      onOpenConflict={onOpenConflict}
+      onConfirmRetryAmbiguousCreation={onConfirmRetryAmbiguousCreation}
+      compact={compact}
+    />
+  )
+}
+
+function ActivityCell({ row }: { row: TanStackRow<SuggestionRow> }) {
+  const {
+    activities,
+    mappings = {},
+    editingRows,
+    getRowData,
+    setEditingRows,
+    setTempData,
+    tempData,
+    compact = false,
+  } = useTimeEntriesColumnsOptions()
+
+  const original = row.original
+  const rowKey = getRowKey(original)
+  const isGroupMaster =
+    (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
+  const isEditing =
+    !isGroupMaster &&
+    (Boolean(original.isSuggestion) ||
+      Boolean(editingRows[rowKey] || editingRows[original.id]))
+
+  const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
+    setTempData((p) => ({
+      ...p,
+      [rowKey]: {
+        ...p[rowKey],
+        ...updates,
+      },
+      [original.id]: {
+        ...p[original.id],
+        ...updates,
+      },
+    }))
+  }
+
+  if (isEditing) {
+    const rowData = resolveRowTempData(
+      rowKey,
+      original.id,
+      tempData,
+      getRowData,
+    )
+    const mergedRow = { ...original, ...rowData }
+    const isRemote = Boolean(
+      (mergedRow.remoteId &&
+        mergedRow.remoteId.trim() !== '' &&
+        !mergedRow.remoteId.startsWith('local-')) ||
+      mergedRow.syncStatus === 'synced',
+    )
+    const currentTaskId = mergedRow.task?.id
+    const currentConnectionId = mergedRow.connectionInstanceId
+    const hasTaskOrDatasource = Boolean(
+      currentTaskId || currentConnectionId || original.dataSourceId,
+    )
+
+    let currentVal = ''
+    if (mergedRow.activity && mergedRow.activity.id) {
+      currentVal = mergedRow.activity.id
+    }
+
+    const isSelectDisabled = !hasTaskOrDatasource && activities.length === 0
+
+    return (
+      <Select
+        value={currentVal || (isRemote ? '' : '__NONE__')}
+        onValueChange={(val) => {
+          if (val === '__NONE__') {
+            if (isRemote) return
+            updateField({ activity: { id: '', name: '' } })
+            return
+          }
+          const foundActivity = activities.find((a) => a.id === val)
+          let activityName: string | undefined = undefined
+          if (foundActivity) activityName = foundActivity.name
+          updateField({ activity: { id: val, name: activityName } })
+        }}
+        disabled={isSelectDisabled}
+      >
+        <SelectTrigger
+          className={cn(
+            'border-primary/40 h-7 w-full max-w-full min-w-0 text-xs focus:ring-1',
+            compact && 'px-1.5 text-[11px]',
+          )}
+        >
+          <SelectValue
+            placeholder={
+              isSelectDisabled
+                ? compact
+                  ? 'Sem tarefa'
+                  : 'Selecione uma tarefa'
+                : 'Selecione'
+            }
+          />
+        </SelectTrigger>
+        <SelectContent>
+          {!isRemote && (
+            <SelectItem
+              value="__NONE__"
+              className="text-muted-foreground text-xs italic"
+            >
+              <div className="flex items-center gap-1.5 truncate">
+                <CircleDashed className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  {compact ? 'Nenhuma' : 'Sem atividade'}
+                </span>
+              </div>
+            </SelectItem>
+          )}
+          {activities.map((a) => {
+            const resolved = resolveEntityMapping(a, 'activity', mappings)
+            const SelectIcon = resolved.icon
+              ? getActivityIcon(resolved.icon)
+              : undefined
+            return (
+              <SelectItem key={a.id} value={a.id}>
+                <div className="flex items-center gap-1.5">
+                  {SelectIcon && (
+                    <SelectIcon
+                      size={12}
+                      style={{ color: resolved.badgeColor }}
+                    />
+                  )}
+                  <span>{a.name}</span>
+                </div>
+              </SelectItem>
+            )
+          })}
+        </SelectContent>
+      </Select>
+    )
+  }
+
+  if (isGroupMaster && hasNoTask(original)) {
+    return (
+      <div className="text-muted-foreground/40 flex justify-start pl-2 font-mono text-xs select-none">
+        —
+      </div>
+    )
+  }
+
+  if (isGroupMaster) {
+    const uniqueActivityIds = Array.from(
+      new Set(
+        (original.subRows || []).length > 0
+          ? (original.subRows || []).map((s) => s.activity?.id)
+          : [original.activity?.id],
+      ),
+    ).filter(Boolean)
+
+    const groupActivities = uniqueActivityIds
+      .map((id) => activities.find((a) => a.id === id))
+      .filter((a): a is SyncMetadataItem => Boolean(a))
+
+    return (
+      <div className="relative flex h-8 w-full min-w-0 items-center">
+        <div className="relative h-6 w-full">
+          {groupActivities.slice(0, 3).map((act, i) => {
+            const resolved = resolveEntityMapping(act, 'activity', mappings)
+            const IconComponent = resolved.icon
+              ? getActivityIcon(resolved.icon)
+              : undefined
+            const badgeColor = resolved.badgeColor
+            const backgroundColor = resolved.backgroundColor
+            const textColor = resolved.textColor
+            const isNeutral = !badgeColor
+
+            return (
+              <div
+                key={act.id}
+                className={cn(
+                  'absolute flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm transition-all',
+                  isNeutral && 'border-border/60 bg-secondary text-foreground',
+                  i === 0 && 'top-0 left-0 z-3',
+                  i === 1 && 'z-2 translate-x-2 translate-y-1',
+                  i === 2 && 'z-1 translate-x-4 translate-y-2',
+                )}
+                style={
+                  !isNeutral
+                    ? {
+                        backgroundColor,
+                        color: textColor,
+                        borderColor: badgeColor,
+                      }
+                    : undefined
+                }
+              >
+                {IconComponent && <IconComponent size={12} />}
+                <span className="max-w-[80px] truncate md:max-w-[120px]">
+                  {act.name}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+        {groupActivities.length > 3 && (
+          <Badge variant="outline" className="ml-auto text-[10px]">
+            +{groupActivities.length - 3}
+          </Badge>
+        )}
+      </div>
+    )
+  }
+
+  const foundActivity = activities.find((a) => a.id === original.activity?.id)
+
+  const activityId = original.activity?.id
+  const activityName = foundActivity?.name || original.activity?.name || ''
+
+  if (!activityId && !activityName) {
+    return (
+      <div className="flex w-full justify-start pl-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setEditingRows((prev) => ({ ...prev, [rowKey]: true }))
+              }}
+              className={cn(
+                'hover:border-primary text-muted-foreground hover:text-primary bg-muted/20 hover:bg-primary/10 border-muted-foreground/40 inline-flex h-6 max-w-full cursor-pointer items-center gap-1 truncate rounded border border-dashed font-sans transition-all',
+                compact ? 'px-1.5 text-[10px]' : 'px-2 text-[11px] font-medium',
+              )}
+            >
+              <Plus className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {compact ? 'Selecionar' : 'Selecione a atividade'}
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p className="text-xs">Clique para definir uma atividade</p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    )
+  }
+
+  const resolved = resolveEntityMapping(
+    { id: activityId, name: activityName },
+    'activity',
+    mappings,
+  )
+  const SingleIconComponent = resolved.icon
+    ? getActivityIcon(resolved.icon)
+    : undefined
+  const badgeColor = resolved.badgeColor
+  const backgroundColor = resolved.backgroundColor
+  const textColor = resolved.textColor
+  const isNeutral = !badgeColor
+
+  if (!isNeutral) {
+    return (
+      <div
+        className="inline-flex max-w-full items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-all"
+        style={{
+          backgroundColor,
+          color: textColor,
+          borderColor: badgeColor,
+        }}
+      >
+        {SingleIconComponent && (
+          <SingleIconComponent size={12} className="shrink-0" />
+        )}
+        <span className="truncate">{activityName}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border-border/60 bg-secondary inline-flex max-w-full items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs">
+      {SingleIconComponent && (
+        <SingleIconComponent size={12} className="shrink-0" />
+      )}
+      <span className="truncate">{activityName}</span>
+    </div>
+  )
+}
+
+function CommentsCell({ row }: { row: TanStackRow<SuggestionRow> }) {
+  const { editingRows, getRowData, setTempData, tempData } =
+    useTimeEntriesColumnsOptions()
+
+  const original = row.original
+  const rowKey = getRowKey(original)
+  const isGroupMaster =
+    (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
+  const isEditing =
+    !isGroupMaster &&
+    (Boolean(original.isSuggestion) ||
+      Boolean(editingRows[rowKey] || editingRows[original.id]))
+
+  const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
+    setTempData((p) => ({
+      ...p,
+      [rowKey]: {
+        ...p[rowKey],
+        ...updates,
+      },
+      [original.id]: {
+        ...p[original.id],
+        ...updates,
+      },
+    }))
+  }
+
+  if (isEditing) {
+    const rowData = resolveRowTempData(
+      rowKey,
+      original.id,
+      tempData,
+      getRowData,
+    )
+    const currentVal = rowData.comments ?? original.comments ?? ''
+    return (
+      <div className="w-full min-w-0 pr-1">
+        <MemoizedCommentInput
+          initialValue={currentVal}
+          onChange={(val) => updateField({ comments: val })}
+        />
+      </div>
+    )
+  }
+
+  const commentText = original.comments || ''
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="text-muted-foreground hover:text-foreground block max-w-full cursor-default truncate text-xs transition-colors"
+          title={commentText || 'Sem comentários'}
+        >
+          {commentText || '—'}
+        </span>
+      </TooltipTrigger>
+      {commentText && (
+        <TooltipContent side="top" className="max-w-xs text-xs">
+          <p className="font-medium">{commentText}</p>
+        </TooltipContent>
+      )}
+    </Tooltip>
+  )
+}
+
+function HoursCell({ row }: { row: TanStackRow<SuggestionRow> }) {
+  const {
+    editingRows,
+    getRowData,
+    setTempData,
+    tempData,
+    onTimeChangeDirect,
+    compact = false,
+  } = useTimeEntriesColumnsOptions()
+
+  const original = row.original
+  const rowKey = getRowKey(original)
+  const isGroupMaster =
+    (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
+
+  if (isGroupMaster) {
+    return <MasterGroupTotalTimeCell subRows={original.subRows} />
+  }
+
+  if (original.timeStatus === 'running') {
+    const initialSecs = original.timeSpent
+      ? Math.round(original.timeSpent * 3600)
+      : 0
+    const startHHMM = toHHMM(original.startDate)
+    return (
+      <div className="flex shrink-0 items-center justify-end gap-2 whitespace-nowrap">
+        {startHHMM && (
+          <div className="text-muted-foreground/80 flex items-center gap-1 font-mono text-[11px]">
+            <span>{startHHMM}</span>
+            <span className="text-muted-foreground/40 text-[10px]">›</span>
+            <span className="text-primary animate-pulse text-[10px] font-semibold">
+              agora
+            </span>
+          </div>
+        )}
+        <RunningTimerCellWrapper
+          initialSeconds={initialSecs}
+          compact={compact}
+        />
+      </div>
+    )
+  }
+
+  if (original.timeStatus === 'paused') {
+    const startHHMM = toHHMM(original.startDate)
+    return (
+      <div className="flex shrink-0 items-center justify-end gap-2 whitespace-nowrap">
+        {startHHMM && (
+          <div className="text-muted-foreground/80 flex items-center gap-1 font-mono text-[11px]">
+            <span>{startHHMM}</span>
+            <span className="text-muted-foreground/40 text-[10px]">›</span>
+            <span className="text-[10px] font-semibold text-amber-500">
+              pausa
+            </span>
+          </div>
+        )}
+        <div
+          className={cn(
+            'flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 font-mono text-xs font-semibold text-amber-600 dark:text-amber-400',
+            compact ? 'px-2 py-0.5' : 'px-2.5 py-1',
+          )}
+        >
+          <Pause className="h-2.5 w-2.5 fill-current" />
+          <span>{decimalToHMS(original.timeSpent || 0)}</span>
+        </div>
+      </div>
+    )
+  }
+
+  const isEditing =
+    !isGroupMaster &&
+    (Boolean(original.isSuggestion) ||
+      Boolean(editingRows[rowKey] || editingRows[original.id]))
+
+  const rowData = resolveRowTempData(rowKey, original.id, tempData, getRowData)
+  const mergedRow = { ...original, ...rowData }
+  const resolvedEndDate = mergedRow.endDate
+  return (
+    <div className="flex shrink-0 items-center justify-end whitespace-nowrap">
+      <TimeEntryInputs
+        startDate={mergedRow.startDate}
+        endDate={
+          resolvedEndDate !== null && resolvedEndDate !== undefined
+            ? resolvedEndDate
+            : undefined
+        }
+        timeSpent={mergedRow.timeSpent ?? 0}
+        disabled={isGroupMaster && !original.isSuggestion}
+        onChange={(newData) => {
+          if (original.isSuggestion || isEditing) {
+            setTempData((p) => ({
+              ...p,
+              [rowKey]: { ...p[rowKey], ...newData },
+              [original.id]: { ...p[original.id], ...newData },
+            }))
+            return
+          }
+          onTimeChangeDirect?.(rowKey, newData)
+        }}
+        compact={compact}
+      />
+    </div>
+  )
+}
+
+function ActionsCell({ row }: { row: TanStackRow<SuggestionRow> }) {
+  const {
+    editingRows,
+    setEditingRows,
     onSaveRow,
     onCancelEdit,
     onDeleteRow,
     onDuplicateRow,
     onAcceptSuggestion,
     onDismissSuggestion,
-    onTimeChangeDirect,
     onPauseTimer,
     onResumeTimer,
     onStopTimer,
-    isGrouped = true,
     onAddNewEntry,
-    onResolveConflict,
-    onOpenConflict,
-    onConfirmRetryAmbiguousCreation,
     compact = false,
-  } = options
+  } = useTimeEntriesColumnsOptions()
+
+  const original = row.original
+  const rowKey = getRowKey(original)
+  const isGroupMaster =
+    (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
+
+  if (isGroupMaster) {
+    return (
+      <div className="flex items-center justify-end pr-1">
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation()
+            const day = original.startDate
+              ? parseISO(original.startDate)
+              : new Date()
+            const parentTask =
+              original.task?.id && !hasNoTask(original)
+                ? { id: original.task.id }
+                : undefined
+            onAddNewEntry?.(day, parentTask)
+          }}
+          className={cn(
+            'text-foreground hover:text-foreground/80 h-6 gap-1 px-1 font-medium select-none',
+            compact && 'h-5 px-0.5 text-[11px]',
+          )}
+          title="Adicionar apontamento para esta tarefa"
+        >
+          <Plus
+            className={cn('shrink-0', compact ? 'h-2.5 w-2.5' : 'h-3 w-3')}
+          />
+          <span className={cn(compact && 'text-[11px]')}>Adicionar</span>
+        </Button>
+      </div>
+    )
+  }
+
+  const isEditing =
+    !isGroupMaster &&
+    (Boolean(original.isSuggestion) ||
+      Boolean(editingRows[rowKey] || editingRows[original.id]))
+
+  return (
+    <TimeEntryRowActions
+      row={original}
+      isEditing={isEditing}
+      compact={compact}
+      onToggleEdit={() =>
+        setEditingRows((prev) => {
+          const next = { ...prev }
+          const nextState = !isEditing
+          if (nextState) {
+            next[rowKey] = true
+          } else {
+            delete next[rowKey]
+            delete next[original.id]
+            Object.keys(next).forEach((k) => {
+              if (k.endsWith(original.id)) {
+                delete next[k]
+              }
+            })
+          }
+          return next
+        })
+      }
+      onSave={() => onSaveRow(rowKey)}
+      onCancelEdit={() => onCancelEdit(rowKey)}
+      onDuplicate={() => onDuplicateRow(original)}
+      onDelete={() => onDeleteRow(rowKey)}
+      onAcceptSuggestion={() => onAcceptSuggestion(original)}
+      onDismissSuggestion={() => onDismissSuggestion(rowKey)}
+      onPauseTimer={onPauseTimer}
+      onResumeTimer={onResumeTimer}
+      onStopTimer={onStopTimer}
+    />
+  )
+}
+
+export function createTimeEntriesColumns(
+  options: CreateColumnsOptions,
+): ColumnDef<SuggestionRow>[] {
+  const { compact = false } = options
 
   return [
     {
@@ -292,127 +1256,7 @@ export function createTimeEntriesColumns(
       size: compact ? 46 : 50,
       minSize: compact ? 42 : 44,
       maxSize: compact ? 52 : 70,
-      cell: ({ row }) => {
-        if (
-          row.original.isSuggestion ||
-          row.original.timeStatus === 'suggestion'
-        ) {
-          const source = row.original.addonSource
-          const sourceName = source?.name
-            ? `@${source.name.toLowerCase().replace(/\s+/g, '')}`
-            : '@addon'
-
-          return (
-            <div className="flex items-center justify-start pl-1">
-              <div
-                className="border-border/80 bg-background/80 text-foreground inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs"
-                title={`Fonte: ${source?.name || 'Addon'}`}
-              >
-                {source?.imageUrl ? (
-                  <img
-                    src={source.imageUrl}
-                    alt={source.name}
-                    className="h-3.5 w-3.5 rounded-sm object-cover"
-                  />
-                ) : (
-                  <Sparkles className="text-primary h-3.5 w-3.5" />
-                )}
-                <span>{sourceName}</span>
-              </div>
-            </div>
-          )
-        }
-
-        const isRunning = row.original.timeStatus === 'running'
-        const isPaused = row.original.timeStatus === 'paused'
-
-        if (row.depth > 0) {
-          if (isRunning) {
-            return (
-              <div className="flex h-5 w-5 items-center justify-center pl-1 text-emerald-500">
-                <span className="relative flex h-2 w-2">
-                  <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
-                  <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
-                </span>
-              </div>
-            )
-          }
-
-          if (isPaused) {
-            return (
-              <div className="flex h-5 w-5 items-center justify-center pl-1 text-amber-500">
-                <Pause className="h-3 w-3 fill-current" />
-              </div>
-            )
-          }
-
-          return null
-        }
-
-        const isGroupMaster =
-          (row.original.subRows?.length ?? 0) > 1 && !row.getParentRow()
-
-        if (!isGroupMaster) {
-          // Em modo sem agrupar, não exibe o número 1
-          if (!isGrouped) {
-            return null
-          }
-
-          return (
-            <div
-              className={cn(
-                'flex items-center justify-start',
-                compact ? 'pl-[19px]' : 'pl-[22px]',
-              )}
-            >
-              <Badge
-                variant="outline"
-                className="bg-muted/20 border-border/40 text-muted-foreground/70 flex h-4 min-w-[18px] items-center justify-center px-1 font-mono text-[10px]"
-              >
-                1
-              </Badge>
-            </div>
-          )
-        }
-
-        const count = row.original.subRows?.length ?? 0
-
-        return (
-          <div className="flex items-center justify-start gap-1">
-            <button
-              type="button"
-              onClick={row.getToggleExpandedHandler()}
-              className={cn(
-                'hover:bg-muted/70 flex h-6 cursor-pointer items-center rounded-sm font-semibold transition-all select-none active:scale-95',
-                compact ? 'gap-1.5 px-0.5 text-xs' : 'gap-1 px-1 text-xs',
-              )}
-              title={row.getIsExpanded() ? 'Recolher grupo' : 'Expandir grupo'}
-            >
-              {row.getIsExpanded() ? (
-                <ChevronDown
-                  className={cn(
-                    'text-foreground/80 shrink-0',
-                    compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
-                  )}
-                />
-              ) : (
-                <ChevronRight
-                  className={cn(
-                    'text-foreground/80 shrink-0',
-                    compact ? 'h-3 w-3' : 'h-3.5 w-3.5',
-                  )}
-                />
-              )}
-              <Badge
-                variant="outline"
-                className="bg-muted/40 border-border/60 text-foreground flex h-4 min-w-[18px] items-center justify-center px-1 font-mono text-[10px] font-bold"
-              >
-                {count || 1}
-              </Badge>
-            </button>
-          </div>
-        )
-      },
+      cell: ExpandCell,
     },
 
     {
@@ -426,307 +1270,7 @@ export function createTimeEntriesColumns(
       size: compact ? 160 : 210,
       minSize: compact ? 130 : 170,
       maxSize: compact ? 200 : 280,
-      cell: ({ row }: { row: TanStackRow<SuggestionRow> }) => {
-        const original = row.original
-        const rowKey = getRowKey(original)
-        const isGroupMaster =
-          (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
-
-        const isEditing =
-          !isGroupMaster &&
-          (Boolean(original.isSuggestion) ||
-            Boolean(editingRows[rowKey] || editingRows[original.id]))
-
-        const data = resolveRowTempData(
-          rowKey,
-          original.id,
-          tempData,
-          getRowData,
-        )
-
-        const mergedRow = { ...original, ...data }
-
-        const rawTaskId = mergedRow.task?.id ?? ''
-        const cleanId = extractPureTaskId(rawTaskId)
-        const currentTaskId = cleanId ? `#${cleanId}` : ''
-
-        const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
-          setTempData((p) => ({
-            ...p,
-            [rowKey]: {
-              ...p[rowKey],
-              ...updates,
-            },
-            [original.id]: {
-              ...p[original.id],
-              ...updates,
-            },
-          }))
-        }
-
-        const taskTitle =
-          mergedRow.taskData?.title ||
-          (cleanId && tasksById ? tasksById[cleanId]?.title : '') ||
-          ''
-
-        const associatedTask =
-          (cleanId && tasksById ? tasksById[cleanId] : undefined) ||
-          mergedRow.taskData
-        const trackerObj = associatedTask?.tracker
-        const resolvedTracker = resolveEntityMapping(
-          trackerObj,
-          'tracker',
-          mappings,
-        )
-        const TrackerIconComponent = getActivityIcon(resolvedTracker.icon)
-
-        const resolvedConnectionInstanceId =
-          original.connectionInstanceId ||
-          associatedTask?.connectionInstanceId ||
-          mergedRow.connectionInstanceId
-
-        const resolvedDataSourceId =
-          original.dataSourceId ||
-          associatedTask?.dataSourceId ||
-          mergedRow.dataSourceId
-
-        if (isEditing) {
-          const isRemote = Boolean(
-            (mergedRow.remoteId &&
-              mergedRow.remoteId.trim() !== '' &&
-              !mergedRow.remoteId.startsWith('local-')) ||
-            mergedRow.syncStatus === 'synced',
-          )
-          const currentDescription = mergedRow.comments ?? ''
-          const currentActivity = mergedRow.activity?.id ?? ''
-          const currentConnectionId =
-            mergedRow.connectionInstanceId || resolvedConnectionInstanceId || ''
-
-          const formattedActivities = activities.map((act) => ({
-            id: act.id,
-            name: act.name,
-          }))
-
-          const hasSelectedTask = Boolean(cleanId && cleanId !== '')
-          const displayLabel = hasSelectedTask
-            ? taskTitle
-              ? `#${cleanId} - ${taskTitle}`
-              : `#${cleanId}`
-            : 'Escolher tarefa'
-
-          return (
-            <div className="flex w-full justify-start pl-1">
-              <TaskPopover
-                side="bottom"
-                align="start"
-                isRemote={isRemote}
-                taskId={currentTaskId}
-                onTaskIdChange={(id) => {
-                  const clean = extractPureTaskId(id)
-                  if (isRemote && !clean) return
-                  updateField({ task: { id: clean } })
-                }}
-                description={currentDescription}
-                onDescriptionChange={(val) => updateField({ comments: val })}
-                selectedActivity={currentActivity}
-                onActivityChange={(val) => {
-                  if (!val) {
-                    if (isRemote) return
-                    updateField({ activity: { id: '', name: '' } })
-                    return
-                  }
-                  const foundActivity = activities.find((a) => a.id === val)
-                  let activityName: string | undefined = undefined
-                  if (foundActivity) activityName = foundActivity.name
-                  updateField({ activity: { id: val, name: activityName } })
-                }}
-                selectedConnectionId={currentConnectionId}
-                onConnectionChange={(val) =>
-                  updateField({ connectionInstanceId: val })
-                }
-                activities={formattedActivities}
-                onSelectTask={(task) => {
-                  const resolvedTaskId = extractPureTaskId(
-                    task.sourceId || task.id,
-                  )
-                  updateField({
-                    task: { id: resolvedTaskId },
-                    taskData: task,
-                    connectionInstanceId: task.connectionInstanceId,
-                    dataSourceId: task.dataSourceId,
-                  })
-                }}
-                trigger={
-                  <Button
-                    data-testid="time-entry-task-popover-trigger"
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      'bg-background flex h-7 w-full max-w-[190px] items-center justify-between gap-1.5 px-2 text-xs font-medium shadow-2xs transition-all',
-                      hasSelectedTask
-                        ? 'border-primary/40 hover:border-primary font-sans'
-                        : 'border-primary/50 bg-primary/5 hover:bg-primary/10 text-primary border-dashed font-sans',
-                    )}
-                    title="Clique para abrir detalhes e selecionar tarefa"
-                  >
-                    <div className="flex min-w-0 items-center gap-1.5 truncate">
-                      {hasSelectedTask ? (
-                        <>
-                          <DataSourceLogo
-                            connectionInstanceId={currentConnectionId}
-                            className="h-3.5 w-3.5 shrink-0 rounded-xs"
-                            fallback={
-                              <MessageSquareDiff className="text-primary h-3.5 w-3.5 shrink-0" />
-                            }
-                          />
-                          {TrackerIconComponent && (
-                            <TrackerIconComponent
-                              size={12}
-                              className="shrink-0"
-                              style={{ color: resolvedTracker.badgeColor }}
-                            />
-                          )}
-                        </>
-                      ) : (
-                        <Plus className="text-primary h-3.5 w-3.5 shrink-0" />
-                      )}
-                      <span className="truncate">{displayLabel}</span>
-                    </div>
-                  </Button>
-                }
-              />
-            </div>
-          )
-        }
-
-        if (isGroupMaster) {
-          if (!cleanId) {
-            return (
-              <div className="flex w-full justify-start pl-1">
-                <span className="text-muted-foreground/80 border-border/70 inline-flex items-center gap-1 rounded border border-dashed px-2 py-0.5 font-sans text-[11px] font-medium">
-                  Sem tarefa
-                </span>
-              </div>
-            )
-          }
-
-          return (
-            <div className="flex w-full justify-start pl-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="border-border/60 bg-secondary/70 hover:bg-secondary inline-flex max-w-[180px] cursor-help items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-colors">
-                    <DataSourceLogo
-                      connectionInstanceId={resolvedConnectionInstanceId}
-                      dataSourceId={resolvedDataSourceId}
-                      className="h-3.5 w-3.5 shrink-0 rounded-xs"
-                    />
-                    {TrackerIconComponent && (
-                      <TrackerIconComponent
-                        size={12}
-                        className="shrink-0"
-                        style={{ color: resolvedTracker.badgeColor }}
-                      />
-                    )}
-                    <span className="shrink-0 font-mono font-bold">{`#${cleanId}`}</span>
-                    {taskTitle && (
-                      <>
-                        <span className="text-muted-foreground/50 shrink-0 font-mono">
-                          -
-                        </span>
-                        <span className="text-muted-foreground truncate font-sans text-[11px] font-normal">
-                          {taskTitle}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="right" className="max-w-[320px]">
-                  <p className="font-mono text-xs font-bold">{`#${cleanId}`}</p>
-                  {taskTitle && (
-                    <p className="text-muted-foreground mt-0.5 text-xs">
-                      {taskTitle}
-                    </p>
-                  )}
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          )
-        }
-
-        // Se a linha (sublinha ou isolada) não tem tarefa definida, exibe botão para escolher
-        if (!cleanId) {
-          return (
-            <div className="flex w-full justify-start pl-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setEditingRows((prev) => ({ ...prev, [rowKey]: true }))
-                    }}
-                    className="hover:border-primary text-muted-foreground hover:text-primary bg-muted/20 hover:bg-primary/10 border-muted-foreground/40 inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-dashed px-2 font-sans text-[11px] font-medium transition-all"
-                  >
-                    <Plus className="h-3 w-3" />
-                    <span>Escolher...</span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <p className="text-xs">Clique para definir uma tarefa</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          )
-        }
-
-        // Em modo agrupado, sublinhas que já possuem tarefa definida pelo grupo não exibem o ticket repetido
-        if (row.depth > 0) {
-          return null
-        }
-
-        return (
-          <div className="flex w-full justify-start pl-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="border-border/60 bg-secondary/70 hover:bg-secondary inline-flex max-w-[180px] cursor-help items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-colors">
-                  <DataSourceLogo
-                    connectionInstanceId={resolvedConnectionInstanceId}
-                    dataSourceId={resolvedDataSourceId}
-                    className="h-3.5 w-3.5 shrink-0 rounded-xs"
-                  />
-                  {TrackerIconComponent && (
-                    <TrackerIconComponent
-                      size={12}
-                      className="shrink-0"
-                      style={{ color: resolvedTracker.badgeColor }}
-                    />
-                  )}
-                  <span className="shrink-0 font-mono font-bold">{`#${cleanId}`}</span>
-                  {taskTitle && (
-                    <>
-                      <span className="text-muted-foreground/50 shrink-0 font-mono">
-                        -
-                      </span>
-                      <span className="text-muted-foreground truncate font-sans text-[11px] font-normal">
-                        {taskTitle}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="max-w-[320px]">
-                <p className="font-mono text-xs font-bold">{`#${cleanId}`}</p>
-                {taskTitle && (
-                  <p className="text-muted-foreground mt-0.5 text-xs">
-                    {taskTitle}
-                  </p>
-                )}
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        )
-      },
+      cell: TaskCell,
     },
 
     {
@@ -739,22 +1283,7 @@ export function createTimeEntriesColumns(
       size: compact ? 38 : 60,
       minSize: compact ? 34 : 50,
       maxSize: compact ? 46 : 75,
-      cell: ({ row }) => {
-        const original = row.original
-        const isGroupMaster =
-          (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
-
-        return (
-          <SyncStatusCell
-            original={original}
-            isGroupMaster={isGroupMaster}
-            onResolveConflict={onResolveConflict}
-            onOpenConflict={onOpenConflict}
-            onConfirmRetryAmbiguousCreation={onConfirmRetryAmbiguousCreation}
-            compact={compact}
-          />
-        )
-      },
+      cell: SyncStatusTableCell,
     },
     {
       id: 'activity',
@@ -766,284 +1295,7 @@ export function createTimeEntriesColumns(
       size: compact ? 110 : 140,
       minSize: compact ? 95 : 120,
       maxSize: compact ? 130 : 170,
-      cell: ({ row }: { row: TanStackRow<SuggestionRow> }) => {
-        const original = row.original
-        const rowKey = getRowKey(original)
-        const isGroupMaster =
-          (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
-        const isEditing =
-          !isGroupMaster &&
-          (Boolean(original.isSuggestion) ||
-            Boolean(editingRows[rowKey] || editingRows[original.id]))
-
-        const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
-          setTempData((p) => ({
-            ...p,
-            [rowKey]: {
-              ...p[rowKey],
-              ...updates,
-            },
-            [original.id]: {
-              ...p[original.id],
-              ...updates,
-            },
-          }))
-        }
-
-        if (isEditing) {
-          const rowData = resolveRowTempData(
-            rowKey,
-            original.id,
-            tempData,
-            getRowData,
-          )
-          const mergedRow = { ...original, ...rowData }
-          const isRemote = Boolean(
-            (mergedRow.remoteId &&
-              mergedRow.remoteId.trim() !== '' &&
-              !mergedRow.remoteId.startsWith('local-')) ||
-            mergedRow.syncStatus === 'synced',
-          )
-          const currentTaskId = mergedRow.task?.id
-          const currentConnectionId = mergedRow.connectionInstanceId
-          const hasTaskOrDatasource = Boolean(
-            currentTaskId || currentConnectionId || original.dataSourceId,
-          )
-
-          let currentVal = ''
-          if (mergedRow.activity && mergedRow.activity.id) {
-            currentVal = mergedRow.activity.id
-          }
-
-          const isSelectDisabled =
-            !hasTaskOrDatasource && activities.length === 0
-
-          return (
-            <Select
-              value={currentVal || (isRemote ? '' : '__NONE__')}
-              onValueChange={(val) => {
-                if (val === '__NONE__') {
-                  if (isRemote) return
-                  updateField({ activity: { id: '', name: '' } })
-                  return
-                }
-                const foundActivity = activities.find((a) => a.id === val)
-                let activityName: string | undefined = undefined
-                if (foundActivity) activityName = foundActivity.name
-                updateField({ activity: { id: val, name: activityName } })
-              }}
-              disabled={isSelectDisabled}
-            >
-              <SelectTrigger
-                className={cn(
-                  'border-primary/40 h-7 w-full max-w-full min-w-0 text-xs focus:ring-1',
-                  compact && 'px-1.5 text-[11px]',
-                )}
-              >
-                <SelectValue
-                  placeholder={
-                    isSelectDisabled
-                      ? compact
-                        ? 'Sem tarefa'
-                        : 'Selecione uma tarefa'
-                      : 'Selecione'
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {!isRemote && (
-                  <SelectItem
-                    value="__NONE__"
-                    className="text-muted-foreground text-xs italic"
-                  >
-                    <div className="flex items-center gap-1.5 truncate">
-                      <CircleDashed className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">
-                        {compact ? 'Nenhuma' : 'Sem atividade'}
-                      </span>
-                    </div>
-                  </SelectItem>
-                )}
-                {activities.map((a) => {
-                  const resolved = resolveEntityMapping(a, 'activity', mappings)
-                  const SelectIcon = resolved.icon
-                    ? getActivityIcon(resolved.icon)
-                    : undefined
-                  return (
-                    <SelectItem key={a.id} value={a.id}>
-                      <div className="flex items-center gap-1.5">
-                        {SelectIcon && (
-                          <SelectIcon
-                            size={12}
-                            style={{ color: resolved.badgeColor }}
-                          />
-                        )}
-                        <span>{a.name}</span>
-                      </div>
-                    </SelectItem>
-                  )
-                })}
-              </SelectContent>
-            </Select>
-          )
-        }
-
-        if (isGroupMaster && hasNoTask(original)) {
-          return (
-            <div className="text-muted-foreground/40 flex justify-start pl-2 font-mono text-xs select-none">
-              —
-            </div>
-          )
-        }
-
-        if (isGroupMaster) {
-          const uniqueActivityIds = Array.from(
-            new Set(
-              (original.subRows || []).length > 0
-                ? (original.subRows || []).map((s) => s.activity?.id)
-                : [original.activity?.id],
-            ),
-          ).filter(Boolean)
-
-          const groupActivities = uniqueActivityIds
-            .map((id) => activities.find((a) => a.id === id))
-            .filter((a): a is SyncMetadataItem => Boolean(a))
-
-          return (
-            <div className="relative flex h-8 w-full min-w-0 items-center">
-              <div className="relative h-6 w-full">
-                {groupActivities.slice(0, 3).map((act, i) => {
-                  const resolved = resolveEntityMapping(
-                    act,
-                    'activity',
-                    mappings,
-                  )
-                  const IconComponent = resolved.icon
-                    ? getActivityIcon(resolved.icon)
-                    : undefined
-                  const badgeColor = resolved.badgeColor
-                  const backgroundColor = resolved.backgroundColor
-                  const textColor = resolved.textColor
-                  const isNeutral = !badgeColor
-
-                  return (
-                    <div
-                      key={act.id}
-                      className={cn(
-                        'absolute flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm transition-all',
-                        isNeutral &&
-                          'border-border/60 bg-secondary text-foreground',
-                        i === 0 && 'top-0 left-0 z-3',
-                        i === 1 && 'z-2 translate-x-2 translate-y-1',
-                        i === 2 && 'z-1 translate-x-4 translate-y-2',
-                      )}
-                      style={
-                        !isNeutral
-                          ? {
-                              backgroundColor,
-                              color: textColor,
-                              borderColor: badgeColor,
-                            }
-                          : undefined
-                      }
-                    >
-                      {IconComponent && <IconComponent size={12} />}
-                      <span className="max-w-[80px] truncate md:max-w-[120px]">
-                        {act.name}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-              {groupActivities.length > 3 && (
-                <Badge variant="outline" className="ml-auto text-[10px]">
-                  +{groupActivities.length - 3}
-                </Badge>
-              )}
-            </div>
-          )
-        }
-
-        const foundActivity = activities.find(
-          (a) => a.id === original.activity?.id,
-        )
-
-        const activityId = original.activity?.id
-        const activityName =
-          foundActivity?.name || original.activity?.name || ''
-
-        if (!activityId && !activityName) {
-          return (
-            <div className="flex w-full justify-start pl-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setEditingRows((prev) => ({ ...prev, [rowKey]: true }))
-                    }}
-                    className={cn(
-                      'hover:border-primary text-muted-foreground hover:text-primary bg-muted/20 hover:bg-primary/10 border-muted-foreground/40 inline-flex h-6 max-w-full cursor-pointer items-center gap-1 truncate rounded border border-dashed font-sans transition-all',
-                      compact
-                        ? 'px-1.5 text-[10px]'
-                        : 'px-2 text-[11px] font-medium',
-                    )}
-                  >
-                    <Plus className="h-3 w-3 shrink-0" />
-                    <span className="truncate">
-                      {compact ? 'Selecionar' : 'Selecione a atividade'}
-                    </span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <p className="text-xs">Clique para definir uma atividade</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          )
-        }
-
-        const resolved = resolveEntityMapping(
-          { id: activityId, name: activityName },
-          'activity',
-          mappings,
-        )
-        const SingleIconComponent = resolved.icon
-          ? getActivityIcon(resolved.icon)
-          : undefined
-        const badgeColor = resolved.badgeColor
-        const backgroundColor = resolved.backgroundColor
-        const textColor = resolved.textColor
-        const isNeutral = !badgeColor
-
-        if (!isNeutral) {
-          return (
-            <div
-              className="inline-flex max-w-full items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs transition-all"
-              style={{
-                backgroundColor,
-                color: textColor,
-                borderColor: badgeColor,
-              }}
-            >
-              {SingleIconComponent && (
-                <SingleIconComponent size={12} className="shrink-0" />
-              )}
-              <span className="truncate">{activityName}</span>
-            </div>
-          )
-        }
-
-        return (
-          <div className="border-border/60 bg-secondary inline-flex max-w-full items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs">
-            {SingleIconComponent && (
-              <SingleIconComponent size={12} className="shrink-0" />
-            )}
-            <span className="truncate">{activityName}</span>
-          </div>
-        )
-      },
+      cell: ActivityCell,
     },
     {
       id: 'comments',
@@ -1055,67 +1307,7 @@ export function createTimeEntriesColumns(
           Comentários
         </div>
       ),
-      cell: ({ row }: { row: TanStackRow<SuggestionRow> }) => {
-        const original = row.original
-        const rowKey = getRowKey(original)
-        const isGroupMaster =
-          (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
-        const isEditing =
-          !isGroupMaster &&
-          (Boolean(original.isSuggestion) ||
-            Boolean(editingRows[rowKey] || editingRows[original.id]))
-
-        const updateField = (updates: Partial<SyncTimeEntryRxDBDTO>) => {
-          setTempData((p) => ({
-            ...p,
-            [rowKey]: {
-              ...p[rowKey],
-              ...updates,
-            },
-            [original.id]: {
-              ...p[original.id],
-              ...updates,
-            },
-          }))
-        }
-
-        if (isEditing) {
-          const rowData = resolveRowTempData(
-            rowKey,
-            original.id,
-            tempData,
-            getRowData,
-          )
-          const currentVal = rowData.comments ?? original.comments ?? ''
-          return (
-            <div className="w-full min-w-0 pr-1">
-              <MemoizedCommentInput
-                initialValue={currentVal}
-                onChange={(val) => updateField({ comments: val })}
-              />
-            </div>
-          )
-        }
-
-        const commentText = original.comments || ''
-        return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                className="text-muted-foreground hover:text-foreground block max-w-full cursor-default truncate text-xs transition-colors"
-                title={commentText || 'Sem comentários'}
-              >
-                {commentText || '—'}
-              </span>
-            </TooltipTrigger>
-            {commentText && (
-              <TooltipContent side="top" className="max-w-xs text-xs">
-                <p className="font-medium">{commentText}</p>
-              </TooltipContent>
-            )}
-          </Tooltip>
-        )
-      },
+      cell: CommentsCell,
     },
     {
       id: 'hours',
@@ -1127,110 +1319,7 @@ export function createTimeEntriesColumns(
           Tempo
         </div>
       ),
-      cell: ({ row }: { row: TanStackRow<SuggestionRow> }) => {
-        const original = row.original
-        const rowKey = getRowKey(original)
-        const isGroupMaster =
-          (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
-
-        if (isGroupMaster) {
-          return <MasterGroupTotalTimeCell subRows={original.subRows} />
-        }
-
-        if (original.timeStatus === 'running') {
-          const initialSecs = original.timeSpent
-            ? Math.round(original.timeSpent * 3600)
-            : 0
-          const startHHMM = toHHMM(original.startDate)
-          return (
-            <div className="flex shrink-0 items-center justify-end gap-2 whitespace-nowrap">
-              {startHHMM && (
-                <div className="text-muted-foreground/80 flex items-center gap-1 font-mono text-[11px]">
-                  <span>{startHHMM}</span>
-                  <span className="text-muted-foreground/40 text-[10px]">
-                    ›
-                  </span>
-                  <span className="text-primary animate-pulse text-[10px] font-semibold">
-                    agora
-                  </span>
-                </div>
-              )}
-              <RunningTimerCellWrapper
-                initialSeconds={initialSecs}
-                compact={compact}
-              />
-            </div>
-          )
-        }
-
-        if (original.timeStatus === 'paused') {
-          const startHHMM = toHHMM(original.startDate)
-          return (
-            <div className="flex shrink-0 items-center justify-end gap-2 whitespace-nowrap">
-              {startHHMM && (
-                <div className="text-muted-foreground/80 flex items-center gap-1 font-mono text-[11px]">
-                  <span>{startHHMM}</span>
-                  <span className="text-muted-foreground/40 text-[10px]">
-                    ›
-                  </span>
-                  <span className="text-[10px] font-semibold text-amber-500">
-                    pausa
-                  </span>
-                </div>
-              )}
-              <div
-                className={cn(
-                  'flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 font-mono text-xs font-semibold text-amber-600 dark:text-amber-400',
-                  compact ? 'px-2 py-0.5' : 'px-2.5 py-1',
-                )}
-              >
-                <Pause className="h-2.5 w-2.5 fill-current" />
-                <span>{decimalToHMS(original.timeSpent || 0)}</span>
-              </div>
-            </div>
-          )
-        }
-
-        const isEditing =
-          !isGroupMaster &&
-          (Boolean(original.isSuggestion) ||
-            Boolean(editingRows[rowKey] || editingRows[original.id]))
-
-        const rowData = resolveRowTempData(
-          rowKey,
-          original.id,
-          tempData,
-          getRowData,
-        )
-        const mergedRow = { ...original, ...rowData }
-        const resolvedEndDate = mergedRow.endDate
-        return (
-          <div className="flex shrink-0 items-center justify-end whitespace-nowrap">
-            <TimeEntryInputs
-              startDate={mergedRow.startDate}
-              endDate={
-                resolvedEndDate !== null && resolvedEndDate !== undefined
-                  ? resolvedEndDate
-                  : undefined
-              }
-              timeSpent={mergedRow.timeSpent ?? 0}
-              disabled={isGroupMaster && !original.isSuggestion}
-              onChange={(newData) => {
-                if (original.isSuggestion || isEditing) {
-                  setTempData((p) => ({
-                    ...p,
-                    [rowKey]: { ...p[rowKey], ...newData },
-                    [original.id]: { ...p[original.id], ...newData },
-                  }))
-                  return
-                }
-                onTimeChangeDirect?.(rowKey, newData)
-              }}
-              compact={compact}
-            />
-          </div>
-        )
-      },
+      cell: HoursCell,
     },
     {
       id: 'actions',
@@ -1238,88 +1327,7 @@ export function createTimeEntriesColumns(
       size: compact ? 90 : 100,
       minSize: compact ? 85 : 95,
       maxSize: compact ? 105 : 110,
-      cell: ({ row }) => {
-        const original = row.original
-        const rowKey = getRowKey(original)
-        const isGroupMaster =
-          (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
-
-        if (isGroupMaster) {
-          return (
-            <div className="flex items-center justify-end pr-1">
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  const day = original.startDate
-                    ? parseISO(original.startDate)
-                    : new Date()
-                  const parentTask =
-                    original.task?.id && !hasNoTask(original)
-                      ? { id: original.task.id }
-                      : undefined
-                  onAddNewEntry?.(day, parentTask)
-                }}
-                className={cn(
-                  'text-foreground hover:text-foreground/80 h-6 gap-1 px-1 font-medium select-none',
-                  compact && 'h-5 px-0.5 text-[11px]',
-                )}
-                title="Adicionar apontamento para esta tarefa"
-              >
-                <Plus
-                  className={cn(
-                    'shrink-0',
-                    compact ? 'h-2.5 w-2.5' : 'h-3 w-3',
-                  )}
-                />
-                <span className={cn(compact && 'text-[11px]')}>Adicionar</span>
-              </Button>
-            </div>
-          )
-        }
-
-        const isEditing =
-          !isGroupMaster &&
-          (Boolean(original.isSuggestion) ||
-            Boolean(editingRows[rowKey] || editingRows[original.id]))
-
-        return (
-          <TimeEntryRowActions
-            row={original}
-            isEditing={isEditing}
-            compact={compact}
-            onToggleEdit={() =>
-              setEditingRows((prev) => {
-                const next = { ...prev }
-                const nextState = !isEditing
-                if (nextState) {
-                  next[rowKey] = true
-                } else {
-                  delete next[rowKey]
-                  delete next[original.id]
-                  Object.keys(next).forEach((k) => {
-                    if (k.endsWith(original.id)) {
-                      delete next[k]
-                    }
-                  })
-                }
-                return next
-              })
-            }
-            onSave={() => onSaveRow(rowKey)}
-            onCancelEdit={() => onCancelEdit(rowKey)}
-            onDuplicate={() => onDuplicateRow(original)}
-            onDelete={() => onDeleteRow(rowKey)}
-            onAcceptSuggestion={() => onAcceptSuggestion(original)}
-            onDismissSuggestion={() => onDismissSuggestion(rowKey)}
-            onPauseTimer={onPauseTimer}
-            onResumeTimer={onResumeTimer}
-            onStopTimer={onStopTimer}
-          />
-        )
-      },
+      cell: ActionsCell,
     },
   ]
 }

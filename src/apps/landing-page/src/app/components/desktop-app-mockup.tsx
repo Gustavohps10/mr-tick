@@ -260,11 +260,35 @@ const mockBridgeClient: IHostBridge = {
     setDefaultHeaders: () => {},
     getDefaultHeaders: () => ({}),
   },
-  timer: {
-    start: () => {},
-    pause: () => {},
-    resume: () => {},
-    stop: () => {},
+  localRuntime: {
+    request: async () => ({
+      ok: false,
+      error: {
+        messageKey: 'Operação indisponível na demonstração visual',
+        statusCode: 503,
+      },
+    }),
+  },
+  localPersistence: {
+    request: async () => ({
+      ok: false,
+      error: {
+        messageKey: 'Operação indisponível na demonstração visual',
+        statusCode: 503,
+      },
+    }),
+  },
+  localSync: {
+    request: async (request) => {
+      if (request.action === 'status') return { ok: true, statuses: [] }
+      return {
+        ok: false,
+        error: {
+          messageKey: 'Operação indisponível na demonstração visual',
+          statusCode: 503,
+        },
+      }
+    },
   },
   events: {
     on: () => () => {},

@@ -3,6 +3,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import React, { useState } from 'react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { TimeEntriesColumnsProvider } from '@/pages/time-entries/components/time-entries-columns-context'
+
 vi.mock('@/hooks/use-host-bridge', () => ({
   useHostBridge: () => ({
     timer: {},
@@ -22,7 +24,10 @@ import {
 } from '@/contexts/WorkspaceContext'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { TimeEntriesDayCard } from '@/pages/time-entries/components/time-entries-day-card'
-import { createTimeEntriesColumns } from '@/pages/time-entries/components/time-entries-table-columns'
+import {
+  type CreateColumnsOptions,
+  createTimeEntriesColumns,
+} from '@/pages/time-entries/components/time-entries-table-columns'
 
 beforeAll(() => {
   window.HTMLElement.prototype.hasPointerCapture = () => false
@@ -117,7 +122,7 @@ describe('Comment Typing Performance and Responsiveness', () => {
         Record<string, Partial<SyncTimeEntryRxDBDTO>>
       >({})
 
-      const columns = createTimeEntriesColumns({
+      const columnOptions: CreateColumnsOptions = {
         activities: [],
         editingRows: { 'row-1': true },
         getRowData: (id) => tempData[id],
@@ -141,19 +146,22 @@ describe('Comment Typing Performance and Responsiveness', () => {
         onPauseTimer: async () => {},
         onResumeTimer: async () => {},
         onStopTimer: async () => {},
-      })
+      }
+      const columns = createTimeEntriesColumns(columnOptions)
 
       return (
-        <TimeEntriesDayCard
-          day={new Date('2026-03-01T10:00:00.000Z')}
-          entries={[testEntry]}
-          draftEntries={[]}
-          tempData={tempData}
-          columns={columns}
-          expandedRows={{}}
-          onExpandedChange={() => {}}
-          isGrouped={false}
-        />
+        <TimeEntriesColumnsProvider value={columnOptions}>
+          <TimeEntriesDayCard
+            day={new Date('2026-03-01T10:00:00.000Z')}
+            entries={[testEntry]}
+            draftEntries={[]}
+            tempData={tempData}
+            columns={columns}
+            expandedRows={{}}
+            onExpandedChange={() => {}}
+            isGrouped={false}
+          />
+        </TimeEntriesColumnsProvider>
       )
     }
 

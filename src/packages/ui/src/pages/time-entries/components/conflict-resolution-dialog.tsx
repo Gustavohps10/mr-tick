@@ -32,10 +32,10 @@ import { useHostBridge } from '@/hooks'
 import { useWorkspaceConflicts } from '@/hooks/queries/use-workspace-conflicts'
 import { cn } from '@/lib/utils'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
+import { requestEntryPersistence } from '@/local-runtime/persistence-client'
 import {
   ConflictFieldSelection,
   ConflictResolutionSide,
-  resolveTimeEntryConflict,
 } from '@/pages/time-entries/lib/resolve-time-entry-conflict'
 import {
   decimalToHMS,
@@ -225,17 +225,25 @@ export function GlobalConflictResolutionDialog() {
         toast.error('Snapshot remoto indisponível para resolução de conflito')
         return
       }
-      const updatedDoc = await doc.incrementalModify((draft) =>
-        resolveTimeEntryConflict(draft, serverSnapshot, selection),
-      )
-      if (updatedDoc.syncStatus === 'conflict') {
+      const resolution = await requestEntryPersistence(bridge, db, {
+        action: 'resolveConflict',
+        entryId: doc.id,
+        expectedServer: serverSnapshot,
+        selection,
+      })
+      if (resolution.isFailure()) {
+        toast.error(resolution.failure.messageKey)
+        return
+      }
+      const updatedJson = resolution.success
+      if (!updatedJson) return
+      if (updatedJson.syncStatus === 'conflict') {
         toast.error(
           'O conflito mudou. Revise os dados atuais antes de resolver.',
         )
         return
       }
 
-      const updatedJson = updatedDoc.toMutableJSON()
       toast.success('Conflito mesclado com sucesso!')
 
       queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(

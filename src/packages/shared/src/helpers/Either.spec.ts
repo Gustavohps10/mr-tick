@@ -269,3 +269,12 @@ describe('Either', () => {
     expect(mapped.failure).toBe(error)
   })
 })
+
+it('distinguishes a successful undefined value from a failed undefined value', () => {
+  const successful = Either.success(undefined)
+  const failed = Either.failure(undefined)
+  expect(successful.isSuccess()).toBe(true)
+  expect(successful.success).toBeUndefined()
+  expect(failed.isFailure()).toBe(true)
+  expect(failed.failure).toBeUndefined()
+})

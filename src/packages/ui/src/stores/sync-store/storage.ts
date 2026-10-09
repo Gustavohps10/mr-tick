@@ -1,5 +1,6 @@
 import { addRxPlugin, createRxDatabase, RXDB_VERSION, RxError } from 'rxdb'
 import { RxDBLeaderElectionPlugin } from 'rxdb/plugins/leader-election'
+import { RxDBMigrationSchemaPlugin } from 'rxdb/plugins/migration-schema'
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { getRxStorageMemory } from 'rxdb/plugins/storage-memory'
 import { wrappedValidateAjvStorage } from 'rxdb/plugins/validate-ajv'
@@ -12,6 +13,8 @@ import { tasksSyncSchema } from '@/local-db/schemas/tasks-sync-schema'
 import { timeEntriesSyncSchema } from '@/local-db/schemas/time-entries-sync-schema'
 
 import { AppDatabase } from './types'
+
+addRxPlugin(RxDBMigrationSchemaPlugin)
 
 // --- DEBUG HELPERS ---
 const shouldForceRxDBDebug = (): boolean => {
@@ -206,7 +209,7 @@ export const getOrCreateDatabase = async (
       name: dbName,
       storage: createAppStorage(useMemoryStorage),
       ignoreDuplicate: isDevModeActive,
-      closeDuplicates: true,
+      closeDuplicates: false,
       multiInstance: !useMemoryStorage,
     })
 
@@ -219,6 +222,7 @@ export const getOrCreateDatabase = async (
       await db.addCollections({
         timeEntries: {
           schema: timeEntriesSyncSchema,
+          migrationStrategies: { 1: (document) => document },
         },
         tasks: {
           schema: tasksSyncSchema,
@@ -246,16 +250,6 @@ export const getOrCreateDatabase = async (
         await db.close()
       } catch {
         // Ignora erro ao fechar após falha
-      }
-
-      if (colErr instanceof Error && isDb6Error(colErr)) {
-        console.warn(
-          '[SYNC][db] Schema incompatível detectado (DB6). Deletando banco desatualizado e recriando...',
-          dbName,
-        )
-        dbPromiseCache.delete(dbName)
-        await dropAppStorage(dbName)
-        return getOrCreateDatabase(workspaceId, isDevelopment, useMemoryStorage)
       }
 
       throw colErr

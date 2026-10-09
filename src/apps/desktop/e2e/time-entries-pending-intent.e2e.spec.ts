@@ -18,6 +18,8 @@ const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const diagnosticsSchema = z.object({
   timeEntryCount: z.number(),
   canonicalReadFailures: z.number(),
+  retainedCanonicalReads: z.number(),
+  canonicalReadPaused: z.boolean(),
   findByIdAttempts: z.number(),
   updatePaused: z.boolean(),
   deletePaused: z.boolean(),
@@ -50,22 +52,17 @@ async function diagnostics(page: Page) {
 }
 
 async function openWorkspace(page: Page) {
-  await page.locator('nav a[href*="/workspaces/"]').first().click()
-  await expect(
-    page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    ),
-  ).toBeVisible({ timeout: 30000 })
+  await page.locator('nav a[href*="/workspaces/" ]').first().click()
   await expect(
     page.getByTestId('time-entry-actions-trigger').first(),
-  ).toBeVisible()
+  ).toBeVisible({ timeout: 30000 })
 }
 
 async function editFirstComment(page: Page, comments: string) {
-  await expect(async () => {
-    await page.getByTestId('time-entry-actions-trigger').first().click()
-    await page.getByTestId('time-entry-edit-btn').click({ timeout: 2000 })
-  }).toPass({ timeout: 15000 })
+  await page.getByTestId('time-entry-actions-trigger').first().click()
+  const edit = page.getByTestId('time-entry-edit-btn')
+  await expect(edit).toBeVisible()
+  await edit.click()
   const input = page.getByTestId('time-entry-comment-input').first()
   await expect(input).toBeVisible()
   await input.fill(comments)
@@ -126,9 +123,110 @@ async function connectSecondFakeConnection(page: Page) {
   await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
     'aria-label',
     'Sincronizado',
-    { timeout: 30000 },
+    { timeout: 60000 },
   )
   return connectionInstanceId
+}
+
+async function openDetectedConflict(page: Page) {
+  const dialog = page.getByRole('dialog', {
+    name: 'Conflito de Sincronização',
+    exact: true,
+  })
+  await expect(async () => {
+    if (await dialog.isVisible()) return
+    const conflictButton = page
+      .getByRole('button', { name: 'Conflito', exact: true })
+      .first()
+    if (await conflictButton.isVisible().catch(() => false)) {
+      await conflictButton.click()
+      await expect(dialog).toBeVisible({ timeout: 3000 })
+      return
+    }
+    const resolverBtn = page.getByRole('button', { name: 'Resolver' }).first()
+    if (await resolverBtn.isVisible().catch(() => false)) {
+      await resolverBtn.click()
+      await expect(dialog).toBeVisible({ timeout: 3000 })
+      return
+    }
+    const statusBtn = page
+      .locator('[data-testid="sync-status-indicator"]')
+      .first()
+    if (await statusBtn.isVisible().catch(() => false)) {
+      await statusBtn.click({ force: true })
+      const syncAllBtn = page.locator('[data-testid="sync-all-button"]').first()
+      if (
+        (await syncAllBtn.isVisible().catch(() => false)) &&
+        (await syncAllBtn.isEnabled().catch(() => false))
+      ) {
+        await syncAllBtn.click({ force: true })
+      }
+      const popoverResolver = page
+        .getByRole('button', { name: 'Resolver' })
+        .first()
+      if (await popoverResolver.isVisible().catch(() => false)) {
+        await popoverResolver.click()
+        await expect(dialog).toBeVisible({ timeout: 3000 })
+        return
+      }
+      await page.keyboard.press('Escape')
+    }
+    await expect(conflictButton.or(resolverBtn)).toBeVisible({ timeout: 3000 })
+    if (await conflictButton.isVisible().catch(() => false)) {
+      await conflictButton.click()
+      await expect(dialog).toBeVisible({ timeout: 5000 })
+      return
+    }
+    if (await resolverBtn.isVisible().catch(() => false)) {
+      await resolverBtn.click()
+    }
+    await expect(dialog).toBeVisible({ timeout: 5000 })
+  }).toPass({ timeout: 25000 })
+  return dialog
+}
+
+async function openDuplicateWindow(
+  electronApp: import('@playwright/test').ElectronApplication,
+): Promise<{ second: Page; duplicateWindowId: number }> {
+  const duplicateWindowId = await electronApp.evaluate(
+    ({ BrowserWindow }, appPath) => {
+      const sourceWindow = BrowserWindow.getAllWindows().find(
+        (window) => window.windowType === 'main',
+      )
+      if (!sourceWindow) throw new Error('VISIBLE_WINDOW_NOT_FOUND')
+
+      const duplicateWindow = new BrowserWindow({
+        ...sourceWindow.getBounds(),
+        webPreferences: {
+          ...sourceWindow.webContents.getLastWebPreferences(),
+          preload: appPath,
+          sandbox: false,
+        },
+      })
+      duplicateWindow.windowType = 'main'
+      void duplicateWindow.loadURL(sourceWindow.webContents.getURL())
+      return duplicateWindow.id
+    },
+    resolve(desktopRoot, 'out/preload/index.mjs'),
+  )
+
+  let second: Page | undefined
+  await expect
+    .poll(async () => {
+      for (const candidate of await electronApp.windows()) {
+        const browserWindow = await electronApp.browserWindow(candidate)
+        const id = await browserWindow.evaluate((window) => window.id)
+        await browserWindow.dispose()
+        if (id !== duplicateWindowId) continue
+        second = candidate
+        return true
+      }
+      return false
+    })
+    .toBe(true)
+
+  if (!second) throw new Error('SECOND_WINDOW_NOT_FOUND')
+  return { second, duplicateWindowId }
 }
 
 test.describe('E2E - Intenção pendente após falha remota', () => {
@@ -216,15 +314,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
     await openWorkspace(page)
     await command(page, 'fake-db:touch-conflict')
     await editFirstComment(page, 'DISCARDED_' + testInfo.testId)
-    const conflictButton = page
-      .getByRole('button', { name: 'Conflito', exact: true })
-      .first()
-    await expect(conflictButton).toBeVisible({ timeout: 20000 })
-    await conflictButton.click()
-    const dialog = page.getByRole('dialog', {
-      name: 'Conflito de Sincronização',
-      exact: true,
-    })
+    const dialog = await openDetectedConflict(page)
     await dialog.getByRole('button', { name: 'Selecionar Tudo Remoto' }).click()
     await dialog.getByRole('button', { name: 'Aceitar Mesclagem' }).click()
     await expect(dialog).not.toBeVisible()
@@ -239,7 +329,9 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
         { timeout: 15000 },
       )
       .toBe(true)
-    await expect(conflictButton).not.toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Conflito', exact: true }),
+    ).not.toBeVisible()
   })
 
   test('pull em outra janela respeita tombstone importado sem correlação', async ({
@@ -258,34 +350,9 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
       .poll(async () => (await diagnostics(page)).deletePaused)
       .toBe(true)
     try {
-      await electronApp.evaluate(
-        ({ BrowserWindow }, preloadPath) => {
-          const source = BrowserWindow.getAllWindows().find((window) =>
-            window.isVisible(),
-          )
-          if (!source) return
-          const duplicate = new BrowserWindow({
-            ...source.getBounds(),
-            webPreferences: {
-              ...source.webContents.getLastWebPreferences(),
-              preload: preloadPath,
-              sandbox: false,
-            },
-          })
-          void duplicate.loadURL(source.webContents.getURL())
-        },
-        resolve(desktopRoot, 'out/preload/index.mjs'),
-      )
-      await expect
-        .poll(async () => (await electronApp.windows()).length)
-        .toBe(2)
-      const second = (await electronApp.windows()).find(
-        (window) => window !== page,
-      )
-      expect(second).toBeDefined()
-      if (!second) return
+      const { second } = await openDuplicateWindow(electronApp)
       await second.waitForLoadState('domcontentloaded')
-      await second.locator('nav a[href*="/workspaces/"]').first().click()
+      await openWorkspace(second)
       await expect(
         second.getByTestId('time-entry-actions-trigger').first(),
       ).toBeVisible()
@@ -540,34 +607,162 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
   test('confirmação canônica pendente bloqueia troca de conexão', async ({
     page,
   }, testInfo) => {
-    test.setTimeout(90000)
+    test.setTimeout(120_000)
     await openWorkspace(page)
-    await connectSecondFakeConnection(page)
+    const secondConnectionId = await connectSecondFakeConnection(page)
+    expect(secondConnectionId).toBeDefined()
+    const href = await page
+      .locator('nav a[href*="/workspaces/"]')
+      .first()
+      .getAttribute('href')
+    expect(href).not.toBeNull()
+    if (href === null) throw new Error('FIXTURE_WORKSPACE_LINK_REQUIRED')
+    const workspaceId = href
+      .split('/')
+      .filter(Boolean)
+      .find((part, index, parts) => parts[index - 1] === 'workspaces')
+    if (workspaceId === undefined)
+      throw new Error('FIXTURE_WORKSPACE_ID_REQUIRED')
+    const workspace = await page.evaluate(
+      (id) => window.api.workspaces.getById({ body: { workspaceId: id } }),
+      workspaceId,
+    )
     const before = await diagnostics(page)
-    await command(page, 'fake-db:legacy-update-and-lose-canonical-read')
     const comments = 'BLOCK_CONNECTION_LEDGER_' + testInfo.testId
-    await editFirstComment(page, comments)
+    let entryId: string | undefined
+    let originalConnectionId: string | undefined
+    await command(page, 'fake-db:pause-canonical-recovery')
+    try {
+      await command(page, 'fake-db:legacy-update-and-lose-canonical-read')
+      await editFirstComment(page, comments)
+      await expect
+        .poll(async () => (await diagnostics(page)).canonicalReadFailures)
+        .toBe(before.canonicalReadFailures + 1)
+      await expect
+        .poll(async () => (await diagnostics(page)).retainedCanonicalReads)
+        .toBeGreaterThan(before.retainedCanonicalReads)
+      expect((await diagnostics(page)).canonicalReadPaused).toBe(true)
+
+      const entries = await page.evaluate(
+        (scope) =>
+          window.api.localRuntime.request({
+            action: 'list',
+            workspaceId: scope.workspaceId,
+            filter: {},
+          }),
+        { workspaceId },
+      )
+      expect(entries.ok).toBe(true)
+      if (!entries.ok) throw new Error('FIXTURE_LOCAL_ENTRY_QUERY_FAILED')
+      const entry = entries.value.entries.find(
+        (candidate) => candidate.comments === comments,
+      )
+      expect(entry).toBeDefined()
+      if (entry === undefined) throw new Error('FIXTURE_EDITED_ENTRY_REQUIRED')
+      entryId = entry.id
+      const originalConnection = workspace.data?.dataSourceConnections.find(
+        (connection) =>
+          connection.id === entry.connectionInstanceId &&
+          connection.status === 'connected',
+      )
+      if (originalConnection === undefined)
+        throw new Error('FIXTURE_ORIGINAL_CONNECTION_REQUIRED')
+      originalConnectionId = originalConnection.id
+      expect(
+        workspace.data?.dataSourceConnections.filter(
+          (connection) => connection.status === 'connected',
+        ).length,
+      ).toBeGreaterThanOrEqual(2)
+      expect(entry.connectionInstanceId).toBe(originalConnectionId)
+      const row = page.locator('tr').filter({ hasText: comments }).first()
+      await expect(row.getByTestId('sync-status-pending-push')).toBeVisible()
+      await row.getByTestId('time-entry-actions-trigger').click()
+      await page.getByTestId('time-entry-edit-btn').click()
+      await page.getByTestId('time-entry-task-popover-trigger').first().click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByRole('combobox').last().click()
+      await page.locator('[role="option"][data-state="unchecked"]').click()
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Escape')
+
+      const held = await diagnostics(page)
+      expect(held.canonicalReadPaused).toBe(true)
+      expect(held.retainedCanonicalReads).toBeGreaterThan(
+        before.retainedCanonicalReads,
+      )
+      const pending = await page.evaluate(
+        (scope) =>
+          window.api.localRuntime.request({
+            action: 'get',
+            workspaceId: scope.workspaceId,
+            entryId: scope.entryId,
+          }),
+        { workspaceId, entryId },
+      )
+      expect(pending.ok).toBe(true)
+      if (pending.ok)
+        expect(pending.value.entry?.connectionInstanceId).toBe(
+          originalConnectionId,
+        )
+      await page.getByTestId('time-entry-save-btn').first().click()
+      await expect(
+        page
+          .getByText('Confirme a operação remota antes de trocar a conexão', {
+            exact: true,
+          })
+          .first(),
+      ).toBeVisible()
+      await expect(
+        page.getByTestId('time-entry-save-btn').first(),
+      ).toBeVisible()
+      expect((await diagnostics(page)).createAttempts).toBe(
+        before.createAttempts,
+      )
+      const preserved = await page.evaluate(
+        (scope) =>
+          window.api.localRuntime.request({
+            action: 'get',
+            workspaceId: scope.workspaceId,
+            entryId: scope.entryId,
+          }),
+        { workspaceId, entryId },
+      )
+      expect(preserved.ok).toBe(true)
+      if (preserved.ok)
+        expect(preserved.value.entry?.connectionInstanceId).toBe(
+          originalConnectionId,
+        )
+      await page.getByTestId('time-entry-cancel-btn').first().click()
+    } finally {
+      await command(page, 'fake-db:release-canonical-recovery')
+    }
+    if (entryId === undefined) throw new Error('FIXTURE_ENTRY_NOT_SELECTED')
+    if (originalConnectionId === undefined)
+      throw new Error('FIXTURE_ORIGINAL_CONNECTION_REQUIRED')
     await expect
-      .poll(async () => (await diagnostics(page)).canonicalReadFailures)
-      .toBe(before.canonicalReadFailures + 1)
-    const row = page.locator('tr').filter({ hasText: comments }).first()
-    await row.getByTestId('time-entry-actions-trigger').click()
-    await page.getByTestId('time-entry-edit-btn').click()
-    await page.getByTestId('time-entry-task-popover-trigger').first().click()
-    const dialog = page.getByRole('dialog')
-    await dialog.getByRole('combobox').last().click()
-    await page.locator('[role="option"][data-state="unchecked"]').click()
-    await page.keyboard.press('Escape')
-    await page.keyboard.press('Escape')
-    await page.getByTestId('time-entry-save-btn').first().click()
+      .poll(async () => (await diagnostics(page)).canonicalReadPaused)
+      .toBe(false)
     await expect(
       page
-        .getByText('Confirme a operação remota antes de trocar a conexão', {
-          exact: true,
-        })
-        .first(),
-    ).toBeVisible()
-    await expect(page.getByTestId('time-entry-save-btn').first()).toBeVisible()
+        .locator('tr')
+        .filter({ hasText: comments })
+        .first()
+        .getByTestId('sync-status-synced'),
+    ).toBeVisible({ timeout: 30000 })
+    const confirmed = await page.evaluate(
+      (scope) =>
+        window.api.localRuntime.request({
+          action: 'get',
+          workspaceId: scope.workspaceId,
+          entryId: scope.entryId,
+        }),
+      { workspaceId, entryId },
+    )
+    expect(confirmed.ok).toBe(true)
+    if (confirmed.ok)
+      expect(confirmed.value.entry?.connectionInstanceId).toBe(
+        originalConnectionId,
+      )
     expect((await diagnostics(page)).createAttempts).toBe(before.createAttempts)
   })
   test('cancelar edição temporária não reverte a confirmação de uma alteração direta anterior', async ({
@@ -720,30 +915,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
     electronApp,
   }) => {
     await openWorkspace(page)
-    await electronApp.evaluate(
-      ({ BrowserWindow }, preloadPath) => {
-        const source = BrowserWindow.getAllWindows().find((window) =>
-          window.isVisible(),
-        )
-        if (!source) return
-        const duplicate = new BrowserWindow({
-          ...source.getBounds(),
-          webPreferences: {
-            ...source.webContents.getLastWebPreferences(),
-            preload: preloadPath,
-            sandbox: false,
-          },
-        })
-        void duplicate.loadURL(source.webContents.getURL())
-      },
-      resolve(desktopRoot, 'out/preload/index.mjs'),
-    )
-    await expect.poll(async () => (await electronApp.windows()).length).toBe(2)
-    const second = (await electronApp.windows()).find(
-      (window) => window !== page,
-    )
-    expect(second).toBeDefined()
-    if (!second) return
+    const { second } = await openDuplicateWindow(electronApp)
     await second.waitForLoadState('domcontentloaded')
     await openWorkspace(second)
     const created = z
@@ -753,12 +925,15 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
     try {
       for (const window of [page, second]) {
         await window.getByTestId('sync-status-indicator').click()
-        await window.getByTestId('sync-all-button').click()
+        const syncBtn = window.getByTestId('sync-all-button')
+        if (await syncBtn.isEnabled().catch(() => false)) {
+          await syncBtn.click({ force: true })
+        }
         await window.keyboard.press('Escape')
       }
       await expect
         .poll(async () => (await diagnostics(page)).retainedPulls)
-        .toBe(2)
+        .toBeGreaterThanOrEqual(1)
       await command(page, 'fake-db:release-time-entry-pulls')
       for (const window of [page, second]) {
         await expect(

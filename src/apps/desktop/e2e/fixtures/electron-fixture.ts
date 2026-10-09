@@ -85,11 +85,33 @@ interface ElectronTestFixtures {
   electronApp: ElectronApplication
   page: Page
   electronNodeEnv: string
+  runtimeProbeWorkspaceId: string
+  runtimeProbeConnectionId: string
 }
 
+async function findMainWindow(
+  electronApp: ElectronApplication,
+): Promise<Page | null> {
+  const windows = await electronApp.windows()
+  for (const page of windows) {
+    const browserWindow = await electronApp.browserWindow(page)
+    const isMain = await browserWindow.evaluate(
+      (window) => window.windowType === 'main',
+    )
+    await browserWindow.dispose()
+    if (isMain) return page
+  }
+  return null
+}
 export const test = baseTest.extend<ElectronTestFixtures>({
   electronNodeEnv: ['test', { option: true }],
-  electronApp: async ({ electronNodeEnv }, use, testInfo) => {
+  runtimeProbeWorkspaceId: ['', { option: true }],
+  runtimeProbeConnectionId: ['', { option: true }],
+  electronApp: async (
+    { electronNodeEnv, runtimeProbeWorkspaceId, runtimeProbeConnectionId },
+    use,
+    testInfo,
+  ) => {
     const userDataPath = getElectronUserDataPath(testInfo.workerIndex)
     cleanTestStorage(userDataPath)
     ensureSeedWorkspaces(userDataPath)
@@ -102,6 +124,8 @@ export const test = baseTest.extend<ElectronTestFixtures>({
       NODE_ENV: electronNodeEnv,
       FAKE_DB_IN_MEMORY: 'true',
       PLAYWRIGHT_TEST: '1',
+      MR_TICK_RUNTIME_PROBE_WORKSPACE: runtimeProbeWorkspaceId,
+      MR_TICK_RUNTIME_PROBE_CONNECTION: runtimeProbeConnectionId,
       MR_TICK_TEST_USER_DATA_DIR: userDataPath,
     }
     delete appEnv.MR_TICK_OPEN_WIDGET_IN_TEST
@@ -127,6 +151,27 @@ export const test = baseTest.extend<ElectronTestFixtures>({
       logs.push(`[MAIN ERROR]: ${text}`)
     })
 
+    app.on('window', async (win) => {
+      const url = win.url()
+      if (isVerbose) console.log(`[WIN OPENED]: ${url}`)
+      logs.push(`[WIN OPENED]: ${url}`)
+      win.on('console', (msg) => {
+        const text = msg.text()
+        const line = `[WIN CONSOLE ${msg.type()}]: ${text}`
+        if (isVerbose) console.log(line)
+        logs.push(line)
+      })
+      win.on('pageerror', (err) => {
+        const line = `[WIN UNCAUGHT]: ${err.stack ?? err.message}`
+        if (isVerbose) console.error(line)
+        logs.push(line)
+      })
+      win.on('close', () => {
+        if (isVerbose) console.log(`[WIN CLOSED]: ${url}`)
+        logs.push(`[WIN CLOSED]: ${url}`)
+      })
+    })
+
     await use(app)
 
     if (testInfo.status !== testInfo.expectedStatus && logs.length > 0) {
@@ -142,7 +187,13 @@ export const test = baseTest.extend<ElectronTestFixtures>({
   page: async ({ electronApp }, use, testInfo) => {
     const isVerbose = process.env.E2E_VERBOSE === 'true'
     const rendererLogs: string[] = []
-    const window = await electronApp.firstWindow()
+    await expect
+      .poll(async () => (await findMainWindow(electronApp)) !== null, {
+        timeout: 30000,
+      })
+      .toBe(true)
+    const window = await findMainWindow(electronApp)
+    if (!window) throw new Error('MAIN_WINDOW_NOT_FOUND')
     await window.setViewportSize({ width: 1600, height: 900 })
     await window.context().setOffline(false)
 

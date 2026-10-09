@@ -6,15 +6,11 @@ import { toast } from 'sonner'
 import { useHostBridge } from '@/hooks'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
-import { resolveTimeEntryConflict } from '@/pages/time-entries/lib/resolve-time-entry-conflict'
+import { requestEntryPersistence } from '@/local-runtime/persistence-client'
 import {
   cleanTaskId,
   SuggestionRow,
 } from '@/pages/time-entries/lib/time-entries-utils'
-import {
-  applyTimeEntryEdit,
-  authorizeTimeEntryRecreation,
-} from '@/pages/time-entries/lib/time-entry-identity'
 import { useConflictModalStore } from '@/stores/conflictModalStore'
 import { AppDatabase, useSyncStore } from '@/stores/syncStore'
 import { useTimeEntryStore } from '@/stores/timeEntryStore'
@@ -407,7 +403,20 @@ export function useTimeEntryMutations(
             _deleted: false,
           }
 
-          await db.timeEntries.insert(newEntry)
+          const insertion = await requestEntryPersistence(
+            bridge,
+            db,
+            {
+              action: 'insertRecord',
+              entryId: newEntry.id,
+              record: newEntry,
+            },
+            `${newEntry.id}:create`,
+          )
+          if (insertion.isFailure()) {
+            toast.error(insertion.failure.messageKey)
+            return
+          }
 
           // Injeta a nova entidade persistida no cache da query ANTES de remover o rascunho
           queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
@@ -522,21 +531,44 @@ export function useTimeEntryMutations(
           }
         }
 
-        const updated = await doc.incrementalModify((draft) =>
-          applyTimeEntryEdit(
-            draft,
-            { ...changes, timeStatus: nextTimeStatus },
-            new Date().toISOString(),
-          ),
+        console.log(
+          '[MUTATION-DEBUG handleSaveRow]',
+          JSON.stringify({
+            rowUid,
+            docId: doc.id,
+            changesConn: changes.connectionInstanceId,
+            docConn: docJson.connectionInstanceId,
+            hasConfirmationState: Boolean(docJson.confirmationState),
+            confirmationState: docJson.confirmationState,
+            syncStatus: docJson.syncStatus,
+          }),
         )
-        const updatedJson = updated.toMutableJSON()
+
         if (
           changes.connectionInstanceId &&
-          changes.connectionInstanceId !== updatedJson.connectionInstanceId
+          changes.connectionInstanceId !== docJson.connectionInstanceId &&
+          Boolean(docJson.confirmationState)
         ) {
+          console.log('[MUTATION-DEBUG BLOCKED_BY_CONFIRMATION_STATE]')
           toast.error('Confirme a operação remota antes de trocar a conexão')
           return
         }
+
+        const edit = await requestEntryPersistence(bridge, db, {
+          action: 'editRecord',
+          entryId: doc.id,
+          changes: { ...changes, timeStatus: nextTimeStatus },
+        })
+        if (edit.isFailure()) {
+          console.log(
+            '[MUTATION-DEBUG EDIT_FAILURE]',
+            JSON.stringify(edit.failure),
+          )
+          toast.error(edit.failure.messageKey)
+          return
+        }
+        const updatedJson = edit.success
+        if (!updatedJson) return
         if (updatedJson._deleted) return
         toast.success(
           isSuggestion ? 'Sugestão confirmada e salva!' : 'Alterações salvas',
@@ -622,7 +654,14 @@ export function useTimeEntryMutations(
       try {
         // Use getLatest() to avoid CONFLICT when the pull has updated the document
         // between findOne() and remove() with a newer revision.
-        await doc.getLatest().remove()
+        const deletion = await requestEntryPersistence(bridge, db, {
+          action: 'deleteRecord',
+          entryId: doc.id,
+        })
+        if (deletion.isFailure()) {
+          toast.error(deletion.failure.messageKey)
+          return
+        }
       } catch {
         toast.error('Erro ao remover registro. Tente novamente.')
         return
@@ -667,12 +706,17 @@ export function useTimeEntryMutations(
           edited = tempDataRef.current[row.id]
         }
 
-        const updated = await doc.getLatest().patch({
-          ...edited,
-          timeStatus: 'finished',
-          updatedAt: new Date().toISOString(),
+        const acceptance = await requestEntryPersistence(bridge, db, {
+          action: 'editRecord',
+          entryId: doc.id,
+          changes: { ...edited, timeStatus: 'finished' },
         })
-        const updatedJson = updated.toMutableJSON()
+        if (acceptance.isFailure()) {
+          toast.error(acceptance.failure.messageKey)
+          return
+        }
+        const updatedJson = acceptance.success
+        if (!updatedJson) return
         queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
           { queryKey: ['time-entries-range'] },
           (previous) => {
@@ -710,7 +754,14 @@ export function useTimeEntryMutations(
       try {
         const doc = await db.timeEntries.findOne(id).exec()
         if (doc) {
-          await doc.getLatest().remove()
+          const deletion = await requestEntryPersistence(bridge, db, {
+            action: 'deleteRecord',
+            entryId: doc.id,
+          })
+          if (deletion.isFailure()) {
+            toast.error(deletion.failure.messageKey)
+            return
+          }
           toast.info('Sugestão descartada')
 
           queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
@@ -800,17 +851,34 @@ export function useTimeEntryMutations(
             }
           }
 
-          const updatedDoc = await doc.incrementalModify((draft) =>
-            applyTimeEntryEdit(draft, updates, new Date().toISOString()),
-          )
-          const updatedJson = updatedDoc.toMutableJSON()
+          console.log('[DEBUG handleDirectUpdateRow]', {
+            id: doc.id,
+            updatesConn: updates.connectionInstanceId,
+            docConn: doc.connectionInstanceId,
+            confirmationState: doc.confirmationState,
+            syncStatus: doc.syncStatus,
+          })
+
           if (
             updates.connectionInstanceId &&
-            updates.connectionInstanceId !== updatedJson.connectionInstanceId
+            updates.connectionInstanceId !== doc.connectionInstanceId &&
+            Boolean(doc.confirmationState)
           ) {
             toast.error('Confirme a operação remota antes de trocar a conexão')
             return
           }
+
+          const edit = await requestEntryPersistence(bridge, db, {
+            action: 'editRecord',
+            entryId: doc.id,
+            changes: updates,
+          })
+          if (edit.isFailure()) {
+            toast.error(edit.failure.messageKey)
+            return
+          }
+          const updatedJson = edit.success
+          if (!updatedJson) return
           if (updatedJson._deleted) return
 
           const isCurrentActive =
@@ -872,21 +940,30 @@ export function useTimeEntryMutations(
         toast.error('Snapshot remoto indisponível para resolução de conflito')
         return
       }
-      const updated = await doc.incrementalModify((draft) =>
-        resolveTimeEntryConflict(draft, server, {
+      const resolved = await requestEntryPersistence(bridge, db, {
+        action: 'resolveConflict',
+        entryId: rowId,
+        expectedServer: server,
+        selection: {
           periodAndDuration: resolution,
           comments: resolution,
           task: resolution,
           activity: resolution,
-        }),
-      )
+        },
+      })
+      if (resolved.isFailure()) {
+        toast.error(resolved.failure.messageKey)
+        return
+      }
+      const updated = resolved.success
+      if (!updated) return
       if (updated.syncStatus === 'conflict') {
         toast.error(
           'O conflito mudou. Revise os dados atuais antes de resolver.',
         )
         return
       }
-      const value = updated.toMutableJSON()
+      const value = updated
       queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
         { queryKey: ['time-entries-range'] },
         (previous) =>
@@ -920,10 +997,16 @@ export function useTimeEntryMutations(
           return
         }
 
-        const updatedDoc = await doc.incrementalModify((draft) =>
-          authorizeTimeEntryRecreation(draft, new Date().toISOString()),
-        )
-        const updatedData = updatedDoc.toMutableJSON()
+        const recreation = await requestEntryPersistence(bridge, db, {
+          action: 'authorizeRecreation',
+          entryId: rowId,
+        })
+        if (recreation.isFailure()) {
+          toast.error(recreation.failure.messageKey)
+          return
+        }
+        const updatedData = recreation.success
+        if (!updatedData) return
         if (updatedData.syncStatus !== 'pending_push') {
           toast.error('O estado do apontamento mudou. Atualize a lista.')
           return

@@ -1,3 +1,4 @@
+import type { IHostBridge } from '@mr-tick/application'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
@@ -11,13 +12,18 @@ import type { SyncStore } from './types'
 interface TestContext {
   workspaceId: string | null
   connections: AddonConnectionView[]
-  bridge: Record<string, never>
+  bridge: Pick<IHostBridge, 'events'> & {
+    localSync: { request: Mock<IHostBridge['localSync']['request']> }
+  }
   create: Mock<(workspaceId: string) => StoreApi<SyncStore>>
 }
 const context = vi.hoisted<TestContext>(() => ({
   workspaceId: null,
   connections: [],
-  bridge: {},
+  bridge: {
+    events: { on: () => () => undefined, emit: () => undefined },
+    localSync: { request: vi.fn<IHostBridge['localSync']['request']>() },
+  },
   create: vi.fn<(workspaceId: string) => StoreApi<SyncStore>>(),
 }))
 vi.mock('@/contexts/WorkspaceContext', () => ({
@@ -134,6 +140,11 @@ describe('SyncProvider workspace lifecycle ownership', () => {
     context.workspaceId = 'A'
     context.connections = []
     context.create.mockReset()
+    context.bridge.localSync.request.mockReset()
+    context.bridge.localSync.request.mockImplementation(async () => ({
+      ok: true,
+      statuses: [],
+    }))
   })
   afterEach(async () => {
     await act(async () => {
@@ -197,10 +208,17 @@ describe('SyncProvider workspace lifecycle ownership', () => {
     expect(newB.destroy).not.toHaveBeenCalled()
   })
 
-  it('waits for in-flight connection setup before closing its owning store', async () => {
+  it('waits for owner connection setup before closing its reader store', async () => {
     const connecting = gate()
     const oldA = fixture('A', undefined, undefined, connecting.promise)
     const newB = fixture('B')
+    context.bridge.localSync.request.mockImplementation(async (request) => {
+      if (request.action === 'connect') {
+        oldA.connectionStarted.release()
+        await connecting.promise
+      }
+      return { ok: true, statuses: [] }
+    })
     context.connections = [
       {
         connectionId: 'connection-A',
@@ -226,9 +244,44 @@ describe('SyncProvider workspace lifecycle ownership', () => {
       expect(screen.getByTestId('active-workspace').textContent).toBe('B'),
     )
     expect(oldA.destroy).toHaveBeenCalledTimes(1)
+    expect(oldA.connect).not.toHaveBeenCalled()
     expect(newB.connect).not.toHaveBeenCalled()
   })
 
+  it('preserves owner replication timestamp and pull/push results in the reader projection', async () => {
+    const reader = fixture('A')
+    context.create.mockReturnValueOnce(reader.store)
+    context.bridge.localSync.request.mockImplementation(async () => ({
+      ok: true,
+      statuses: [
+        {
+          key: 'A',
+          isActive: true,
+          isPulling: false,
+          isPushing: false,
+          isReconciling: false,
+          lastPulledAt: '2026-10-08T10:00:00.000Z',
+          lastPushedAt: '2026-10-08T10:01:00.000Z',
+          lastReconciledAt: null,
+          lastReplication: '2026-10-08T10:01:00.000Z',
+          lastPushResult: 'error',
+          lastPullResult: 'success',
+          error: 'REMOTE_VALIDATION_KEY',
+        },
+      ],
+    }))
+    render(container(new QueryClient()))
+    await waitFor(() =>
+      expect(
+        reader.store.getState().statuses['A'].lastReplication?.toISOString(),
+      ).toBe('2026-10-08T10:01:00.000Z'),
+    )
+    expect(reader.store.getState().statuses['A'].lastPullResult).toBe('success')
+    expect(reader.store.getState().statuses['A'].lastPushResult).toBe('error')
+    expect(reader.store.getState().statuses['A'].error?.message).toBe(
+      'REMOTE_VALIDATION_KEY',
+    )
+  })
   it('closes the active store exactly once when the provider unmounts', async () => {
     const oldA = fixture('A')
     context.create.mockReturnValueOnce(oldA.store)

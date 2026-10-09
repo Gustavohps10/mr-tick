@@ -1,3 +1,4 @@
+import type { IHostBridge } from '@mr-tick/application'
 import { RxCollection, RxDatabase, RxError } from 'rxdb'
 
 import { ConnectionInstanceId } from '@/contexts/DataSourceConnectionsContext'
@@ -7,6 +8,11 @@ import { TaskKanbanColumnRxDBDTO } from '@/local-db/schemas/kanban-task-columns-
 import { SyncMetadataRxDBDTO } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
+
+export type ReplicationBridge = Pick<
+  IHostBridge,
+  'tasks' | 'metadata' | 'timeEntries'
+>
 
 export type ReplicationCheckpoint = {
   updatedAt: string

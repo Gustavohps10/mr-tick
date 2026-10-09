@@ -1,4 +1,5 @@
-'use client'
+import { TimeEntriesColumnsProvider } from '@/pages/time-entries/components/time-entries-columns-context'
+;('use client')
 
 import type { ConfiguredFieldMapping } from '@mr-tick/sdk'
 import { useQueryClient } from '@tanstack/react-query'
@@ -55,6 +56,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useHostBridge } from '@/hooks'
 import {
   resolveEntityMapping,
   useFieldMappings,
@@ -62,9 +64,13 @@ import {
 import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
+import { requestEntryPersistence } from '@/local-runtime/persistence-client'
 import { TimeEntriesDayCard } from '@/pages/time-entries/components/time-entries-day-card'
 import { TimeEntriesLoading } from '@/pages/time-entries/components/time-entries-loading'
-import { createTimeEntriesColumns } from '@/pages/time-entries/components/time-entries-table-columns'
+import {
+  type CreateColumnsOptions,
+  createTimeEntriesColumns,
+} from '@/pages/time-entries/components/time-entries-table-columns'
 import { useTimeEntriesData } from '@/pages/time-entries/hooks/use-time-entries-data'
 import { useTimeEntryMutations } from '@/pages/time-entries/hooks/use-time-entry-mutations'
 import {
@@ -212,6 +218,7 @@ export function TimeEntriesTimesheetView({
   initialDate,
 }: TimeEntriesTimesheetViewProps = {}) {
   const queryClient = useQueryClient()
+  const bridge = useHostBridge()
   const { mappings } = useFieldMappings()
   const [currentWeekDate, setCurrentWeekDate] = React.useState<Date>(() => {
     if (initialDate) return initialDate
@@ -456,10 +463,15 @@ export function TimeEntriesTimesheetView({
         for (const sug of suggestions) {
           const doc = await db.timeEntries.findOne(sug.id).exec()
           if (doc) {
-            await doc.patch({
-              timeStatus: 'finished',
-              updatedAt: new Date().toISOString(),
+            const accepted = await requestEntryPersistence(bridge, db, {
+              action: 'editRecord',
+              entryId: doc.id,
+              changes: { timeStatus: 'finished' },
             })
+            if (accepted.isFailure()) {
+              toast.error(accepted.failure.messageKey)
+              return
+            }
           }
         }
         toast.success(
@@ -473,7 +485,7 @@ export function TimeEntriesTimesheetView({
         toast.error('Erro ao aceitar sugestões')
       }
     },
-    [db, queryClient],
+    [db, queryClient, bridge],
   )
 
   const handleDismissAllSuggestions = React.useCallback(
@@ -483,7 +495,14 @@ export function TimeEntriesTimesheetView({
         for (const sug of suggestions) {
           const doc = await db.timeEntries.findOne(sug.id).exec()
           if (doc) {
-            await doc.remove()
+            const dismissed = await requestEntryPersistence(bridge, db, {
+              action: 'deleteRecord',
+              entryId: doc.id,
+            })
+            if (dismissed.isFailure()) {
+              toast.error(dismissed.failure.messageKey)
+              return
+            }
           }
         }
         toast.info(`${suggestions.length} sugestões descartadas`)
@@ -495,7 +514,7 @@ export function TimeEntriesTimesheetView({
         toast.error('Erro ao descartar sugestões')
       }
     },
-    [db, queryClient],
+    [db, queryClient, bridge],
   )
 
   const handlePauseTimer = React.useCallback(
@@ -594,8 +613,8 @@ export function TimeEntriesTimesheetView({
     [handleAddNewEntry, selectedTaskFocus],
   )
 
-  const columns = React.useMemo(() => {
-    return createTimeEntriesColumns({
+  const columnOptions = React.useMemo<CreateColumnsOptions>(() => {
+    return {
       activities,
       tasksById,
       mappings,
@@ -623,12 +642,13 @@ export function TimeEntriesTimesheetView({
       onOpenConflict: handleOpenConflictResolution,
       onConfirmRetryAmbiguousCreation: handleConfirmRetryAmbiguousCreation,
       compact,
-    })
+    }
   }, [
     activities,
     tasksById,
     mappings,
     editingRows,
+    tempData,
     compact,
     getRowData,
     setEditingRows,
@@ -650,6 +670,10 @@ export function TimeEntriesTimesheetView({
     handleConfirmRetryAmbiguousCreation,
     handleOpenConflictResolution,
   ])
+  const columns = React.useMemo(
+    () => createTimeEntriesColumns(columnOptions),
+    [columnOptions],
+  )
 
   const handleRowDoubleClick = React.useCallback(
     (row: SuggestionRow) => {
@@ -1186,20 +1210,22 @@ export function TimeEntriesTimesheetView({
             <ScrollArea className="mt-3 flex-1 overflow-y-auto pr-2">
               {selectedDay && (
                 <div className="py-2">
-                  <TimeEntriesDayCard
-                    day={selectedDay}
-                    entries={modalEntries}
-                    draftEntries={modalDraftEntries}
-                    tempData={tempData}
-                    columns={columns}
-                    expandedRows={expandedRows}
-                    onExpandedChange={setExpandedRows}
-                    isGrouped={true}
-                    onAcceptAllSuggestions={handleAcceptAllSuggestions}
-                    onDismissAllSuggestions={handleDismissAllSuggestions}
-                    onAddNewEntry={handleAddNewEntryInModal}
-                    onRowDoubleClick={handleRowDoubleClick}
-                  />
+                  <TimeEntriesColumnsProvider value={columnOptions}>
+                    <TimeEntriesDayCard
+                      day={selectedDay}
+                      entries={modalEntries}
+                      draftEntries={modalDraftEntries}
+                      tempData={tempData}
+                      columns={columns}
+                      expandedRows={expandedRows}
+                      onExpandedChange={setExpandedRows}
+                      isGrouped={true}
+                      onAcceptAllSuggestions={handleAcceptAllSuggestions}
+                      onDismissAllSuggestions={handleDismissAllSuggestions}
+                      onAddNewEntry={handleAddNewEntryInModal}
+                      onRowDoubleClick={handleRowDoubleClick}
+                    />
+                  </TimeEntriesColumnsProvider>
                 </div>
               )}
             </ScrollArea>

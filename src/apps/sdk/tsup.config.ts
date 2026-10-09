@@ -1,4 +1,4 @@
-﻿import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsup'
 
 import pkg from './package.json'
 
@@ -9,7 +9,18 @@ export default defineConfig([
     },
     format: ['esm', 'cjs'],
     dts: {
-      resolve: true,
+      resolve: [/^@mr-tick\/(application|shared|domain)(\/.*)?$/],
+      compilerOptions: {
+        baseUrl: '.',
+        paths: {
+          '@mr-tick/application': [
+            '../../packages/application/dist/index.d.ts',
+          ],
+          '@mr-tick/application/*': ['../../packages/application/dist/*.d.ts'],
+          '@mr-tick/domain': ['../../packages/domain/dist/index.d.ts'],
+          '@mr-tick/shared/*': ['../../packages/shared/dist/*/index.d.ts'],
+        },
+      },
     },
     clean: true,
     sourcemap: true,

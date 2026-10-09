@@ -247,6 +247,32 @@ export class FakeDatabaseStore {
   private legacyWriteNormalization = false
   private loseCanonicalRead = false
   private canonicalReadFailures = 0
+  private canonicalReadGate: Promise<void> | null = null
+  private releaseCanonicalReadGate: (() => void) | null = null
+  private retainedCanonicalReads = 0
+
+  public pauseCanonicalReadRecovery(): void {
+    if (this.canonicalReadGate !== null) return
+    this.canonicalReadGate = new Promise<void>((resolve) => {
+      this.releaseCanonicalReadGate = resolve
+    })
+  }
+
+  public async waitForCanonicalReadRelease(id: string): Promise<void> {
+    if (this.canonicalReadGate === null) return
+    if (id !== this.lastLegacyConfirmedId) return
+    this.retainedCanonicalReads++
+    await this.canonicalReadGate
+  }
+
+  public releaseCanonicalReadRecovery(): boolean {
+    const release = this.releaseCanonicalReadGate
+    if (release === null) return false
+    this.releaseCanonicalReadGate = null
+    this.canonicalReadGate = null
+    release()
+    return true
+  }
 
   public configureLegacyUpdateConfirmation(): void {
     this.legacyNextUpdateResult = true
@@ -490,6 +516,8 @@ export class FakeDatabaseStore {
     deletePaused: boolean
     updatePaused: boolean
     canonicalReadFailures: number
+    retainedCanonicalReads: number
+    canonicalReadPaused: boolean
     updateFailures: number
     deleteFailures: number
     updateAttempts: number
@@ -512,6 +540,8 @@ export class FakeDatabaseStore {
       deletePaused: Boolean(this.deleteGate),
       updatePaused: Boolean(this.updateGate),
       canonicalReadFailures: this.canonicalReadFailures,
+      retainedCanonicalReads: this.retainedCanonicalReads,
+      canonicalReadPaused: this.canonicalReadGate !== null,
       updateFailures: this.updateFailures,
       deleteFailures: this.deleteFailures,
       updateAttempts: this.updateAttempts,
@@ -711,6 +741,26 @@ export class FakeDatabaseStore {
   }
 
   // --- TASKS ---
+
+  public renameActivityMetadata(
+    activityId: string,
+  ): { activityId: string; previousName: string; name: string } | null {
+    this.ensureLoaded()
+    const activity = this.metadata.activities.find(
+      (candidate) => candidate.id === activityId,
+    )
+    if (!activity) return null
+    const name = `${activity.name} [metadata refreshed]`
+    this.metadata = {
+      ...this.metadata,
+      activities: this.metadata.activities.map((candidate) => {
+        if (candidate.id !== activityId) return candidate
+        return { ...candidate, name }
+      }),
+    }
+    this.persist()
+    return { activityId, previousName: activity.name, name }
+  }
 
   public getTasks(): TaskDTO[] {
     this.ensureLoaded()
@@ -941,6 +991,8 @@ export class FakeDatabaseStore {
   }
 
   public resetToSeed(): void {
+    this.releaseCanonicalReadRecovery()
+    this.retainedCanonicalReads = 0
     this.failNextTimeEntryList = false
     this.partialNextTimeEntryList = false
     this.timeEntryPartialLists = 0

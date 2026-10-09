@@ -411,7 +411,7 @@ export function WorkspaceSettings() {
               workspaceName={workspace?.name ?? ''}
               isRemoving={isRemoving}
               onConfirm={async () => {
-                await drop?.()
+                if (!(await drop())) return
                 await remove()
               }}
             />
