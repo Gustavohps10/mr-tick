@@ -3720,6 +3720,7 @@ __metadata:
     "@mr-tick/sdk": "workspace:*"
     tsup: "npm:^8.5.0"
     typescript: "npm:^5.8.3"
+    zod: "npm:^3.24.2"
   languageName: unknown
   linkType: soft
 
