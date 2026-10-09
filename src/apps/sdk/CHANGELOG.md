@@ -1,5 +1,11 @@
 # @mr-tick/sdk
 
+## 0.7.0
+
+### Minor Changes
+
+- 9f5a4bf: Expose explicit local runtime capabilities for addon time-entry and timer operations, with the runtime contracts included in the SDK package.
+
 ## 0.6.0
 
 ### Minor Changes
