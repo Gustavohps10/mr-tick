@@ -1,5 +1,22 @@
 # @mr-tick/application
 
+## 1.5.0
+
+### Minor Changes
+
+- f44420a: Adiciona atualização de addons com validação de versão/API, backup e rollback compensatório quando a ativação falha. Instalação e atualização abrem um console com progresso e logs; o sucesso é confirmado somente após a conclusão do job.
+
+  Corrige a ativação pelo caminho absoluto da versão gravada, prioriza a versão instalada mais recente e exclui backups da descoberta. Preserva backups quando a recuperação falha, protege addons vinculados de desenvolvimento e bloqueia atualização/desinstalação concorrentes. As ações do gerenciador ficam compactas e usam a terminologia Addon.
+
+  A validação inclui regressões unitárias e de UI e três testes E2E no Electron com download, filesystem, ativação e rollback reais, simulando apenas o catálogo remoto.
+
+### Patch Changes
+
+- 8b6f3e4: Resolução determinística de workspace no boot via busca por ID na seleção persistida sem limite de paginação (TB-003), ciclo de prontidão assíncrona nas views semanal e mensal prevenindo falso vazio (TB-004), tratamento de interrupções de arraste por pointercancel, lostpointercapture e blur com retenção do deslocamento (TB-005), overlay nativo Win32 não ativável com pré-build e harness C++/SendInput para auditoria de click-through, foco e hover; e testes E2E de paridade bi-janelar e performance (POP-01, POP-05, POP-06).
+- Updated dependencies [f44420a]
+  - @mr-tick/shared@1.3.0
+  - @mr-tick/domain@1.0.5
+
 ## 1.4.0
 
 ### Minor Changes
