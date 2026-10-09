@@ -6,6 +6,7 @@ import { dirname, join, resolve, sep } from 'node:path'
 import archiver from 'archiver'
 
 import type { IHostBridge } from '../../../packages/application/src/contracts/host/IHostBridge'
+import sdkPackage from '../../sdk/package.json' with { type: 'json' }
 import { expect, test } from './fixtures/electron-fixture'
 
 declare global {
@@ -25,7 +26,7 @@ function addonModule(version: string, fails: boolean) {
   }`
 }
 
-async function addonArchive(id: string, fails: boolean) {
+async function addonArchive(id: string, fails: boolean, sdkApiVersion: string) {
   const archive = archiver('zip')
   const chunks: Buffer[] = []
   const completed = new Promise<Buffer>((resolveArchive, reject) => {
@@ -34,7 +35,7 @@ async function addonArchive(id: string, fails: boolean) {
     archive.on('error', reject)
   })
   archive.append(
-    `id: ${id}\nname: Audit Addon\nversion: 1.0.0\nrequiredApiVersion: '>=0.6.0'\n`,
+    `id: ${id}\nname: Audit Addon\nversion: 1.0.0\nrequiredApiVersion: '${sdkApiVersion}'\n`,
     { name: 'manifest.yaml' },
   )
   archive.append(addonModule('1.0.0', fails), { name: 'dist/index.mjs' })
@@ -58,6 +59,7 @@ for (const scenario of ['success', 'activation-failure', 'linked-addon']) {
       const userData = await electronApp.evaluate(({ app }) =>
         app.getPath('userData'),
       )
+      const sdkApiVersion = sdkPackage.version
       const expectedRoot = resolve('test-results/electron-user-data')
       expect(resolve(userData).startsWith(expectedRoot + sep)).toBe(true)
       const oldFolder = join(userData, 'addons', id, '0.9.0')
@@ -70,13 +72,13 @@ for (const scenario of ['success', 'activation-failure', 'linked-addon']) {
       await mkdir(join(oldFolder, 'dist'), { recursive: true })
       await writeFile(
         join(oldFolder, 'manifest.yaml'),
-        `id: ${id}\nname: Audit Addon\nversion: 0.9.0\ncategory: DataSources\nrequiredApiVersion: '>=0.6.0'\n`,
+        `id: ${id}\nname: Audit Addon\nversion: 0.9.0\ncategory: DataSources\nrequiredApiVersion: '${sdkApiVersion}'\n`,
       )
       await writeFile(
         join(oldFolder, 'dist/index.mjs'),
         addonModule('0.9.0', false),
       )
-      const archive = await addonArchive(id, fails)
+      const archive = await addonArchive(id, fails, sdkApiVersion)
       let pendingResponse: ServerResponse | undefined
       let notifyDownload: () => void = () => {}
       const downloadStarted = new Promise<void>((resolveDownload) => {
@@ -107,7 +109,7 @@ for (const scenario of ['success', 'activation-failure', 'linked-addon']) {
                   id: catalog.id,
                   name: 'Audit Addon',
                   version: '1.0.0',
-                  requiredApiVersion: '>=0.6.0',
+                  requiredApiVersion: catalog.sdkApiVersion,
                   category: 'DataSources',
                   categories: ['DataSources'],
                   creator: 'Audit',
@@ -122,7 +124,7 @@ for (const scenario of ['success', 'activation-failure', 'linked-addon']) {
               ],
             }))
           },
-          { id, downloadUrl },
+          { id, downloadUrl, sdkApiVersion },
         )
         const initial = await page.evaluate(
           (addonId) => window.api.addons.getSchema({ body: { addonId } }),
