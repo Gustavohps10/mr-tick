@@ -1,3 +1,5 @@
+import 'fake-indexeddb/auto'
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
@@ -22,8 +24,15 @@ import {
   WorkspaceContextType,
 } from '@/contexts/WorkspaceContext'
 import { useTimerSettings } from '@/hooks/use-timer-settings'
+import { registerDatabaseScope } from '@/local-runtime/persistence-client'
 import { TimeEntryRowActions } from '@/pages/time-entries/components/time-entry-row-actions'
 import { SuggestionRow } from '@/pages/time-entries/lib/time-entries-utils'
+import {
+  ensurePlugins,
+  getOrCreateDatabase,
+  removeDatabaseFromCache,
+} from '@/stores/sync-store/storage'
+import type { SyncStore } from '@/stores/sync-store/types'
 
 const mockSetIgnoreMouseEvents = vi.fn()
 const mockGetTimerbarMenus = vi
@@ -35,7 +44,19 @@ const mockMoveToDisplay = vi.fn()
 const mockEmit = vi.fn()
 const mockOn = vi.fn().mockReturnValue(() => {})
 
+let projectionReader: SyncStore | undefined
+
+vi.mock('@/stores/syncStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/stores/syncStore')>()),
+  useSyncStore: <T,>(selector: (state: SyncStore) => T): T | undefined => {
+    if (projectionReader === undefined) return undefined
+    return selector(projectionReader)
+  },
+}))
+
+const mockRuntimeRequest = vi.fn()
 const mockHostBridge = {
+  localRuntime: { request: mockRuntimeRequest },
   system: {
     setIgnoreMouseEvents: mockSetIgnoreMouseEvents,
     getSettings: mockGetSettings,
@@ -150,8 +171,60 @@ beforeAll(() => {
 })
 
 describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () => {
+  it('keeps timer controls disabled until the first reader snapshot completes', async () => {
+    const workspaceId = crypto.randomUUID()
+    await ensurePlugins(false)
+    const database = await getOrCreateDatabase(workspaceId, false, true)
+    registerDatabaseScope(database, workspaceId)
+    projectionReader = {
+      db: database,
+      statuses: {},
+      isInitialized: true,
+      init: async () => undefined,
+      destroy: async () => undefined,
+      drop: async () => undefined,
+      resetDatabase: async () => undefined,
+      forceSync: async () => undefined,
+      reconcile: async () => undefined,
+      connectDataSource: async () => undefined,
+      disconnectDataSource: async () => undefined,
+    }
+    let release: () => void = () => expect.fail('Gate not initialized')
+    const initialRead = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const originalQuery = database.timeEntries.storageInstance.query.bind(
+      database.timeEntries.storageInstance,
+    )
+    const readerQuery = vi
+      .spyOn(database.timeEntries.storageInstance, 'query')
+      .mockImplementation(async (query) => {
+        await initialRead
+        return originalQuery(query)
+      })
+    const view = renderWithProviders(<UltimateTimeTracker />)
+    try {
+      const start = screen.getByTestId('timerbar-start-btn')
+      expect(start.hasAttribute('disabled')).toBe(true)
+      fireEvent.click(start)
+      expect(mockRuntimeRequest).not.toHaveBeenCalled()
+      await act(async () => {
+        release()
+      })
+      await waitFor(() => expect(start.hasAttribute('disabled')).toBe(false))
+    } finally {
+      release()
+      view.unmount()
+      readerQuery.mockRestore()
+      projectionReader = undefined
+      await database.close()
+      removeDatabaseFromCache(workspaceId, true)
+    }
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
+    projectionReader = undefined
     window.localStorage.clear()
     useTimerSettings.setState({
       widgetPosition: 'bottom',

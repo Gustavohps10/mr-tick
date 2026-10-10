@@ -1,1 +1,1 @@
-export * from './credentials-storage-keys'
+export * from './credentials-vault-keys'

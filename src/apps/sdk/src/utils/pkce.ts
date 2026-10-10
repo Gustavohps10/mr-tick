@@ -4,7 +4,7 @@ import {
   OAuthStoredToken,
   OAuthTokenResponse,
   PKCEPair,
-} from '../contracts/oauth/IOAuthAPI'
+} from '../contracts/host/oauth/IAddonOAuthAPI'
 
 /**
  * Generate a cryptographically random PKCE code_verifier and SHA-256 code_challenge (RFC 7636).

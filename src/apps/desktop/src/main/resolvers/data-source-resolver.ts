@@ -1,6 +1,6 @@
 import {
   DataSourceContext,
-  ICredentialsStorage,
+  ICredentialsVault,
   IDataSourceAdapter,
   IDataSourceResolver,
   IHttpClient,
@@ -23,7 +23,7 @@ export interface DataSourceResolverOptions {
 export class DataSourceResolver implements IDataSourceResolver {
   constructor(
     private readonly workspacesRepository: IWorkspacesRepository,
-    private readonly credentialsStorage: ICredentialsStorage,
+    private readonly credentialsVault: ICredentialsVault,
     private readonly options: DataSourceResolverOptions,
     private readonly httpClient: IHttpClient,
   ) {}
@@ -60,10 +60,10 @@ export class DataSourceResolver implements IDataSourceResolver {
     }
 
     if (!contextOverride) {
-      const storageKey = `workspace-connection-${workspaceId}-${connectionInstanceId}`
-      const credentialsSerialized = await this.credentialsStorage.getToken(
+      const vaultKey = `workspace-connection-${workspaceId}-${connectionInstanceId}`
+      const credentialsSerialized = await this.credentialsVault.getToken(
         'mr-tick',
-        storageKey,
+        vaultKey,
       )
 
       const parsed = credentialsSerialized

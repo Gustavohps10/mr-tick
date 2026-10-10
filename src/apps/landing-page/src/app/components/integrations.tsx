@@ -265,7 +265,7 @@ export function Integrations() {
             {/* CTA Buttons */}
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <Link
-                href="/docs/apis/storage-and-events"
+                href="/docs/apis/vault-and-events"
                 className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-xs font-semibold text-black shadow-sm transition-all hover:scale-105 hover:bg-zinc-200"
               >
                 <BookOpenText className="size-3.5" />

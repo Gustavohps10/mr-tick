@@ -1,4 +1,4 @@
-import { ICredentialsStorage, ILocalRuntimeAPI } from '@mr-tick/application'
+import { ICredentialsVault, ILocalRuntimeAPI } from '@mr-tick/application'
 import {
   exchangeAuthorizationCode,
   formatStoredToken,
@@ -8,6 +8,7 @@ import {
 import { shell } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { unavailableCore } from './addon-core-test-fixture'
 import { AddonLoader } from './AddonLoader'
 
 const unavailableRuntime: ILocalRuntimeAPI = {
@@ -28,13 +29,13 @@ vi.mock('electron', () => ({
 
 describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
   let addonLoader: AddonLoader
-  let fakeCredentialsStorage: ICredentialsStorage
+  let fakeCredentialsVault: ICredentialsVault
 
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
 
-    fakeCredentialsStorage = {
+    fakeCredentialsVault = {
       getToken: vi.fn().mockResolvedValue(null),
       saveToken: vi.fn().mockResolvedValue(undefined),
       deleteToken: vi.fn().mockResolvedValue(undefined),
@@ -43,9 +44,10 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
     }
 
     addonLoader = new AddonLoader(
-      fakeCredentialsStorage,
+      fakeCredentialsVault,
       unavailableRuntime,
       '1.4.0',
+      unavailableCore,
     )
   })
 
@@ -59,7 +61,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const context = addonLoader.createContext('test-addon')
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/oauth2/authorize?client_id=123',
       })
 
@@ -83,7 +85,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
       const customState = 'custom-secure-state-12345'
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/oauth2/authorize?client_id=123',
         state: customState,
       })
@@ -104,7 +106,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const context = addonLoader.createContext('test-addon')
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl:
           'https://auth.example.com/authorize?client_id=123&state=state-in-url',
         state: 'different-state-in-options',
@@ -121,7 +123,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
       const matchingState = 'matching-state-123'
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: `https://auth.example.com/authorize?client_id=123&state=${matchingState}`,
         state: matchingState,
       })
@@ -142,9 +144,9 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       expect(state1).not.toBe(state2)
     })
 
-    it('context.oauth.generateState gera state prefixado corretamente', () => {
+    it('context.host.oauth.generateState gera state prefixado corretamente', () => {
       const context = addonLoader.createContext('discord-addon')
-      const state = context.oauth.generateState('discord')
+      const state = context.host.oauth.generateState('discord')
       expect(state).toMatch(/^discord_[0-9a-f-]{36}$/)
     })
   })
@@ -154,7 +156,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const context = addonLoader.createContext('test-addon')
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://secure-provider.com/authorize',
         state: 'https-state',
       })
@@ -169,7 +171,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
     it('rejeita HTTP externo não local', async () => {
       const context = addonLoader.createContext('test-addon')
 
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'http://insecure-provider.com/authorize',
       })
 
@@ -183,7 +185,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const context = addonLoader.createContext('test-addon')
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'http://localhost:8080/authorize',
         state: 'localhost-state',
       })
@@ -199,7 +201,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const context = addonLoader.createContext('test-addon')
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'http://127.0.0.1:8080/authorize',
         state: 'ip-state',
       })
@@ -215,19 +217,19 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const context = addonLoader.createContext('test-addon')
 
       await expect(
-        context.oauth.authorize({ authUrl: 'file:///etc/passwd' }),
+        context.host.oauth.authorize({ authUrl: 'file:///etc/passwd' }),
       ).rejects.toThrow('Protocolo de URL inválido')
 
       await expect(
-        context.oauth.authorize({ authUrl: 'javascript:alert(1)' }),
+        context.host.oauth.authorize({ authUrl: 'javascript:alert(1)' }),
       ).rejects.toThrow('Protocolo de URL inválido')
 
       await expect(
-        context.oauth.authorize({ authUrl: 'data:text/html,test' }),
+        context.host.oauth.authorize({ authUrl: 'data:text/html,test' }),
       ).rejects.toThrow('Protocolo de URL inválido')
 
       await expect(
-        context.oauth.authorize({ authUrl: 'ftp://ftp.example.com' }),
+        context.host.oauth.authorize({ authUrl: 'ftp://ftp.example.com' }),
       ).rejects.toThrow('Protocolo de URL inválido')
     })
 
@@ -235,7 +237,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const context = addonLoader.createContext('test-addon')
 
       await expect(
-        context.oauth.authorize({ authUrl: 'invalid-url' }),
+        context.host.oauth.authorize({ authUrl: 'invalid-url' }),
       ).rejects.toThrow('URL de autorização inválida')
     })
   })
@@ -246,7 +248,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
       const state = 'state-valid-3'
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize',
         state,
       })
@@ -266,7 +268,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const context = addonLoader.createContext('test-addon')
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize',
         state: 'valid-state',
         timeoutMs: 5000,
@@ -287,7 +289,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const context = addonLoader.createContext('test-addon')
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize',
         state: 'known-state',
         timeoutMs: 5000,
@@ -309,7 +311,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
       const state = 'state-error-test'
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize',
         state,
       })
@@ -329,7 +331,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
       const state = 'state-no-code'
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize',
         state,
       })
@@ -349,7 +351,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
       const state = 'state-replay-test'
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize',
         state,
       })
@@ -373,7 +375,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
       const state = 'state-route-test'
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize',
         state,
         timeoutMs: 5000,
@@ -408,7 +410,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
       const state = 'state-timeout-test'
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize',
         state,
         timeoutMs: 5000,
@@ -431,7 +433,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
       const state = 'state-cancel-timeout'
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize',
         state,
         timeoutMs: 10000,
@@ -452,7 +454,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const context = addonLoader.createContext('test-addon')
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize?client_id=myclient',
         state: 'my-state-open',
       })
@@ -474,7 +476,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       )
 
       const state = 'state-browser-fail'
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize',
         state,
       })
@@ -494,7 +496,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
       const state = 'state-deactivate'
-      const authPromise = context.oauth.authorize({
+      const authPromise = context.host.oauth.authorize({
         authUrl: 'https://auth.example.com/authorize',
         state,
       })
@@ -521,11 +523,11 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const state1 = 'state-concurrent-1'
       const state2 = 'state-concurrent-2'
 
-      const authPromise1 = context1.oauth.authorize({
+      const authPromise1 = context1.host.oauth.authorize({
         authUrl: 'https://auth.example.com/addon1',
         state: state1,
       })
-      const authPromise2 = context2.oauth.authorize({
+      const authPromise2 = context2.host.oauth.authorize({
         authUrl: 'https://auth.example.com/addon2',
         state: state2,
       })

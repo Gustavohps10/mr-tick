@@ -2,9 +2,10 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { ICredentialsStorage, ILocalRuntimeAPI } from '@mr-tick/application'
+import { ICredentialsVault, ILocalRuntimeAPI } from '@mr-tick/application'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { unavailableCore } from './addon-core-test-fixture'
 import { AddonLoader } from './AddonLoader'
 
 const unavailableRuntime: ILocalRuntimeAPI = {
@@ -28,13 +29,13 @@ vi.mock('electron', () => ({
 
 describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
   let addonLoader: AddonLoader
-  let fakeCredentialsStorage: ICredentialsStorage
+  let fakeCredentialsVault: ICredentialsVault
   let testAddonDir: string
 
   beforeEach(() => {
     vi.clearAllMocks()
 
-    fakeCredentialsStorage = {
+    fakeCredentialsVault = {
       getToken: vi.fn().mockResolvedValue(null),
       saveToken: vi.fn().mockResolvedValue(undefined),
       deleteToken: vi.fn().mockResolvedValue(undefined),
@@ -44,9 +45,10 @@ describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
 
     // Cria AddonLoader configurado com hostAppVersion '0.4.0'
     addonLoader = new AddonLoader(
-      fakeCredentialsStorage,
+      fakeCredentialsVault,
       unavailableRuntime,
       '0.4.0',
+      unavailableCore,
     )
 
     // Cria diretório temporário para simular addon no disco

@@ -2,16 +2,16 @@
 
 import {
   DisconnectDataSourceInput,
-  ICredentialsStorage,
+  ICredentialsVault,
   IDisconnectDataSourceUseCase,
   IWorkspacesRepository,
 } from '@/contracts'
-import { getMemberStorageKey } from '@/utils'
+import { getMemberVaultKey } from '@/utils'
 
 export class DisconnectDataSourceService implements IDisconnectDataSourceUseCase {
   constructor(
     private readonly workspacesRepository: IWorkspacesRepository,
-    private readonly credentialsStorage: ICredentialsStorage,
+    private readonly credentialsVault: ICredentialsVault,
   ) {}
 
   public async execute(
@@ -26,14 +26,14 @@ export class DisconnectDataSourceService implements IDisconnectDataSourceUseCase
         return Either.failure(AppError.NotFound('WORKSPACE_NAO_ENCONTRADO'))
       }
 
-      const storageKey = `workspace-session-${input.workspaceId}-${input.connectionInstanceId}`
-      const memberKey = getMemberStorageKey(
+      const vaultKey = `workspace-session-${input.workspaceId}-${input.connectionInstanceId}`
+      const memberKey = getMemberVaultKey(
         input.workspaceId,
         input.connectionInstanceId,
       )
 
-      await this.credentialsStorage.deleteToken('mr-tick', storageKey)
-      await this.credentialsStorage.deleteToken('mr-tick', memberKey)
+      await this.credentialsVault.deleteToken('mr-tick', vaultKey)
+      await this.credentialsVault.deleteToken('mr-tick', memberKey)
 
       const result = workspace.disconnectDataSource(input.connectionInstanceId)
 

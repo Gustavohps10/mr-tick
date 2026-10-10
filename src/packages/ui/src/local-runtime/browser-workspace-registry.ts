@@ -1,4 +1,6 @@
 import type {
+  CoreCacheQuery,
+  CoreCacheResponse,
   IHostBridge,
   ILocalRuntimeEvents,
   ILocalWorkspaceFactory,
@@ -9,6 +11,7 @@ import type {
   LocalSyncResponse,
   LocalTimeEntrySnapshot,
 } from '@mr-tick/application'
+import { validateCoreCacheQuery } from '@mr-tick/application'
 import { LocalRuntime } from '@mr-tick/application/local-runtime'
 import {
   AppError,
@@ -93,6 +96,36 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
       () => this.openings.delete(workspaceId),
     )
     return opening
+  }
+
+  async queryCore(input: CoreCacheQuery): Promise<CoreCacheResponse> {
+    const valid = validateCoreCacheQuery(input)
+    if (valid.isFailure()) return coreFailure(valid.failure)
+    const admission = this.admissionError(input.workspaceId)
+    if (admission !== null) return coreFailure(admission)
+    const response = await this.bridge.workspaces.getById({
+      body: { workspaceId: input.workspaceId },
+    })
+    if (!response.isSuccess) {
+      if (response.error !== undefined)
+        return coreFailure(AppError.Http(response.statusCode, response.error))
+      return coreFailure(AppError.Internal('WORKSPACE_READ_FAILED'))
+    }
+    if (response.data === undefined)
+      return coreFailure(AppError.NotFound('WORKSPACE_NOT_FOUND'))
+    const connection = response.data.dataSourceConnections.find(
+      (item) => item.id === input.connectionInstanceId,
+    )
+    if (connection === undefined)
+      return coreFailure(AppError.NotFound('CONNECTION_NOT_FOUND'))
+    const executor = this.workspaces.get(input.workspaceId)
+    if (executor === undefined)
+      return coreFailure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE'))
+    const result = await executor.queryCore(input, connection.dataSourceId)
+    if (result.isFailure()) return coreFailure(result.failure)
+    const afterRead = this.admissionError(input.workspaceId)
+    if (afterRead !== null) return coreFailure(afterRead)
+    return { ok: true, value: result.success }
   }
 
   async start(): Promise<Either<AppError, void>> {
@@ -693,6 +726,7 @@ export function createBrowserLocalRuntime(
   })
   return {
     runtime,
+    queryCore: (input: CoreCacheQuery) => registry.queryCore(input),
     start: () => registry.start(),
     requestInternal: (command: LocalPersistenceCommand) =>
       registry.requestInternal(command),
@@ -806,4 +840,11 @@ function projectionAction(
   )
     return 'timerStop'
   return 'update'
+}
+
+function coreFailure(error: AppError): CoreCacheResponse {
+  return {
+    ok: false,
+    error: { messageKey: error.messageKey, statusCode: error.statusCode },
+  }
 }

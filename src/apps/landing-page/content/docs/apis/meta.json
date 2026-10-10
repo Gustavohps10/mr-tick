@@ -3,6 +3,6 @@
   "defaultOpen": true,
   "pages": [
     "oauth-pkce",
-    "storage-and-events"
+    "vault-and-events"
   ]
 }

@@ -1,4 +1,4 @@
-export * from './ICredentialsStorage'
+export * from './ICredentialsVault'
 export * from './IFileManager'
 export * from './IFileStorage'
 export * from './IJWTService'

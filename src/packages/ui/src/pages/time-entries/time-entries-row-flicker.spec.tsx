@@ -162,6 +162,10 @@ describe('TimeEntries Row Observability & Flicker Tests', () => {
 
       const mockTimeEntryStore = createStore<TimeEntryStore>(() => ({
         active: null,
+        isReady: true,
+        beginProjection: () => {},
+        observeProjection: () => {},
+        endProjection: () => {},
         setActive: () => {},
         clear: () => {},
         createNewTimeEntry: async () => {},
@@ -397,6 +401,10 @@ describe('TimeEntries Row Observability & Flicker Tests', () => {
 
       const mockTimeEntryStore = createStore<TimeEntryStore>(() => ({
         active: null,
+        isReady: true,
+        beginProjection: () => {},
+        observeProjection: () => {},
+        endProjection: () => {},
         setActive: () => {},
         clear: () => {},
         createNewTimeEntry: async () => {},

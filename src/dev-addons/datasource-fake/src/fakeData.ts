@@ -6,6 +6,8 @@ import type {
   TimeEntryDTO,
 } from '@mr-tick/sdk'
 
+import { CORE_SDK_PROBE_TASK_ID } from './runtime-probe-fixture'
+
 const FAKE_USER_ID = '1'
 
 /** Cores variadas para metadados (diferentes do Redmine) */
@@ -241,11 +243,30 @@ function buildTasks(): TaskDTO[] {
     participants: [],
   })
 
+  // Explicit recent fixture for SDK cache reads; the support task above is outside the initial sync window.
+  tasks.push({
+    id: CORE_SDK_PROBE_TASK_ID,
+    title: 'SDK context fixture',
+    description: 'Task selected explicitly by the SDK core query E2E.',
+    createdAt: new Date(now.getTime() - 1800000),
+    updatedAt: new Date(now.getTime() - 600000),
+    status: { id: 'progress', name: 'In Progress' },
+    priority: { id: 'high', name: 'High' },
+    tracker: { id: 'task', name: 'Task' },
+    projectName: 'SDK fixtures',
+    assignedTo: {
+      id: String(FAKE_MEMBER.id),
+      name: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
+    },
+    participants: [],
+  })
   return tasks.sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
 }
 
 export const FAKE_TASKS = buildTasks()
-const TASK_IDS_FOR_ENTRIES = FAKE_TASKS.map((t) => t.id)
+const TASK_IDS_FOR_ENTRIES = FAKE_TASKS.filter(
+  (task) => task.id !== CORE_SDK_PROBE_TASK_ID,
+).map((task) => task.id)
 const USER_NAME = `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`
 
 const MAX_HOURS_PER_DAY = 10 // realista; um dia nunca pode ter mais de 24h

@@ -1,4 +1,4 @@
-﻿import { ICredentialsStorage } from '@mr-tick/application'
+﻿import { ICredentialsVault } from '@mr-tick/application'
 import { IRequest } from '@mr-tick/shared/transport'
 import { ViewModel } from '@mr-tick/shared/view-models'
 
@@ -11,7 +11,7 @@ export interface TokenRequest {
 }
 
 export class TokenHandler implements HandlerBase<TokenHandler> {
-  constructor(private readonly credentialsStorage: ICredentialsStorage) {}
+  constructor(private readonly credentialsVault: ICredentialsVault) {}
 
   public async saveToken(
     _event: Electron.IpcMainInvokeEvent,
@@ -27,7 +27,7 @@ export class TokenHandler implements HandlerBase<TokenHandler> {
         }
       }
 
-      await this.credentialsStorage.saveToken(service, account, token)
+      await this.credentialsVault.saveToken(service, account, token)
 
       return {
         statusCode: 200,
@@ -49,7 +49,7 @@ export class TokenHandler implements HandlerBase<TokenHandler> {
     { body: { service, account } }: IRequest<TokenRequest>,
   ): Promise<ViewModel<string | null>> {
     try {
-      const token = await this.credentialsStorage.getToken(service, account)
+      const token = await this.credentialsVault.getToken(service, account)
       return {
         statusCode: 200,
         isSuccess: true,
@@ -70,7 +70,7 @@ export class TokenHandler implements HandlerBase<TokenHandler> {
     { body: { service, account } }: IRequest<TokenRequest>,
   ): Promise<ViewModel<void>> {
     try {
-      await this.credentialsStorage.deleteToken(service, account)
+      await this.credentialsVault.deleteToken(service, account)
 
       return {
         statusCode: 200,

@@ -5,10 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   DisconnectDataSourceInput,
-  ICredentialsStorage,
+  ICredentialsVault,
   IWorkspacesRepository,
 } from '@/contracts'
-import { getMemberStorageKey } from '@/utils'
+import { getMemberVaultKey } from '@/utils'
 
 import { DisconnectDataSourceService } from './DisconnectDataSourceService'
 
@@ -16,7 +16,7 @@ describe('DisconnectDataSourceService', () => {
   let sut: DisconnectDataSourceService
 
   let workspacesRepositoryMock: Mocked<IWorkspacesRepository>
-  let credentialsStorageMock: Mocked<ICredentialsStorage>
+  let credentialsVaultMock: Mocked<ICredentialsVault>
   let fakeWorkspace: Mocked<Workspace>
 
   const makeInput = (): DisconnectDataSourceInput => ({
@@ -34,13 +34,13 @@ describe('DisconnectDataSourceService', () => {
       delete: vi.fn(),
     } as unknown as Mocked<IWorkspacesRepository>
 
-    credentialsStorageMock = {
+    credentialsVaultMock = {
       saveToken: vi.fn(),
       deleteToken: vi.fn(),
       getToken: vi.fn(),
       hasToken: vi.fn(),
       replaceToken: vi.fn(),
-    } as unknown as Mocked<ICredentialsStorage>
+    } as unknown as Mocked<ICredentialsVault>
 
     fakeWorkspace = {
       id: 'workspace-123',
@@ -49,7 +49,7 @@ describe('DisconnectDataSourceService', () => {
 
     sut = new DisconnectDataSourceService(
       workspacesRepositoryMock,
-      credentialsStorageMock,
+      credentialsVaultMock,
     )
   })
 
@@ -67,17 +67,17 @@ describe('DisconnectDataSourceService', () => {
     expect(result.isSuccess()).toBe(true)
 
     const expectedStorageKey = `workspace-session-${input.workspaceId}-${input.connectionInstanceId}`
-    const expectedMemberKey = getMemberStorageKey(
+    const expectedMemberKey = getMemberVaultKey(
       input.workspaceId,
       input.connectionInstanceId,
     )
 
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledTimes(2)
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledWith(
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledTimes(2)
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledWith(
       'mr-tick',
       expectedStorageKey,
     )
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledWith(
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledWith(
       'mr-tick',
       expectedMemberKey,
     )
@@ -101,7 +101,7 @@ describe('DisconnectDataSourceService', () => {
     expect(result.failure.statusCode).toBe(404)
     expect(result.failure.messageKey).toBe('WORKSPACE_NAO_ENCONTRADO')
 
-    expect(credentialsStorageMock.deleteToken).not.toHaveBeenCalled()
+    expect(credentialsVaultMock.deleteToken).not.toHaveBeenCalled()
     expect(fakeWorkspace.disconnectDataSource).not.toHaveBeenCalled()
     expect(workspacesRepositoryMock.update).not.toHaveBeenCalled()
   })
@@ -123,7 +123,7 @@ describe('DisconnectDataSourceService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBe(domainError)
 
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledTimes(2)
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledTimes(2)
     expect(workspacesRepositoryMock.update).not.toHaveBeenCalled()
   })
 
@@ -140,7 +140,7 @@ describe('DisconnectDataSourceService', () => {
     expect(result.failure.statusCode).toBe(404)
     expect(result.failure.messageKey).toBe('ERRO_AO_DESCONECTAR')
 
-    expect(credentialsStorageMock.deleteToken).not.toHaveBeenCalled()
+    expect(credentialsVaultMock.deleteToken).not.toHaveBeenCalled()
     expect(workspacesRepositoryMock.update).not.toHaveBeenCalled()
   })
 })

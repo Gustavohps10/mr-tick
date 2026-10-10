@@ -21,7 +21,7 @@ const FOOTER_SECTIONS = [
     links: [
       { label: 'Documentation', href: '/docs' },
       { label: 'Quickstart Guide', href: '/docs/quickstart' },
-      { label: 'Addon SDK', href: '/docs/apis/storage-and-events' },
+      { label: 'Addon SDK', href: '/docs/apis/vault-and-events' },
       {
         label: 'GitHub Repository',
         href: 'https://github.com/gustavohps10/mr-tick',

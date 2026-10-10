@@ -1,4 +1,10 @@
-import { AddonSettingsField, AddonSettingsTab } from '@mr-tick/application'
+import {
+  AddonSettingsField,
+  AddonSettingsSchema,
+  AddonSettingsTab,
+  AddonSettingsValues,
+  AddonVaultScope,
+} from '@mr-tick/application'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -17,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDataSourceConnections } from '@/contexts/DataSourceConnectionsContext'
 import { useHostBridge } from '@/hooks/use-host-bridge'
@@ -24,9 +31,33 @@ import { ConnectionCard } from '@/pages/addons/components/addon-list'
 
 import { AddonFieldRenderer } from './addon-field-renderer'
 
+const emptySettings: AddonSettingsValues = {}
+
 export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
+  const { workspaceId } = useDataSourceConnections()
+  const scope: AddonVaultScope =
+    workspaceId === undefined
+      ? { kind: 'addon' }
+      : { kind: 'workspace', workspaceId }
+  return (
+    <ScopedAddonSettingsRenderer
+      key={JSON.stringify({ addonId, scope })}
+      addonId={addonId}
+      scope={scope}
+    />
+  )
+}
+
+function ScopedAddonSettingsRenderer({
+  addonId,
+  scope,
+}: {
+  addonId: string
+  scope: AddonVaultScope
+}) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
+  const workspaceId = scope.kind === 'workspace' ? scope.workspaceId : undefined
 
   const { data: schema, isLoading: isLoadingSchema } = useQuery({
     queryKey: ['addon-schema', addonId],
@@ -39,16 +70,18 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
     },
   })
 
-  const { data: savedSettings = {}, isLoading: isLoadingSettings } = useQuery({
-    queryKey: ['addon-settings', addonId],
-    queryFn: async () => {
-      const res = await bridge.addons.getSettings({
-        body: { addonId },
-      })
-      if (!res.isSuccess) throw new Error(res.error)
-      return res.data ?? {}
-    },
-  })
+  const { data: savedSettings = emptySettings, isLoading: isLoadingSettings } =
+    useQuery({
+      queryKey: ['addon-settings', addonId, scope],
+      queryFn: async () => {
+        const res = await bridge.addons.getSettings({
+          body: { addonId, scope },
+        })
+        if (!res.isSuccess) throw new Error(res.error)
+        if (res.data === undefined) return emptySettings
+        return res.data
+      },
+    })
 
   const [formValues, setFormValues] = useState<
     Record<string, string | number | boolean | null>
@@ -61,21 +94,24 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
   }, [savedSettings])
 
   const saveMutation = useMutation({
-    mutationFn: async (
-      values: Record<string, string | number | boolean | null>,
-    ) => {
+    mutationFn: async (input: {
+      scope: AddonVaultScope
+      values: AddonSettingsValues
+    }) => {
       const res = await bridge.addons.saveSettings({
-        body: { addonId, settings: values },
+        body: { addonId, scope: input.scope, settings: input.values },
       })
       if (!res.isSuccess) throw new Error(res.error)
       return res
     },
-    onSuccess: () => {
+    onSuccess: (result, input) => {
       toast.success('Configurações salvas com sucesso!')
-      queryClient.invalidateQueries({ queryKey: ['addon-settings', addonId] })
+      queryClient.invalidateQueries({
+        queryKey: ['addon-settings', addonId, input.scope],
+      })
     },
     onError: (err: Error) => {
-      toast.error(err.message || 'Erro ao salvar configurações')
+      toast.error(err.message)
     },
   })
 
@@ -95,7 +131,7 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
   }
 
   const handleSave = () => {
-    saveMutation.mutate(formValues)
+    saveMutation.mutate({ scope, values: formValues })
   }
 
   const { data: installedList = [] } = useQuery({
@@ -118,8 +154,13 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
 
   if (isLoadingSchema || isLoadingSettings) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin" />
+      <div
+        className="flex flex-1 flex-col gap-4 p-4"
+        aria-label="Carregando configurações"
+      >
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
       </div>
     )
   }
@@ -150,22 +191,8 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
     )
   }
 
-  const isTabbed =
-    Array.isArray(schema) &&
-    schema.length > 0 &&
-    ('groups' in schema[0] || 'fields' in schema[0])
-
-  const tabs: AddonSettingsTab[] = isTabbed
-    ? (schema as AddonSettingsTab[])
-    : [
-        {
-          id: 'general',
-          label: 'Geral',
-          fields: schema as AddonSettingsField[],
-        },
-      ]
-
-  const defaultTab = tabs[0]?.id
+  const tabs = settingsTabs(schema)
+  const defaultTab = initialSettingsTab(tabs)
 
   return (
     <div className="bg-card/50 flex h-full flex-1 flex-col">
@@ -213,6 +240,7 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
                             key={field.id}
                             field={field}
                             addonId={addonId}
+                            workspaceId={workspaceId}
                             value={formValues[field.id]}
                             onChange={handleFieldChange}
                           />
@@ -225,6 +253,7 @@ export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
                       <FieldRenderer
                         field={field}
                         addonId={addonId}
+                        workspaceId={workspaceId}
                         value={formValues[field.id]}
                         onChange={handleFieldChange}
                       />
@@ -428,11 +457,13 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
 function FieldRenderer({
   field,
   addonId,
+  workspaceId,
   value,
   onChange,
 }: {
   field: AddonSettingsField
   addonId: string
+  workspaceId: string | undefined
   value: string | number | boolean | null | undefined
   onChange: (fieldId: string, value: string | number | boolean | null) => void
 }) {
@@ -440,6 +471,7 @@ function FieldRenderer({
     <AddonFieldRenderer
       field={field}
       addonId={addonId}
+      workspaceId={workspaceId}
       value={value}
       onChange={onChange}
       renderDataSourceInstances={(id) => (
@@ -447,4 +479,28 @@ function FieldRenderer({
       )}
     />
   )
+}
+
+/** Canonical boundary for the two settings schema representations. */
+function isSettingsField(
+  item: AddonSettingsField | AddonSettingsTab,
+): item is AddonSettingsField {
+  return 'type' in item
+}
+function settingsTabs(schema: AddonSettingsSchema): AddonSettingsTab[] {
+  const tabs: AddonSettingsTab[] = []
+  const fields: AddonSettingsField[] = []
+  for (const item of schema) {
+    if (isSettingsField(item)) {
+      fields.push(item)
+      continue
+    }
+    tabs.push(item)
+  }
+  if (fields.length > 0) tabs.push({ id: 'general', label: 'Geral', fields })
+  return tabs
+}
+function initialSettingsTab(tabs: AddonSettingsTab[]): string | undefined {
+  for (const tab of tabs) return tab.id
+  return undefined
 }

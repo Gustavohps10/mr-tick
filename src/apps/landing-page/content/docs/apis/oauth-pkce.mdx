@@ -5,7 +5,9 @@ description: Como autenticar usuários com segurança usando PKCE (RFC 7636), St
 
 # Autenticação OAuth 2.0 PKCE
 
-O Mr-tick fornece uma API nativa e padronizada de **OAuth 2.0 com PKCE (Proof Key for Code Exchange — RFC 7636)** através de `context.oauth`.
+> O exemplo completo abaixo usa o contrato antigo do cofre. No SDK atual, passe `AddonVaultScope` explicitamente e trate o `Either` retornado, conforme [Vault e Eventos](/docs/apis/vault-and-events). Use escopo global somente se a conta for compartilhada entre workspaces.
+
+O Mr-tick fornece uma API nativa e padronizada de **OAuth 2.0 com PKCE (Proof Key for Code Exchange — RFC 7636)** através de `context.host.oauth`.
 
 Esse fluxo elimina totalmente a necessidade de embutir `CLIENT_SECRET` nos addons e dispensa a abertura de servidores HTTP locais na máquina do usuário.
 
@@ -15,9 +17,9 @@ Esse fluxo elimina totalmente a necessidade de embutir `CLIENT_SECRET` nos addon
 
 ```text
 1. Addon (Desktop)
-   │ context.oauth.generatePKCE() → gera codeVerifier + codeChallenge (SHA-256)
-   │ context.oauth.generateState('discord') → gera state seguro (UUID)
-   │ context.oauth.authorize({ authUrl, state })
+   │ context.host.oauth.generatePKCE() → gera codeVerifier + codeChallenge (SHA-256)
+   │ context.host.oauth.generateState('discord') → gera state seguro (UUID)
+   │ context.host.oauth.authorize({ authUrl, state })
    ▼
 2. Navegador Web do Usuário
    │ Abre a tela de consentimento do Provedor OAuth (Discord, Google, Jira, etc.)
@@ -53,7 +55,7 @@ import type { AddonActionResponse, AddonContext, IAddon } from '@mr-tick/sdk'
 
 export default class DiscordOAuthAddon implements IAddon {
   public async activate(context: AddonContext): Promise<void> {
-    context.commands.register('login', async (): Promise<AddonActionResponse> => {
+    context.contributions.commands.register('login', async (): Promise<AddonActionResponse> => {
       await this.handleLogin(context)
       return {
         isSuccess: true,
@@ -71,8 +73,8 @@ export default class DiscordOAuthAddon implements IAddon {
 
   public async handleLogin(context: AddonContext): Promise<void> {
     // 1. Gera par PKCE (RFC 7636) e state criptográfico
-    const { codeVerifier, codeChallenge } = context.oauth.generatePKCE()
-    const state = context.oauth.generateState('discord')
+    const { codeVerifier, codeChallenge } = context.host.oauth.generatePKCE()
+    const state = context.host.oauth.generateState('discord')
 
     const CLIENT_ID = '1372352088457220126' // Client ID Público
     const defaultRedirectUri =
@@ -91,7 +93,7 @@ export default class DiscordOAuthAddon implements IAddon {
     console.log('[OAuth] Abrindo navegador para autorização...')
 
     // 2. Dispara a autorização e aguarda o Deep Link (com timeout de segurança)
-    const result = await context.oauth.authorize({
+    const result = await context.host.oauth.authorize({
       authUrl,
       state,
       timeoutMs: 120000, // 2 minutos
@@ -141,8 +143,8 @@ export default class DiscordOAuthAddon implements IAddon {
       scope: tokenPayload.scope,
     }
 
-    await context.storage.set('tokenData', JSON.stringify(storedToken))
-    await context.storage.set('accessToken', storedToken.accessToken)
+    await context.host.vault.set('tokenData', JSON.stringify(storedToken))
+    await context.host.vault.set('accessToken', storedToken.accessToken)
 
     console.log(
       '[OAuth] Autenticação concluída e token armazenado com sucesso!',

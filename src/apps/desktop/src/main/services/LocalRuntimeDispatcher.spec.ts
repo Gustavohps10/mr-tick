@@ -1,4 +1,6 @@
 import type {
+  CoreCacheQuery,
+  CoreCacheResponse,
   LocalPersistenceCommand,
   LocalPersistenceResponse,
   LocalRuntimeRequest,
@@ -12,11 +14,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LocalRuntimeDispatcher } from './LocalRuntimeDispatcher'
 
 type TestInput =
-  LocalPersistenceCommand | LocalRuntimeRequest | LocalSyncRequest | string
+  | CoreCacheQuery
+  | LocalPersistenceCommand
+  | LocalRuntimeRequest
+  | LocalSyncRequest
+  | string
 interface TestEvent {
   sender: TestContents
 }
 type TestResponse =
+  | CoreCacheResponse
   | LocalPersistenceResponse
   | LocalRuntimeResponse
   | LocalSyncResponse
@@ -29,7 +36,11 @@ type Handler = (
 interface TestPacket {
   requestId: string
   generation: string
-  response: LocalPersistenceResponse | LocalRuntimeResponse | LocalSyncResponse
+  response:
+    | CoreCacheResponse
+    | LocalPersistenceResponse
+    | LocalRuntimeResponse
+    | LocalSyncResponse
   channel: string
   data: { requestId: string; workspaceId: string }
 }
@@ -39,7 +50,11 @@ interface SentPacket {
   generation?: string
   workspaceId?: string
   state?: string
-  input?: LocalPersistenceCommand | LocalRuntimeRequest | LocalSyncRequest
+  input?:
+    | CoreCacheQuery
+    | LocalPersistenceCommand
+    | LocalRuntimeRequest
+    | LocalSyncRequest
 }
 interface TestContents {
   id: number
@@ -51,6 +66,7 @@ interface TestContents {
 }
 
 const world = vi.hoisted(() => {
+  const windowListeners = new Map<string, () => void>()
   const handlers = new Map<string, Handler>()
   const listeners = new Map<string, Listener[]>()
   function contents(id: number, url: string): TestContents {
@@ -69,7 +85,9 @@ const world = vi.hoisted(() => {
     webContents: contents(1, 'http://localhost/#/runtime'),
     windowType: 'runtime',
     isDestroyed: () => false,
-    on: () => undefined,
+    on: (channel: string, listener: () => void) => {
+      windowListeners.set(channel, listener)
+    },
   }
   const main = {
     webContents: contents(2, 'http://localhost/#/workspaces/ws-1/time-entries'),
@@ -77,7 +95,7 @@ const world = vi.hoisted(() => {
     isDestroyed: () => false,
     on: () => undefined,
   }
-  return { handlers, listeners, runtime, main }
+  return { handlers, listeners, runtime, main, windowListeners }
 })
 
 vi.mock('electron', () => ({
@@ -173,6 +191,7 @@ function resultError(response: TestResponse): string {
 }
 
 beforeEach(() => {
+  world.windowListeners.clear()
   world.handlers.clear()
   world.listeners.clear()
   world.runtime.webContents.messages.length = 0
@@ -382,4 +401,90 @@ describe('LocalRuntimeDispatcher maintenance ownership', () => {
       ),
     ).toHaveLength(1)
   })
+})
+
+describe('Core read transport availability', () => {
+  it('reports readiness without blocking addon activation and removes listeners explicitly', async () => {
+    const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+    const states: string[] = []
+    const unsubscribe = dispatcher.onStateChanged((state) => states.push(state))
+    expect(states).toEqual(['starting'])
+    const input: CoreCacheQuery = {
+      action: 'tasks',
+      workspaceId: 'ws-1',
+      connectionInstanceId: 'connection',
+      limit: 5,
+    }
+    expect(await dispatcher.queryCore(input)).toEqual({
+      ok: false,
+      error: { messageKey: 'localRuntime.notReady', statusCode: 503 },
+    })
+    await ready(dispatcher)
+    expect(states).toEqual(['starting', 'ready'])
+    unsubscribe()
+    expect(await dispatcher.queryCore({ ...input, limit: 0 })).toEqual({
+      ok: false,
+      error: { messageKey: 'TASK_LIMIT_INVALID', statusCode: 422 },
+    })
+    const request = dispatcher.queryCore(input)
+    const packet = world.runtime.webContents.messages.find(
+      (item) => item.channel === 'local-runtime:execute-core',
+    )?.packet
+    if (
+      packet === undefined ||
+      packet.requestId === undefined ||
+      packet.generation === undefined
+    )
+      return expect.fail('Missing core query packet')
+    emit('local-runtime:core-reply', world.runtime.webContents, {
+      requestId: packet.requestId,
+      generation: packet.generation,
+      response: {
+        ok: true,
+        value: { kind: 'tasks', tasks: [], hasMore: false },
+      },
+      channel: '',
+      data: { requestId: '', workspaceId: '' },
+    })
+    expect(await request).toEqual({
+      ok: true,
+      value: { kind: 'tasks', tasks: [], hasMore: false },
+    })
+    expect(states).toEqual(['starting', 'ready'])
+  })
+})
+
+it('invalidates outstanding core reads when the owner closes and ignores obsolete replies', async () => {
+  const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+  const states: string[] = []
+  dispatcher.onStateChanged((state) => states.push(state))
+  await ready(dispatcher)
+  const request = dispatcher.queryCore({
+    action: 'metadata',
+    workspaceId: 'ws-1',
+    connectionInstanceId: 'connection',
+  })
+  const packet = world.runtime.webContents.messages.find(
+    (item) => item.channel === 'local-runtime:execute-core',
+  )?.packet
+  if (
+    packet === undefined ||
+    packet.requestId === undefined ||
+    packet.generation === undefined
+  )
+    return expect.fail('Missing packet')
+  world.windowListeners.get('closed')?.()
+  expect(await request).toEqual({
+    ok: false,
+    error: { messageKey: 'localRuntime.executorClosed', statusCode: 503 },
+  })
+  expect(states).toEqual(['starting', 'ready', 'closed'])
+  emit('local-runtime:core-reply', world.runtime.webContents, {
+    requestId: packet.requestId,
+    generation: packet.generation,
+    response: { ok: true, value: { kind: 'tasks', tasks: [], hasMore: false } },
+    channel: '',
+    data: { requestId: '', workspaceId: '' },
+  })
+  expect(dispatcher.getState()).toBe('closed')
 })

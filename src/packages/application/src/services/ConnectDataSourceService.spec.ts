@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   ConnectDataSourceInput,
-  ICredentialsStorage,
+  ICredentialsVault,
   IDataSourceResolver,
   IWorkspacesRepository,
 } from '@/contracts'
@@ -17,7 +17,7 @@ import { ConnectDataSourceService } from './ConnectDataSourceService'
 describe('ConnectDataSourceService', () => {
   let sut: ConnectDataSourceService
 
-  let credentialsStorageMock: Mocked<ICredentialsStorage>
+  let credentialsVaultMock: Mocked<ICredentialsVault>
   let workspacesRepositoryMock: Mocked<IWorkspacesRepository>
   let dataSourceResolverMock: Mocked<IDataSourceResolver>
 
@@ -51,13 +51,13 @@ describe('ConnectDataSourceService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    credentialsStorageMock = {
+    credentialsVaultMock = {
       saveToken: vi.fn(),
       deleteToken: vi.fn(),
       getToken: vi.fn(),
       hasToken: vi.fn(),
       replaceToken: vi.fn(),
-    } as Partial<ICredentialsStorage> as Mocked<ICredentialsStorage>
+    } as Partial<ICredentialsVault> as Mocked<ICredentialsVault>
 
     workspacesRepositoryMock = {
       findById: vi.fn(),
@@ -86,7 +86,7 @@ describe('ConnectDataSourceService', () => {
     } as Partial<Workspace> as Mocked<Workspace>
 
     sut = new ConnectDataSourceService(
-      credentialsStorageMock,
+      credentialsVaultMock,
       workspacesRepositoryMock,
       dataSourceResolverMock,
     )
@@ -119,7 +119,7 @@ describe('ConnectDataSourceService', () => {
 
     const storageKey = `workspace-connection-${input.workspaceId}-${input.connectionInstanceId}`
 
-    expect(credentialsStorageMock.saveToken).toHaveBeenCalledWith(
+    expect(credentialsVaultMock.saveToken).toHaveBeenCalledWith(
       'mr-tick',
       storageKey,
       JSON.stringify({
@@ -177,7 +177,7 @@ describe('ConnectDataSourceService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBe(authError)
 
-    expect(credentialsStorageMock.saveToken).not.toHaveBeenCalled()
+    expect(credentialsVaultMock.saveToken).not.toHaveBeenCalled()
     expect(fakeWorkspace.connectDataSource).not.toHaveBeenCalled()
   })
 
@@ -206,7 +206,7 @@ describe('ConnectDataSourceService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBe(domainError)
 
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledWith(
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledWith(
       'mr-tick',
       storageKey,
     )
@@ -229,8 +229,8 @@ describe('ConnectDataSourceService', () => {
     expect(result.failure.statusCode).toBe(500)
     expect(result.failure.messageKey).toBe('ERRO_AO_CONECTAR_DATA_SOURCE')
 
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledTimes(1)
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledWith(
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledTimes(1)
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledWith(
       'mr-tick',
       storageKey,
     )

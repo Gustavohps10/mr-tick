@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto'
 
 import type {
+  CoreCacheQuery,
+  CoreCacheResponse,
+  CoreRuntimeState,
+  ICoreCacheTransport,
   ILocalRuntimeAPI,
   LocalPersistenceCommand,
   LocalPersistenceResponse,
@@ -9,6 +13,7 @@ import type {
   LocalSyncRequest,
   LocalSyncResponse,
 } from '@mr-tick/application'
+import { validateCoreCacheQuery } from '@mr-tick/application'
 import { BrowserWindow, ipcMain } from 'electron'
 
 import type {
@@ -41,7 +46,15 @@ function unavailable(messageKey: string): {
 }
 
 /** Routes calls to one executor; a reload invalidates its pending replies. */
-export class LocalRuntimeDispatcher implements ILocalRuntimeAPI {
+export class LocalRuntimeDispatcher
+  implements ILocalRuntimeAPI, ICoreCacheTransport
+{
+  private readonly corePending = new Map<
+    string,
+    PendingRuntimeRequest<CoreCacheResponse>
+  >()
+  private runtimeState: CoreRuntimeState = 'starting'
+  private readonly stateListeners = new Set<(state: CoreRuntimeState) => void>()
   private readonly pending = new Map<
     string,
     PendingRuntimeRequest<LocalRuntimeResponse>
@@ -157,6 +170,7 @@ export class LocalRuntimeDispatcher implements ILocalRuntimeAPI {
       )
         return null
       this.ready = true
+      this.setRuntimeState('ready')
       for (const waiter of this.startupWaiters) waiter(true)
       this.startupWaiters.clear()
       for (const client of BrowserWindow.getAllWindows()) {
@@ -168,6 +182,13 @@ export class LocalRuntimeDispatcher implements ILocalRuntimeAPI {
       }
       return this.generation
     })
+    ipcMain.on(
+      'local-runtime:core-reply',
+      (event, packet: RuntimeReplyPacket<CoreCacheResponse>) => {
+        if (event.sender !== this.window.webContents) return
+        this.complete(this.corePending, packet)
+      },
+    )
     ipcMain.on('local-runtime:reply', (event, packet: RuntimeReplyPacket) => {
       if (event.sender !== this.window.webContents) return
       this.complete(this.pending, packet)
@@ -224,6 +245,46 @@ export class LocalRuntimeDispatcher implements ILocalRuntimeAPI {
     this.window.on('closed', () =>
       this.invalidate('localRuntime.executorClosed'),
     )
+  }
+
+  getState(): CoreRuntimeState {
+    return this.runtimeState
+  }
+
+  onStateChanged(listener: (state: CoreRuntimeState) => void): () => void {
+    this.stateListeners.add(listener)
+    try {
+      listener(this.runtimeState)
+    } catch (error) {
+      console.error('[LocalRuntime] Availability listener failed:', error)
+    }
+    return () => this.stateListeners.delete(listener)
+  }
+
+  private setRuntimeState(state: CoreRuntimeState): void {
+    this.runtimeState = state
+    for (const listener of this.stateListeners) {
+      try {
+        listener(state)
+      } catch (error) {
+        console.error('[LocalRuntime] Availability listener failed:', error)
+      }
+    }
+  }
+
+  queryCore(input: CoreCacheQuery): Promise<CoreCacheResponse> {
+    const valid = validateCoreCacheQuery(input)
+    if (valid.isFailure())
+      return Promise.resolve({
+        ok: false,
+        error: {
+          messageKey: valid.failure.messageKey,
+          statusCode: valid.failure.statusCode,
+        },
+      })
+    if (this.maintenanceWorkspaces.has(input.workspaceId))
+      return Promise.resolve(unavailable('localRuntime.workspaceMaintenance'))
+    return this.dispatch(this.corePending, 'local-runtime:execute-core', input)
   }
 
   acceptsGeneration(generation: string): boolean {
@@ -299,7 +360,10 @@ export class LocalRuntimeDispatcher implements ILocalRuntimeAPI {
   private dispatch<
     TRequest,
     TResponse extends
-      LocalRuntimeResponse | LocalPersistenceResponse | LocalSyncResponse,
+      | LocalRuntimeResponse
+      | LocalPersistenceResponse
+      | LocalSyncResponse
+      | CoreCacheResponse,
   >(
     pendingRequests: Map<string, PendingRuntimeRequest<TResponse>>,
     channel: string,
@@ -345,7 +409,10 @@ export class LocalRuntimeDispatcher implements ILocalRuntimeAPI {
 
   private rejectPending<
     T extends
-      LocalRuntimeResponse | LocalPersistenceResponse | LocalSyncResponse,
+      | LocalRuntimeResponse
+      | LocalPersistenceResponse
+      | LocalSyncResponse
+      | CoreCacheResponse,
   >(
     pendingRequests: Map<string, PendingRuntimeRequest<T>>,
     messageKey: string,
@@ -363,6 +430,10 @@ export class LocalRuntimeDispatcher implements ILocalRuntimeAPI {
     this.ready = false
     this.generation = randomUUID()
     this.lastSequence = 0
+    this.setRuntimeState(
+      messageKey === 'localRuntime.executorClosed' ? 'closed' : 'restarting',
+    )
+    this.rejectPending(this.corePending, messageKey)
     this.rejectPending(this.pending, messageKey)
     this.rejectPending(this.persistencePending, messageKey)
     this.rejectPending(this.syncPending, messageKey)

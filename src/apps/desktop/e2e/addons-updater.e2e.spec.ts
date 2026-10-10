@@ -20,9 +20,9 @@ function addonModule(version: string, fails: boolean) {
     async activate(context) {
       if (${fails}) throw new Error('Intentional activation failure')
       this.context = context
-      context.commands.register('audit:version', () => '${version}')
+      context.contributions.commands.register('audit:version', () => '${version}')
     }
-    async deactivate() { this.context?.commands.unregister('audit:version') }
+    async deactivate() { this.context?.contributions.commands.unregister('audit:version') }
   }`
 }
 

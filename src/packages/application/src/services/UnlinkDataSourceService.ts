@@ -1,18 +1,18 @@
 ﻿import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import {
-  ICredentialsStorage,
+  ICredentialsVault,
   IUnlinkDataSourceUseCase,
   IWorkspacesRepository,
   UnlinkDataSourceInput,
 } from '@/contracts'
 import { toWorkspaceConnectionDTO, WorkspaceDTO } from '@/dtos'
-import { getMemberStorageKey } from '@/utils'
+import { getMemberVaultKey } from '@/utils'
 
 export class UnlinkDataSourceService implements IUnlinkDataSourceUseCase {
   constructor(
     private readonly workspacesRepository: IWorkspacesRepository,
-    private readonly credentialsStorage: ICredentialsStorage,
+    private readonly credentialsVault: ICredentialsVault,
   ) {}
 
   public async execute(
@@ -66,10 +66,10 @@ export class UnlinkDataSourceService implements IUnlinkDataSourceUseCase {
     connectionInstanceId: string,
   ): Promise<void> {
     const sessionKey = `workspace-session-${workspaceId}-${connectionInstanceId}`
-    await this.credentialsStorage.deleteToken('mr-tick', sessionKey)
-    await this.credentialsStorage.deleteToken(
+    await this.credentialsVault.deleteToken('mr-tick', sessionKey)
+    await this.credentialsVault.deleteToken(
       'mr-tick',
-      getMemberStorageKey(workspaceId, connectionInstanceId),
+      getMemberVaultKey(workspaceId, connectionInstanceId),
     )
   }
 }

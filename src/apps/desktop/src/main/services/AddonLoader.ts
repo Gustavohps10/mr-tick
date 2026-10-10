@@ -5,7 +5,8 @@ import { pathToFileURL } from 'node:url'
 
 import {
   IAddonReloader,
-  ICredentialsStorage,
+  ICoreReadAPI,
+  ICredentialsVault,
   ILocalRuntimeAPI,
 } from '@mr-tick/application'
 import {
@@ -16,24 +17,25 @@ import {
   AddonSettingsSchema,
   AddonSettingsSchemaProvider,
   AddonSettingsTab,
+  AddonSettingsValues,
   AddonTheme,
   AddonTimerControlLock,
+  AddonVaultScope,
   CommandArgument,
   CommandHandler,
   CommandResult,
   generateOAuthState,
   generatePKCE,
   IAddon,
+  IAddonCommandsAPI,
+  IAddonDataSourcesAPI,
   IAddonEventsAPI,
-  IAddonStorage,
-  ICommandRegistry,
+  IAddonMenusAPI,
+  IAddonNotificationsAPI,
+  IAddonOAuthAPI,
+  IAddonSettingsAPI,
   IDataSource,
-  IDataSourceRegistry,
-  IMenusRegistry,
-  INotificationService,
-  IOAuthAPI,
   IRegistry,
-  ISettingsRegistry,
   OAuthAuthorizeOptions,
   OAuthResult,
   SidebarMenuItem,
@@ -43,7 +45,6 @@ import {
   isApiVersionCompatible,
   isRecord,
   isString,
-  isWorkspaceScoped,
 } from '@mr-tick/shared/helpers'
 import { ISystemEvents } from '@mr-tick/shared/transport'
 import { BrowserWindow, shell } from 'electron'
@@ -51,6 +52,8 @@ import { BrowserWindow, shell } from 'electron'
 import { getSettings, saveSettings } from '@/main/settings'
 
 import sdkPkg from '../../../../sdk/package.json'
+import { AddonLifetime } from './AddonLifetime'
+import { AddonScopedVault } from './AddonScopedVault'
 
 export class MemoryRegistry<T extends { id?: string }> implements IRegistry<T> {
   private items = new Map<string, T>()
@@ -70,25 +73,53 @@ export class MemoryRegistry<T extends { id?: string }> implements IRegistry<T> {
   }
 }
 
-export class CommandRegistry implements ICommandRegistry {
+export class CommandRegistry implements IAddonCommandsAPI {
   private handlers = new Map<string, CommandHandler>()
+  private readonly aliases = new Map<string, Set<string>>()
 
   register(id: string, handler: CommandHandler): void {
     this.handlers.set(id, handler)
+  }
+
+  registerOwned(owner: string, id: string, handler: CommandHandler): void {
+    const qualified = `${owner}:${id}`
+    this.handlers.set(qualified, handler)
+    let aliases = this.aliases.get(id)
+    if (aliases === undefined) {
+      aliases = new Set()
+      this.aliases.set(id, aliases)
+    }
+    aliases.add(qualified)
+  }
+
+  unregisterOwned(owner: string, id: string): void {
+    const qualified = `${owner}:${id}`
+    this.handlers.delete(qualified)
+    const aliases = this.aliases.get(id)
+    aliases?.delete(qualified)
+    if (aliases?.size === 0) this.aliases.delete(id)
   }
 
   unregister(id: string): void {
     this.handlers.delete(id)
   }
 
+  private resolve(id: string): CommandHandler | undefined {
+    const direct = this.handlers.get(id)
+    if (direct !== undefined) return direct
+    const aliases = this.aliases.get(id)
+    if (aliases?.size !== 1) return undefined
+    for (const qualified of aliases) return this.handlers.get(qualified)
+    return undefined
+  }
+
   async execute(
     id: string,
     ...args: CommandArgument[]
   ): Promise<CommandResult> {
-    const handler = this.handlers.get(id)
-    if (!handler) {
-      throw new Error(`Comando '${id}' não encontrado.`)
-    }
+    const handler = this.resolve(id)
+    if (handler === undefined)
+      return { isSuccess: false, error: 'COMMAND_NOT_FOUND_OR_AMBIGUOUS' }
     return await handler(...args)
   }
 
@@ -97,7 +128,7 @@ export class CommandRegistry implements ICommandRegistry {
   }
 
   has(id: string): boolean {
-    return this.handlers.has(id)
+    return this.resolve(id) !== undefined
   }
 }
 
@@ -203,9 +234,10 @@ export class AddonLoader implements IAddonReloader {
   >()
 
   constructor(
-    private credentialsStorage: ICredentialsStorage,
+    private credentialsVault: ICredentialsVault,
     private readonly localRuntime: ILocalRuntimeAPI,
     private readonly hostSdkVersion: string,
+    private readonly core: ICoreReadAPI,
   ) {
     this.registerThemeCommands()
     this.restoreActiveTheme()
@@ -305,6 +337,17 @@ export class AddonLoader implements IAddonReloader {
     }
   }
 
+  private readonly addonVaults = new Map<string, AddonScopedVault>()
+  private readonly lifetimes = new Map<string, AddonLifetime>()
+
+  private vaultFor(addonId: string): AddonScopedVault {
+    const existing = this.addonVaults.get(addonId)
+    if (existing !== undefined) return existing
+    const vault = new AddonScopedVault(addonId, this.credentialsVault)
+    this.addonVaults.set(addonId, vault)
+    return vault
+  }
+
   private activeWorkspaceId: string | null = null
 
   public setActiveWorkspace(workspaceId: string): void {
@@ -322,76 +365,23 @@ export class AddonLoader implements IAddonReloader {
   }
 
   public createContext(addonId: string): AddonContext {
-    const storage: IAddonStorage = {
-      get: async (key: string) => {
-        if (!this.activeWorkspaceId) return null
-        const workspaceId = this.activeWorkspaceId
-        const masterKey = `ws_${workspaceId}_config`
-        const raw = await this.credentialsStorage.getToken(addonId, masterKey)
-        if (!raw) return null
-        try {
-          const data = JSON.parse(raw)
-          if (isRecord(data)) {
-            const value = data[key]
-            if (isString(value)) return value
-          }
-        } catch {
-          // ignore
-        }
-        return null
-      },
-      set: async (key: string, value: string) => {
-        if (!this.activeWorkspaceId) return
-        const workspaceId = this.activeWorkspaceId
-        const masterKey = `ws_${workspaceId}_config`
-        let data: Record<string, string> = {}
-        const raw = await this.credentialsStorage.getToken(addonId, masterKey)
-        if (raw) {
-          try {
-            data = JSON.parse(raw) || {}
-          } catch {
-            data = {}
-          }
-        }
-        data[key] = value
-        await this.credentialsStorage.saveToken(
-          addonId,
-          masterKey,
-          JSON.stringify(data),
-        )
-      },
-      delete: async (key: string) => {
-        if (!this.activeWorkspaceId) return
-        const workspaceId = this.activeWorkspaceId
-        const masterKey = `ws_${workspaceId}_config`
-        const raw = await this.credentialsStorage.getToken(addonId, masterKey)
-        if (raw) {
-          try {
-            const data = JSON.parse(raw) || {}
-            delete data[key]
-            if (Object.keys(data).length > 0) {
-              await this.credentialsStorage.saveToken(
-                addonId,
-                masterKey,
-                JSON.stringify(data),
-              )
-            } else {
-              await this.credentialsStorage.deleteToken(addonId, masterKey)
-            }
-          } catch {
-            await this.credentialsStorage.deleteToken(addonId, masterKey)
-          }
-        }
-      },
-    }
+    const lifetime = new AddonLifetime()
+    this.lifetimes.get(addonId)?.dispose()
+    this.lifetimes.set(addonId, lifetime)
+    const vault = this.vaultFor(addonId)
 
     const addonTimerbarRegistry: IRegistry<TimerbarMenuItem> = {
       register: (item: TimerbarMenuItem) => {
         // Restrição Estrutural: Cada addon possui no máximo 1 item na Timerbar
-        const itemWithAddon = Object.assign(item, { addonId })
+        const itemWithAddon = { ...item, addonId }
+        if (!lifetime.isActive()) return
         this.addonTimerbarItems.set(addonId, itemWithAddon)
+        lifetime.track(() => this.addonTimerbarItems.delete(addonId))
       },
       unregister: (id: string) => {
+        if (!lifetime.isActive()) return
+        const item = this.addonTimerbarItems.get(addonId)
+        if (item?.id !== id) return
         this.addonTimerbarItems.delete(addonId)
       },
       getItems: () => {
@@ -400,12 +390,12 @@ export class AddonLoader implements IAddonReloader {
       },
     }
 
-    const menusRegistry: IMenusRegistry = {
-      sidebar: this.sidebarRegistry,
+    const menusRegistry: IAddonMenusAPI = {
+      sidebar: lifetime.registry(addonId, this.sidebarRegistry),
       timerbar: addonTimerbarRegistry,
     }
 
-    const notifications: INotificationService = {
+    const notifications: IAddonNotificationsAPI = {
       info: async (message, title) => this.showToast('info', message, title),
       success: async (message, title) =>
         this.showToast('success', message, title),
@@ -424,7 +414,7 @@ export class AddonLoader implements IAddonReloader {
     )
     const timer = capabilities.timer
     const timeEntries = capabilities.timeEntries
-    const oauth: IOAuthAPI = {
+    const oauth: IAddonOAuthAPI = {
       generatePKCE: () => generatePKCE(),
       generateState: (prefix?: string) => generateOAuthState(prefix || addonId),
       authorize: (options: OAuthAuthorizeOptions) => {
@@ -506,9 +496,11 @@ export class AddonLoader implements IAddonReloader {
       },
     }
 
-    const settingsRegistry: ISettingsRegistry = {
+    const settingsRegistry: IAddonSettingsAPI = {
       register: (schema: AddonSettingsSchemaProvider) => {
+        if (!lifetime.isActive()) return
         this.addonSettingsSchemas.set(addonId, schema)
+        lifetime.track(() => this.addonSettingsSchemas.delete(addonId))
       },
       getSchema: () => {
         const item = this.addonSettingsSchemas.get(addonId)
@@ -519,45 +511,74 @@ export class AddonLoader implements IAddonReloader {
       },
     }
 
-    const dataSourceRegistryProxy: IDataSourceRegistry = {
+    const dataSourceRegistryProxy: IAddonDataSourcesAPI = {
       register: (item: IDataSource) => {
-        const itemWithId = Object.assign(item, { id: addonId })
+        if (!lifetime.isActive()) return
+        const itemWithId: IDataSource & { id: string } = {
+          id: addonId,
+          getConnectionSchema: () => item.getConnectionSchema(),
+          createInstance: (context) => item.createInstance(context),
+        }
+        if (item.getMappingFields !== undefined)
+          itemWithId.getMappingFields = item.getMappingFields.bind(item)
         this.dataSourceRegistry.register(itemWithId)
+        lifetime.track(() => this.dataSourceRegistry.unregister(addonId))
       },
       unregister: (id: string) => {
-        this.dataSourceRegistry.unregister(id)
+        if (lifetime.isActive() && id === addonId)
+          this.dataSourceRegistry.unregister(addonId)
       },
       getItems: () => this.dataSourceRegistry.getItems(),
     }
 
-    const scopedCommands: ICommandRegistry = {
+    const scopedCommands: IAddonCommandsAPI = {
       register: (id: string, handler: CommandHandler) => {
-        this.commandRegistry.register(id, handler)
-        this.commandRegistry.register(`${addonId}:${id}`, handler)
+        if (!lifetime.isActive()) return
+        this.commandRegistry.registerOwned(addonId, id, handler)
+        lifetime.track(() => this.commandRegistry.unregisterOwned(addonId, id))
       },
       unregister: (id: string) => {
-        this.commandRegistry.unregister(id)
-        this.commandRegistry.unregister(`${addonId}:${id}`)
+        if (lifetime.isActive())
+          this.commandRegistry.unregisterOwned(addonId, id)
       },
       execute: (id: string, ...args: CommandArgument[]) => {
-        return this.commandRegistry.execute(id, ...args)
+        if (id === 'theme:set') {
+          const [themeId] = args
+          if (isString(themeId) && themeId.length > 0)
+            return this.commandRegistry.execute(id, `${addonId}:${themeId}`)
+          return this.commandRegistry.execute(id, ...args)
+        }
+        return this.commandRegistry.execute(`${addonId}:${id}`, ...args)
       },
-      has: (id: string) => this.commandRegistry.has(id),
+      has: (id: string) => {
+        if (id === 'theme:set') return this.commandRegistry.has(id)
+        return this.commandRegistry.has(`${addonId}:${id}`)
+      },
     }
 
     return {
-      addonId,
-      commands: scopedCommands,
-      menus: menusRegistry,
-      settings: settingsRegistry,
-      dataSources: dataSourceRegistryProxy,
-      themes: this.themesRegistry,
-      events: this.systemEventEmitter,
-      notifications,
-      timer,
-      timeEntries,
-      storage,
-      oauth,
+      core: {
+        runtime: lifetime.availability(this.core.runtime),
+        workspaces: this.core.workspaces,
+        connections: this.core.connections,
+        tasks: this.core.tasks,
+        metadata: this.core.metadata,
+        timer,
+        timeEntries,
+      },
+      contributions: {
+        commands: scopedCommands,
+        menus: menusRegistry,
+        settings: settingsRegistry,
+        dataSources: dataSourceRegistryProxy,
+        themes: lifetime.registry(addonId, this.themesRegistry),
+      },
+      host: {
+        events: lifetime.events(this.systemEventEmitter),
+        notifications,
+        vault,
+        oauth,
+      },
     }
   }
 
@@ -638,11 +659,27 @@ export class AddonLoader implements IAddonReloader {
   public async activateAddon(
     addonId: string,
     addonInstance: IAddon,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    if (this.activeAddons.has(addonId)) await this.deactivateAddon(addonId)
     const context = this.createContext(addonId)
-    await addonInstance.activate(context)
+    try {
+      await addonInstance.activate(context)
+    } catch (error) {
+      try {
+        await addonInstance.deactivate()
+      } catch (cleanupError) {
+        console.error(
+          '[AddonLoader] Partial activation cleanup failed:',
+          cleanupError,
+        )
+      }
+      await this.deactivateAddon(addonId)
+      console.error('[AddonLoader] Activation failed:', error)
+      return false
+    }
     this.activeAddons.set(addonId, { addonId, instance: addonInstance })
     console.log(`✅ [AddonLoader] Addon ativado com sucesso: ${addonId}`)
+    return true
   }
 
   public async deactivateAddon(addonId: string): Promise<void> {
@@ -657,11 +694,15 @@ export class AddonLoader implements IAddonReloader {
       }
     }
     const item = this.activeAddons.get(addonId)
-    if (item) {
-      await item.instance.deactivate()
+    try {
+      if (item !== undefined) await item.instance.deactivate()
+    } finally {
+      this.timerControlLock.release(addonId)
+      this.lifetimes.get(addonId)?.dispose()
+      this.lifetimes.delete(addonId)
+      this.activeAddons.delete(addonId)
+      this.addonSettingsSchemas.delete(addonId)
     }
-    this.activeAddons.delete(addonId)
-    this.addonSettingsSchemas.delete(addonId)
   }
 
   public hasActiveAddon(addonId: string): boolean {
@@ -742,8 +783,7 @@ export class AddonLoader implements IAddonReloader {
 
       if (typeof AddonClass === 'function') {
         const addonInstance: IAddon = new AddonClass()
-        await this.activateAddon(addonId, addonInstance)
-        return true
+        return await this.activateAddon(addonId, addonInstance)
       }
 
       if (
@@ -751,8 +791,7 @@ export class AddonLoader implements IAddonReloader {
         AddonClass !== null &&
         isAddonInstance(AddonClass)
       ) {
-        await this.activateAddon(addonId, AddonClass)
-        return true
+        return await this.activateAddon(addonId, AddonClass)
       }
 
       console.warn(
@@ -845,35 +884,16 @@ export class AddonLoader implements IAddonReloader {
     return schema
   }
 
-  public async getAddonSettings(
-    addonId: string,
-  ): Promise<Record<string, string | number | boolean | null>> {
-    if (!this.activeWorkspaceId) return {}
-    const workspaceId = this.activeWorkspaceId
-    const masterKey = `ws_${workspaceId}_config`
-    const raw = await this.credentialsStorage.getToken(addonId, masterKey)
-    if (!raw) return {}
-    return parseSettingsRecord(raw)
+  public getAddonSettings(addonId: string, scope: AddonVaultScope) {
+    return this.vaultFor(addonId).getSettings(scope)
   }
 
-  public async saveAddonSettings(
+  public saveAddonSettings(
     addonId: string,
-    settings: Record<string, string | number | boolean | null>,
-  ): Promise<void> {
-    if (!this.activeWorkspaceId) return
-    const workspaceId = this.activeWorkspaceId
-    const masterKey = `ws_${workspaceId}_config`
-    let data: Record<string, string | number | boolean | null> = {}
-    const raw = await this.credentialsStorage.getToken(addonId, masterKey)
-    if (raw) {
-      data = parseSettingsRecord(raw)
-    }
-    Object.assign(data, settings)
-    await this.credentialsStorage.saveToken(
-      addonId,
-      masterKey,
-      JSON.stringify(data),
-    )
+    scope: AddonVaultScope,
+    settings: AddonSettingsValues,
+  ) {
+    return this.vaultFor(addonId).saveSettings(scope, settings)
   }
 
   public async executeAction(
@@ -885,14 +905,7 @@ export class AddonLoader implements IAddonReloader {
     if (!item) {
       return { isSuccess: false, error: 'ADDON_NOT_ACTIVE' }
     }
-    if (isWorkspaceScoped(payload)) {
-      this.setActiveWorkspace(payload.workspaceId)
-    }
-
-    const scopedCommandId = `${addonId}:${actionId}`
-    const targetCommandId = this.commandRegistry.has(scopedCommandId)
-      ? scopedCommandId
-      : actionId
+    const targetCommandId = `${addonId}:${actionId}`
 
     if (this.commandRegistry.has(targetCommandId)) {
       const result = await this.commandRegistry.execute(
@@ -944,11 +957,21 @@ export class AddonLoader implements IAddonReloader {
   }
 
   public getActiveTheme(): AddonTheme | null {
-    if (!this.activeThemeId) return null
-    return (
-      this.themesRegistry.getItems().find((t) => t.id === this.activeThemeId) ??
-      null
-    )
+    if (this.activeThemeId === null) return null
+    const themes = this.themesRegistry.getItems()
+    const exact = themes.find((theme) => theme.id === this.activeThemeId)
+    if (exact !== undefined) return exact
+    // Preserve an existing pre-namespace selection only if its owner is unambiguous.
+    const matches: AddonTheme[] = []
+    for (const addonId of this.activeAddons.keys()) {
+      const candidate = themes.find(
+        (theme) => theme.id === `${addonId}:${this.activeThemeId}`,
+      )
+      if (candidate !== undefined) matches.push(candidate)
+    }
+    if (matches.length !== 1) return null
+    for (const theme of matches) return theme
+    return null
   }
 
   public setActiveTheme(themeId: string | null): void {
@@ -1012,24 +1035,6 @@ export class AddonLoader implements IAddonReloader {
 
 function isAddonInstance(candidate: object): candidate is IAddon {
   return 'onActivate' in candidate || 'activate' in candidate
-}
-
-function parseSettingsRecord(
-  raw: string,
-): Record<string, string | number | boolean | null> {
-  try {
-    const parsed = JSON.parse(raw)
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      !Array.isArray(parsed)
-    ) {
-      return parsed
-    }
-    return {}
-  } catch {
-    return {}
-  }
 }
 
 function extractStringMap(

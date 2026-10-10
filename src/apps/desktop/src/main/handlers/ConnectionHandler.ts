@@ -1,7 +1,7 @@
 import {
-  getMemberStorageKey,
+  getMemberVaultKey,
   IConnectDataSourceUseCase,
-  ICredentialsStorage,
+  ICredentialsVault,
   IDisconnectDataSourceUseCase,
 } from '@mr-tick/application'
 import { createResponseViewModel } from '@mr-tick/shared/helpers'
@@ -37,7 +37,7 @@ export class ConnectionHandler implements HandlerBase<ConnectionHandler> {
   constructor(
     private readonly connectDataSourceService: IConnectDataSourceUseCase,
     private readonly disconnectDataSourceService: IDisconnectDataSourceUseCase,
-    private readonly credentialsStorage: ICredentialsStorage,
+    private readonly credentialsVault: ICredentialsVault,
   ) {}
 
   public async connectDataSource(
@@ -73,14 +73,14 @@ export class ConnectionHandler implements HandlerBase<ConnectionHandler> {
     { body }: IRequest<GetConnectionMemberRequest>,
   ): Promise<ViewModel<MemberViewModel | null>> {
     // Usamos o connectionInstanceId para garantir a chave única por conta
-    const key = getMemberStorageKey(body.workspaceId, body.connectionInstanceId)
+    const key = getMemberVaultKey(body.workspaceId, body.connectionInstanceId)
 
-    let raw = await this.credentialsStorage.getToken('mr-tick', key)
+    let raw = await this.credentialsVault.getToken('mr-tick', key)
 
     if (!raw) {
       // Fallback para chaves antigas se necessário, mas mantendo o foco na instância
       const legacyKey = `workspace-session-${body.workspaceId}-${body.connectionInstanceId}-member`
-      raw = await this.credentialsStorage.getToken('mr-tick', legacyKey)
+      raw = await this.credentialsVault.getToken('mr-tick', legacyKey)
     }
 
     if (!raw) {

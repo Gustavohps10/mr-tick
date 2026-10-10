@@ -178,10 +178,10 @@ export const MeuDataSource: IDataSource = {
 export default class MeuDataSourceAddon implements IAddon {
   public async activate(context: AddonContext): Promise<void> {
     // Registra as preferências dinamicamente ou reaproveita o schema
-    context.settings.register(MeuDataSource.getConnectionSchema())
+    context.contributions.settings.register(MeuDataSource.getConnectionSchema())
 
     // Registra o DataSource no sistema
-    context.dataSources.register(MeuDataSource)
+    context.contributions.dataSources.register(MeuDataSource)
   }
 
   public async deactivate(): Promise<void> {
@@ -197,4 +197,4 @@ export default class MeuDataSourceAddon implements IAddon {
 - **Desacoplamento por Providers**: Separe cada responsabilidade (Tarefas, Horas, Membros e Metadados) em classes especializadas que implementam suas respectivas interfaces.
 - **Respeito a Checkpoints**: Sempre utilize filtros de data de modificação (`checkpoint.updatedAt`) para minimizar o tráfego de dados no `pull`.
 - **Validação de Credenciais**: A autenticação deve ser realizada na `authStrategy`, garantindo que conexões inválidas sejam rejeitadas antes de qualquer sincronização.
-- **Configurações via Settings**: Utilize `context.settings.register(...)` para declarar campos de credenciais e configuração sem misturá-los com a lógica de rede.
+- **Configurações via Settings**: Utilize `context.contributions.settings.register(...)` para declarar campos de credenciais e configuração sem misturá-los com a lógica de rede.

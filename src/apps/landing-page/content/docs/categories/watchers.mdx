@@ -42,7 +42,7 @@ export default class ReunioesWatcherAddon implements IAddon {
     this.context = context
 
     // Registra as preferências de configuração no formato de abas/grupos
-    context.settings.register([
+    context.contributions.settings.register([
       {
         id: 'general',
         label: 'Geral',
@@ -65,7 +65,7 @@ export default class ReunioesWatcherAddon implements IAddon {
     ])
 
     // Escutando eventos do sistema nativo
-    context.events.onSystemIdle?.((idleTimeSeconds) => {
+    context.host.events.onSystemIdle?.((idleTimeSeconds) => {
       console.log(`[Watcher] Usuário inativo por ${idleTimeSeconds} segundos.`)
     })
   }
@@ -81,14 +81,14 @@ export default class ReunioesWatcherAddon implements IAddon {
   ): Promise<void> {
     if (!this.context) return
 
-    await this.context.timeEntries.createSuggestion({
+    await this.context.core.timeEntries.createSuggestion({
       taskId: '',
       comments: `Reunião: ${titulo}`,
       timeSpentSeconds: duracaoSegundos,
       source: 'addon',
     })
 
-    await this.context.notifications.success(
+    await this.context.host.notifications.success(
       `Sugestão gerada: ${Math.round(duracaoSegundos / 60)} min em "${titulo}"`,
       'Reuniões Watcher',
     )

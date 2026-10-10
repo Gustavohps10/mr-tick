@@ -251,7 +251,7 @@ const mockBridgeClient: IHostBridge = {
   metadata: {
     pull: async () => mockSuccess(mockMetadata),
   },
-  tokens: {
+  vault: {
     saveToken: async () => mockSuccess(undefined),
     getToken: async () => mockSuccess(null),
     deleteToken: async () => mockSuccess(undefined),

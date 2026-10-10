@@ -1989,6 +1989,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
     handleDirectLog,
   } = useTrackerContext()
   const { logOption } = useTimerSettings()
+  const isReady = useTimeEntryStore((state) => state.isReady)
 
   return (
     <div
@@ -2017,8 +2018,11 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                   ? 'h-8 w-8'
                   : 'h-10 w-10',
             )}
+            disabled={!isReady}
             onClick={handleStart}
-            title="Iniciar cronômetro ao vivo"
+            title={
+              isReady ? 'Iniciar cronômetro ao vivo' : 'Carregando timer...'
+            }
             data-testid="timerbar-start-btn"
           >
             <Play
@@ -2050,8 +2054,11 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                     ? 'h-8 w-[25px]'
                     : 'h-10 w-[31px]',
               )}
+              disabled={!isReady}
               onClick={handleStart}
-              title="Iniciar cronômetro ao vivo"
+              title={
+                isReady ? 'Iniciar cronômetro ao vivo' : 'Carregando timer...'
+              }
               data-testid="timerbar-start-btn"
             >
               <Play
@@ -2076,6 +2083,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                     ? 'h-8 w-[8px]'
                     : 'h-10 w-[10px]',
               )}
+              disabled={!isReady}
               onClick={handleDirectLog}
               title="Apontamento Manual"
             >
@@ -2113,8 +2121,11 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                     ? 'h-8 w-[25px]'
                     : 'h-10 w-[31px]',
               )}
+              disabled={!isReady}
               onClick={handleStart}
-              title="Iniciar cronômetro ao vivo"
+              title={
+                isReady ? 'Iniciar cronômetro ao vivo' : 'Carregando timer...'
+              }
               data-testid="timerbar-start-btn"
             >
               <Play
@@ -2165,6 +2176,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                 <Button
                   variant="ghost"
                   className="h-8 justify-start text-xs"
+                  disabled={!isReady}
                   onClick={handleStart}
                 >
                   <LucideIcons.Hourglass className="mr-2 h-3.5 w-3.5 opacity-70" />
@@ -2174,6 +2186,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                 <Button
                   variant="ghost"
                   className="h-8 justify-start text-xs"
+                  disabled={!isReady}
                   onClick={handleDirectLog}
                 >
                   <LucideIcons.List className="mr-2 h-3.5 w-3.5 opacity-70" />
@@ -2207,6 +2220,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                   ? 'h-8 w-8'
                   : 'h-10 w-10',
             )}
+            disabled={!isReady}
             onClick={isRunning ? handlePause : handleStart}
             data-testid={
               isRunning ? 'timerbar-pause-btn' : 'timerbar-start-btn'
@@ -2250,6 +2264,7 @@ UltimateTimeTracker.ActionsBlock = function ActionsBlock() {
                   ? 'h-6 w-6 opacity-90 hover:opacity-100'
                   : 'h-10 w-10 rounded-lg',
             )}
+            disabled={!isReady}
             onClick={handleStop}
             data-testid="timerbar-stop-btn"
           >

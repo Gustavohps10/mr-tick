@@ -9,7 +9,7 @@ const ipcClient: IHostBridge = {
   tasks: window.api.tasks,
   timeEntries: window.api.timeEntries,
   metadata: window.api.metadata,
-  tokens: window.api.tokens,
+  vault: window.api.vault,
   headers: window.api.headers,
   system: window.api.system,
   updater: window.api.updater,

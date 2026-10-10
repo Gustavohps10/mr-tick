@@ -5,6 +5,8 @@ description: Como integrar agendas externas (Google Calendar, Outlook) para sinc
 
 # Calendars (Agendas & Reuniões)
 
+> Este exemplo de categoria é conceitual e usa contratos antigos. Não copie suas APIs como referência do SDK atual; consulte [Vault e Eventos](/docs/apis/vault-and-events) e os contratos exportados por `@mr-tick/sdk`.
+
 Os addons da categoria **Calendars** conectam o Mr-tick a provedores de agenda como **Google Calendar**, **Microsoft Outlook / 365** e calendários baseados em **iCal**.
 
 Essa integração permite que os compromissos diários apareçam diretamente na visualização de agenda do Mr-tick, possibilitando que o usuário transforme reuniões passadas em apontamentos de horas reais com um simples clique.
@@ -44,6 +46,7 @@ main: dist/index.js
 
 ### 2. `src/index.ts`
 ```typescript
+import { AppError, Either } from '@mr-tick/sdk'
 import type { IAddon, AddonContext } from '@mr-tick/sdk'
 
 export interface CalendarEventDTO {
@@ -72,7 +75,7 @@ export default class GoogleCalendarAddon implements IAddon {
   public activate(context: AddonContext): void {
     this.context = context
 
-    context.settings.register([
+    context.contributions.settings.register([
       {
         id: 'general',
         label: 'Geral',
@@ -103,11 +106,15 @@ export default class GoogleCalendarAddon implements IAddon {
   }
 
   // Busca os eventos do dia especificado
-  public async fetchDayEvents(targetDate: Date): Promise<CalendarEventDTO[]> {
-    const accessToken = await this.context?.storage.get('accessToken')
-    if (!accessToken) {
-      throw new Error('Usuário não autenticado no Google Calendar.')
-    }
+  public async fetchDayEvents(targetDate: Date, workspaceId: string): Promise<Either<AppError, CalendarEventDTO[]>> {
+    if (this.context === null) return Either.failure(AppError.Internal('ADDON_NOT_ACTIVE'))
+    const storedToken = await this.context.host.vault.get(
+      { kind: 'workspace', workspaceId },
+      'accessToken',
+    )
+    if (storedToken.isFailure()) return storedToken.forwardFailure()
+    const accessToken = storedToken.success
+    if (accessToken === null) return Either.failure(AppError.Unauthorized('GOOGLE_CALENDAR_AUTH_REQUIRED'))
 
     const startOfDay = new Date(targetDate)
     startOfDay.setHours(0, 0, 0, 0)
@@ -129,13 +136,14 @@ export default class GoogleCalendarAddon implements IAddon {
 
     const data: GoogleCalendarApiResponse = await response.json()
 
-    return (data.items || []).map((item: GoogleCalendarApiItem): CalendarEventDTO => ({
+    const events = (data.items || []).map((item: GoogleCalendarApiItem): CalendarEventDTO => ({
       id: item.id,
       title: item.summary || 'Sem título',
       startDate: new Date(item.start.dateTime || item.start.date || targetDate),
       endDate: new Date(item.end.dateTime || item.end.date || targetDate),
       meetLink: item.hangoutLink,
     }))
+    return Either.success(events)
   }
 }
 ```

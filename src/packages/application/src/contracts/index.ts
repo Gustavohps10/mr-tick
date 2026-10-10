@@ -1,3 +1,5 @@
+export * from './addons/vault/IAddonVaultAPI'
+export * from './core'
 export * from './data'
 export * from './facades'
 export * from './host'

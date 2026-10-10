@@ -73,10 +73,10 @@ export default class CyberpunkThemeAddon implements IAddon {
     this.activeContext = context
 
     // 1. Registra o tema no sistema
-    context.themes.register(CYBERPUNK_THEME)
+    context.contributions.themes.register(CYBERPUNK_THEME)
 
     // 2. Registra a tela de configuração com botões de ação
-    context.settings.register([
+    context.contributions.settings.register([
       {
         id: 'general',
         label: 'Geral',
@@ -105,8 +105,8 @@ export default class CyberpunkThemeAddon implements IAddon {
     ])
 
     // 3. Registra os comandos das ações
-    context.commands.register('apply-theme', async (): Promise<AddonActionResponse> => {
-      await context.commands.execute('theme:set', CYBERPUNK_THEME.id)
+    context.contributions.commands.register('apply-theme', async (): Promise<AddonActionResponse> => {
+      await context.contributions.commands.execute('theme:set', CYBERPUNK_THEME.id)
       return {
         isSuccess: true,
         display: {
@@ -116,8 +116,8 @@ export default class CyberpunkThemeAddon implements IAddon {
       }
     })
 
-    context.commands.register('reset-theme', async (): Promise<AddonActionResponse> => {
-      await context.commands.execute('theme:set', '')
+    context.contributions.commands.register('reset-theme', async (): Promise<AddonActionResponse> => {
+      await context.contributions.commands.execute('theme:set', '')
       return {
         isSuccess: true,
         display: {

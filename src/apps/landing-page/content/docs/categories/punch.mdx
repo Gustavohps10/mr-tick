@@ -5,6 +5,8 @@ description: Integração com sistemas de controle de ponto corporativo para reg
 
 # Punch (Ponto Eletrônico & Jornada)
 
+> Este exemplo de categoria é conceitual e usa contratos antigos. Não copie suas APIs como referência do SDK atual; consulte [Vault e Eventos](/docs/apis/vault-and-events) e os contratos exportados por `@mr-tick/sdk`.
+
 Os addons da categoria **Punch** integram o Mr-tick a sistemas formais de **Bate-Ponto e Controle de Ponto Eletrônico** (como Pontomais, Ahgora, Factorial, Secullum e Kairos).
 
 A finalidade do Punch é permitir que o usuário bata o ponto diretamente pelo Mr-tick e realize a **conferência automática de jornada** — comparando o saldo de horas trabalhadas do dia com o total de horas alocadas em tarefas e projetos.
@@ -33,6 +35,7 @@ main: dist/index.js
 
 ### 2. `src/index.ts`
 ```typescript
+import { AppError, Either } from '@mr-tick/sdk'
 import type { IAddon, AddonContext } from '@mr-tick/sdk'
 
 export interface PunchRecordDTO {
@@ -48,7 +51,7 @@ export default class PontoCorporativoAddon implements IAddon {
   public activate(context: AddonContext): void {
     this.context = context
 
-    context.settings.register([
+    context.contributions.settings.register([
       {
         id: 'general',
         label: 'Geral',
@@ -88,9 +91,20 @@ export default class PontoCorporativoAddon implements IAddon {
   // Executa uma nova batida de ponto
   public async registerPunch(
     type: 'in' | 'out' | 'break_start' | 'break_end',
-  ): Promise<PunchRecordDTO> {
-    const apiUrl = await this.context?.storage.get('pontoApiUrl')
-    const token = await this.context?.storage.get('pontoToken')
+    workspaceId: string,
+  ): Promise<Either<AppError, PunchRecordDTO>> {
+    if (this.context === null) return Either.failure(AppError.Internal('ADDON_NOT_ACTIVE'))
+    const storedUrl = await this.context.host.vault.get(
+      { kind: 'workspace', workspaceId }, 'pontoApiUrl',
+    )
+    if (storedUrl.isFailure()) return storedUrl.forwardFailure()
+    const storedToken = await this.context.host.vault.get(
+      { kind: 'workspace', workspaceId }, 'pontoToken',
+    )
+    if (storedToken.isFailure()) return storedToken.forwardFailure()
+    const apiUrl = storedUrl.success
+    const token = storedToken.success
+    if (apiUrl === null || token === null) return Either.failure(AppError.ValidationError('PUNCH_CONFIG_REQUIRED'))
 
     const response = await fetch(`${apiUrl}/punches`, {
       method: 'POST',
@@ -104,25 +118,21 @@ export default class PontoCorporativoAddon implements IAddon {
       }),
     })
 
-    if (!response.ok) {
-      throw new Error(
-        `Falha ao registrar batida de ponto: HTTP ${response.status}`,
-      )
-    }
+    if (!response.ok) return Either.failure(AppError.Http(response.status, await response.text()))
 
     const data: { id: string; timestamp: string } = await response.json()
 
-    await this.context?.notifications.success(
+    await this.context?.host.notifications.success(
       `Batida de ponto (${type}) realizada com sucesso!`,
       'Ponto Registrado',
     )
 
-    return {
+    return Either.success({
       id: data.id,
       timestamp: new Date(data.timestamp),
       type,
       source: 'Mr-tick Desktop',
-    }
+    })
   }
 }
 ```

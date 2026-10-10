@@ -6,6 +6,7 @@ import { z } from 'zod'
 
 import type { IHostBridge } from '../../../packages/application/src/contracts/host/IHostBridge'
 import { expect, test } from './fixtures/electron-fixture'
+import { fakeSyncScope, localSyncEntries } from './fixtures/fake-sync-observer'
 
 declare global {
   interface Window {
@@ -17,6 +18,7 @@ const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 const diagnosticsSchema = z.object({
   timeEntryCount: z.number(),
+  remoteIds: z.array(z.string()),
   canonicalReadFailures: z.number(),
   retainedCanonicalReads: z.number(),
   canonicalReadPaused: z.boolean(),
@@ -338,39 +340,106 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
     page,
     electronApp,
   }) => {
-    await openWorkspace(page)
-    const rows = page.getByTestId('time-entry-actions-trigger')
-    const count = await rows.count()
-    const before = await diagnostics(page)
-    await command(page, 'fake-db:pause-next-time-entry-delete')
-    await rows.first().click()
-    await page.getByTestId('time-entry-delete-btn').click()
-    await expect(rows).toHaveCount(count - 1)
+    await page
+      .locator(`nav a[href="#/workspaces/${fakeSyncScope.workspaceId}"]`)
+      .click()
+    await expect(
+      page.getByTestId('time-entry-actions-trigger').first(),
+    ).toBeVisible({
+      timeout: 30000,
+    })
+    const created = z
+      .object({
+        created: z.object({
+          id: z.string(),
+          comments: z.string(),
+          correlationId: z.undefined().optional(),
+        }),
+      })
+      .parse(await command(page, 'fake-db:inject-today')).created
+    await page.getByTestId('sync-status-indicator').click()
+    await page.getByTestId('sync-all-button').click()
+    await page.keyboard.press('Escape')
+    const targetRow = page.locator('tr').filter({
+      has: page.getByText(created.comments, { exact: true }),
+    })
+    await expect(targetRow).toHaveCount(1)
+    const localId = await targetRow.getAttribute('data-entry-id')
+    if (!localId) return expect.fail('IMPORTED_DELETE_ENTRY_ID_MISSING')
     await expect
-      .poll(async () => (await diagnostics(page)).deletePaused)
+      .poll(async () =>
+        (await localSyncEntries(page)).some((entry) => entry.id === localId),
+      )
       .toBe(true)
+    const before = await diagnostics(page)
+    expect(
+      before.entries.filter((entry) => entry.comments === created.comments),
+    ).toEqual([{ id: created.id, comments: created.comments }])
+    expect(before.remoteIds).toContain(created.id)
+    const expectedRemoteIds = before.remoteIds
+      .filter((id) => id !== created.id)
+      .sort()
     try {
+      await command(page, 'fake-db:pause-next-time-entry-delete')
+      await targetRow.getByTestId('time-entry-actions-trigger').click()
+      await page.getByTestId('time-entry-delete-btn').click()
+      await expect(targetRow).toHaveCount(0)
+      await expect
+        .poll(async () =>
+          (await localSyncEntries(page)).some((entry) => entry.id === localId),
+        )
+        .toBe(false)
+      await expect
+        .poll(async () => (await diagnostics(page)).deletePaused)
+        .toBe(true)
       const { second } = await openDuplicateWindow(electronApp)
       await second.waitForLoadState('domcontentloaded')
-      await openWorkspace(second)
+      await second
+        .locator(`nav a[href="#/workspaces/${fakeSyncScope.workspaceId}"]`)
+        .click()
       await expect(
         second.getByTestId('time-entry-actions-trigger').first(),
-      ).toBeVisible()
+      ).toBeVisible({
+        timeout: 30000,
+      })
       await expect
         .poll(async () => (await diagnostics(page)).pullAttempts)
         .toBeGreaterThan(before.pullAttempts)
       await expect
         .poll(async () => (await diagnostics(page)).tombstonePulls)
-        .toBeGreaterThan(0)
+        .toBeGreaterThan(before.tombstonePulls)
       await expect(
-        second.getByTestId('time-entry-actions-trigger'),
-      ).toHaveCount(count - 1)
+        second.locator(
+          `[data-testid="time-entry-row"][data-entry-id="${localId}"]`,
+        ),
+      ).toHaveCount(0)
+      await expect(
+        second.getByText(created.comments, { exact: true }),
+      ).toHaveCount(0)
+      await expect
+        .poll(async () =>
+          (await localSyncEntries(second)).some(
+            (entry) =>
+              entry.id === localId || entry.comments === created.comments,
+          ),
+        )
+        .toBe(false)
+      const paused = await diagnostics(page)
+      expect(paused.remoteIds.sort()).toEqual([...before.remoteIds].sort())
+      expect(paused.deleteAttempts).toBe(before.deleteAttempts + 1)
     } finally {
       await command(page, 'fake-db:release-paused-time-entry-delete')
     }
     await expect
-      .poll(async () => (await diagnostics(page)).timeEntryCount)
-      .toBe(before.timeEntryCount - 1)
+      .poll(async () => (await diagnostics(page)).remoteIds.sort())
+      .toEqual(expectedRemoteIds)
+    const after = await diagnostics(page)
+    // This scenario checks the deletion effect; transport retries are not exactly-once.
+    expect(after.deleteAttempts).toBeGreaterThanOrEqual(
+      before.deleteAttempts + 1,
+    )
+    expect(after.createAttempts).toBe(before.createAttempts)
+    expect(after.updateAttempts).toBe(before.updateAttempts)
   })
 
   test('provedor com atualização condicional protege edição externa entre GET e PUT', async ({

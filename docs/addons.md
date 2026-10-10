@@ -23,3 +23,10 @@ A documentação completa para desenvolvedores de addons, tutoriais passo a pass
 - **DataSources:** [`src/apps/landing-page/content/docs/categories/datasources.mdx`](../src/apps/landing-page/content/docs/categories/datasources.mdx)
 - **Watchers:** [`src/apps/landing-page/content/docs/categories/watchers.mdx`](../src/apps/landing-page/content/docs/categories/watchers.mdx)
 - **Plugin de Referência Oficial:** [mr-tick-redmine](https://github.com/Gustavohps10/mr-tick-redmine)
+
+## Contratos atuais do SDK
+
+- [Timer, apontamentos e sugestões locais](sdk-local-runtime.md)
+- [Consultas do Core, escopo e lifecycle](sdk-core-capabilities.md)
+
+Estas referências descrevem o comportamento implementado. Exemplos conceituais de categorias não ampliam as APIs garantidas pelo SDK.

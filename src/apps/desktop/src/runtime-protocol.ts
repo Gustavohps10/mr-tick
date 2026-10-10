@@ -1,4 +1,6 @@
 import type {
+  CoreCacheQuery,
+  CoreCacheResponse,
   LocalPersistenceCommand,
   LocalPersistenceResponse,
   LocalRuntimeCommand,
@@ -34,3 +36,6 @@ export interface RuntimeCommitPacket {
   command: LocalRuntimeCommand
   result: LocalRuntimeResult
 }
+
+export type RuntimeCorePacket = RuntimeRequestPacket<CoreCacheQuery>
+export type RuntimeCoreReply = RuntimeReplyPacket<CoreCacheResponse>

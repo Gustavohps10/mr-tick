@@ -1,6 +1,8 @@
 import { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
 
 import { TimeEntryPullCheckpointDTO, TimeEntryPullPageDTO } from '@/dtos'
+
+import type { AddonVaultScope } from '../addons/vault/IAddonVaultAPI'
 export type { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
 export type {
   AddonInstallerViewModel,
@@ -152,7 +154,7 @@ export interface IMetadataAPI {
   ) => Promise<ViewModel<MetadataViewModel>>
 }
 
-export interface ITimeEntriesAPI {
+export interface IHostTimeEntriesAPI {
   listTimeEntries: (
     payload: IRequest<{
       workspaceId: string
@@ -181,7 +183,7 @@ export interface IHeadersAPI {
   getDefaultHeaders(): IHeaders
 }
 
-export interface ITokenStorageAPI {
+export interface ICredentialsVaultAPI {
   saveToken(
     request: IRequest<{
       service: string
@@ -434,11 +436,12 @@ export interface IAddonsAPI {
     }>,
   ): Promise<ViewModel<MappingFieldDefinition[]>>
   getSettings(
-    payload: IRequest<{ addonId: string }>,
+    payload: IRequest<{ addonId: string; scope: AddonVaultScope }>,
   ): Promise<ViewModel<Record<string, string | number | boolean | null>>>
   saveSettings(
     payload: IRequest<{
       addonId: string
+      scope: AddonVaultScope
       settings: Record<string, string | number | boolean | null>
     }>,
   ): Promise<ViewModel<void>>
@@ -528,9 +531,9 @@ export interface IHostBridge {
   workspaces: IWorkspacesAPI
   session: ISessionAPI
   tasks: ITaskAPI
-  timeEntries: ITimeEntriesAPI
+  timeEntries: IHostTimeEntriesAPI
   metadata: IMetadataAPI
-  tokens: ITokenStorageAPI
+  vault: ICredentialsVaultAPI
   headers: IHeadersAPI
   system: ISystemAPI
   updater: IUpdaterAPI

@@ -3,7 +3,7 @@ import { AppError, Either } from '@mr-tick/shared/helpers'
 import {
   ConnectDataSourceInput,
   IConnectDataSourceUseCase,
-  ICredentialsStorage,
+  ICredentialsVault,
   IDataSourceResolver,
   IWorkspacesRepository,
 } from '@/contracts'
@@ -11,7 +11,7 @@ import { ConnectionResultDTO } from '@/dtos/ConnectionResultDTO'
 
 export class ConnectDataSourceService implements IConnectDataSourceUseCase {
   constructor(
-    private readonly credentialsStorage: ICredentialsStorage,
+    private readonly credentialsVault: ICredentialsVault,
     private readonly workspacesRepository: IWorkspacesRepository,
     private readonly dataSourceResolver: IDataSourceResolver,
   ) {}
@@ -22,7 +22,7 @@ export class ConnectDataSourceService implements IConnectDataSourceUseCase {
   >(
     input: ConnectDataSourceInput<Credentials, Configuration>,
   ): Promise<Either<AppError, ConnectionResultDTO>> {
-    const storageKey = `workspace-connection-${input.workspaceId}-${input.connectionInstanceId}`
+    const vaultKey = `workspace-connection-${input.workspaceId}-${input.connectionInstanceId}`
 
     try {
       const workspace = await this.workspacesRepository.findById(
@@ -53,9 +53,9 @@ export class ConnectDataSourceService implements IConnectDataSourceUseCase {
 
       const { member, credentials } = authResult.success
 
-      await this.credentialsStorage.saveToken(
+      await this.credentialsVault.saveToken(
         'mr-tick',
-        storageKey,
+        vaultKey,
         JSON.stringify({
           member,
           credentials,
@@ -74,7 +74,7 @@ export class ConnectDataSourceService implements IConnectDataSourceUseCase {
       )
 
       if (connectResult.isFailure()) {
-        await this.credentialsStorage.deleteToken('mr-tick', storageKey)
+        await this.credentialsVault.deleteToken('mr-tick', vaultKey)
         return connectResult.forwardFailure()
       }
 
@@ -84,7 +84,7 @@ export class ConnectDataSourceService implements IConnectDataSourceUseCase {
         member,
       })
     } catch {
-      await this.credentialsStorage.deleteToken('mr-tick', storageKey)
+      await this.credentialsVault.deleteToken('mr-tick', vaultKey)
 
       return Either.failure(AppError.Internal('ERRO_AO_CONECTAR_DATA_SOURCE'))
     }

@@ -9,7 +9,7 @@ import type {
 } from '@mr-tick/application'
 import type { AppError, Either } from '@mr-tick/shared/helpers'
 
-import type { AddonSettingsSchema } from './contracts/settings'
+import type { AddonSettingsSchema } from './contracts/contributions/settings'
 
 export type { DataSourceContext, MappingFieldDefinition }
 

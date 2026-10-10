@@ -1,6 +1,5 @@
 export * from './AddonConfig'
 export * from './contracts'
-export type { IHttpClient, IHttpClientConfig } from './contracts/IHttpClient'
 export {
   DataSourceContext,
   IDataSource,

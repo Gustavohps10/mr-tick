@@ -1,11 +1,18 @@
 import { expect, test } from './fixtures/electron-fixture'
+import {
+  fakeSyncDiagnostics,
+  fakeSyncScope,
+  localSyncEntries,
+} from './fixtures/fake-sync-observer'
 
 test.describe('E2E - Concorrência Pull vs Edição Local (STR-03)', () => {
   test('deve manter dados digitados pelo usuário durante background pull e salvar com sucesso (STR-03)', async ({
     page,
-  }) => {
+  }, testInfo) => {
     // 1. Navega para o primeiro workspace configurado
-    const workspaceLink = page.locator('nav a[href*="/workspaces/"]').first()
+    const workspaceLink = page.locator(
+      `nav a[href="#/workspaces/${fakeSyncScope.workspaceId}"]`,
+    )
     await expect(workspaceLink).toBeVisible({ timeout: 15000 })
     await workspaceLink.click()
 
@@ -20,20 +27,31 @@ test.describe('E2E - Concorrência Pull vs Edição Local (STR-03)', () => {
       '[data-testid="time-entry-actions-trigger"]',
     )
     await expect(actionTriggers.first()).toBeVisible({ timeout: 15000 })
+    const entryId = await actionTriggers
+      .first()
+      .evaluate((element) =>
+        element.closest('[data-entry-id]')?.getAttribute('data-entry-id'),
+      )
+    if (!entryId) return expect.fail('EDITED_ENTRY_ID_MISSING')
+    const editedRow = page.locator(
+      `[data-testid="time-entry-row"][data-entry-id="${entryId}"]`,
+    )
+    const before = await fakeSyncDiagnostics(page)
+    const initialLocalEntries = await localSyncEntries(page)
     const editBtn = page.locator('[data-testid="time-entry-edit-btn"]')
     await expect(async () => {
-      await actionTriggers.first().scrollIntoViewIfNeeded()
-      await actionTriggers.first().click()
+      await editedRow
+        .getByTestId('time-entry-actions-trigger')
+        .scrollIntoViewIfNeeded()
+      await editedRow.getByTestId('time-entry-actions-trigger').click()
       await expect(editBtn).toBeVisible({ timeout: 2000 })
     }).toPass({ timeout: 15000 })
     await editBtn.click()
 
     // 4. Digita um comentário na linha em edição SEM salvar ainda
-    const commentInput = page
-      .locator('[data-testid="time-entry-comment-input"]')
-      .first()
+    const commentInput = editedRow.getByTestId('time-entry-comment-input')
     await expect(commentInput).toBeVisible()
-    const concurrentComment = 'Edição Concorrente Local E2E'
+    const concurrentComment = `Edição Concorrente Local E2E ${testInfo.testId}`
     await commentInput.fill(concurrentComment)
 
     // 5. Simula atualização concorrente no servidor (injetando novo registro via Addon Fake DB)
@@ -65,11 +83,19 @@ test.describe('E2E - Concorrência Pull vs Edição Local (STR-03)', () => {
     // Aguarda o sync assentar de volta para "Sincronizado"
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
+    // Prove that a real pull delivered the injected remote record while editing.
+    await expect
+      .poll(async () => (await fakeSyncDiagnostics(page)).pullAttempts)
+      .toBeGreaterThan(before.pullAttempts)
+    await expect
+      .poll(async () => (await localSyncEntries(page)).length)
+      .toBe(initialLocalEntries.length + 1)
+
     // 7. Validação crucial: o input de comentário AINDA CONTÉM o texto digitado pelo usuário
     await expect(commentInput).toHaveValue(concurrentComment)
 
     // 8. Clica em Salvar na linha
-    const saveBtn = page.locator('[data-testid="time-entry-save-btn"]').first()
+    const saveBtn = editedRow.getByTestId('time-entry-save-btn')
     await expect(saveBtn).toBeVisible()
     await saveBtn.click()
 
@@ -81,10 +107,25 @@ test.describe('E2E - Concorrência Pull vs Edição Local (STR-03)', () => {
       { timeout: 10000 },
     )
 
-    // 10. Valida que a linha ficou marcada com pending_push para envio
-    const pendingPushStatus = page.locator(
-      '[data-testid="sync-status-pending-push"]',
+    const saved = (await localSyncEntries(page)).find(
+      (entry) => entry.id === entryId,
     )
-    await expect(pendingPushStatus.first()).toBeVisible({ timeout: 10000 })
+    expect(saved?.comments).toBe(concurrentComment)
+
+    // pending_push is transient when the provider is available; assert convergence.
+    await expect
+      .poll(
+        async () =>
+          (await fakeSyncDiagnostics(page)).entries.filter(
+            (entry) => entry.comments === concurrentComment,
+          ).length,
+        { timeout: 45000 },
+      )
+      .toBe(1)
+    const after = await fakeSyncDiagnostics(page)
+    expect(after.createAttempts).toBe(before.createAttempts)
+    expect(after.deleteAttempts).toBe(before.deleteAttempts)
+    expect(after.updateAttempts).toBeGreaterThan(before.updateAttempts)
+    expect(after.entries).toHaveLength(before.entries.length + 1)
   })
 })

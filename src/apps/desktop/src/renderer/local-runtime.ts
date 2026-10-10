@@ -3,6 +3,7 @@ import { isWorkspaceScoped } from '@mr-tick/shared/helpers'
 import { createBrowserLocalRuntime } from '@mr-tick/ui/local-runtime'
 
 import type {
+  RuntimeCorePacket,
   RuntimePersistencePacket,
   RuntimeRequestPacket,
   RuntimeSyncPacket,
@@ -74,20 +75,8 @@ export async function startLocalRuntimeRenderer(): Promise<void> {
     'local-runtime:execute-persistence',
     async (event, packet: RuntimePersistencePacket) => {
       if (packet.generation !== generation) return
-      console.log(
-        '[EXECUTOR execute-persistence]',
-        JSON.stringify({
-          action: packet.input.action,
-          entryId: (packet.input as any).entryId,
-          changes: (packet.input as any).changes,
-        }),
-      )
       const response = await executeSafely(() =>
         owner.requestInternal(packet.input),
-      )
-      console.log(
-        '[EXECUTOR execute-persistence result]',
-        JSON.stringify(response),
       )
       window.electron.ipcRenderer.send('local-runtime:persistence-reply', {
         requestId: packet.requestId,
@@ -104,6 +93,18 @@ export async function startLocalRuntimeRenderer(): Promise<void> {
         owner.requestSync(packet.input),
       )
       window.electron.ipcRenderer.send('local-runtime:sync-reply', {
+        requestId: packet.requestId,
+        generation,
+        response,
+      })
+    },
+  )
+  window.electron.ipcRenderer.on(
+    'local-runtime:execute-core',
+    async (event, packet: RuntimeCorePacket) => {
+      if (packet.generation !== generation) return
+      const response = await executeSafely(() => owner.queryCore(packet.input))
+      window.electron.ipcRenderer.send('local-runtime:core-reply', {
         requestId: packet.requestId,
         generation,
         response,

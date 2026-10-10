@@ -53,7 +53,7 @@ Exemplo de criação, usando IDs obtidos do contexto/tarefa selecionados:
 
 ```ts
 const operation = { commandId: crypto.randomUUID(), entryId: crypto.randomUUID() }
-const result = await context.timeEntries.create(workspaceId, {
+const result = await context.core.timeEntries.create(workspaceId, {
   connectionInstanceId,
   dataSourceId,
   taskId,
@@ -67,7 +67,7 @@ Guardar operation junto à intenção antes da chamada. Se a resposta for perdid
 
 ```ts
 const pauseOperation = { commandId: crypto.randomUUID(), entryId: activeEntry.entryId }
-const paused = await context.timer.pause(workspaceId, pauseOperation)
+const paused = await context.core.timer.pause(workspaceId, pauseOperation)
 ```
 
 start recebe workspaceId, LocalTimerInput e operation; pause/resume/stop recebem workspaceId e operation. UI usa localRuntime e a fachada interna de persistência quando precisa preservar snapshot completo. bridge.timer.start/pause/resume/stop não são o caminho de operações de negócio novo.

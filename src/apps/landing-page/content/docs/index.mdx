@@ -30,7 +30,7 @@ O ecossistema do Mr-tick é composto por camadas com responsabilidades estritas 
 ┌──────────────────────────▼─────────────────────────────┐
 │                   Mr-tick SDK Oficial                   │
 │                  (@mr-tick/sdk)                     │
-│    (IAddon, AddonContext, IOAuthAPI, Storage, Events)  │
+│    (IAddon, AddonContext, IAddonOAuthAPI, Vault, Events)  │
 └──────────────────────────┬─────────────────────────────┘
                            │
         ┌──────────────────┼──────────────────┐
@@ -64,6 +64,6 @@ Uma ponte universal para fluxos web (como OAuth 2.0). A Landing Page intermediá
 ## 🛡️ Princípios Fundamentais de Segurança
 
 1. **Zero Secrets**: Addons rodam como clientes públicos em ambiente desktop. Nenhuma chave secreta (`CLIENT_SECRET`) é embutida ou exigida no código do addon. Todo fluxo de autenticação utiliza a especificação **OAuth 2.0 com PKCE**.
-2. **Isolamento por Workspace (Multi-Tenant)**: Todas as credenciais, tokens de acesso e configurações persistidas via `context.storage` são isoladas estritamente pelo `workspaceId` ativo.
+2. **Isolamento por Workspace (Multi-Tenant)**: Todas as credenciais, tokens de acesso e configurações persistidas via `context.host.vault` são isoladas pelo addon e pelo escopo explícito informado na chamada, sem depender do workspace ativo.
 3. **Imutabilidade e Prevenção de Conflitos**: O motor de sincronização utiliza _Optimistic Concurrency Control_ com `assumedMasterState`, detectando alterações concorrentes sem sobrescrever dados silenciosamente.
 4. **Comunicação Segura por Eventos**: Addons reagem a eventos do sistema operacional e do cronômetro (`onTimerStart`, `onTimerStop`, `onIdleDetected`) de forma assíncrona e não bloqueante.

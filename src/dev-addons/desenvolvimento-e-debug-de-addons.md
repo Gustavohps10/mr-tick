@@ -138,10 +138,10 @@ export default class MeuAddon implements IAddon {
 
   activate(context: AddonContext): void {
     this.context = context
-    console.log(`[MeuAddon] Ativado com ID: ${context.addonId}`)
+    console.log('[MeuAddon] Ativado')
 
-    // 1. Registre configurações via context.settings:
-    context.settings.register([
+    // 1. Registre configurações via context.contributions.settings:
+    context.contributions.settings.register([
       {
         id: 'general',
         label: 'Geral',
@@ -161,8 +161,8 @@ export default class MeuAddon implements IAddon {
       },
     ])
 
-    // 2. Registre ações ou botões de tela via context.commands:
-    context.commands.register('minha-acao', async (): Promise<AddonActionResponse> => {
+    // 2. Registre ações ou botões de tela via context.contributions.commands:
+    context.contributions.commands.register('minha-acao', async (): Promise<AddonActionResponse> => {
       console.log('[MeuAddon] Executando minha-acao')
       return {
         isSuccess: true,
@@ -238,7 +238,7 @@ export class MeuDataSource implements IDataSource {
   }
 }
 ```
-> Registre o DataSource durante a ativação com `context.dataSources.register(new MeuDataSource())`. O formulário de nova conexão no wizard do Mr-tick usará `getConnectionSchema()` com os escopos declarativos (`scope: 'credential' | 'configuration'`).
+> Registre o DataSource durante a ativação com `context.contributions.dataSources.register(new MeuDataSource())`. O formulário de nova conexão no wizard do Mr-tick usará `getConnectionSchema()` com os escopos declarativos (`scope: 'credential' | 'configuration'`).
 
 ---
 

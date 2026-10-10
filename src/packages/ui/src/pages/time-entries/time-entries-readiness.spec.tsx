@@ -70,6 +70,10 @@ vi.mock('react-router-dom', async () => {
 function createMockTimeEntryStore(): StoreApi<TimeEntryStore> {
   return createStore<TimeEntryStore>(() => ({
     active: null,
+    isReady: true,
+    beginProjection: () => {},
+    observeProjection: () => {},
+    endProjection: () => {},
     history: [],
     setActive: vi.fn(),
     createNewTimeEntry: vi.fn(),

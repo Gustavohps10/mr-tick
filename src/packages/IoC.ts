@@ -10,7 +10,7 @@ import {
   GetCurrentUserService,
   GetWorkspaceService,
   IAddonReloader,
-  ICredentialsStorage,
+  ICredentialsVault,
   IDataSourceResolver,
   IFileStorage,
   ImportAddonService,
@@ -80,7 +80,7 @@ type Class<T = unknown> = new (...args: any[]) => T
  */
 export interface PlatformDependencies {
   jobEmitter: IEventEmitter<IJobEvents>
-  credentialsStorage: ICredentialsStorage
+  credentialsVault: ICredentialsVault
   workspacesRepository: IWorkspacesRepository
   dataSourceResolver: IDataSourceResolver
   fileStorage: IFileStorage
@@ -108,7 +108,7 @@ export class ContainerBuilder {
   public addPlatformDependencies(deps: PlatformDependencies): this {
     const registrations: Record<string, any> = {
       jobEmitter: asValue(deps.jobEmitter),
-      credentialsStorage: asValue(deps.credentialsStorage),
+      credentialsVault: asValue(deps.credentialsVault),
       workspacesRepository: asValue(deps.workspacesRepository),
       dataSourceResolver: asValue(deps.dataSourceResolver),
       fileStorage: asValue(deps.fileStorage),

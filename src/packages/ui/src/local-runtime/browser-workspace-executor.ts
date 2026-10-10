@@ -1,4 +1,7 @@
 import type {
+  CoreCacheQuery,
+  CoreCacheValue,
+  CoreTask,
   ILocalWorkspaceExecutor,
   LocalPersistenceCommand,
   LocalPersistenceResponse,
@@ -13,8 +16,10 @@ import {
   toPublicRecord,
 } from '@mr-tick/application/local-runtime'
 import { AppError, Either } from '@mr-tick/shared/helpers'
+import type { MangoQuery } from 'rxdb'
 import type { StoreApi } from 'zustand'
 
+import type { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import type { SyncStore } from '@/stores/sync-store/types'
 
 import {
@@ -36,6 +41,107 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
       before: import('@mr-tick/application').LocalTimeEntrySnapshot | null,
     ) => Promise<Either<AppError, BrowserCommand>>,
   ) {}
+
+  queryCore(
+    input: CoreCacheQuery,
+    dataSourceId: string,
+  ): Promise<Either<AppError, CoreCacheValue>> {
+    return this.serial(async () => {
+      try {
+        const db = this.store.getState().db
+        if (db === null)
+          return Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE'))
+        if (input.action === 'metadata') {
+          const documents = await db.metadata
+            .find({
+              selector: {
+                connectionInstanceId: input.connectionInstanceId,
+                dataSourceId,
+              },
+              limit: 2,
+            })
+            .exec()
+          if (documents.length === 0)
+            return Either.failure(
+              AppError.Http(503, 'CORE_METADATA_UNAVAILABLE'),
+            )
+          if (documents.length !== 1)
+            return Either.failure(AppError.Http(409, 'CORE_METADATA_AMBIGUOUS'))
+          for (const document of documents) {
+            const record = document.toMutableJSON()
+            return Either.success({
+              kind: 'metadata',
+              metadata: {
+                workspaceId: input.workspaceId,
+                connectionInstanceId: input.connectionInstanceId,
+                dataSourceId,
+                lastPulledAt: record.lastPulledAt,
+                values: {
+                  activities: record.activities,
+                  taskStatuses: record.taskStatuses,
+                  taskPriorities: record.taskPriorities,
+                  trackStatuses: record.trackStatuses,
+                  participantRoles: record.participantRoles,
+                  estimationTypes: record.estimationTypes,
+                },
+              },
+            })
+          }
+        }
+        if (input.action === 'task') {
+          const document = await db.tasks
+            .findOne({
+              selector: {
+                connectionInstanceId: input.connectionInstanceId,
+                sourceId: input.taskId,
+                dataSourceId,
+              },
+            })
+            .exec()
+          if (document === null)
+            return Either.failure(AppError.NotFound('TASK_NOT_FOUND'))
+          return Either.success({
+            kind: 'task',
+            task: toCoreTask(input.workspaceId, document.toMutableJSON()),
+          })
+        }
+        if (input.action !== 'tasks')
+          return Either.failure(AppError.Internal('CORE_QUERY_INVALID'))
+        const query: MangoQuery<SyncTaskRxDBDTO> = {
+          selector: {
+            connectionInstanceId: input.connectionInstanceId,
+            dataSourceId,
+          },
+          sort: [{ sourceId: 'asc' }],
+          limit: input.limit + 1,
+        }
+        if (input.search !== undefined && input.search.length > 0) {
+          const literal = input.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          query.selector = {
+            ...query.selector,
+            $or: [
+              { title: { $regex: literal, $options: 'i' } },
+              { sourceId: { $regex: literal, $options: 'i' } },
+            ],
+          }
+        }
+        const documents = await db.tasks.find(query).exec()
+        return Either.success({
+          kind: 'tasks',
+          tasks: documents
+            .slice(0, input.limit)
+            .map((document) =>
+              toCoreTask(input.workspaceId, document.toMutableJSON()),
+            ),
+          hasMore: documents.length > input.limit,
+        })
+      } catch (error) {
+        if (error instanceof Error)
+          return Either.failure(AppError.Internal(error.message))
+        return Either.failure(AppError.Internal('CORE_CACHE_READ_FAILED'))
+      }
+    })
+  }
 
   execute(
     input: LocalRuntimeCommand,
@@ -298,4 +404,23 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
     if (stored.isFailure()) return stored.forwardFailure()
     return Either.success(committed)
   }
+}
+
+function toCoreTask(workspaceId: string, record: SyncTaskRxDBDTO): CoreTask {
+  const task: CoreTask = {
+    workspaceId,
+    connectionInstanceId: record.connectionInstanceId,
+    taskId: record.sourceId,
+    dataSourceId: record.dataSourceId,
+    title: record.title,
+    status: { ...record.status },
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  }
+  if (record.description !== undefined && record.description !== null)
+    task.description = record.description
+  if (record.url !== undefined && record.url !== null) task.url = record.url
+  if (record.projectName !== undefined && record.projectName !== null)
+    task.projectName = record.projectName
+  return task
 }

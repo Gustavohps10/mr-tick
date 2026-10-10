@@ -68,7 +68,7 @@ export default class MeuPrimeiroAddon implements IAddon {
     console.log('[MeuPrimeiroAddon] Addon ativado com sucesso!')
 
     // Registrando formulário de configurações dinamicamente com abas e grupos
-    context.settings.register([
+    context.contributions.settings.register([
       {
         id: 'geral',
         label: 'Geral',
@@ -106,29 +106,28 @@ export default class MeuPrimeiroAddon implements IAddon {
     ])
 
     // Registrando comandos e ações disponíveis
-    context.commands.register('testar-conexao', async () => {
-      await context.notifications.success('Conexão testada com sucesso!', 'Mr-tick Addon')
+    context.contributions.commands.register('testar-conexao', async () => {
+      await context.host.notifications.success('Conexão testada com sucesso!', 'Mr-tick Addon')
       return { isSuccess: true }
     })
 
-    // Lendo valores salvos com segurança no storage do Workspace
-    const notificar = (await context.storage.get('notificarEventos')) === 'true'
-
-    if (notificar) {
-      await context.notifications.info('Conectado ao Mr-tick com sucesso!', 'Addon Ativado')
-    }
-
-    // Escutando eventos do cronômetro em tempo real
-    context.events.onTimerStart((data) => {
-      console.log('Timer iniciado para a tarefa:', data.taskId)
+    // O workspace vem do evento; nunca da seleção implícita da UI.
+    context.host.events.on('timer:start', async (data) => {
+      if (data.workspaceId === undefined) return
+      const value = await context.host.vault.get(
+        { kind: 'workspace', workspaceId: data.workspaceId },
+        'notificarEventos',
+      )
+      if (value.isFailure()) return
+      if (value.success !== 'true') return
+      await context.host.notifications.info('Timer iniciado', 'Meu addon')
     })
-
-    context.events.onTimerStop((data) => {
-      console.log('Timer finalizado. Duração:', data.durationSeconds)
+    context.host.events.on('timer:stop', (data) => {
+      console.log('Timer finalizado. Duração:', data.currentSeconds)
     })
   }
 
-  // Ciclo de Vida: Executado ao desativar o plugin ou trocar de Workspace
+  // Ciclo de Vida: Executado ao desativar o addon; troca de workspace não o desativa
   public async deactivate(): Promise<void> {
     console.log('[MeuPrimeiroAddon] Addon desativado. Limpando recursos...')
   }
@@ -137,9 +136,9 @@ export default class MeuPrimeiroAddon implements IAddon {
 
 ---
 
-## 3. Configurações Dinâmicas (`context.settings.register`)
+## 3. Configurações Dinâmicas (`context.contributions.settings.register`)
 
-Ao chamar `context.settings.register(schema)` no método `activate`, seu plugin define formulários de preferências sem precisar escrever uma única linha de interface gráfica (UI). O Mr-tick gera e valida os campos nativamente.
+Ao chamar `context.contributions.settings.register(schema)` no método `activate`, seu plugin define formulários de preferências sem precisar escrever uma única linha de interface gráfica (UI). O Mr-tick gera e valida os campos nativamente.
 
 ### Tipos de Campos Suportados:
 
@@ -158,15 +157,15 @@ Ao ser ativado, o Mr-tick injeta o objeto `AddonContext` contendo todas as APIs 
 
 | Propriedade             | Descrição                                                                         |
 | :---------------------- | :-------------------------------------------------------------------------------- |
-| `context.settings`      | Registro declarativo do schema de formulários e configurações do addon.           |
-| `context.menus`         | Registro de itens no menu lateral (sidebar) ou barra de tempo (timerbar).        |
-| `context.dataSources`   | Registro de fontes de dados externas (Tarefas, Horas, Membros, Metadados).        |
-| `context.commands`      | Registro e execução de comandos universais do Mr-tick.                            |
-| `context.storage`       | Armazenamento chave-valor seguro e isolado por Workspace.                        |
-| `context.events`        | Eventos em tempo real do sistema (início/fim de timer, idle, troca de workspace). |
-| `context.notifications` | Emissão de toasts e notificações no sistema.                                      |
-| `context.timer`         | Leitura e controle do cronômetro ativo.                                           |
-| `context.oauth`         | Fluxo de autenticação OAuth 2.0 PKCE seguro sem necessidade de secrets.           |
+| `context.contributions.settings`      | Registro declarativo do schema de formulários e configurações do addon.           |
+| `context.contributions.menus`         | Registro de itens no menu lateral (sidebar) ou barra de tempo (timerbar).        |
+| `context.contributions.dataSources`   | Registro de fontes de dados externas (Tarefas, Horas, Membros, Metadados).        |
+| `context.contributions.commands`      | Registro e execução de comandos universais do Mr-tick.                            |
+| `context.host.vault`       | Armazenamento chave-valor seguro e isolado por Workspace.                        |
+| `context.host.events`        | Eventos em tempo real do sistema (início/fim de timer, idle, troca de workspace). |
+| `context.host.notifications` | Emissão de toasts e notificações no sistema.                                      |
+| `context.core.timer`         | Leitura e controle do cronômetro ativo.                                           |
+| `context.host.oauth`         | Fluxo de autenticação OAuth 2.0 PKCE seguro sem necessidade de secrets.           |
 
 ---
 

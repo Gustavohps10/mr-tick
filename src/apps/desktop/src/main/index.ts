@@ -12,7 +12,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { JSONWorkspacesRepository } from '@mr-tick/adapters/data'
 import { AddonsFacade } from '@mr-tick/adapters/facades'
-import { HardDiskStorage, KeytarTokenStorage } from '@mr-tick/adapters/tools'
+import {
+  HardDiskStorage,
+  KeytarCredentialsVault,
+} from '@mr-tick/adapters/tools'
 import { ContainerBuilder, PlatformDependencies } from '@mr-tick/IoC'
 import {
   app,
@@ -50,6 +53,7 @@ import { getSettings } from '@/main/settings'
 import { createTray } from '@/main/tray'
 
 import sdkPackage from '../../../sdk/package.json'
+import { AddonCoreCapabilities } from './services/AddonCoreCapabilities'
 
 const requireNative = createRequire(import.meta.url)
 
@@ -444,7 +448,7 @@ if (!gotTheLock) {
     handleProtocol()
 
     const userDataPath = app.getPath('userData')
-    const credentialsStorage = new KeytarTokenStorage()
+    const credentialsVault = new KeytarCredentialsVault()
     const runtimeWindow = new BrowserWindow({
       show: false,
       webPreferences: {
@@ -456,10 +460,12 @@ if (!gotTheLock) {
     })
     runtimeWindow.windowType = 'runtime'
     const localRuntime = new LocalRuntimeDispatcher(runtimeWindow)
+    const workspacesRepository = new JSONWorkspacesRepository(userDataPath)
     const addonLoader = new AddonLoader(
-      credentialsStorage,
+      credentialsVault,
       localRuntime,
       sdkPackage.version,
+      new AddonCoreCapabilities(workspacesRepository, localRuntime),
     )
     globalAddonLoader = addonLoader
 
@@ -476,7 +482,6 @@ if (!gotTheLock) {
       localRuntime.acceptsGeneration(generation),
     )
 
-    const workspacesRepository = new JSONWorkspacesRepository(userDataPath)
     const eventEmitter = new ElectronJobEventEmitter(() => mainWindow)
     const nodeFileStorage = new HardDiskStorage(userDataPath, 'mr-tick-app://')
     const electronHttpClient = new ElectronHttpClient()
@@ -503,7 +508,7 @@ if (!gotTheLock) {
 
     const localDataSourceResolver = new DataSourceResolver(
       workspacesRepository,
-      credentialsStorage,
+      credentialsVault,
       {
         addonsBasePath: join(__dirname, '../addons/datasource'),
         isDevelopment: !app.isPackaged,
@@ -514,7 +519,7 @@ if (!gotTheLock) {
 
     const platformDeps: PlatformDependencies = {
       jobEmitter: eventEmitter,
-      credentialsStorage,
+      credentialsVault,
       workspacesRepository,
       fileStorage: nodeFileStorage,
       dataSourceResolver: localDataSourceResolver,

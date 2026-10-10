@@ -79,6 +79,141 @@ describe('Durable local command receipts with a real RxDB collection', () => {
     removeDatabaseFromCache(workspaceId, true)
   })
 
+  it('reads bounded local tasks with pure source IDs, deterministic ordering and literal search', async () => {
+    const common = {
+      dataSourceId: 'source',
+      _deleted: false,
+      syncStatus: 'synced',
+      lastPulledAt: null,
+      lastPushedAt: null,
+      lastReconciledAt: null,
+      status: { id: 'open', name: 'Open' },
+      createdAt: '2026-10-08T10:00:00.000Z',
+      updatedAt: '2026-10-08T10:00:00.000Z',
+      timeEntryIds: [],
+    }
+    const tasks: import('@/local-db/schemas/tasks-sync-schema').SyncTaskRxDBDTO[] =
+      [
+        {
+          ...common,
+          id: 'connection::b',
+          sourceId: 'b',
+          connectionInstanceId: 'connection',
+          title: 'Document [SDK].',
+        },
+        {
+          ...common,
+          id: 'connection::a',
+          sourceId: 'a',
+          connectionInstanceId: 'connection',
+          title: 'Another task',
+        },
+        {
+          ...common,
+          id: 'other::a',
+          sourceId: 'a',
+          connectionInstanceId: 'other',
+          title: 'Other connection',
+        },
+      ]
+    await database.tasks.bulkInsert(tasks)
+    const result = await executor.queryCore(
+      {
+        action: 'tasks',
+        workspaceId,
+        connectionInstanceId: 'connection',
+        limit: 1,
+      },
+      'source',
+    )
+    expect(result.isSuccess()).toBe(true)
+    if (result.isFailure() || result.success.kind !== 'tasks')
+      return expect.fail('Expected task page')
+    expect(result.success.tasks.map((task) => task.taskId)).toEqual(['a'])
+    expect(result.success.hasMore).toBe(true)
+    expect(result.success.tasks).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'connection::a' }),
+      ]),
+    )
+    const searched = await executor.queryCore(
+      {
+        action: 'tasks',
+        workspaceId,
+        connectionInstanceId: 'connection',
+        limit: 10,
+        search: '[sdk].',
+      },
+      'source',
+    )
+    expect(searched.isSuccess()).toBe(true)
+    if (searched.isFailure() || searched.success.kind !== 'tasks')
+      return expect.fail('Expected searched page')
+    expect(searched.success.tasks.map((task) => task.taskId)).toEqual(['b'])
+    const one = await executor.queryCore(
+      {
+        action: 'task',
+        workspaceId,
+        connectionInstanceId: 'other',
+        taskId: 'a',
+      },
+      'source',
+    )
+    expect(one.isSuccess()).toBe(true)
+    if (one.isFailure() || one.success.kind !== 'task')
+      return expect.fail('Expected task')
+    expect(one.success.task.title).toBe('Other connection')
+    const removed = await database.tasks.findOne('connection::a').exec()
+    if (removed === null) return expect.fail('Expected seeded record')
+    await removed.remove()
+    const missing = await executor.queryCore(
+      {
+        action: 'task',
+        workspaceId,
+        connectionInstanceId: 'connection',
+        taskId: 'a',
+      },
+      'source',
+    )
+    expect(missing.isFailure()).toBe(true)
+    if (missing.isSuccess()) return expect.fail('Expected missing task')
+    expect(missing.failure.messageKey).toBe('TASK_NOT_FOUND')
+  })
+
+  it('distinguishes absent metadata from an available empty snapshot and hides storage fields', async () => {
+    const input: import('@mr-tick/application').CoreCacheQuery = {
+      action: 'metadata',
+      workspaceId,
+      connectionInstanceId: 'connection',
+    }
+    const missing = await executor.queryCore(input, 'source')
+    expect(missing.isFailure()).toBe(true)
+    if (missing.isSuccess()) return expect.fail('Expected metadata unavailable')
+    expect(missing.failure.messageKey).toBe('CORE_METADATA_UNAVAILABLE')
+    await database.metadata.insert({
+      id: 'connection::metadata',
+      sourceId: 'metadata',
+      connectionInstanceId: 'connection',
+      dataSourceId: 'source',
+      _deleted: false,
+      syncStatus: 'synced',
+      lastPulledAt: '2026-10-08T10:00:00.000Z',
+      activities: [],
+      taskStatuses: [],
+      taskPriorities: [],
+      trackStatuses: [],
+      participantRoles: [],
+      estimationTypes: [],
+    })
+    const result = await executor.queryCore(input, 'source')
+    expect(result.isSuccess()).toBe(true)
+    if (result.isFailure() || result.success.kind !== 'metadata')
+      return expect.fail('Expected metadata')
+    expect(result.success.metadata.values.activities).toEqual([])
+    expect(result.success.metadata).not.toHaveProperty('id')
+    expect(result.success.metadata).not.toHaveProperty('syncStatus')
+  })
+
   it('does not acknowledge deletion when the document changes before the compare-and-set', async () => {
     const record = entry(crypto.randomUUID())
     const document = await database.timeEntries.insert(record)

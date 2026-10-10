@@ -14,7 +14,7 @@ const operation = {
   entryId: crypto.randomUUID(),
 }
 
-const created = await context.timeEntries.create(
+const created = await context.core.timeEntries.create(
   workspaceId,
   {
     taskId,
@@ -47,3 +47,7 @@ No desktop, o executor é um renderer oculto, com o mesmo documento/origem e per
 As janelas visíveis mantêm leitores RxDB para reatividade. As escritas de apontamentos/timer/sugestões e as replicações passam pelo owner. Kanban e automações não fazem parte deste corte. Migrar o executor inteiro ao main ou servir React por REST requer outra composição de storage e um adaptador de leitura para a UI; esta entrega não implementa REST nem MCP.
 
 O addon continua executando código no main e não recebe isolamento forte por sandbox. O SDK publicado empacota seus tipos compartilhados, sem exigir a instalação dos pacotes privados do monorepo.
+
+## Consultas e contexto de addons
+
+Veja [consultas do Core, storage explícito e lifecycle](sdk-core-capabilities.md) para a complementação das capacidades públicas.

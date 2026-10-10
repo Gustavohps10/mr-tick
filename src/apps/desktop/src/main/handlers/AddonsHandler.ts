@@ -1,3 +1,4 @@
+import type { AddonVaultScope } from '@mr-tick/application'
 import {
   AddonManifest,
   FileData,
@@ -275,40 +276,48 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   }
 
   public async getSettings(
-    _event: IpcMainInvokeEvent,
-    { body }: IRequest<{ addonId: string }>,
+    event: IpcMainInvokeEvent,
+    { body }: IRequest<{ addonId: string; scope: AddonVaultScope }>,
   ): Promise<ViewModel<Record<string, string | number | boolean | null>>> {
-    if (!this.addonLoader) {
-      return { isSuccess: true, statusCode: 200, data: {} }
-    }
-    try {
-      const data = await this.addonLoader.getAddonSettings(body.addonId)
-      return { isSuccess: true, statusCode: 200, data }
-    } catch (e) {
-      const error = e instanceof Error ? e.message : 'FAILED_TO_GET_SETTINGS'
-      return { isSuccess: false, statusCode: 500, error }
-    }
+    if (!this.addonLoader)
+      return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
+    const result = await this.addonLoader.getAddonSettings(
+      body.addonId,
+      body.scope,
+    )
+    if (result.isFailure())
+      return {
+        isSuccess: false,
+        statusCode: result.failure.statusCode,
+        error: result.failure.messageKey,
+      }
+    return { isSuccess: true, statusCode: 200, data: result.success }
   }
 
   public async saveSettings(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     {
       body,
     }: IRequest<{
       addonId: string
+      scope: AddonVaultScope
       settings: Record<string, string | number | boolean | null>
     }>,
   ): Promise<ViewModel<void>> {
-    if (!this.addonLoader) {
+    if (!this.addonLoader)
       return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
-    }
-    try {
-      await this.addonLoader.saveAddonSettings(body.addonId, body.settings)
-      return { isSuccess: true, statusCode: 200 }
-    } catch (e) {
-      const error = e instanceof Error ? e.message : 'FAILED_TO_SAVE_SETTINGS'
-      return { isSuccess: false, statusCode: 500, error }
-    }
+    const result = await this.addonLoader.saveAddonSettings(
+      body.addonId,
+      body.scope,
+      body.settings,
+    )
+    if (result.isFailure())
+      return {
+        isSuccess: false,
+        statusCode: result.failure.statusCode,
+        error: result.failure.messageKey,
+      }
+    return { isSuccess: true, statusCode: 200 }
   }
 
   public async executeAction(

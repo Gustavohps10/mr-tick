@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test'
 
+import { CORE_SDK_PROBE_TASK_ID } from '../../../dev-addons/datasource-fake/src/runtime-probe-fixture'
 import { expect, test } from './fixtures/electron-fixture'
 import seedWorkspaces from './fixtures/seed-workspaces.json' with { type: 'json' }
 
@@ -134,4 +135,68 @@ test('addon SDK grava no workspace explícito e reutiliza operação após reloa
   expect(isolated.ok).toBe(true)
   if (!isolated.ok) throw new Error(isolated.error.messageKey)
   expect(isolated.value.entry).toBeNull()
+})
+
+test('addon SDK consulta contexto local e cria sugestão usando contratos públicos', async ({
+  page,
+}) => {
+  await expect
+    .poll(() => probe(page, 'fake-db:runtime-core-state'))
+    .toContain('"state":"ready"')
+  const state = await probe(page, 'fake-db:runtime-core-state')
+  expect(state).toContain('"starting"')
+  let syncStatus = ''
+  try {
+    await expect
+      .poll(async () => {
+        const result = await probe(page, 'fake-db:runtime-core-suggest')
+        syncStatus = JSON.stringify(
+          await page.evaluate(
+            (workspaceId) =>
+              window.api.localSync.request({ action: 'status', workspaceId }),
+            workspace.id,
+          ),
+        )
+        return result
+      })
+      .toContain('"ok":true')
+  } finally {
+    await test.info().attach('sdk-cache-sync-status', {
+      body: syncStatus,
+      contentType: 'application/json',
+    })
+  }
+  const disconnected = await page.evaluate(
+    (scope) => window.api.localSync.request({ action: 'disconnect', ...scope }),
+    { workspaceId: workspace.id, connectionInstanceId: connection.id },
+  )
+  expect(disconnected.ok).toBe(true)
+  const result = await probe(page, 'fake-db:runtime-core-suggest')
+  expect(result).toContain(`"taskId":"${CORE_SDK_PROBE_TASK_ID}"`)
+  expect(result).toContain('"status":"suggestion"')
+  expect(result).toContain('"comments":"SDK core suggestion proof"')
+  expect(result).not.toContain(`${connection.id}::${CORE_SDK_PROBE_TASK_ID}`)
+  expect(result).not.toContain('"config":')
+  const records = await page.evaluate(
+    (scope) =>
+      window.api.localRuntime.request({
+        action: 'list',
+        workspaceId: scope.workspaceId,
+        filter: { taskId: scope.taskId },
+      }),
+    { workspaceId: workspace.id, taskId: CORE_SDK_PROBE_TASK_ID },
+  )
+  expect(records.ok).toBe(true)
+  if (!records.ok) return expect.fail(records.error.messageKey)
+  const suggestions = records.value.entries.filter(
+    (entry) => entry.comments === 'SDK core suggestion proof',
+  )
+  expect(suggestions).toHaveLength(1)
+  expect(suggestions).toEqual([
+    expect.objectContaining({
+      status: 'suggestion',
+      connectionInstanceId: connection.id,
+      addonSource: expect.objectContaining({ id: connection.dataSourceId }),
+    }),
+  ])
 })

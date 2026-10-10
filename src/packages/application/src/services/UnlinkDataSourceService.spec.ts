@@ -4,11 +4,11 @@ import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
-  ICredentialsStorage,
+  ICredentialsVault,
   IWorkspacesRepository,
   UnlinkDataSourceInput,
 } from '@/contracts'
-import { getMemberStorageKey } from '@/utils'
+import { getMemberVaultKey } from '@/utils'
 
 import { UnlinkDataSourceService } from './UnlinkDataSourceService'
 
@@ -16,7 +16,7 @@ describe('UnlinkDataSourceService', () => {
   let sut: UnlinkDataSourceService
 
   let workspacesRepositoryMock: Mocked<IWorkspacesRepository>
-  let credentialsStorageMock: Mocked<ICredentialsStorage>
+  let credentialsVaultMock: Mocked<ICredentialsVault>
   let fakeWorkspace: Mocked<Workspace>
 
   const fakeDate = new Date('2026-04-18T00:00:00.000Z')
@@ -36,13 +36,13 @@ describe('UnlinkDataSourceService', () => {
       delete: vi.fn(),
     } as unknown as Mocked<IWorkspacesRepository>
 
-    credentialsStorageMock = {
+    credentialsVaultMock = {
       saveToken: vi.fn(),
       getToken: vi.fn(),
       hasToken: vi.fn(),
       replaceToken: vi.fn(),
       deleteToken: vi.fn(),
-    } as unknown as Mocked<ICredentialsStorage>
+    } as unknown as Mocked<ICredentialsVault>
 
     fakeWorkspace = {
       id: 'workspace-123',
@@ -59,7 +59,7 @@ describe('UnlinkDataSourceService', () => {
 
     sut = new UnlinkDataSourceService(
       workspacesRepositoryMock,
-      credentialsStorageMock,
+      credentialsVaultMock,
     )
   })
 
@@ -78,17 +78,17 @@ describe('UnlinkDataSourceService', () => {
     expect(result.isSuccess()).toBe(true)
 
     const expectedSessionKey = `workspace-session-${input.workspaceId}-${input.connectionInstanceId}`
-    const expectedMemberKey = getMemberStorageKey(
+    const expectedMemberKey = getMemberVaultKey(
       input.workspaceId,
       input.connectionInstanceId!,
     )
 
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledTimes(2)
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledWith(
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledTimes(2)
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledWith(
       'mr-tick',
       expectedSessionKey,
     )
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledWith(
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledWith(
       'mr-tick',
       expectedMemberKey,
     )
@@ -120,24 +120,24 @@ describe('UnlinkDataSourceService', () => {
     // Assert
     expect(result.isSuccess()).toBe(true)
 
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledTimes(4)
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledTimes(4)
 
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledWith(
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledWith(
       'mr-tick',
       `workspace-session-${input.workspaceId}-conn-1`,
     )
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledWith(
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledWith(
       'mr-tick',
-      getMemberStorageKey(input.workspaceId, 'conn-1'),
+      getMemberVaultKey(input.workspaceId, 'conn-1'),
     )
 
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledWith(
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledWith(
       'mr-tick',
       `workspace-session-${input.workspaceId}-conn-2`,
     )
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledWith(
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledWith(
       'mr-tick',
-      getMemberStorageKey(input.workspaceId, 'conn-2'),
+      getMemberVaultKey(input.workspaceId, 'conn-2'),
     )
 
     expect(fakeWorkspace.unlinkDataSource).toHaveBeenCalledWith(undefined)
@@ -157,7 +157,7 @@ describe('UnlinkDataSourceService', () => {
     expect(result.failure.statusCode).toBe(404)
     expect(result.failure.messageKey).toBe('WORKSPACE_NAO_ENCONTRADO')
 
-    expect(credentialsStorageMock.deleteToken).not.toHaveBeenCalled()
+    expect(credentialsVaultMock.deleteToken).not.toHaveBeenCalled()
     expect(fakeWorkspace.unlinkDataSource).not.toHaveBeenCalled()
     expect(workspacesRepositoryMock.update).not.toHaveBeenCalled()
   })
@@ -177,7 +177,7 @@ describe('UnlinkDataSourceService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBe(domainError)
 
-    expect(credentialsStorageMock.deleteToken).toHaveBeenCalledTimes(2)
+    expect(credentialsVaultMock.deleteToken).toHaveBeenCalledTimes(2)
     expect(workspacesRepositoryMock.update).not.toHaveBeenCalled()
   })
 
@@ -197,7 +197,7 @@ describe('UnlinkDataSourceService', () => {
     expect(result.failure.statusCode).toBe(500)
     expect(result.failure.messageKey).toBe('ERRO_INESPERADO')
 
-    expect(credentialsStorageMock.deleteToken).not.toHaveBeenCalled()
+    expect(credentialsVaultMock.deleteToken).not.toHaveBeenCalled()
     expect(fakeWorkspace.unlinkDataSource).not.toHaveBeenCalled()
     expect(workspacesRepositoryMock.update).not.toHaveBeenCalled()
   })

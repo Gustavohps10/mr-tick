@@ -17,9 +17,9 @@ package "Addon Capabilities" {
 
 Loader --> AddonCtx : Cria e injeta
 IAddon --> AddonCtx : activate(context)
-AddonCtx --> DS : context.dataSources.register()
-AddonCtx --> Themes : context.themes.register()
-AddonCtx --> Menus : context.menus.register()
-AddonCtx --> Cmds : context.commands.register()
+AddonCtx --> DS : context.contributions.dataSources.register()
+AddonCtx --> Themes : context.contributions.themes.register()
+AddonCtx --> Menus : context.contributions.menus.register()
+AddonCtx --> Cmds : context.contributions.commands.register()
 AddonCtx --> Watchers : context.watchers.register()
 @enduml

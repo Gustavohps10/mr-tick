@@ -5,13 +5,13 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import {
   addonsInvoker,
+  credentialsVaultInvoker,
   headersInvoker,
   metadataInvoker,
   sessionInvoker,
   systemInvoker,
   tasksInvoker,
   timeEntriesInvoker,
-  tokenStorageInvoker,
   updaterInvoker,
   workspacesInvoker,
 } from '@/main/invokers'
@@ -31,7 +31,7 @@ const api: IHostBridge = {
   tasks: tasksInvoker,
   timeEntries: timeEntriesInvoker,
   metadata: metadataInvoker,
-  tokens: tokenStorageInvoker,
+  vault: credentialsVaultInvoker,
   headers: headersInvoker,
   system: systemInvoker,
   updater: updaterInvoker,

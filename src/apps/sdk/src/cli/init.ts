@@ -91,7 +91,7 @@ export async function runInitWizard(targetDirName?: string) {
       pack: 'mr-tick pack .',
     },
     devDependencies: {
-      '@mr-tick/sdk': '^0.3.0',
+      '@mr-tick/sdk': `^${__SDK_VERSION__}`,
       tsup: '^8.5.0',
       typescript: '^5.8.0',
     },
@@ -131,7 +131,7 @@ export async function runInitWizard(targetDirName?: string) {
     description: answers.description,
     tags: [answers.categories[0], 'mr-tick'],
     screenshots: [],
-    requiredApiVersion: '>=0.1.0',
+    requiredApiVersion: `^${__SDK_VERSION__}`,
     releaseDate: new Date().toISOString().split('T')[0],
     changelog: ['Versão inicial do plugin'],
   }
@@ -143,12 +143,15 @@ export async function runInitWizard(targetDirName?: string) {
 
 export default class ${toPascalCase(answers.name)}Plugin implements IAddon {
   public async activate(context: AddonContext): Promise<void> {
-    console.log('[${answers.name}] Plugin ativado com sucesso!')
+    // Register providers synchronously; never await Core readiness inside activate.
+    context.core.runtime.onStateChanged((state) => {
+      console.log('[${answers.name}] Core:', state)
+    })
 
     ${
       isDataSource
-        ? `// Registre seu conector de DataSource aqui:\n    // context.dataSources.register(new MyDataSource())`
-        : `// Registre seus comandos ou menus aqui:\n    // context.menus.sidebar.register({ id: '${answers.id}', label: '${answers.name}' })`
+        ? `// Registre seu conector de DataSource aqui:\n    // context.contributions.dataSources.register(new MyDataSource())`
+        : `// Registre seus comandos ou menus aqui:\n    // context.contributions.menus.sidebar.register({ id: '${answers.id}', label: '${answers.name}' })`
     }
   }
 

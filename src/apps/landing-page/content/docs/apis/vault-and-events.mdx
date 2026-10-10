@@ -1,0 +1,65 @@
+---
+title: Vault, Eventos & Contexto
+description: Escopo explícito, consultas locais do Core e lifecycle de addons.
+---
+
+# Vault, eventos e contexto
+
+O addon importa os contratos de `@mr-tick/sdk`. O host fornece capacidades de produto; ele não entrega o HostBridge nem documentos RxDB.
+
+## Vault com escopo explícito
+
+O vault usa o chaveiro do sistema e pertence ao addon. Escolha o escopo na chamada: `{ kind: 'workspace', workspaceId }` ou `{ kind: 'addon' }`. A navegação da UI não altera o destino. `get`, `set` e `delete` retornam `Either<AppError, T>`.
+
+```ts
+const scope: AddonVaultScope = { kind: 'workspace', workspaceId }
+const result = await context.host.vault.set(scope, 'channelId', channelId)
+if (result.isFailure()) return result.forwardFailure()
+const channel = await context.host.vault.get(scope, 'channelId')
+if (channel.isFailure()) return channel.forwardFailure()
+```
+
+As configurações existentes de workspace são preservadas. Dados inválidos produzem falha, sem sobrescrita automática.
+
+## Consultas do Core
+
+- `core.workspaces.list()` e `get(workspaceId)` retornam identidade, nome e estado.
+- `core.connections.list(workspaceId)` e `get(scope)` retornam identidade, datasource e estado, sem credenciais.
+- `core.tasks.get({ workspaceId, connectionInstanceId, taskId })` usa o ID puro da origem.
+- `core.tasks.list({ workspaceId, connectionInstanceId, limit, search? })` lê até 100 tarefas, em ordem de ID ascendente.
+- `core.metadata.get(scope)` lê atividades e demais metadados disponíveis localmente.
+
+Todas retornam `Either`. A leitura não chama o provider remoto, não abre storage nem inicia sincronização. Cache indisponível retorna 503; tarefa não encontrada retorna 404. Datas são strings ISO 8601. Sucesso de uma escrita local não confirma aceitação remota.
+
+## Prontidão e desativação
+
+```ts
+activate(context: AddonContext): void {
+  context.core.runtime.onStateChanged((state) => {
+    console.log('Core:', state)
+  })
+  // Registre providers agora e retorne, sem aguardar ready.
+}
+```
+
+Estados: `starting`, `ready`, `restarting`, `closed`. O listener recebe imediatamente o estado atual. `ready` não significa que o pull terminou. Na recuperação, consulte novamente o estado; para repetir uma escrita, mantenha os mesmos IDs de operação.
+
+O host limpa contribuições e listeners na desativação ou falha parcial de ativação. O addon fecha sockets e clientes próprios em `deactivate`. Trocar de workspace não desativa automaticamente o addon.
+
+## Eventos garantidos
+
+```ts
+context.host.events.on('timer:start', (data) => console.log(data.taskId))
+context.host.events.on('timer:stop', (data) => console.log(data.currentSeconds))
+context.host.events.on('workspace:changed', (data) => console.log(data.currentWorkspaceId))
+```
+
+Também existem `timer:pause`, `timer:resume`, `timer:update`. São projeções transitórias, sem replay e sem promessa de ticks por segundo. Eventos de apontamentos e idle não fazem parte do contrato garantido.
+
+## Timer, sugestões e notificações
+
+Use `timer.getActiveEntry(workspaceId)` e os métodos de timer com workspace e `LocalOperationIdentity`. `timeEntries.create` / `createSuggestion` recebem `(workspaceId, input, operation)`, duração em segundos e datas ISO. Reutilize `commandId` e `entryId` somente para repetir a mesma operação.
+
+`notifications.info`, `success`, `warning`, `error`, `loading` e `dismiss` continuam disponíveis para toasts.
+
+Addons atuais executam código confiável no main. Estas capacidades não fornecem sandbox nem autorização granular.

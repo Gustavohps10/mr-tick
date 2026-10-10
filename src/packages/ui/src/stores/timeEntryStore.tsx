@@ -42,9 +42,13 @@ export interface CreateTimeEntryData {
   manualInitialSeconds?: number
 }
 export interface TimeEntryState {
+  isReady: boolean
   active: SyncTimeEntryRxDBDTO | null
 }
 export interface TimeEntryActions {
+  beginProjection(): void
+  observeProjection(entry: SyncTimeEntryRxDBDTO | null): void
+  endProjection(): void
   setActive(entry: SyncTimeEntryRxDBDTO | null): void
   clear(): void
   createNewTimeEntry(db: AppDatabase, data: CreateTimeEntryData): Promise<void>
@@ -56,15 +60,21 @@ export interface TimeEntryActions {
 export type TimeEntryStore = TimeEntryState & TimeEntryActions
 
 export function createTimeEntryStore(
-  client: IHostBridge,
+  client: Pick<IHostBridge, 'localRuntime'>,
 ): StoreApi<TimeEntryStore> {
+  // A reader started before a newer observation must never replace that projection.
+  let projectionRevision = 0
+  let projectionGeneration = 0
   const refresh = async (
     db: AppDatabase,
     setActive: (record: SyncTimeEntryRxDBDTO | null) => void,
+    expectedRevision: number,
   ) => {
+    if (expectedRevision !== projectionRevision) return
     const documents = await db.timeEntries
       .find({ selector: { timeStatus: { $in: ['running', 'paused'] } } })
       .exec()
+    if (expectedRevision !== projectionRevision) return
     if (documents.length > 1) {
       toast.error('MULTIPLE_ACTIVE_TIMERS')
       return
@@ -85,16 +95,46 @@ export function createTimeEntryStore(
   }
   return createStore<TimeEntryStore>((set, get) => ({
     active: null,
-    setActive: (entry) => set({ active: entry }),
-    clear: () => set({ active: null }),
+    isReady: false,
+    beginProjection: () => {
+      projectionGeneration += 1
+      projectionRevision += 1
+      set({ active: null, isReady: false })
+    },
+    observeProjection: (entry) => {
+      projectionRevision += 1
+      set({ active: entry, isReady: true })
+    },
+    endProjection: () => {
+      projectionGeneration += 1
+      projectionRevision += 1
+      set({ active: null, isReady: false })
+    },
+    setActive: (entry) => {
+      projectionRevision += 1
+      set({ active: entry })
+    },
+    clear: () => {
+      projectionRevision += 1
+      set({ active: null })
+    },
     async createNewTimeEntry(db, data) {
+      if (!get().isReady) {
+        toast.error('TIMER_PROJECTION_UNAVAILABLE')
+        return
+      }
       const scope = getDatabaseScope(db)
       if (scope.isFailure()) {
         toast.error(scope.failure.messageKey)
         return
       }
+      const expectedGeneration = projectionGeneration
       if (get().active !== null && data.type !== 'manual') {
         await get().stopCurrentTimeEntry(db)
+        if (!get().isReady || expectedGeneration !== projectionGeneration) {
+          toast.error('TIMER_PROJECTION_UNAVAILABLE')
+          return
+        }
         if (get().active !== null) return
       }
       let mode: 'countup' | 'countdown' = 'countup'
@@ -120,14 +160,19 @@ export function createTimeEntryStore(
         commandId: crypto.randomUUID(),
         entryId: crypto.randomUUID(),
       }
+      const expectedRevision = projectionRevision
       const success =
         data.type === 'manual'
           ? await request({ ...identity, action: 'create', payload })
           : await request({ ...identity, action: 'timerStart', payload })
       if (!success) return
-      await refresh(db, get().setActive)
+      await refresh(db, get().observeProjection, expectedRevision)
     },
     async pauseCurrentTimeEntry(db) {
+      if (!get().isReady) {
+        toast.error('TIMER_PROJECTION_UNAVAILABLE')
+        return
+      }
       const active = get().active
       if (active === null) return
       const scope = getDatabaseScope(db)
@@ -135,15 +180,20 @@ export function createTimeEntryStore(
         toast.error(scope.failure.messageKey)
         return
       }
+      const expectedRevision = projectionRevision
       const success = await request({
         action: 'timerPause',
         workspaceId: scope.success,
         commandId: crypto.randomUUID(),
         entryId: active.id,
       })
-      if (success) await refresh(db, get().setActive)
+      if (success) await refresh(db, get().observeProjection, expectedRevision)
     },
     async playCurrentTimeEntry(db) {
+      if (!get().isReady) {
+        toast.error('TIMER_PROJECTION_UNAVAILABLE')
+        return
+      }
       const active = get().active
       if (active === null) return
       const scope = getDatabaseScope(db)
@@ -151,15 +201,20 @@ export function createTimeEntryStore(
         toast.error(scope.failure.messageKey)
         return
       }
+      const expectedRevision = projectionRevision
       const success = await request({
         action: 'timerResume',
         workspaceId: scope.success,
         commandId: crypto.randomUUID(),
         entryId: active.id,
       })
-      if (success) await refresh(db, get().setActive)
+      if (success) await refresh(db, get().observeProjection, expectedRevision)
     },
     async stopCurrentTimeEntry(db) {
+      if (!get().isReady) {
+        toast.error('TIMER_PROJECTION_UNAVAILABLE')
+        return
+      }
       const active = get().active
       if (active === null) return
       const scope = getDatabaseScope(db)
@@ -167,16 +222,18 @@ export function createTimeEntryStore(
         toast.error(scope.failure.messageKey)
         return
       }
+      const expectedRevision = projectionRevision
       const success = await request({
         action: 'timerStop',
         workspaceId: scope.success,
         commandId: crypto.randomUUID(),
         entryId: active.id,
       })
-      if (success) get().clear()
+      if (success && expectedRevision === projectionRevision) get().clear()
     },
     async recoverRunningEntry(db) {
-      await refresh(db, get().setActive)
+      const expectedRevision = projectionRevision
+      await refresh(db, get().observeProjection, expectedRevision)
     },
   }))
 }
@@ -192,24 +249,32 @@ export function TimeEntryProvider({ children }: { children: ReactNode }) {
   if (storeRef.current === null) storeRef.current = createTimeEntryStore(client)
   const store = storeRef.current
   useEffect(() => {
+    store.getState().beginProjection()
     if (db === undefined || db === null) return
     const subscription = db.timeEntries
       .find({ selector: { timeStatus: { $in: ['running', 'paused'] } } })
       .$.subscribe({
         next: (documents) => {
           if (documents.length > 1) {
+            store.getState().endProjection()
             toast.error('MULTIPLE_ACTIVE_TIMERS')
             return
           }
           for (const document of documents) {
-            store.getState().setActive(document.toMutableJSON())
+            store.getState().observeProjection(document.toMutableJSON())
             return
           }
-          store.getState().clear()
+          store.getState().observeProjection(null)
         },
-        error: (error: Error) => toast.error(error.message),
+        error: (error: Error) => {
+          store.getState().endProjection()
+          toast.error(error.message)
+        },
       })
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+      store.getState().endProjection()
+    }
   }, [db, store])
   return (
     <TimeEntryContext.Provider value={store}>

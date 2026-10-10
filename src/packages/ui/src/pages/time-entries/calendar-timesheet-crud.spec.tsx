@@ -240,6 +240,10 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
 
   const mockTimeEntryStore = createStore<TimeEntryStore>(() => ({
     active: null,
+    isReady: true,
+    beginProjection: () => {},
+    observeProjection: () => {},
+    endProjection: () => {},
     setActive: () => {},
     clear: () => {},
     createNewTimeEntry: async () => {},

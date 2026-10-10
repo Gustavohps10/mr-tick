@@ -74,13 +74,50 @@ function bridgeFor(workspaceId: string) {
       push: async () => ({ isSuccess: true, statusCode: 200, data: [] }),
     },
   }
-  return { bridge, getById }
+  return { bridge, getById, workspace }
 }
 
 const options = { isDevelopment: false, useMemoryStorage: true }
 const remoteActions: ('forceSync' | 'reconcile')[] = ['forceSync', 'reconcile']
 
 describe('Browser workspace owner lifecycle', () => {
+  it('does not initialize storage or contact a provider during a cache query', async () => {
+    const workspaceId = crypto.randomUUID()
+    const { bridge, workspace } = bridgeFor(workspaceId)
+    workspace.dataSourceConnections.push({
+      id: 'connection',
+      dataSourceId: 'source',
+      status: 'disconnected',
+    })
+    const registry = new BrowserWorkspaceRegistry(bridge, options)
+    const open = vi.spyOn(registry, 'open')
+    const tasks = vi.spyOn(bridge.tasks, 'pull')
+    const metadata = vi.spyOn(bridge.metadata, 'pull')
+    const query: import('@mr-tick/application').CoreCacheQuery = {
+      action: 'tasks',
+      workspaceId,
+      connectionInstanceId: 'connection',
+      limit: 10,
+    }
+    const unavailable = await registry.queryCore(query)
+    expect(unavailable).toEqual({
+      ok: false,
+      error: { messageKey: 'CORE_CACHE_UNAVAILABLE', statusCode: 503 },
+    })
+    expect(open).not.toHaveBeenCalled()
+    expect(tasks).not.toHaveBeenCalled()
+    expect(metadata).not.toHaveBeenCalled()
+    expect(
+      await registry.queryCore({ ...query, connectionInstanceId: 'wrong' }),
+    ).toEqual({
+      ok: false,
+      error: { messageKey: 'CONNECTION_NOT_FOUND', statusCode: 404 },
+    })
+    expect(await registry.queryCore({ ...query, limit: 101 })).toEqual({
+      ok: false,
+      error: { messageKey: 'TASK_LIMIT_INVALID', statusCode: 422 },
+    })
+  })
   it('resets physical storage and invalidates the logical cached executor', async () => {
     const workspaceId = crypto.randomUUID()
     const { bridge } = bridgeFor(workspaceId)
