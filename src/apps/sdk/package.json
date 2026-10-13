@@ -38,7 +38,8 @@
     "inquirer": "^12.9.4",
     "js-yaml": "^4.1.0",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "zod": "4.6.6"
   },
   "bin": {
     "mr-tick": "./dist/cli.cjs"

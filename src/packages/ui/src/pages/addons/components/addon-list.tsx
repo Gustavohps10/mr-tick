@@ -9,6 +9,7 @@ import {
   PackageOpen,
   Plus,
   Settings2,
+  Sparkles,
   Trash2,
   User2,
   WifiOff,
@@ -33,15 +34,52 @@ import { useConnectionsWithSync } from '@/stores/syncStore'
 
 import type { AddonConnection, AddonItem } from '../types'
 
-// ---------------------------------------------------------------------------
-// ConnectionCard
-// ---------------------------------------------------------------------------
-
 interface ConnectionCardProps {
   connection: AddonConnection
   onOpenSettings: (connection: AddonConnection) => void
   onDisconnect: (connection: AddonConnection) => void
   onUninstall: (connection: AddonConnection) => void
+}
+
+function resolveConnectionStatus(
+  liveStatus: string | undefined,
+  fallbackStatus: string,
+): boolean {
+  if (liveStatus) {
+    return liveStatus === 'connected'
+  }
+  return fallbackStatus === 'connected'
+}
+
+function resolveConnectionDisplayName(connection: AddonConnection): string {
+  if (connection.name) {
+    return connection.name
+  }
+  return connection.id
+}
+
+function resolveMemberDisplayName(member: {
+  name?: string
+  login: string
+}): string {
+  if (member.name) {
+    return member.name
+  }
+  return member.login
+}
+
+function resolveConnectionStatusLabel(isConnected: boolean): string {
+  if (isConnected) {
+    return 'Conectado'
+  }
+  return 'Desconectado'
+}
+
+function resolveInstancesLabel(count: number): string {
+  if (count === 1) {
+    return 'instância'
+  }
+  return 'instâncias'
 }
 
 export function ConnectionCard({
@@ -53,10 +91,19 @@ export function ConnectionCard({
   const syncedConnections = useConnectionsWithSync()
   const live = syncedConnections.find((s) => s.connectionId === connection.id)
 
-  const isConnected = (live?.status ?? connection.status) === 'connected'
-  const syncStatuses = live ? Object.values(live.sync) : []
-  const isSyncing = syncStatuses.some((s) => s.isPulling || s.isPushing)
-  const hasError = syncStatuses.some((s) => s.error)
+  const isConnected = resolveConnectionStatus(live?.status, connection.status)
+  let syncStatuses: Array<{
+    isPulling?: boolean
+    isPushing?: boolean
+    error?: object | string | null
+  }> = []
+  if (live) {
+    syncStatuses = Object.values(live.sync)
+  }
+  const isSyncing = syncStatuses.some((s) =>
+    Boolean(s.isPulling || s.isPushing),
+  )
+  const hasError = syncStatuses.some((s) => Boolean(s.error))
   const member = live?.member
   const addon = live?.addon
 
@@ -64,9 +111,8 @@ export function ConnectionCard({
     <div
       className={cn(
         'relative flex flex-col gap-3 rounded-lg border p-3 transition-colors',
-        isConnected
-          ? 'bg-card/40 border-border'
-          : 'bg-muted/20 border-dashed opacity-75',
+        isConnected && 'bg-card/40 border-border',
+        !isConnected && 'bg-muted/20 border-dashed opacity-75',
       )}
     >
       {/* Top row */}
@@ -76,15 +122,14 @@ export function ConnectionCard({
           {/* Logo with sync/error indicator */}
           <div className="relative shrink-0">
             <div className="bg-background flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border shadow-sm">
-              {addon?.logo ? (
+              {addon?.logo && (
                 <img
                   src={addon.logo}
                   alt={addon.name}
                   className="h-6 w-6 object-contain"
                 />
-              ) : (
-                <span className="text-base">📦</span>
               )}
+              {!addon?.logo && <span className="text-base">📦</span>}
             </div>
             {isSyncing && (
               <span className="absolute -top-1 -right-1 flex h-3 w-3">
@@ -106,7 +151,7 @@ export function ConnectionCard({
           <div className="flex min-w-0 flex-col gap-0.5">
             <div className="flex items-center gap-2">
               <p className="truncate text-xs font-bold tracking-tight">
-                {connection.name || connection.id}
+                {resolveConnectionDisplayName(connection)}
               </p>
               <span className="text-muted-foreground/50 font-mono text-[9px] uppercase">
                 {connection.id.split('-')[0]}
@@ -124,16 +169,17 @@ export function ConnectionCard({
               </p>
             )}
 
-            {member ? (
+            {member && (
               <div className="flex items-center gap-1.5">
                 <div className="bg-muted flex h-3.5 w-3.5 items-center justify-center overflow-hidden rounded-full border-[0.5px]">
-                  {member.avatarUrl ? (
+                  {member.avatarUrl && (
                     <img
                       src={member.avatarUrl}
-                      alt={member.name ?? member.login}
+                      alt={resolveMemberDisplayName(member)}
                       className="h-full w-full rounded-full object-cover"
                     />
-                  ) : (
+                  )}
+                  {!member.avatarUrl && (
                     <User2 size={8} className="text-muted-foreground" />
                   )}
                 </div>
@@ -141,10 +187,11 @@ export function ConnectionCard({
                   data-testid="connection-member-login"
                   className="text-muted-foreground truncate text-[10px]"
                 >
-                  {member.name ?? member.login}
+                  {resolveMemberDisplayName(member)}
                 </p>
               </div>
-            ) : (
+            )}
+            {!member && (
               <p className="text-muted-foreground text-[10px]">
                 Aguardando conexão...
               </p>
@@ -197,11 +244,12 @@ export function ConnectionCard({
           <span
             className={cn(
               'h-1.5 w-1.5 rounded-full',
-              isConnected ? 'bg-emerald-500' : 'bg-muted-foreground/30',
+              isConnected && 'bg-emerald-500',
+              !isConnected && 'bg-muted-foreground/30',
             )}
           />
           <span className="text-muted-foreground/80 text-[10px] font-medium">
-            {isConnected ? 'Conectado' : 'Desconectado'}
+            {resolveConnectionStatusLabel(isConnected)}
           </span>
         </div>
 
@@ -230,10 +278,6 @@ export function ConnectionCard({
   )
 }
 
-// ---------------------------------------------------------------------------
-// AddonRow
-// ---------------------------------------------------------------------------
-
 interface AddonRowProps {
   addon: AddonItem
   onInstall: (addon: AddonItem) => void
@@ -258,6 +302,7 @@ function AddonRow({
   onConfigure,
 }: AddonRowProps) {
   const isInstalled = addon.installed
+  const isPlusTier = addon.tier === 'plus'
 
   return (
     <AccordionItem
@@ -275,18 +320,30 @@ function AddonRow({
           {/* Left: Icon and info */}
           <div className="flex items-center gap-4">
             <div className="bg-secondary/40 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border">
-              {addon.logo ? (
+              {addon.logo && (
                 <img
                   src={addon.logo}
                   alt={addon.name}
                   className="h-8 w-8 object-contain"
                 />
-              ) : (
+              )}
+              {!addon.logo && (
                 <PackageOpen className="text-muted-foreground/50 h-6 w-6" />
               )}
             </div>
             <div className="flex flex-col items-start gap-1">
-              <span className="font-semibold">{addon.name}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">{addon.name}</span>
+                {isPlusTier && (
+                  <Badge
+                    variant="outline"
+                    className="gap-1 border-amber-500/40 bg-amber-500/10 text-[9px] font-bold tracking-wider text-amber-600 uppercase dark:text-amber-400"
+                  >
+                    <Sparkles className="h-2.5 w-2.5" />
+                    PLUS
+                  </Badge>
+                )}
+              </div>
               <span className="text-muted-foreground line-clamp-1 max-w-[280px] text-left text-xs">
                 {addon.description}
               </span>
@@ -302,11 +359,11 @@ function AddonRow({
               addon.connections.length > 0 && (
                 <span className="text-muted-foreground bg-secondary/60 rounded-full px-2 py-0.5 text-[10px]">
                   {addon.connections.length}{' '}
-                  {addon.connections.length === 1 ? 'instância' : 'instâncias'}
+                  {resolveInstancesLabel(addon.connections.length)}
                 </span>
               )}
 
-            {addon.updateAvailable ? (
+            {addon.updateAvailable && (
               <Badge
                 variant="secondary"
                 data-testid={`addon-update-badge-${addon.id}`}
@@ -314,14 +371,16 @@ function AddonRow({
               >
                 Atualização
               </Badge>
-            ) : isInstalled ? (
+            )}
+            {!addon.updateAvailable && isInstalled && (
               <Badge
                 variant="outline"
                 className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-600 dark:text-emerald-400"
               >
                 Instalado
               </Badge>
-            ) : (
+            )}
+            {!addon.updateAvailable && !isInstalled && (
               <Badge
                 variant="outline"
                 className="bg-muted text-muted-foreground border-border text-[10px]"
@@ -330,7 +389,7 @@ function AddonRow({
               </Badge>
             )}
 
-            {!isInstalled ? (
+            {!isInstalled && (
               <>
                 <Button
                   variant="ghost"
@@ -350,7 +409,9 @@ function AddonRow({
                   Instalar
                 </Button>
               </>
-            ) : (
+            )}
+
+            {isInstalled && (
               <>
                 {addon.category !== 'integrations' && (
                   <Button
@@ -404,7 +465,7 @@ function AddonRow({
       {isInstalled && addon.category === 'integrations' && (
         <AccordionContent className="border-border/40 border-t px-4 pb-4">
           <div className="space-y-2 pt-3">
-            {addon.connections.length > 0 ? (
+            {addon.connections.length > 0 && (
               <>
                 <p className="text-muted-foreground pb-1 text-[10px] font-semibold tracking-wider uppercase">
                   Instâncias conectadas
@@ -419,7 +480,8 @@ function AddonRow({
                   />
                 ))}
               </>
-            ) : (
+            )}
+            {addon.connections.length === 0 && (
               <div className="bg-muted/5 flex flex-col items-center justify-center rounded-lg border border-dashed py-6">
                 <p className="text-muted-foreground text-xs">
                   Nenhuma instância configurada.
@@ -441,10 +503,6 @@ function AddonRow({
     </AccordionItem>
   )
 }
-
-// ---------------------------------------------------------------------------
-// AddonList
-// ---------------------------------------------------------------------------
 
 export interface AddonListProps {
   addons: AddonItem[]

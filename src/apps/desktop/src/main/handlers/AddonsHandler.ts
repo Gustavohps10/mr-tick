@@ -48,7 +48,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   ) {}
 
   public async getSidebarMenus(): Promise<ViewModel<SidebarMenuItem[]>> {
-    const items = this.addonLoader ? this.addonLoader.getSidebarMenus() : []
+    let items: SidebarMenuItem[] = []
+    if (this.addonLoader) {
+      items = this.addonLoader.getSidebarMenus()
+    }
     return {
       isSuccess: true,
       statusCode: 200,
@@ -57,7 +60,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   }
 
   public async getTimerbarMenus(): Promise<ViewModel<TimerbarMenuItem[]>> {
-    const items = this.addonLoader ? this.addonLoader.getTimerbarMenus() : []
+    let items: TimerbarMenuItem[] = []
+    if (this.addonLoader) {
+      items = this.addonLoader.getTimerbarMenus()
+    }
     return {
       isSuccess: true,
       statusCode: 200,
@@ -74,7 +80,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       args?: CommandArgument[]
     }>,
   ): Promise<ViewModel<CommandResult>> {
-    if (!body?.commandId) {
+    if (!event || !body?.commandId) {
       return {
         isSuccess: false,
         statusCode: 400,
@@ -82,9 +88,13 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       }
     }
     try {
+      let argsList: CommandArgument[] = []
+      if (body.args) {
+        argsList = body.args
+      }
       const result = await this.addonLoader?.executeCommand(
         body.commandId,
-        ...(body.args ?? []),
+        ...argsList,
       )
       return {
         isSuccess: true,
@@ -92,13 +102,16 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         data: result,
       }
     } catch (e) {
-      const error = e instanceof Error ? e.message : 'FAILED_TO_EXECUTE_COMMAND'
+      let error = 'FAILED_TO_EXECUTE_COMMAND'
+      if (e instanceof Error) {
+        error = e.message
+      }
       return { isSuccess: false, statusCode: 500, error }
     }
   }
 
   public async showToast(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     {
       body,
     }: IRequest<{
@@ -108,15 +121,19 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       toastId?: string
     }>,
   ): Promise<ViewModel<string>> {
-    if (!this.addonLoader) {
+    if (!event || !this.addonLoader) {
       return {
         isSuccess: false,
         statusCode: 404,
         error: 'LOADER_NOT_FOUND',
       }
     }
+    let toastType: 'info' | 'success' | 'warning' | 'error' | 'loading' = 'info'
+    if (body.type) {
+      toastType = body.type
+    }
     const id = this.addonLoader.showToast(
-      body.type ?? 'info',
+      toastType,
       body.message,
       body.title,
       body.toastId,
@@ -129,10 +146,12 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   }
 
   public async dismissToast(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<{ toastId: string }>,
   ): Promise<ViewModel<void>> {
-    this.addonLoader?.dismissToast(body.toastId)
+    if (event) {
+      this.addonLoader?.dismissToast(body.toastId)
+    }
     return {
       isSuccess: true,
       statusCode: 200,
@@ -140,10 +159,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   }
 
   public async getSchema(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string }>,
   ): Promise<ViewModel<AddonSettingsSchema>> {
-    if (!this.addonLoader) {
+    if (!event || !this.addonLoader) {
       return { isSuccess: true, statusCode: 200, data: [] }
     }
     try {
@@ -162,7 +181,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       const schema = await this.addonLoader.getSettingsSchema(body.addonId)
       return { isSuccess: true, statusCode: 200, data: schema }
     } catch (e) {
-      const error = e instanceof Error ? e.message : 'FAILED_TO_GET_SCHEMA'
+      let error = 'FAILED_TO_GET_SCHEMA'
+      if (e instanceof Error) {
+        error = e.message
+      }
       return { isSuccess: false, statusCode: 500, error }
     }
   }
@@ -171,7 +193,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string }>,
   ): Promise<ViewModel<AddonSettingsSchema>> {
-    if (!this.addonLoader) {
+    if (!event || !this.addonLoader) {
       return { isSuccess: true, statusCode: 200, data: [] }
     }
     try {
@@ -197,8 +219,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       }
       return { isSuccess: true, statusCode: 200, data: [] }
     } catch (e) {
-      const error =
-        e instanceof Error ? e.message : 'FAILED_TO_GET_CONNECTION_SCHEMA'
+      let error = 'FAILED_TO_GET_CONNECTION_SCHEMA'
+      if (e instanceof Error) {
+        error = e.message
+      }
       return { isSuccess: false, statusCode: 500, error }
     }
   }
@@ -213,7 +237,8 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       connectionInstanceId?: string
     }>,
   ): Promise<ViewModel<MappingFieldDefinition[]>> {
-    if (!this.addonLoader) return { isSuccess: true, statusCode: 200, data: [] }
+    if (!event || !this.addonLoader)
+      return { isSuccess: true, statusCode: 200, data: [] }
 
     try {
       if (body?.addonId && !this.addonLoader.hasActiveAddon(body.addonId)) {
@@ -269,8 +294,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
 
       return { isSuccess: true, statusCode: 200, data: [] }
     } catch (e) {
-      const error =
-        e instanceof Error ? e.message : 'FAILED_TO_GET_MAPPING_FIELDS'
+      let error = 'FAILED_TO_GET_MAPPING_FIELDS'
+      if (e instanceof Error) {
+        error = e.message
+      }
       return { isSuccess: false, statusCode: 500, error }
     }
   }
@@ -279,7 +306,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string; scope: AddonVaultScope }>,
   ): Promise<ViewModel<Record<string, string | number | boolean | null>>> {
-    if (!this.addonLoader)
+    if (!event || !this.addonLoader)
       return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
     const result = await this.addonLoader.getAddonSettings(
       body.addonId,
@@ -304,7 +331,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       settings: Record<string, string | number | boolean | null>
     }>,
   ): Promise<ViewModel<void>> {
-    if (!this.addonLoader)
+    if (!event || !this.addonLoader)
       return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
     const result = await this.addonLoader.saveAddonSettings(
       body.addonId,
@@ -330,7 +357,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       payload?: Record<string, string | number | boolean>
     }>,
   ): Promise<ViewModel<AddonActionResponse>> {
-    if (!this.addonLoader) {
+    if (!event || !this.addonLoader) {
       return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
     }
     try {
@@ -353,7 +380,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       )
       return { isSuccess: true, statusCode: 200, data }
     } catch (e) {
-      const error = e instanceof Error ? e.message : 'FAILED_TO_EXECUTE_ACTION'
+      let error = 'FAILED_TO_EXECUTE_ACTION'
+      if (e instanceof Error) {
+        error = e.message
+      }
       return { isSuccess: false, statusCode: 500, error }
     }
   }
@@ -362,7 +392,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     event: IpcMainInvokeEvent,
     { body }: IRequest<{ workspaceId: string }>,
   ): Promise<ViewModel<void>> {
-    if (this.addonLoader && body?.workspaceId) {
+    if (event && this.addonLoader && body?.workspaceId) {
       this.addonLoader.setActiveWorkspace(body.workspaceId)
     }
     if (body?.workspaceId) {
@@ -379,7 +409,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   public async getActiveTheme(): Promise<
     ViewModel<AddonThemeViewModel | null>
   > {
-    const theme = this.addonLoader ? this.addonLoader.getActiveTheme() : null
+    let theme: AddonThemeViewModel | null = null
+    if (this.addonLoader) {
+      theme = this.addonLoader.getActiveTheme()
+    }
     return {
       isSuccess: true,
       statusCode: 200,
@@ -388,19 +421,22 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   }
 
   public async setActiveTheme(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<{ themeId: string | null }>,
   ): Promise<ViewModel<void>> {
-    if (this.addonLoader) {
-      this.addonLoader.setActiveTheme(body?.themeId ?? null)
+    if (event && this.addonLoader) {
+      let nextThemeId: string | null = null
+      if (body && body.themeId) {
+        nextThemeId = body.themeId
+      }
+      this.addonLoader.setActiveTheme(nextThemeId)
     }
     return { isSuccess: true, statusCode: 200 }
   }
 
-  public async listAvailable(
-    _event?: IpcMainInvokeEvent,
-    _req?: IRequest,
-  ): Promise<PaginatedViewModel<AddonManifestViewModel[]>> {
+  public async listAvailable(): Promise<
+    PaginatedViewModel<AddonManifestViewModel[]>
+  > {
     const result = await this.addonsFacade.listAvailable()
 
     const mappedResult = result.map((items) => {
@@ -419,10 +455,9 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     return createResponseViewModel(mappedResult)
   }
 
-  public async listInstalled(
-    _event?: IpcMainInvokeEvent,
-    _req?: IRequest,
-  ): Promise<PaginatedViewModel<AddonManifestViewModel[]>> {
+  public async listInstalled(): Promise<
+    PaginatedViewModel<AddonManifestViewModel[]>
+  > {
     const result = await this.addonsFacade.listInstalled()
 
     if (result.isFailure()) {
@@ -450,10 +485,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   }
 
   public async uninstall(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string; version?: string }>,
   ): Promise<ViewModel<void>> {
-    if (!body?.addonId) {
+    if (!event || !body?.addonId) {
       return {
         isSuccess: false,
         statusCode: 400,
@@ -475,28 +510,34 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   }
 
   public async getInstalledById(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string }>,
   ): Promise<ViewModel<AddonManifestViewModel>> {
+    if (!event) {
+      return { isSuccess: false, statusCode: 400, error: 'INVALID_EVENT' }
+    }
     const result = await this.addonsFacade.getInstalledById(body.addonId)
 
     return createResponseViewModel(result)
   }
 
   public async getInstaller(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<{ installerUrl: string }>,
   ): Promise<ViewModel<AddonInstallerViewModel>> {
+    if (!event) {
+      return { isSuccess: false, statusCode: 400, error: 'INVALID_EVENT' }
+    }
     const result = await this.addonsFacade.getInstaller(body.installerUrl)
 
     return createResponseViewModel(result)
   }
 
   public async updateLocal(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<AddonManifest>,
   ): Promise<ViewModel<void>> {
-    if (!body?.id) {
+    if (!event || !body?.id) {
       return {
         isSuccess: false,
         statusCode: 400,
@@ -511,23 +552,40 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   }
 
   public async import(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<{ addon: FileData }>,
   ): Promise<ViewModel> {
+    if (!event) {
+      return { isSuccess: false, statusCode: 400, error: 'INVALID_EVENT' }
+    }
     const result = await this.importAddonService.execute(body.addon)
 
     return createResponseViewModel(result)
   }
 
   public async install(
-    _event: IpcMainInvokeEvent,
-    { body }: IRequest<{ downloadUrl: string; jobId?: string }>,
+    event: IpcMainInvokeEvent,
+    {
+      body,
+    }: IRequest<{
+      downloadUrl: string
+      jobId?: string
+      expectedSha256?: string
+    }>,
   ): Promise<ViewModel<IJobResult>> {
-    const jobId = body.jobId ?? crypto.randomUUID()
+    if (!event) {
+      return { isSuccess: false, statusCode: 400, error: 'INVALID_EVENT' }
+    }
+    let jobId: string = crypto.randomUUID()
+    if (body.jobId) {
+      jobId = body.jobId
+    }
 
-    this.runInstallationJob(jobId, body.downloadUrl).catch((err) => {
-      console.error(`[Fatal Job Error ${jobId}]:`, err)
-    })
+    this.runInstallationJob(jobId, body.downloadUrl, body.expectedSha256).catch(
+      (err) => {
+        console.error(`[Fatal Job Error ${jobId}]:`, err)
+      },
+    )
 
     return {
       isSuccess: true,
@@ -538,9 +596,16 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
 
   public async update(
     event: IpcMainInvokeEvent,
-    { body }: IRequest<{ addonId: string; downloadUrl: string; jobId: string }>,
+    {
+      body,
+    }: IRequest<{
+      addonId: string
+      downloadUrl: string
+      jobId: string
+      expectedSha256?: string
+    }>,
   ): Promise<ViewModel<IJobResult>> {
-    if (!body?.addonId || !body?.downloadUrl || !body?.jobId) {
+    if (!event || !body?.addonId || !body?.downloadUrl || !body?.jobId) {
       return {
         isSuccess: false,
         statusCode: 400,
@@ -557,7 +622,12 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     this.updatingAddonIds.add(body.addonId)
     const jobId = body.jobId
 
-    this.runUpdateJob(jobId, body.addonId, body.downloadUrl).catch((err) => {
+    this.runUpdateJob(
+      jobId,
+      body.addonId,
+      body.downloadUrl,
+      body.expectedSha256,
+    ).catch((err) => {
       console.error(`[Fatal Update Job Error ${jobId}]:`, err)
     })
 
@@ -572,12 +642,13 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     jobId: string,
     addonId: string,
     downloadUrl: string,
+    expectedSha256?: string,
   ): Promise<void> {
     try {
       this.jobEmitter.emit(jobId, { status: 'progress', value: 0 })
 
       const result = await this.updateAddonService.execute(
-        { addonId, downloadUrl },
+        { addonId, downloadUrl, expectedSha256 },
         (event) => {
           this.jobEmitter.emit(jobId, event)
         },
@@ -606,6 +677,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   private async runInstallationJob(
     jobId: string,
     downloadUrl: string,
+    expectedSha256?: string,
   ): Promise<void> {
     try {
       this.jobEmitter.emit(jobId, { status: 'progress', value: 0 })
@@ -624,6 +696,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
             value: scaledValue,
           })
         },
+        expectedSha256,
       )
 
       if (downloadResult.isFailure()) {
@@ -660,7 +733,6 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         return
       }
 
-      // Ativação imediata em memória do addon recém-instalado
       try {
         const installedList = await this.addonsFacade.listInstalled()
         if (installedList.isSuccess() && this.addonLoader) {

@@ -53,6 +53,7 @@ export default defineConfig([
       'inquirer',
       'js-yaml',
       'adm-zip',
+      'zod',
     ],
     define: {
       __SDK_VERSION__: JSON.stringify(pkg.version),

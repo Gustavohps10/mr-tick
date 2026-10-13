@@ -1,4 +1,5 @@
 export * from './ConnectionHandler'
+export * from './LicensingHandler'
 export * from './SessionHandler'
 export * from './TasksHandler'
 export * from './TimeEntriesHandler'

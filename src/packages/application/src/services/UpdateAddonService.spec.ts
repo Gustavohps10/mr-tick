@@ -8,6 +8,7 @@ import type {
   IFileManager,
   IFileStorage,
 } from '@/contracts'
+import type { IAddonAccessService } from '@/contracts/use-cases/IAddonAccessService'
 import type { AddonManifestDTO } from '@/dtos'
 
 import { UpdateAddonService } from './UpdateAddonService'
@@ -19,6 +20,7 @@ describe('UpdateAddonService', () => {
   let fileManagerMock: Mocked<IFileManager>
   let addonsFacadeMock: Mocked<IAddonsFacade>
   let addonReloaderMock: Mocked<IAddonReloader>
+  let addonAccessServiceMock: Mocked<IAddonAccessService>
 
   const existingManifest: AddonManifestDTO = {
     id: 'mr-tick-datasource-redmine',
@@ -78,17 +80,19 @@ describe('UpdateAddonService', () => {
     addonsFacadeMock = {
       listAvailable: vi.fn(),
       listInstalled: vi.fn(),
-      getInstalledById: vi.fn().mockImplementation(async (addonId, version) =>
-        Either.success(
-          version
-            ? {
-                ...updatedManifest,
-                installed: true,
-                path: 'C:/isolated-user-data/addons/mr-tick-datasource-redmine/0.8.0',
-              }
-            : existingManifest,
-        ),
-      ),
+      getInstalledById: vi
+        .fn()
+        .mockImplementation(async (addonId: string, version?: string) => {
+          if (!addonId) return Either.failure(AppError.NotFound('NOT_FOUND'))
+          if (version) {
+            return Either.success({
+              ...updatedManifest,
+              installed: true,
+              path: 'C:/isolated-user-data/addons/mr-tick-datasource-redmine/0.8.0',
+            })
+          }
+          return Either.success(existingManifest)
+        }),
       getInstaller: vi.fn(),
       parseManifest: vi.fn().mockResolvedValue(Either.success(updatedManifest)),
       parseInstaller: vi.fn(),
@@ -112,11 +116,31 @@ describe('UpdateAddonService', () => {
       loadAndActivateFromDisk: vi.fn().mockResolvedValue(true),
     }
 
+    addonAccessServiceMock = {
+      authorizeFiles: vi.fn().mockResolvedValue(
+        Either.success({
+          addonId: 'mr-tick-datasource-redmine',
+          version: '0.8.0',
+          classification: 'free',
+          fingerprint: 'a'.repeat(64),
+        }),
+      ),
+      authorizeDirectory: vi.fn().mockResolvedValue(
+        Either.success({
+          addonId: 'mr-tick-datasource-redmine',
+          version: '0.8.0',
+          classification: 'free',
+          fingerprint: 'a'.repeat(64),
+        }),
+      ),
+    }
+
     sut = new UpdateAddonService(
       fileStorageMock,
       fileManagerMock,
       addonsFacadeMock,
       addonReloaderMock,
+      addonAccessServiceMock,
     )
   })
 
@@ -133,6 +157,7 @@ describe('UpdateAddonService', () => {
     expect(addonsFacadeMock.downloadFile).toHaveBeenCalledWith(
       'https://example.com/redmine-0.8.0.tladdon',
       expect.any(Function),
+      undefined,
     )
     expect(addonReloaderMock.deactivateAddon).toHaveBeenCalledWith(
       'mr-tick-datasource-redmine',
@@ -221,6 +246,7 @@ describe('UpdateAddonService', () => {
     expect(result.failure.messageKey).toBe('ADDON_NAO_INSTALADO')
     expect(addonsFacadeMock.downloadFile).not.toHaveBeenCalled()
   })
+
   it('activates the absolute path discovered from the written addon manifest, not a cwd-relative path', async () => {
     addonsFacadeMock.getInstalledById
       .mockResolvedValueOnce(Either.success(existingManifest))
@@ -249,7 +275,7 @@ describe('UpdateAddonService', () => {
     )
     const result = await sut.execute({
       addonId: existingManifest.id,
-      downloadUrl: 'https://example.com/update.zip',
+      downloadUrl: 'https://example.com/update.tladdon',
     })
     expect(result.isFailure()).toBe(true)
     expect(result.failure.messageKey).toBe('RESTORE_FAILED')
@@ -264,7 +290,7 @@ describe('UpdateAddonService', () => {
       )
       const result = await sut.execute({
         addonId: existingManifest.id,
-        downloadUrl: 'https://example.com/update.zip',
+        downloadUrl: 'https://example.com/update.tladdon',
       })
       expect(result.isFailure()).toBe(true)
       expect(addonReloaderMock.deactivateAddon).not.toHaveBeenCalled()
@@ -279,7 +305,7 @@ describe('UpdateAddonService', () => {
     ])
     const result = await sut.execute({
       addonId: existingManifest.id,
-      downloadUrl: 'https://example.com/update.zip',
+      downloadUrl: 'https://example.com/update.tladdon',
     })
     expect(result.isFailure()).toBe(true)
     expect(fileStorageMock.write).not.toHaveBeenCalled()

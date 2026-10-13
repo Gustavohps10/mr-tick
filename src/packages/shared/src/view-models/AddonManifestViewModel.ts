@@ -1,3 +1,5 @@
+export type AddonTierViewModel = 'free' | 'plus'
+
 export interface AddonScreenshotViewModel {
   url: string
   caption?: string
@@ -8,6 +10,8 @@ export interface AddonPackageViewModel {
   requiredApiVersion?: string
   releaseDate?: string
   downloadUrl: string
+  sha256?: string
+  size?: number
   changelog?: string[]
 }
 
@@ -22,6 +26,9 @@ export interface AddonManifestViewModel {
   downloads: number
   stars: number
   installed: boolean
+  tier?: AddonTierViewModel
+  sha256?: string
+  size?: number
   installerManifestUrl?: string
   sourceUrl?: string
   homepage?: string
@@ -37,6 +44,8 @@ export interface AddonManifestViewModel {
   updateAvailable?: boolean
   latestVersion?: string
   latestDownloadUrl?: string
+  latestSha256?: string
+  latestSize?: number
   incompatibleUpdate?: boolean
   incompatibleReason?: string
 }

@@ -8,6 +8,7 @@ import {
 import {
   compareSemVer,
   isApiVersionCompatible,
+  isString,
   parseSemVer,
 } from '@mr-tick/shared/helpers'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -22,6 +23,11 @@ import {
   AddonInstallModal,
   AddonInstallTarget,
 } from '@/components/addons-manager/addon-install-modal'
+import {
+  LicenseActivationDialog,
+  LicenseSettingsCard,
+  useLicensingState,
+} from '@/components/addons-manager/license-settings-card'
 import {
   DataSourceInstanceFormData,
   NewDataSourceInstanceForm,
@@ -86,11 +92,30 @@ const MOCK_ADDONS: AddonItem[] = [
   },
 ]
 
+function resolveString(value: string | undefined): string {
+  if (value) {
+    return value
+  }
+  return ''
+}
+
+function resolveErrorMessage(
+  error: string | undefined,
+  fallback: string,
+): string {
+  if (error) {
+    return error
+  }
+  return fallback
+}
+
 function getConnections(
-  workspace: WorkspaceDTO | null,
+  workspace: WorkspaceDTO | null | undefined,
 ): WorkspaceConnectionDTO[] {
-  if (!workspace) return []
-  return workspace.dataSourceConnections ?? []
+  if (!workspace || !workspace.dataSourceConnections) {
+    return []
+  }
+  return workspace.dataSourceConnections
 }
 
 function connectionMatchesAddon(
@@ -98,6 +123,46 @@ function connectionMatchesAddon(
   addonId: string,
 ): boolean {
   return c.dataSourceId === addonId
+}
+
+function resolveConnectionName(c: WorkspaceConnectionDTO): string {
+  const rawName = c.config?.name
+  if (isString(rawName) && rawName.length > 0) {
+    return rawName
+  }
+  return c.id
+}
+
+function resolveConnectionUrl(c: WorkspaceConnectionDTO): string | undefined {
+  const rawUrl = c.config?.url
+  if (isString(rawUrl) && rawUrl.length > 0) {
+    return rawUrl
+  }
+  const rawBaseUrl = c.config?.baseUrl
+  if (isString(rawBaseUrl) && rawBaseUrl.length > 0) {
+    return rawBaseUrl
+  }
+  return undefined
+}
+
+function resolveConnectionStatusValue(
+  status: string | undefined,
+): 'connected' | 'disconnected' {
+  if (status === 'connected') {
+    return 'connected'
+  }
+  return 'disconnected'
+}
+
+function resolveRequiredApiVersion(
+  updateAvailable: boolean,
+  remoteRequired: string | undefined,
+  localRequired: string | undefined,
+): string | undefined {
+  if (updateAvailable) {
+    return remoteRequired
+  }
+  return localRequired
 }
 
 function manifestToAddonItem(
@@ -108,18 +173,23 @@ function manifestToAddonItem(
   return {
     id: m.id,
     name: m.name,
-    description: m.description ?? '',
-    author: m.creator ?? '',
+    description: resolveString(m.description),
+    author: resolveString(m.creator),
     version: m.version,
-    logo: m.logo ?? '',
+    logo: resolveString(m.logo),
     installed: m.installed,
     category,
     connections,
     documentationUrl: m.sourceUrl,
     installerManifestUrl: m.installerManifestUrl,
+    tier: m.tier,
+    sha256: m.sha256,
+    size: m.size,
     updateAvailable: m.updateAvailable,
     latestVersion: m.latestVersion,
     latestDownloadUrl: m.latestDownloadUrl,
+    latestSha256: m.latestSha256,
+    latestSize: m.latestSize,
     requiredApiVersion: m.requiredApiVersion,
     changelog: m.changelog,
     incompatibleUpdate: m.incompatibleUpdate,
@@ -128,14 +198,21 @@ function manifestToAddonItem(
 }
 
 function addonCategory(m: AddonManifestViewModel): AddonCategory {
-  const tags = (m.tags ?? []).map((t) => t.toLowerCase())
+  let rawTags: string[] = []
+  if (m.tags) {
+    rawTags = m.tags
+  }
+  const tags = rawTags.map((t) => t.toLowerCase())
   const name = m.name.toLowerCase()
 
-  if (tags.some((t) => t.includes('theme') || t === 'tema')) return 'themes'
-  if (tags.some((t) => t.includes('util') || t === 'utility'))
+  if (tags.some((t) => Boolean(t.includes('theme') || t === 'tema'))) {
+    return 'themes'
+  }
+  if (tags.some((t) => Boolean(t.includes('util') || t === 'utility'))) {
     return 'utilities'
+  }
   if (
-    tags.some((t) => t.includes('watch') || t === 'watcher') ||
+    tags.some((t) => Boolean(t.includes('watch') || t === 'watcher')) ||
     tags.includes('ia') ||
     tags.includes('ai') ||
     name.includes('ia ') ||
@@ -149,6 +226,7 @@ function addonCategory(m: AddonManifestViewModel): AddonCategory {
 
 export function AddonsPage() {
   const bridge = useHostBridge()
+  const { data: licenseState } = useLicensingState()
   const { data: sdkVersion = '0.5.0' } = useQuery({
     queryKey: ['sdkVersion'],
     queryFn: () => bridge.system.getSdkVersion(),
@@ -173,6 +251,7 @@ export function AddonsPage() {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
   const [connectionDialogOpen, setConnectionDialogOpen] = useState(false)
   const [configureDialogOpen, setConfigureDialogOpen] = useState(false)
+  const [activationDialogOpen, setActivationDialogOpen] = useState(false)
 
   const [selectedAddon, setSelectedAddon] = useState<AddonItem | null>(null)
   const [connectionTargetId, setConnectionTargetId] = useState<string | null>(
@@ -183,27 +262,40 @@ export function AddonsPage() {
   >([])
   const [isInstalling, setIsInstalling] = useState(false)
 
+  const isPlusAuthorized = Boolean(licenseState?.isPlusActive)
+
   const workspaceQueryKey = ['workspace', workspaceId]
 
   const { data: workspace } = useQuery({
     queryKey: workspaceQueryKey,
     queryFn: async () => {
-      if (!workspaceId) return null
+      if (!workspaceId) {
+        return null
+      }
       const res = await bridge.workspaces.getById({
         body: { workspaceId },
       })
-      return res.data ?? null
+      if (!res.data) {
+        return null
+      }
+      return res.data
     },
-    enabled: !!workspaceId,
+    enabled: Boolean(workspaceId),
   })
 
   const { data: installedList = [] } = useQuery({
     queryKey: ['plugins', 'installed'],
     queryFn: async () => {
       const res = await bridge.addons.listInstalled()
-      if (!res.isSuccess)
-        throw new Error(res.error ?? 'Falha ao listar plugins instalados')
-      return res.data ?? []
+      if (!res.isSuccess) {
+        throw new Error(
+          resolveErrorMessage(res.error, 'Falha ao listar plugins instalados'),
+        )
+      }
+      if (!res.data) {
+        return []
+      }
+      return res.data
     },
   })
 
@@ -211,16 +303,19 @@ export function AddonsPage() {
     queryKey: ['plugins', 'available'],
     queryFn: async () => {
       const res = await bridge.addons.listAvailable()
-      if (!res.isSuccess)
-        throw new Error(res.error ?? 'Falha ao listar plugins disponíveis')
-      return res.data ?? []
+      if (!res.isSuccess) {
+        throw new Error(
+          resolveErrorMessage(res.error, 'Falha ao listar plugins disponíveis'),
+        )
+      }
+      if (!res.data) {
+        return []
+      }
+      return res.data
     },
   })
 
-  const connections = useMemo(
-    () => getConnections(workspace ?? null),
-    [workspace],
-  )
+  const connections = useMemo(() => getConnections(workspace), [workspace])
 
   const addons: AddonItem[] = useMemo(() => {
     const byId = new Map<string, AddonManifestViewModel>()
@@ -232,12 +327,15 @@ export function AddonsPage() {
         previousVersion &&
         (!candidateVersion ||
           compareSemVer(candidateVersion, previousVersion) <= 0)
-      )
+      ) {
         return
+      }
       const match = availableList.find((av) => av.id === m.id)
       let updateAvailable = false
       let latestVersion = m.version
       let latestDownloadUrl = m.downloadUrl
+      let latestSha256 = m.sha256
+      let latestSize = m.size
       let changelog = m.changelog
 
       if (match) {
@@ -252,6 +350,8 @@ export function AddonsPage() {
           updateAvailable = true
           latestVersion = match.version
           latestDownloadUrl = match.downloadUrl
+          latestSha256 = match.sha256
+          latestSize = match.size
           changelog = match.changelog
         }
       }
@@ -261,15 +361,21 @@ export function AddonsPage() {
         updateAvailable,
         latestVersion,
         latestDownloadUrl,
-        requiredApiVersion: updateAvailable
-          ? match?.requiredApiVersion
-          : m.requiredApiVersion,
+        latestSha256,
+        latestSize,
+        requiredApiVersion: resolveRequiredApiVersion(
+          updateAvailable,
+          match?.requiredApiVersion,
+          m.requiredApiVersion,
+        ),
         changelog,
       })
     })
 
     availableList.forEach((m) => {
-      if (!byId.has(m.id)) byId.set(m.id, m)
+      if (!byId.has(m.id)) {
+        byId.set(m.id, m)
+      }
     })
 
     const realAddons = Array.from(byId.values()).map((m) => {
@@ -277,17 +383,14 @@ export function AddonsPage() {
         .filter((c) => connectionMatchesAddon(c, m.id))
         .map((c) => {
           const state = connectionState.find((s) => s.connectionId === c.id)
-          return {
+          const item: AddonConnection = {
             id: c.id,
-            name: (c.config?.name as string) || c.id,
-            url:
-              (c.config?.url as string) ||
-              (c.config?.baseUrl as string) ||
-              undefined,
-            status:
-              state?.status === 'connected' ? 'connected' : 'disconnected',
+            name: resolveConnectionName(c),
+            url: resolveConnectionUrl(c),
+            status: resolveConnectionStatusValue(state?.status),
             lastSync: undefined,
-          } satisfies AddonConnection
+          }
+          return item
         })
       return manifestToAddonItem(m, addonConnections, addonCategory(m))
     })
@@ -296,7 +399,9 @@ export function AddonsPage() {
   }, [installedList, availableList, connections, connectionState, sdkVersion])
 
   useEffect(() => {
-    const upgradable = addons.filter((a) => a.installed && a.updateAvailable)
+    const upgradable = addons.filter((a) =>
+      Boolean(a.installed && a.updateAvailable),
+    )
     if (upgradable.length > 0) {
       const names = upgradable
         .map((a) => `${a.name} (v${a.latestVersion})`)
@@ -308,23 +413,26 @@ export function AddonsPage() {
   }, [addons])
 
   const filteredAddons = useMemo(() => {
-    let result = addons.filter((a) => a.category === category)
+    const byCategory = addons.filter((a) => a.category === category)
     if (isAvailable) {
-      result = result.filter((a) => !a.installed)
-    } else {
-      result = result.filter((a) => a.installed)
+      return byCategory.filter((a) => !a.installed)
     }
-    return result
+    return byCategory.filter((a) => a.installed)
   }, [addons, category, isAvailable])
 
   const linkMutation = useMutation({
     mutationFn: (input: {
       dataSourceId: string
       connectionInstanceId: string
-    }) =>
-      bridge.workspaces.linkDataSource({
-        body: { workspaceId: workspaceId!, ...input },
-      }),
+    }) => {
+      let currentWorkspaceId = ''
+      if (workspaceId) {
+        currentWorkspaceId = workspaceId
+      }
+      return bridge.workspaces.linkDataSource({
+        body: { workspaceId: currentWorkspaceId, ...input },
+      })
+    },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: workspaceQueryKey }),
     onError: (e: Error) => toast.error(e.message),
@@ -340,10 +448,10 @@ export function AddonsPage() {
       }),
     onSuccess: (res) => {
       if (!res?.isSuccess || !res.data) {
-        toast.error(res?.error ?? 'Falha ao conectar')
+        toast.error(resolveErrorMessage(res?.error, 'Falha ao conectar'))
         return
       }
-      queryClient.invalidateQueries({ queryKey: workspaceQueryKey })
+      void queryClient.invalidateQueries({ queryKey: workspaceQueryKey })
       toast.success(`${res.data.member.login} conectado`)
       setConnectionDialogOpen(false)
       setSelectedAddon(null)
@@ -356,33 +464,47 @@ export function AddonsPage() {
   })
 
   const disconnectMutation = useMutation({
-    mutationFn: (connectionInstanceId: string) =>
-      bridge.workspaces.disconnectDataSource({
-        body: { workspaceId: workspaceId!, connectionInstanceId },
-      }),
+    mutationFn: (connectionInstanceId: string) => {
+      let currentWorkspaceId = ''
+      if (workspaceId) {
+        currentWorkspaceId = workspaceId
+      }
+      return bridge.workspaces.disconnectDataSource({
+        body: { workspaceId: currentWorkspaceId, connectionInstanceId },
+      })
+    },
     onSuccess: async (res, connectionInstanceId) => {
+      void res
       await disconnect(connectionInstanceId)
-      queryClient.invalidateQueries({ queryKey: workspaceQueryKey })
+      void queryClient.invalidateQueries({ queryKey: workspaceQueryKey })
       toast.info('Desconectado.')
     },
     onError: (e: Error) => toast.error(e.message),
   })
 
   const unlinkMutation = useMutation({
-    mutationFn: (connectionInstanceId: string) =>
-      bridge.workspaces.unlinkDataSource({
-        body: { workspaceId: workspaceId!, connectionInstanceId },
-      }),
+    mutationFn: (connectionInstanceId: string) => {
+      let currentWorkspaceId = ''
+      if (workspaceId) {
+        currentWorkspaceId = workspaceId
+      }
+      return bridge.workspaces.unlinkDataSource({
+        body: { workspaceId: currentWorkspaceId, connectionInstanceId },
+      })
+    },
     onSuccess: async (res, connectionInstanceId) => {
+      void res
       await disconnect(connectionInstanceId)
-      queryClient.invalidateQueries({ queryKey: workspaceQueryKey })
+      void queryClient.invalidateQueries({ queryKey: workspaceQueryKey })
       toast.info('Removido.')
     },
     onError: (e: Error) => toast.error(e.message),
   })
 
   const handleInstall = (addon: AddonItem, version: string) => {
-    if (!addon.installerManifestUrl) return
+    if (!addon.installerManifestUrl) {
+      return
+    }
     setIsInstalling(true)
     bridge.addons
       .getInstaller({ body: { installerUrl: addon.installerManifestUrl } })
@@ -392,8 +514,14 @@ export function AddonsPage() {
             (item) => item.version === version,
           )
           if (!installer.isSuccess || !pkg?.downloadUrl) {
-            toast.error(installer.error ?? 'Versão não encontrada.')
+            toast.error(
+              resolveErrorMessage(installer.error, 'Versão não encontrada.'),
+            )
             return
+          }
+          let expectedSha256 = pkg.sha256
+          if (!expectedSha256) {
+            expectedSha256 = addon.sha256
           }
           setOperation('install')
           setInstallDialogOpen(false)
@@ -402,6 +530,7 @@ export function AddonsPage() {
             name: addon.name,
             version: pkg.version,
             downloadUrl: pkg.downloadUrl,
+            expectedSha256,
             requiredApiVersion: pkg.requiredApiVersion,
           })
         },
@@ -411,6 +540,11 @@ export function AddonsPage() {
   }
 
   const handleOpenInstallDialog = (addon: AddonItem) => {
+    if (addon.tier === 'plus' && !isPlusAuthorized) {
+      setSelectedAddon(addon)
+      setActivationDialogOpen(true)
+      return
+    }
     if (!addon.installerManifestUrl) {
       setSelectedAddon(addon)
       setDetailsDialogOpen(true)
@@ -421,12 +555,14 @@ export function AddonsPage() {
       .getInstaller({ body: { installerUrl: addon.installerManifestUrl } })
       .then(
         (installer) => {
-          setInstallVersions(
-            installer.data?.packages.map((p) => ({
+          let versions: { value: string; label: string }[] = []
+          if (installer.data?.packages) {
+            versions = installer.data.packages.map((p) => ({
               value: p.version,
               label: `v${p.version}`,
-            })) ?? [],
-          )
+            }))
+          }
+          setInstallVersions(versions)
           setInstallDialogOpen(true)
         },
         (error: Error) => toast.error(error.message),
@@ -465,12 +601,21 @@ export function AddonsPage() {
     connectMutation.mutate(data)
   }
 
-  const handleDisconnect = (_addon: AddonItem, connection: AddonConnection) =>
+  const handleDisconnect = (addon: AddonItem, connection: AddonConnection) => {
+    void addon
     disconnectMutation.mutate(connection.id)
-  const handleUninstall = (_addon: AddonItem, connection: AddonConnection) =>
+  }
+  const handleUninstall = (addon: AddonItem, connection: AddonConnection) => {
+    void addon
     unlinkMutation.mutate(connection.id)
+  }
 
   const handleUpdate = (addon: AddonItem) => {
+    if (addon.tier === 'plus' && !isPlusAuthorized) {
+      setSelectedAddon(addon)
+      setActivationDialogOpen(true)
+      return
+    }
     if (!addon.latestDownloadUrl || !addon.latestVersion) {
       toast.error('URL de download da atualização não disponível.')
       return
@@ -481,18 +626,23 @@ export function AddonsPage() {
       name: addon.name,
       version: addon.latestVersion,
       downloadUrl: addon.latestDownloadUrl,
+      expectedSha256: addon.latestSha256,
       requiredApiVersion: addon.requiredApiVersion,
     })
   }
 
   return (
-    <>
+    <div className="space-y-6">
+      <LicenseSettingsCard />
+
       <AddonInstallModal
         addon={jobTarget}
         open={jobTarget !== null}
         operation={operation}
         onOpenChange={(open) => {
-          if (!open) setJobTarget(null)
+          if (!open) {
+            setJobTarget(null)
+          }
         }}
       />
       <AddonList
@@ -526,7 +676,9 @@ export function AddonsPage() {
         open={configureDialogOpen}
         onOpenChange={(open) => {
           setConfigureDialogOpen(open)
-          if (!open) setSelectedAddon(null)
+          if (!open) {
+            setSelectedAddon(null)
+          }
         }}
       >
         <DialogContent className="sm:max-w-lg">
@@ -601,6 +753,16 @@ export function AddonsPage() {
           handleOpenInstallDialog(a)
         }}
       />
-    </>
+
+      <LicenseActivationDialog
+        open={activationDialogOpen}
+        onOpenChange={setActivationDialogOpen}
+        onActivated={() => {
+          if (selectedAddon) {
+            handleOpenInstallDialog(selectedAddon)
+          }
+        }}
+      />
+    </div>
   )
 }

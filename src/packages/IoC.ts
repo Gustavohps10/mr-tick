@@ -1,7 +1,22 @@
-import { JwtService } from '@mr-tick/adapters/auth'
+import {
+  IAddonPackageVerificationConfiguration,
+  OfflineAuthorizationVerificationConfiguration,
+  SignedAddonPackageVerifier,
+} from '@mr-tick/adapters/auth'
+import {
+  Ed25519OfflineAuthorizationVerifier,
+  JwtService,
+} from '@mr-tick/adapters/auth'
 import { IHttpClient } from '@mr-tick/adapters/contracts'
+import {
+  VaultAddonConsentRepository,
+  VaultLicensingStateRepository,
+} from '@mr-tick/adapters/data'
 import { AddonsFacade } from '@mr-tick/adapters/facades'
+import { LicensingApiConfiguration } from '@mr-tick/adapters/http'
+import { LicensingHttpClient } from '@mr-tick/adapters/http'
 import { FileManager, KeyedMutex } from '@mr-tick/adapters/tools'
+import { AddonAccessService } from '@mr-tick/application'
 import {
   ConnectDataSourceService,
   CreateWorkspaceService,
@@ -16,6 +31,7 @@ import {
   ImportAddonService,
   IServiceProvider,
   IWorkspacesRepository,
+  LicensingService,
   LinkDataSourceService,
   ListTaskService,
   ListTimeEntriesService,
@@ -29,14 +45,16 @@ import {
   UpdateAddonService,
   UpdateWorkspaceIdentityService,
 } from '@mr-tick/application'
+import { isRecord } from '@mr-tick/shared/helpers'
 import { IEventEmitter, IJobEvents } from '@mr-tick/shared/transport'
 import {
   asClass,
   asValue,
   AwilixContainer,
+  Constructor,
   createContainer,
   Lifetime,
-  Resolver,
+  NameAndRegistrationPair,
 } from 'awilix'
 
 export class ServiceProvider implements IServiceProvider {
@@ -50,7 +68,8 @@ export class ServiceProvider implements IServiceProvider {
 
   createScope(scopeKey?: string): IServiceProvider {
     if (scopeKey && this.scopeCache.has(scopeKey)) {
-      return this.scopeCache.get(scopeKey)!
+      const cached = this.scopeCache.get(scopeKey)
+      if (cached) return cached
     }
 
     const scoped = this.container.createScope()
@@ -64,15 +83,12 @@ export class ServiceProvider implements IServiceProvider {
   }
 
   include<T>(deps: T): void {
-    const registrations: Record<string, any> = {}
-    for (const key in deps) {
-      registrations[key] = asValue((deps as any)[key])
+    if (!isRecord(deps)) return
+    for (const [key, value] of Object.entries(deps)) {
+      this.container.register(key, asValue(value))
     }
-    this.container.register(registrations)
   }
 }
-
-type Class<T = unknown> = new (...args: any[]) => T
 
 /**
  * Interface para as dependências de plataforma que são fornecidas externamente.
@@ -91,6 +107,14 @@ export interface PlatformDependencies {
 /**
  * Implementação do Builder Pattern para configurar o contêiner Awilix de forma organizada.
  */
+export interface PlatformSecurityDependencies {
+  credentialsVault: ICredentialsVault
+  fileStorage: IFileStorage
+  licensingApiConfiguration: LicensingApiConfiguration
+  offlineAuthorizationVerificationConfiguration: OfflineAuthorizationVerificationConfiguration
+  addonPackageVerificationConfiguration: IAddonPackageVerificationConfiguration
+}
+
 export class ContainerBuilder {
   private readonly container: AwilixContainer
 
@@ -105,8 +129,23 @@ export class ContainerBuilder {
    * @param deps As instâncias das dependências de plataforma.
    * @returns A própria instância do builder para encadeamento.
    */
+  public addSecurityDependencies(deps: PlatformSecurityDependencies): this {
+    this.container.register({
+      credentialsVault: asValue(deps.credentialsVault),
+      fileStorage: asValue(deps.fileStorage),
+      licensingApiConfiguration: asValue(deps.licensingApiConfiguration),
+      offlineAuthorizationVerificationConfiguration: asValue(
+        deps.offlineAuthorizationVerificationConfiguration,
+      ),
+      addonPackageVerificationConfiguration: asValue(
+        deps.addonPackageVerificationConfiguration,
+      ),
+    })
+    return this
+  }
+
   public addPlatformDependencies(deps: PlatformDependencies): this {
-    const registrations: Record<string, any> = {
+    this.container.register({
       jobEmitter: asValue(deps.jobEmitter),
       credentialsVault: asValue(deps.credentialsVault),
       workspacesRepository: asValue(deps.workspacesRepository),
@@ -114,9 +153,7 @@ export class ContainerBuilder {
       fileStorage: asValue(deps.fileStorage),
       httpClient: asValue(deps.httpClient),
       addonReloader: asValue(deps.addonReloader),
-    }
-
-    this.container.register(registrations)
+    })
     return this
   }
 
@@ -145,6 +182,8 @@ export class ContainerBuilder {
         UpdateWorkspaceIdentityService,
       ).scoped(),
       deleteWorkspaceService: asClass(DeleteWorkspaceService).scoped(),
+      licensingFacade: asClass(LicensingService).singleton(),
+      addonAccessService: asClass(AddonAccessService).singleton(),
       importAddonService: asClass(ImportAddonService).scoped(),
       updateAddonService: asClass(UpdateAddonService).scoped(),
       timeEntriesPullService: asClass(TimeEntriesPullService).scoped(),
@@ -161,6 +200,15 @@ export class ContainerBuilder {
     this.container.register({
       jwtService: asClass(JwtService).scoped(),
       fileManager: asClass(FileManager).scoped(),
+      offlineAuthorizationVerifier: asClass(
+        Ed25519OfflineAuthorizationVerifier,
+      ).singleton(),
+      licensingApiClient: asClass(LicensingHttpClient).singleton(),
+      licensingStateRepository: asClass(
+        VaultLicensingStateRepository,
+      ).singleton(),
+      addonConsentRepository: asClass(VaultAddonConsentRepository).singleton(),
+      addonPackageVerifier: asClass(SignedAddonPackageVerifier).singleton(),
       addonsFacade: asClass(AddonsFacade).scoped(),
       keyedMutex: asClass(KeyedMutex).singleton(),
     })
@@ -173,29 +221,30 @@ export class ContainerBuilder {
    * @param module Um objeto contendo os resolvers para o módulo de dependências.
    * @returns A própria instância do builder para encadeamento.
    */
-  public addScoped<T extends Record<string, Class>>(module: T): this {
-    const scopedModule = {} as {
-      [K in keyof T]: Resolver<InstanceType<T[K]>>
-    }
+  public addScoped<T extends Record<string, Constructor<object>>>(
+    module: T,
+  ): this {
+    const registrations: NameAndRegistrationPair<Record<string, object>> = {}
 
-    for (const key in module) {
+    for (const key of Object.keys(module)) {
       const ClassRef = module[key]
-      scopedModule[key] = asClass(ClassRef).scoped() as Resolver<
-        InstanceType<T[typeof key]>
-      >
+      if (ClassRef) {
+        registrations[key] = asClass(ClassRef).scoped()
+      }
     }
 
-    this.container.register(scopedModule)
+    this.container.register(registrations)
     return this
   }
 
   public addFromPath(pathOrFile: string): this {
-    let normalizedPath =
-      pathOrFile.endsWith('.ts') || pathOrFile.endsWith('.js')
-        ? pathOrFile.replace(/[^/\\]+$/, '*')
-        : pathOrFile.endsWith('/')
-          ? `${pathOrFile}*`
-          : `${pathOrFile}/*`
+    let normalizedPath = `${pathOrFile}/*`
+    if (pathOrFile.endsWith('.ts') || pathOrFile.endsWith('.js')) {
+      normalizedPath = pathOrFile.replace(/[^/\\]+$/, '*')
+    }
+    if (pathOrFile.endsWith('/')) {
+      normalizedPath = `${pathOrFile}*`
+    }
 
     normalizedPath = normalizedPath.replace('*', '{!index,*}')
 
@@ -215,7 +264,6 @@ export class ContainerBuilder {
   public build(): IServiceProvider {
     const serviceProvider = new ServiceProvider(this.container)
 
-    // registra ele mesmo dentro do container
     this.container.register({
       serviceProvider: asValue(serviceProvider),
     })

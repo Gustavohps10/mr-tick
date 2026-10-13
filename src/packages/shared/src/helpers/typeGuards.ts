@@ -20,6 +20,14 @@ export function isNumber(value: unknown): value is number {
   return typeof value === 'number' && !Number.isNaN(value)
 }
 
+export function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean'
+}
+
+export function isArray(value: unknown): value is unknown[] {
+  return Array.isArray(value)
+}
+
 export function isFunction(
   value: unknown,
 ): value is (...args: unknown[]) => unknown {

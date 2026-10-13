@@ -25,10 +25,15 @@ export interface AddonItem {
   connections: AddonConnection[]
   documentationUrl?: string
   installerManifestUrl?: string
+  tier?: 'free' | 'plus'
+  sha256?: string
+  size?: number
   /** from marketplace, has update */
   updateAvailable?: boolean
   latestVersion?: string
   latestDownloadUrl?: string
+  latestSha256?: string
+  latestSize?: number
   requiredApiVersion?: string
   changelog?: string[]
   incompatibleUpdate?: boolean

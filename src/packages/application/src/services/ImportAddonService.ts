@@ -8,12 +8,14 @@ import { IJobEvent } from '@mr-tick/shared/transport'
 import { FileData, IFileManager, IFileStorage } from '@/contracts'
 import { IAddonsFacade } from '@/contracts/facades'
 import { IImportAddonUseCase } from '@/contracts/use-cases'
+import { IAddonAccessService } from '@/contracts/use-cases/IAddonAccessService'
 
 export class ImportAddonService implements IImportAddonUseCase {
   constructor(
     private readonly fileStorage: IFileStorage,
     private readonly fileManager: IFileManager,
     private readonly addonsFacade: IAddonsFacade,
+    private readonly addonAccessService: IAddonAccessService,
   ) {}
 
   async execute(
@@ -51,9 +53,20 @@ export class ImportAddonService implements IImportAddonUseCase {
         return manifestContentResult.forwardFailure()
       }
 
-      const addonId = manifestContentResult.success.id
-      const version =
-        manifestContentResult.success.version || DEFAULT_MIN_API_VERSION
+      const manifest = manifestContentResult.success
+      const authorized = await this.addonAccessService.authorizeFiles(
+        extractedFiles,
+        manifest.id,
+        manifest.version,
+        'install',
+      )
+      if (authorized.isFailure()) return authorized.forwardFailure()
+
+      const addonId = manifest.id
+      let version = DEFAULT_MIN_API_VERSION
+      if (manifest.version && manifest.version.trim().length > 0) {
+        version = manifest.version
+      }
 
       if (!addonId) {
         return Either.failure(AppError.NotFound('ADDONID_NAO_ENCONTRADO'))
@@ -80,7 +93,7 @@ export class ImportAddonService implements IImportAddonUseCase {
       onProgress?.({ status: 'progress', value: 100 })
 
       return Either.success()
-    } catch (error: unknown) {
+    } catch {
       return Either.failure(AppError.NotFound('ERRO_AO_IMPORTAR_ADDON'))
     }
   }

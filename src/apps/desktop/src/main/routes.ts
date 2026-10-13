@@ -1,14 +1,19 @@
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+
 import {
   AppSettings,
   IDataSourceResolver,
   IServiceProvider,
 } from '@mr-tick/application'
+import { isBoolean } from '@mr-tick/shared/helpers'
 import { IRequest } from '@mr-tick/shared/transport'
 import { app, BrowserWindow, screen } from 'electron'
 
 import { NativeOverlay } from '@/main'
 import { IpcHandler } from '@/main/adapters/IpcHandler'
 import {
+  LicensingHandler,
   SessionHandler,
   TasksHandler,
   TimeEntriesHandler,
@@ -29,11 +34,11 @@ function getWindowByType(
   if (!windowType) {
     return BrowserWindow.fromWebContents(event.sender)
   }
-  return (
-    BrowserWindow.getAllWindows().find((win) => {
-      return win.windowType === windowType
-    }) ?? null
-  )
+  const found = BrowserWindow.getAllWindows().find((win) => {
+    return win.windowType === windowType
+  })
+  if (!found) return null
+  return found
 }
 
 export function openIpcRoutes(
@@ -51,10 +56,16 @@ export function openIpcRoutes(
   const timeEntriesHandler =
     serviceProvider.resolve<TimeEntriesHandler>('timeEntriesHandler')
   const addonsHandler = serviceProvider.resolve<AddonsHandler>('addonsHandler')
+  const licensingHandler =
+    serviceProvider.resolve<LicensingHandler>('licensingHandler')
   const dataSourceResolver =
     serviceProvider.resolve<IDataSourceResolver>('dataSourceResolver')
   const updaterHandler =
     serviceProvider.resolve<UpdaterHandler>('updaterHandler')
+
+  if (dataSourceResolver) {
+    //Mantém resolução explícita do DataSourceResolver no container
+  }
 
   // --- SYSTEM ---
   IpcHandler.register('UPDATER_CHECK', (e) => updaterHandler.checkForUpdates(e))
@@ -71,16 +82,12 @@ export function openIpcRoutes(
   )
   IpcHandler.register('SYSTEM_GET_ENVIRONMENT', () => {
     let isPortable = false
-    let installPath = ''
+    let installPath = process.cwd()
     if (app.isPackaged) {
-      const { dirname, join } = require('node:path')
-      const { existsSync } = require('node:fs')
       installPath = dirname(process.execPath)
       isPortable =
         !existsSync(join(installPath, 'Uninstall mr-tick.exe')) &&
         process.platform === 'win32'
-    } else {
-      installPath = process.cwd()
     }
 
     return Promise.resolve({
@@ -143,15 +150,23 @@ export function openIpcRoutes(
   IpcHandler.register('LIST_TIME_ENTRIES', (e, req) =>
     timeEntriesHandler.listTimeEntries(e, req),
   )
-  IpcHandler.register(
-    'TIME_ENTRIES_PULL',
-
-    (e, req) => timeEntriesHandler.pull(e, req),
+  IpcHandler.register('TIME_ENTRIES_PULL', (e, req) =>
+    timeEntriesHandler.pull(e, req),
   )
-  IpcHandler.register(
-    'TIME_ENTRIES_PUSH',
+  IpcHandler.register('TIME_ENTRIES_PUSH', (e, req) =>
+    timeEntriesHandler.push(e, req),
+  )
 
-    (e, req) => timeEntriesHandler.push(e, req),
+  // --- LICENSING ---
+  IpcHandler.register('LICENSING_GET_STATUS', () =>
+    licensingHandler.getStatus(),
+  )
+  IpcHandler.register('LICENSING_ACTIVATE', (e, req) =>
+    licensingHandler.activate(e, req),
+  )
+  IpcHandler.register('LICENSING_REFRESH', () => licensingHandler.refresh())
+  IpcHandler.register('LICENSING_DEACTIVATE', () =>
+    licensingHandler.deactivate(),
   )
 
   // --- ADDONS / MARKETPLACE ---
@@ -223,14 +238,18 @@ export function openIpcRoutes(
 
   // --- WIDGET / MOUSE EVENTS ---
   IpcHandler.register('WIDGET_SET_IGNORE_MOUSE', (event, req) => {
-    const ignore = req?.body?.ignore ?? true
-    const forward = req?.body?.forward ?? true
+    let ignore = true
+    if (req && req.body && isBoolean(req.body.ignore)) {
+      ignore = req.body.ignore
+    }
+    let forward = true
+    if (req && req.body && isBoolean(req.body.forward)) {
+      forward = req.body.forward
+    }
     const win = BrowserWindow.fromWebContents(event.sender)
 
     if (win && !win.isDestroyed()) {
-      const winType = (win as unknown as { windowType?: string }).windowType
-      if (winType === 'widget') {
-        // Passa a flag forward explicitamente conforme recebida no payload
+      if (win.windowType === 'widget') {
         win.setIgnoreMouseEvents(ignore, { forward })
       }
     }
@@ -322,7 +341,11 @@ export function openIpcRoutes(
   IpcHandler.register(
     'SYSTEM_SAVE_SETTINGS',
     (event, req: IRequest<AppSettings>) => {
-      saveSettings(req?.body ?? {})
+      let nextSettings: AppSettings = {}
+      if (event && req && req.body) {
+        nextSettings = req.body
+      }
+      saveSettings(nextSettings)
       return Promise.resolve({ success: true })
     },
   )
@@ -333,12 +356,19 @@ export function openIpcRoutes(
     const displays = screen.getAllDisplays().map((display, index) => {
       const isPrimary = display.id === primaryDisplay.id
 
-      // Pega o nome do hardware (ex: "ASUS VG279", "DELL P2419H")
-      const deviceName = display.label?.trim() || `Monitor ${index + 1}`
+      let deviceName = `Monitor ${index + 1}`
+      if (display.label && display.label.trim().length > 0) {
+        deviceName = display.label.trim()
+      }
+
+      let labelSuffix = ''
+      if (isPrimary) {
+        labelSuffix = ' (Principal)'
+      }
 
       return {
         id: display.id,
-        label: `${deviceName}${isPrimary ? ' (Principal)' : ''}`,
+        label: `${deviceName}${labelSuffix}`,
         name: deviceName,
         isPrimary,
         bounds: display.bounds,
@@ -360,13 +390,13 @@ export function openIpcRoutes(
       let targetWindow: BrowserWindow | null = null
 
       if (targetWindowType) {
-        targetWindow =
-          BrowserWindow.getAllWindows().find((win) => {
-            if (win.isDestroyed()) return false
-            const customWin = win as unknown as { windowType?: string }
-            return customWin.windowType === targetWindowType
-          }) ?? null
-      } else {
+        const found = BrowserWindow.getAllWindows().find((win) => {
+          if (win.isDestroyed()) return false
+          return win.windowType === targetWindowType
+        })
+        if (found) targetWindow = found
+      }
+      if (!targetWindowType) {
         targetWindow = BrowserWindow.fromWebContents(event.sender)
       }
 
@@ -382,17 +412,14 @@ export function openIpcRoutes(
         const { x, y, width, height } = targetDisplay.workArea
         targetWindow.setBounds({ x, y, width, height })
 
-        // --- CORREÇÃO AQUI ---
-        // O SO reseta o click-through ao mudar de monitor, forçamos a re-aplicação.
-        const winType =
-          targetWindowType ||
-          (targetWindow as unknown as { windowType?: string }).windowType
+        let winType = targetWindow.windowType
+        if (targetWindowType) {
+          winType = targetWindowType
+        }
         if (winType === 'widget') {
           targetWindow.setIgnoreMouseEvents(true, { forward: true })
         }
-        // ---------------------
 
-        // Notifica o Renderer
         targetWindow.webContents.send('window:bounds-changed', {
           x,
           y,
@@ -431,7 +458,7 @@ export function openIpcRoutes(
     'SYSTEM_TOGGLE_THEME',
     (event, req: IRequest<{ theme: 'light' | 'dark' | 'system' }>) => {
       const nextTheme = req?.body?.theme
-      if (!nextTheme) return Promise.resolve({ success: false })
+      if (!event || !nextTheme) return Promise.resolve({ success: false })
 
       BrowserWindow.getAllWindows().forEach((win) => {
         if (!win.isDestroyed()) {

@@ -76,9 +76,14 @@ export const IpcChannels = {
   ADDONS_GET_ACTIVE_THEME: 'addons:get-active-theme',
   ADDONS_SET_ACTIVE_THEME: 'addons:set-active-theme',
 
+  LICENSING_GET_STATUS: 'licensing:get-status',
+  LICENSING_ACTIVATE: 'licensing:activate',
+  LICENSING_REFRESH: 'licensing:refresh',
+  LICENSING_DEACTIVATE: 'licensing:deactivate',
+
   UPDATER_CHECK: 'updater:check',
   UPDATER_DOWNLOAD: 'updater:download',
   UPDATER_INSTALL: 'updater:install',
-} as const
+}
 
 export type IpcChannelType = keyof typeof IpcChannels

@@ -7,6 +7,7 @@ import {
   addonsInvoker,
   credentialsVaultInvoker,
   headersInvoker,
+  licensingInvoker,
   metadataInvoker,
   sessionInvoker,
   systemInvoker,
@@ -36,12 +37,17 @@ const api: IHostBridge = {
   system: systemInvoker,
   updater: updaterInvoker,
   addons: addonsInvoker,
+  licensing: licensingInvoker,
 
   events: {
     on: <T = void>(channel: string, handler: (data: T) => void) => {
       const unsubscribe = electronAPI.ipcRenderer.on(
         channel,
         (event, data: T) => {
+          if (event) {
+            handler(data)
+            return
+          }
           handler(data)
         },
       )
@@ -67,7 +73,8 @@ if (process.contextIsolated) {
   } catch (error) {
     console.error('Error while exposing API:', error)
   }
-} else {
+}
+if (!process.contextIsolated) {
   window.electron = electronAPI
   window.api = api
 }

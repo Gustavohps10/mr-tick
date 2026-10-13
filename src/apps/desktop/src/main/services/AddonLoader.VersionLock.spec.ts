@@ -5,7 +5,10 @@ import { join } from 'node:path'
 import { ICredentialsVault, ILocalRuntimeAPI } from '@mr-tick/application'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { unavailableCore } from './addon-core-test-fixture'
+import {
+  permissiveAddonAccessService,
+  unavailableCore,
+} from './addon-core-test-fixture'
 import { AddonLoader } from './AddonLoader'
 
 const unavailableRuntime: ILocalRuntimeAPI = {
@@ -49,6 +52,7 @@ describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
       unavailableRuntime,
       '0.4.0',
       unavailableCore,
+      permissiveAddonAccessService,
     )
 
     // Cria diretório temporário para simular addon no disco
@@ -189,7 +193,8 @@ requiredApiVersion: '>=0.9.0'
     } finally {
       if (originalEnv === undefined) {
         delete process.env.PLAYWRIGHT_TEST
-      } else {
+      }
+      if (originalEnv !== undefined) {
         process.env.PLAYWRIGHT_TEST = originalEnv
       }
     }

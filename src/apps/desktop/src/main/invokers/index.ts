@@ -1,6 +1,7 @@
 export * from './addonsInvoker'
 export * from './credentialsVaultInvoker'
 export * from './headersInvoker'
+export * from './licensingInvoker'
 export * from './metadataInvoker'
 export * from './sessionInvoker'
 export * from './systemInvoker'

@@ -256,6 +256,36 @@ const mockBridgeClient: IHostBridge = {
     getToken: async () => mockSuccess(null),
     deleteToken: async () => mockSuccess(undefined),
   },
+  licensing: {
+    getStatus: async () =>
+      mockSuccess({
+        state: 'inactive',
+        tier: 'free',
+        isPlusActive: false,
+        entitlements: [],
+      }),
+    activate: async () =>
+      mockSuccess({
+        state: 'active',
+        tier: 'plus',
+        isPlusActive: true,
+        entitlements: ['plus', 'plus_addons'],
+      }),
+    refresh: async () =>
+      mockSuccess({
+        state: 'inactive',
+        tier: 'free',
+        isPlusActive: false,
+        entitlements: [],
+      }),
+    deactivate: async () =>
+      mockSuccess({
+        state: 'inactive',
+        tier: 'free',
+        isPlusActive: false,
+        entitlements: [],
+      }),
+  },
   headers: {
     setDefaultHeaders: () => {},
     getDefaultHeaders: () => ({}),

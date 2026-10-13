@@ -8,6 +8,8 @@ export type {
   AddonInstallerViewModel,
   AddonManifestViewModel,
   ConnectionResultViewModel,
+  LicensingStatusStateViewModel,
+  LicensingStatusViewModel,
   MemberViewModel,
   MetadataViewModel,
   PaginatedViewModel,
@@ -21,6 +23,7 @@ import {
   AddonInstallerViewModel,
   AddonManifestViewModel,
   ConnectionResultViewModel,
+  LicensingStatusViewModel,
   MemberViewModel,
   MetadataViewModel,
   PaginatedViewModel,
@@ -223,9 +226,14 @@ export interface AddonManifest {
   tags?: string[]
   category?:
     'DataSources' | 'Watchers' | 'Calendars' | 'Punch' | 'Themes' | string
+  tier?: 'free' | 'plus'
+  sha256?: string
+  size?: number
   updateAvailable?: boolean
   latestVersion?: string
   latestDownloadUrl?: string
+  latestSha256?: string
+  latestSize?: number
   changelog?: string[]
   incompatibleUpdate?: boolean
   incompatibleReason?: string
@@ -238,6 +246,8 @@ export interface AddonInstaller {
     requiredApiVersion: string
     releaseDate: string
     downloadUrl: string
+    sha256?: string
+    size?: number
     changelog: string[]
   }[]
 }
@@ -388,11 +398,20 @@ export interface IAddonsAPI {
   ): Promise<ViewModel<AddonInstallerViewModel>>
 
   install(
-    payload: IRequest<{ downloadUrl: string; jobId?: string }>,
+    payload: IRequest<{
+      downloadUrl: string
+      jobId?: string
+      expectedSha256?: string
+    }>,
   ): Promise<ViewModel<IJobResult>>
 
   update(
-    payload: IRequest<{ addonId: string; downloadUrl: string; jobId: string }>,
+    payload: IRequest<{
+      addonId: string
+      downloadUrl: string
+      jobId: string
+      expectedSha256?: string
+    }>,
   ): Promise<ViewModel<IJobResult>>
 
   uninstall(
@@ -524,6 +543,15 @@ export interface IUpdaterAPI {
   quitAndInstall(): Promise<void>
 }
 
+export interface ILicensingAPI {
+  getStatus(): Promise<ViewModel<LicensingStatusViewModel>>
+  activate(
+    payload: IRequest<{ licenseKey: string }>,
+  ): Promise<ViewModel<LicensingStatusViewModel>>
+  refresh(): Promise<ViewModel<LicensingStatusViewModel>>
+  deactivate(): Promise<ViewModel<LicensingStatusViewModel>>
+}
+
 export interface IHostBridge {
   localRuntime: ILocalRuntimeAPI
   localPersistence: ILocalPersistenceAPI
@@ -538,5 +566,6 @@ export interface IHostBridge {
   system: ISystemAPI
   updater: IUpdaterAPI
   addons: IAddonsAPI
+  licensing: ILicensingAPI
   events: IEventsAPI
 }

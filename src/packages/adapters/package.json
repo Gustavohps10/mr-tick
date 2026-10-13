@@ -47,6 +47,7 @@
   "dependencies": {
     "@mr-tick/application": "workspace:*",
     "@mr-tick/domain": "workspace:*",
+    "@mr-tick/sdk": "workspace:*",
     "@mr-tick/shared": "workspace:*",
     "ajv": "^8.17.1",
     "archiver": "^7.0.1",

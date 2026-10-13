@@ -1,6 +1,6 @@
 'use client'
 
-import { isApiVersionCompatible } from '@mr-tick/shared/helpers'
+import { isApiVersionCompatible, isString } from '@mr-tick/shared/helpers'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Loader2, Terminal, XCircle } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
@@ -26,6 +26,7 @@ export interface AddonInstallTarget {
   name: string
   version: string
   downloadUrl?: string
+  expectedSha256?: string
   requiredApiVersion?: string
   releaseDate?: string
   changelog?: string[]
@@ -47,6 +48,62 @@ interface InstallationLogEntry {
   timestamp: Date
 }
 
+function getOperationLabel(isUpdate: boolean): string {
+  if (isUpdate) {
+    return 'Atualização'
+  }
+  return 'Instalação'
+}
+
+function getLogFileName(isUpdate: boolean): string {
+  if (isUpdate) {
+    return 'update.log'
+  }
+  return 'installation.log'
+}
+
+function getRunningLabel(isUpdate: boolean): string {
+  if (isUpdate) {
+    return 'Atualizando addon...'
+  }
+  return 'Instalando pacotes...'
+}
+
+function getDoneButtonLabel(isDone: boolean): string {
+  if (isDone) {
+    return 'Concluir'
+  }
+  return 'Aguarde...'
+}
+
+function getEventLogMessage(data: string | undefined): string {
+  if (isString(data)) {
+    return data
+  }
+  return 'Processando...'
+}
+
+function getCompletionMessage(
+  isFailure: boolean,
+  failureMessage: string,
+  isUpdate: boolean,
+): string {
+  if (isFailure) {
+    return failureMessage
+  }
+  if (isUpdate) {
+    return 'Addon atualizado com sucesso!'
+  }
+  return 'Addon instalado com sucesso!'
+}
+
+function getCompletionLogType(isFailure: boolean): 'error' | 'success' {
+  if (isFailure) {
+    return 'error'
+  }
+  return 'success'
+}
+
 export function AddonInstallModal({
   addon,
   open,
@@ -57,7 +114,7 @@ export function AddonInstallModal({
 }: AddonInstallModalProps) {
   const bridge = useHostBridge()
   const isUpdate = operation === 'update'
-  const operationLabel = isUpdate ? 'Atualização' : 'Instalação'
+  const operationLabel = getOperationLabel(isUpdate)
   const queryClient = useQueryClient()
   const logEndRef = useRef<HTMLDivElement>(null)
   const installationStartedRef = useRef(false)
@@ -136,39 +193,45 @@ export function AddonInstallModal({
       addon.id,
       addon.downloadUrl,
       (event) => {
-        if (event.status === 'progress') setProgress(event.value)
-        if (event.status === 'data')
+        if (event.status === 'progress') {
+          setProgress(event.value)
+        }
+        if (event.status === 'data') {
           setLogs((previous) => [
             ...previous,
             {
               id: crypto.randomUUID(),
-              message:
-                typeof event.data === 'string' ? event.data : 'Processando...',
+              message: getEventLogMessage(event.data),
               type: 'info',
               timestamp: new Date(),
             },
           ])
+        }
       },
       operation,
+      addon.expectedSha256,
     )
     setIsDone(true)
     setIsExecutingJob(false)
-    setIsError(result.isFailure())
-    const message = result.isFailure()
-      ? result.failure.messageKey
-      : isUpdate
-        ? 'Addon atualizado com sucesso!'
-        : 'Addon instalado com sucesso!'
+    const failed = result.isFailure()
+    setIsError(failed)
+    let failureMessage = ''
+    if (result.isFailure()) {
+      failureMessage = result.failure.messageKey
+    }
+    const message = getCompletionMessage(failed, failureMessage, isUpdate)
     setLogs((previous) => [
       ...previous,
       {
         id: crypto.randomUUID(),
         message,
-        type: result.isFailure() ? 'error' : 'success',
+        type: getCompletionLogType(failed),
         timestamp: new Date(),
       },
     ])
-    if (result.isFailure()) toast.error(message)
+    if (failed) {
+      toast.error(message)
+    }
     if (result.isSuccess()) {
       setProgress(100)
       toast.success(message)
@@ -191,7 +254,9 @@ export function AddonInstallModal({
       return
     }
 
-    if (!addon || installationStartedRef.current) return
+    if (!addon || installationStartedRef.current) {
+      return
+    }
 
     installationStartedRef.current = true
     void startInstallationRef.current()
@@ -203,10 +268,14 @@ export function AddonInstallModal({
         data-testid="addon-install-modal-content"
         className="w-[95vw] max-w-3xl overflow-hidden border-none p-0 shadow-2xl sm:max-w-3xl"
         onPointerDownOutside={(event) => {
-          if (!isDone) event.preventDefault()
+          if (!isDone) {
+            event.preventDefault()
+          }
         }}
         onInteractOutside={(event) => {
-          if (!isDone) event.preventDefault()
+          if (!isDone) {
+            event.preventDefault()
+          }
         }}
       >
         <div>
@@ -227,25 +296,20 @@ export function AddonInstallModal({
                   </div>
                 </div>
 
-                {isDone && (
+                {isDone && isError && (
                   <Badge
                     variant="outline"
-                    className={cn(
-                      'flex items-center gap-1 font-bold',
-                      isError
-                        ? 'border-red-400/20 bg-red-400/10 text-red-400'
-                        : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-500',
-                    )}
+                    className="flex items-center gap-1 border-red-400/20 bg-red-400/10 font-bold text-red-400"
                   >
-                    {isError ? (
-                      <>
-                        <XCircle className="h-3.5 w-3.5" /> Falha
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Concluído
-                      </>
-                    )}
+                    <XCircle className="h-3.5 w-3.5" /> Falha
+                  </Badge>
+                )}
+                {isDone && !isError && (
+                  <Badge
+                    variant="outline"
+                    className="flex items-center gap-1 border-emerald-500/20 bg-emerald-500/10 font-bold text-emerald-500"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Concluído
                   </Badge>
                 )}
               </div>
@@ -269,7 +333,7 @@ export function AddonInstallModal({
                   <div className="h-2 w-2 rounded-full bg-[#28C840]" />
                 </div>
                 <span className="text-muted-foreground text-[10px]">
-                  {isUpdate ? 'update.log' : 'installation.log'}
+                  {getLogFileName(isUpdate)}
                 </span>
               </div>
 
@@ -315,11 +379,7 @@ export function AddonInstallModal({
               {!isDone && (
                 <>
                   <Loader2 className="text-primary h-3.5 w-3.5 animate-spin" />
-                  <span>
-                    {isUpdate
-                      ? 'Atualizando addon...'
-                      : 'Instalando pacotes...'}
-                  </span>
+                  <span>{getRunningLabel(isUpdate)}</span>
                 </>
               )}
             </div>
@@ -329,7 +389,7 @@ export function AddonInstallModal({
               onClick={handleClose}
               className="cursor-pointer font-semibold"
             >
-              {isDone ? 'Concluir' : 'Aguarde...'}
+              {getDoneButtonLabel(isDone)}
             </Button>
           </div>
         </div>

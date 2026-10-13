@@ -1,91 +1,34 @@
 import {
   AddonInstallerDTO,
   AddonManifestDTO,
+  AddonPackageDTO,
+  AddonScreenshotDTO,
   IAddonsFacade,
   IFileStorage,
+  ILicensingFacade,
 } from '@mr-tick/application'
+import { AddonTier } from '@mr-tick/domain'
 import {
   AppError,
   compareSemVer,
   DEFAULT_MIN_API_VERSION,
   Either,
+  hasProperty,
   isApiVersionCompatible,
+  isArray,
+  isFunction,
+  isNonEmptyString,
+  isNumber,
+  isRecord,
+  isString,
   parseSemVer,
 } from '@mr-tick/shared/helpers'
 import { IJobEvent } from '@mr-tick/shared/transport'
 import axios from 'axios'
+import crypto from 'crypto'
 import { promises as fs } from 'fs'
 import yaml from 'js-yaml'
 import { join, resolve } from 'path'
-
-type RawPackage = {
-  version?: string
-  Version?: string
-  requiredApiVersion?: string
-  RequiredApiVersion?: string
-  releaseDate?: string
-  ReleaseDate?: string
-  downloadUrl?: string
-  DownloadUrl?: string
-  changelog?: string[]
-  Changelog?: string[]
-}
-
-type RawScreenshot = {
-  url?: string
-  caption?: string
-}
-
-type RawManifest = {
-  id?: string
-  AddonId?: string
-  version?: string
-  Version?: string
-  name?: string
-  Name?: string
-  author?: string
-  Author?: string
-  creator?: string
-  Creator?: string
-  shortDescription?: string
-  ShortDescription?: string
-  description?: string
-  Description?: string
-  iconUrl?: string
-  IconUrl?: string
-  logo?: string
-  sourceUrl?: string
-  SourceUrl?: string
-  homepage?: string
-  Homepage?: string
-  installerUrl?: string
-  InstallerUrl?: string
-  tags?: string[]
-  Tags?: string[]
-  category?: string
-  Category?: string
-  categories?: string[]
-  Categories?: string[]
-  screenshots?: RawScreenshot[]
-  Screenshots?: RawScreenshot[]
-  downloadUrl?: string
-  DownloadUrl?: string
-  requiredApiVersion?: string
-  RequiredApiVersion?: string
-  releaseDate?: string
-  ReleaseDate?: string
-  changelog?: string[]
-  Changelog?: string[]
-  packages?: RawPackage[]
-  Packages?: RawPackage[]
-}
-
-type RawInstaller = {
-  id?: string
-  AddonId?: string
-  packages?: RawPackage[]
-  Packages?: RawPackage[]
-}
 
 interface IPathResolvableStorage {
   getAbsolutePath(filePath: string): string
@@ -95,13 +38,169 @@ function isPathResolvableStorage(
   storage: IFileStorage,
 ): storage is IFileStorage & IPathResolvableStorage {
   return (
-    'getAbsolutePath' in storage &&
-    typeof storage.getAbsolutePath === 'function'
+    hasProperty(storage, 'getAbsolutePath') &&
+    isFunction(storage.getAbsolutePath)
   )
 }
 
+function pickFirstString(
+  record: object,
+  keys: string[],
+  fallback: string,
+): string {
+  for (const key of keys) {
+    if (hasProperty(record, key)) {
+      const val = record[key]
+      if (isNonEmptyString(val)) return val
+    }
+  }
+  return fallback
+}
+
+function pickOptionalString(
+  record: object,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    if (hasProperty(record, key)) {
+      const val = record[key]
+      if (isNonEmptyString(val)) return val
+    }
+  }
+  return undefined
+}
+
+function pickOptionalNumber(
+  record: object,
+  keys: string[],
+): number | undefined {
+  for (const key of keys) {
+    if (hasProperty(record, key)) {
+      const val = record[key]
+      if (isNumber(val)) return val
+    }
+  }
+  return undefined
+}
+
+function pickStringArray(record: object, keys: string[]): string[] {
+  for (const key of keys) {
+    if (hasProperty(record, key)) {
+      const val = record[key]
+      if (isArray(val)) {
+        const items: string[] = []
+        for (const item of val) {
+          if (isString(item)) items.push(item)
+        }
+        return items
+      }
+    }
+  }
+  return []
+}
+
+function parseAddonTier(record: object): AddonTier {
+  const raw = pickOptionalString(record, ['tier', 'Tier'])
+  if (raw === 'plus') return 'plus'
+  return 'free'
+}
+
+function parseScreenshots(record: object): AddonScreenshotDTO[] {
+  let listSource: object | undefined = undefined
+  if (hasProperty(record, 'screenshots') && isArray(record.screenshots)) {
+    listSource = record.screenshots
+  }
+  if (
+    !listSource &&
+    hasProperty(record, 'Screenshots') &&
+    isArray(record.Screenshots)
+  ) {
+    listSource = record.Screenshots
+  }
+  if (!isArray(listSource)) return []
+
+  const result: AddonScreenshotDTO[] = []
+  for (const item of listSource) {
+    if (isRecord(item)) {
+      const url = pickFirstString(item, ['url', 'Url'], '')
+      const caption = pickOptionalString(item, ['caption', 'Caption'])
+      result.push({ url, caption })
+    }
+  }
+  return result
+}
+
+function parsePackages(record: object): AddonPackageDTO[] {
+  let listSource: object | undefined = undefined
+  if (hasProperty(record, 'packages') && isArray(record.packages)) {
+    listSource = record.packages
+  }
+  if (
+    !listSource &&
+    hasProperty(record, 'Packages') &&
+    isArray(record.Packages)
+  ) {
+    listSource = record.Packages
+  }
+  if (!isArray(listSource)) return []
+
+  const result: AddonPackageDTO[] = []
+  for (const item of listSource) {
+    if (isRecord(item)) {
+      result.push({
+        version: pickFirstString(
+          item,
+          ['version', 'Version'],
+          DEFAULT_MIN_API_VERSION,
+        ),
+        requiredApiVersion: pickFirstString(
+          item,
+          ['requiredApiVersion', 'RequiredApiVersion'],
+          DEFAULT_MIN_API_VERSION,
+        ),
+        releaseDate: pickFirstString(item, ['releaseDate', 'ReleaseDate'], ''),
+        downloadUrl: pickFirstString(item, ['downloadUrl', 'DownloadUrl'], ''),
+        sha256: pickOptionalString(item, ['sha256', 'Sha256']),
+        size: pickOptionalNumber(item, ['size', 'Size']),
+        changelog: pickStringArray(item, ['changelog', 'Changelog']),
+      })
+    }
+  }
+  return result
+}
+
+function extractPlusDownloadRouteParams(
+  downloadUrl: string,
+): { addonId: string; version: string } | null {
+  const match =
+    /^https:\/\/mistertick-api\.mistertick\.workers\.dev\/catalog\/(?:plus-addons|addons)\/([^/]+)\/versions\/([^/]+)\/download(?:\.tladdon)?$/i.exec(
+      downloadUrl.trim(),
+    )
+  if (!match || !match[1] || !match[2]) return null
+  return {
+    addonId: decodeURIComponent(match[1]),
+    version: decodeURIComponent(match[2]),
+  }
+}
+
+function verifyPackageSha256(
+  bytes: Uint8Array,
+  expectedSha256: string | undefined,
+): boolean {
+  if (!expectedSha256 || expectedSha256.trim().length === 0) return true
+  const computed = crypto
+    .createHash('sha256')
+    .update(bytes)
+    .digest('hex')
+    .toLowerCase()
+  return computed === expectedSha256.trim().toLowerCase()
+}
+
 export class AddonsFacade implements IAddonsFacade {
-  constructor(private readonly fileStorage: IFileStorage) {}
+  constructor(
+    private readonly fileStorage: IFileStorage,
+    private readonly licensingFacade: ILicensingFacade,
+  ) {}
 
   private getAddonsBasePaths(): string[] {
     const paths: string[] = [resolve('./addons'), resolve('./storage/addons')]
@@ -125,34 +224,39 @@ export class AddonsFacade implements IAddonsFacade {
 
       let response
       try {
-        response = await axios.get<unknown>(primaryUrl)
+        response = await axios.get<object[]>(primaryUrl)
       } catch {
-        response = await axios.get<unknown>(fallbackUrl)
+        response = await axios.get<object[]>(fallbackUrl)
       }
 
-      const data = response.data
+      const data: object = response.data
 
-      if (Array.isArray(data)) {
-        // Se o index.json já contém os objetos consolidados completos (Novo Formato - 1 única requisição!)
+      if (isArray(data)) {
         if (data.length === 0) {
           return Either.success([])
         }
 
-        if (typeof data[0] === 'object' && data[0] !== null) {
-          const addons = data
-            .map((item) => this.mapRawToDTO(item as RawManifest))
-            .filter((item): item is AddonManifestDTO => item !== null)
-
+        const firstItem = data[0]
+        if (isRecord(firstItem)) {
+          const addons: AddonManifestDTO[] = []
+          for (const item of data) {
+            if (isRecord(item)) {
+              const mapped = this.mapRecordToDTO(item)
+              if (mapped) addons.push(mapped)
+            }
+          }
           return Either.success(addons)
         }
 
-        // Fallback legatário: se ainda for array de strings de arquivos yaml
-        if (typeof data[0] === 'string') {
-          const yamlFiles = data as string[]
+        if (isString(firstItem)) {
+          const yamlFiles: string[] = []
+          for (const item of data) {
+            if (isString(item)) yamlFiles.push(item)
+          }
           const addons: AddonManifestDTO[] = await Promise.all(
             yamlFiles.map(async (filename) => {
               const yamlUrl = `https://mistertick.github.io/addons-manifest/addonDatabase/dataSource/${filename}`
-              const { data: rawYaml } = await axios.get(yamlUrl)
+              const { data: rawYaml } = await axios.get<string>(yamlUrl)
               const parsed = await this.parseManifest(rawYaml)
               if (parsed.isFailure()) throw parsed.failure
               return parsed.success
@@ -191,7 +295,7 @@ export class AddonsFacade implements IAddonsFacade {
             seenIdsAndVersions.add(key)
 
             const addonFolder = join(manifestPath, '..')
-            const addon = {
+            const addon: AddonManifestDTO = {
               ...manifestResult.success,
               installed: true,
               path: addonFolder,
@@ -209,7 +313,8 @@ export class AddonsFacade implements IAddonsFacade {
       installedAddons.sort((left, right) => {
         const leftVersion = parseSemVer(left.version)
         const rightVersion = parseSemVer(right.version)
-        if (!leftVersion) return rightVersion ? 1 : 0
+        if (!leftVersion && !rightVersion) return 0
+        if (!leftVersion) return 1
         if (!rightVersion) return -1
         return compareSemVer(rightVersion, leftVersion)
       })
@@ -342,15 +447,19 @@ export class AddonsFacade implements IAddonsFacade {
     backupPath: string,
   ): Promise<Either<AppError, void>> {
     try {
+      if (!addonId) {
+        return Either.failure(AppError.ValidationError('ADDON_ID_OBRIGATORIO'))
+      }
       try {
         await fs.access(backupPath)
       } catch {
         return Either.failure(AppError.NotFound('BACKUP_NAO_ENCONTRADO'))
       }
 
-      const targetFolder = backupPath.endsWith('.backup')
-        ? backupPath.slice(0, -7)
-        : backupPath
+      let targetFolder = backupPath
+      if (backupPath.endsWith('.backup')) {
+        targetFolder = backupPath.slice(0, -7)
+      }
 
       try {
         await fs.rm(targetFolder, { recursive: true, force: true })
@@ -384,7 +493,7 @@ export class AddonsFacade implements IAddonsFacade {
     installerUrl: string,
   ): Promise<Either<AppError, AddonInstallerDTO>> {
     try {
-      const { data: rawYaml } = await axios.get(installerUrl)
+      const { data: rawYaml } = await axios.get<string>(installerUrl)
       return this.parseInstaller(rawYaml)
     } catch {
       return Either.failure(AppError.NotFound('FAILED_TO_FETCH_INSTALLER'))
@@ -395,9 +504,11 @@ export class AddonsFacade implements IAddonsFacade {
     fileContent: Buffer | string,
   ): Promise<Either<AppError, AddonManifestDTO>> {
     try {
-      const doc = yaml.load(fileContent.toString()) as RawManifest
-      const dto = this.mapRawToDTO(doc)
-
+      const rawDoc = yaml.load(fileContent.toString())
+      if (!isRecord(rawDoc)) {
+        return Either.failure(AppError.NotFound('ADDONID_NOT_FOUND'))
+      }
+      const dto = this.mapRecordToDTO(rawDoc)
       if (!dto) {
         return Either.failure(AppError.NotFound('ADDONID_NOT_FOUND'))
       }
@@ -412,25 +523,40 @@ export class AddonsFacade implements IAddonsFacade {
     fileContent: Buffer | string,
   ): Promise<Either<AppError, AddonInstallerDTO>> {
     try {
-      const doc = yaml.load(fileContent.toString()) as RawInstaller
-      const id = doc.id ?? doc.AddonId
-      const rawPackages = doc.packages ?? doc.Packages ?? []
-
-      if (!id)
+      const rawDoc = yaml.load(fileContent.toString())
+      if (!isRecord(rawDoc)) {
         return Either.failure(AppError.ValidationError('INSTALLER_INVALID'))
+      }
 
+      const id = pickOptionalString(rawDoc, ['id', 'AddonId'])
+      if (!id) {
+        return Either.failure(AppError.ValidationError('INSTALLER_INVALID'))
+      }
+
+      const packages = parsePackages(rawDoc)
       const installer: AddonInstallerDTO = {
         id,
-        packages: rawPackages.map((pkg) => ({
-          version: pkg.version ?? pkg.Version ?? DEFAULT_MIN_API_VERSION,
-          requiredApiVersion:
-            pkg.requiredApiVersion ??
-            pkg.RequiredApiVersion ??
-            DEFAULT_MIN_API_VERSION,
-          releaseDate: pkg.releaseDate ?? pkg.ReleaseDate ?? '',
-          downloadUrl: pkg.downloadUrl ?? pkg.DownloadUrl ?? '',
-          changelog: pkg.changelog ?? pkg.Changelog ?? [],
-        })),
+        packages: packages.map((pkg) => {
+          let requiredApiVersion = DEFAULT_MIN_API_VERSION
+          if (pkg.requiredApiVersion) {
+            requiredApiVersion = pkg.requiredApiVersion
+          }
+          let releaseDate = ''
+          if (pkg.releaseDate) {
+            releaseDate = pkg.releaseDate
+          }
+          let changelog: string[] = []
+          if (pkg.changelog) {
+            changelog = pkg.changelog
+          }
+          return {
+            version: pkg.version,
+            requiredApiVersion,
+            releaseDate,
+            downloadUrl: pkg.downloadUrl,
+            changelog,
+          }
+        }),
       }
 
       return Either.success(installer)
@@ -439,63 +565,69 @@ export class AddonsFacade implements IAddonsFacade {
     }
   }
 
-  private mapRawToDTO(doc: RawManifest): AddonManifestDTO | null {
-    const id = doc.id ?? doc.AddonId
+  private mapRecordToDTO(doc: object): AddonManifestDTO | null {
+    const id = pickOptionalString(doc, ['id', 'AddonId'])
     if (!id) return null
 
-    const category = doc.category ?? doc.Category
-    const rawCategories = doc.categories ?? doc.Categories
-    const categories: string[] = Array.isArray(rawCategories)
-      ? rawCategories
-      : category
-        ? [category]
-        : []
+    const category = pickOptionalString(doc, ['category', 'Category'])
+    let categories = pickStringArray(doc, ['categories', 'Categories'])
+    if (categories.length === 0 && category) {
+      categories = [category]
+    }
 
-    const rawScreenshots = doc.screenshots ?? doc.Screenshots ?? []
-    const screenshots = rawScreenshots.map((s) => ({
-      url: s.url ?? '',
-      caption: s.caption,
-    }))
+    let primaryCategory = ''
+    if (category) {
+      primaryCategory = category
+    }
+    if (!primaryCategory && categories[0]) {
+      primaryCategory = categories[0]
+    }
 
-    const rawPackages = doc.packages ?? doc.Packages ?? []
-    const packages = rawPackages.map((pkg) => ({
-      version: pkg.version ?? pkg.Version ?? DEFAULT_MIN_API_VERSION,
-      requiredApiVersion:
-        pkg.requiredApiVersion ??
-        pkg.RequiredApiVersion ??
-        DEFAULT_MIN_API_VERSION,
-      releaseDate: pkg.releaseDate ?? pkg.ReleaseDate ?? '',
-      downloadUrl: pkg.downloadUrl ?? pkg.DownloadUrl ?? '',
-      changelog: pkg.changelog ?? pkg.Changelog ?? [],
-    }))
+    const screenshots = parseScreenshots(doc)
+    const packages = parsePackages(doc)
+    const tier = parseAddonTier(doc)
 
     return {
       id,
-      version: doc.version ?? doc.Version ?? DEFAULT_MIN_API_VERSION,
-      name: doc.name ?? doc.Name ?? '',
-      creator: doc.author ?? doc.Author ?? doc.creator ?? doc.Creator ?? '',
-      description:
-        doc.shortDescription ??
-        doc.ShortDescription ??
-        doc.description ??
-        doc.Description ??
+      version: pickFirstString(
+        doc,
+        ['version', 'Version'],
+        DEFAULT_MIN_API_VERSION,
+      ),
+      name: pickFirstString(doc, ['name', 'Name'], ''),
+      creator: pickFirstString(
+        doc,
+        ['author', 'Author', 'creator', 'Creator'],
         '',
-      logo: doc.iconUrl ?? doc.IconUrl ?? doc.logo ?? '',
-      sourceUrl: doc.sourceUrl ?? doc.SourceUrl ?? '',
-      homepage: doc.homepage ?? doc.Homepage ?? '',
-      tags: doc.tags ?? doc.Tags ?? [],
-      category: category ?? categories[0] ?? '',
+      ),
+      description: pickFirstString(
+        doc,
+        ['shortDescription', 'ShortDescription', 'description', 'Description'],
+        '',
+      ),
+      logo: pickFirstString(doc, ['iconUrl', 'IconUrl', 'logo'], ''),
+      sourceUrl: pickFirstString(doc, ['sourceUrl', 'SourceUrl'], ''),
+      homepage: pickFirstString(doc, ['homepage', 'Homepage'], ''),
+      tags: pickStringArray(doc, ['tags', 'Tags']),
+      category: primaryCategory,
       categories,
       screenshots,
       installed: false,
-      installerManifestUrl: doc.installerUrl ?? doc.InstallerUrl,
-      downloadUrl: doc.downloadUrl ?? doc.DownloadUrl ?? '',
-      requiredApiVersion:
-        doc.requiredApiVersion ??
-        doc.RequiredApiVersion ??
+      tier,
+      sha256: pickOptionalString(doc, ['sha256', 'Sha256']),
+      size: pickOptionalNumber(doc, ['size', 'Size']),
+      installerManifestUrl: pickOptionalString(doc, [
+        'installerUrl',
+        'InstallerUrl',
+      ]),
+      downloadUrl: pickFirstString(doc, ['downloadUrl', 'DownloadUrl'], ''),
+      requiredApiVersion: pickFirstString(
+        doc,
+        ['requiredApiVersion', 'RequiredApiVersion'],
         DEFAULT_MIN_API_VERSION,
-      releaseDate: doc.releaseDate ?? doc.ReleaseDate ?? '',
-      changelog: doc.changelog ?? doc.Changelog ?? [],
+      ),
+      releaseDate: pickFirstString(doc, ['releaseDate', 'ReleaseDate'], ''),
+      changelog: pickStringArray(doc, ['changelog', 'Changelog']),
       packages,
       path: '',
       downloads: 0,
@@ -506,10 +638,44 @@ export class AddonsFacade implements IAddonsFacade {
   public async downloadFile(
     downloadUrl: string,
     onProgress?: (event: IJobEvent) => void,
+    expectedSha256?: string,
   ): Promise<Either<AppError, Uint8Array>> {
     try {
       if (!downloadUrl || !downloadUrl.trim()) {
         return Either.failure(AppError.ValidationError('URL_DOWNLOAD_INVALIDA'))
+      }
+
+      const plusParams = extractPlusDownloadRouteParams(downloadUrl)
+      if (plusParams) {
+        onProgress?.({
+          status: 'data',
+          data: 'Autenticando licença Plus e baixando pacote privado...',
+        })
+        onProgress?.({ status: 'progress', value: 25 })
+
+        const plusDownload = await this.licensingFacade.downloadPlusPackage(
+          plusParams.addonId,
+          plusParams.version,
+        )
+        if (plusDownload.isFailure()) return plusDownload.forwardFailure()
+
+        let shaToVerify = expectedSha256
+        if (!shaToVerify && plusDownload.success.sha256) {
+          shaToVerify = plusDownload.success.sha256
+        }
+
+        if (!verifyPackageSha256(plusDownload.success.bytes, shaToVerify)) {
+          return Either.failure(
+            AppError.ValidationError('INTEGRIDADE_SHA256_ADDON_INVALIDA'),
+          )
+        }
+
+        onProgress?.({ status: 'progress', value: 100 })
+        onProgress?.({
+          status: 'data',
+          data: 'Pacote Plus autenticado e verificado com sucesso!',
+        })
+        return Either.success(plusDownload.success.bytes)
       }
 
       onProgress?.({
@@ -525,16 +691,24 @@ export class AddonsFacade implements IAddonsFacade {
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Mr-tickApp/1.0.0',
-          Accept: 'application/octet-stream, application/zip, */*',
+          Accept: 'application/octet-stream, */*',
         },
         onDownloadProgress: (progressEvent) => {
           if (!onProgress) return
 
-          const loaded = progressEvent.loaded || 0
-          const total = progressEvent.total || loaded
+          let loaded = 0
+          if (progressEvent.loaded) {
+            loaded = progressEvent.loaded
+          }
+          let total = loaded
+          if (progressEvent.total) {
+            total = progressEvent.total
+          }
 
-          const percent =
-            total > 0 ? Math.min(100, Math.floor((loaded / total) * 100)) : 100
+          let percent = 100
+          if (total > 0) {
+            percent = Math.min(100, Math.floor((loaded / total) * 100))
+          }
           onProgress({ status: 'progress', value: percent })
 
           const loadedMB = (loaded / 1024 / 1024).toFixed(2)
@@ -555,13 +729,29 @@ export class AddonsFacade implements IAddonsFacade {
         return Either.failure(AppError.NotFound('ARQUIVO_BAIXADO_VAZIO'))
       }
 
+      const bytes = new Uint8Array(response.data)
+      if (!verifyPackageSha256(bytes, expectedSha256)) {
+        return Either.failure(
+          AppError.ValidationError('INTEGRIDADE_SHA256_ADDON_INVALIDA'),
+        )
+      }
+
       onProgress?.({ status: 'data', data: 'Download concluído com sucesso!' })
-      return Either.success(new Uint8Array(response.data))
-    } catch (error: any) {
-      const errorDetail =
-        error?.response?.status === 404
-          ? 'Arquivo não encontrado no servidor de download (HTTP 404).'
-          : error?.message || 'Falha ao baixar arquivo'
+      return Either.success(bytes)
+    } catch (error) {
+      let errorDetail = 'Falha ao baixar arquivo'
+      if (isRecord(error)) {
+        if (isRecord(error.response) && error.response.status === 404) {
+          errorDetail =
+            'Arquivo não encontrado no servidor de download (HTTP 404).'
+        }
+        if (
+          errorDetail === 'Falha ao baixar arquivo' &&
+          isNonEmptyString(error.message)
+        ) {
+          errorDetail = error.message
+        }
+      }
 
       console.error('[AddonsFacade.downloadFile Error]:', errorDetail, error)
       return Either.failure(AppError.NotFound(errorDetail))
@@ -664,11 +854,15 @@ export class AddonsFacade implements IAddonsFacade {
       )
 
       if (!isCompatible) {
+        let requiredDisplay = 'mais recente'
+        if (remote.requiredApiVersion) {
+          requiredDisplay = remote.requiredApiVersion
+        }
         return {
           ...installedItem,
           updateAvailable: false,
           incompatibleUpdate: true,
-          incompatibleReason: `Requer Mr. Tick API ${remote.requiredApiVersion ?? 'mais recente'}`,
+          incompatibleReason: `Requer Mr. Tick API ${requiredDisplay}`,
         }
       }
 
@@ -677,6 +871,8 @@ export class AddonsFacade implements IAddonsFacade {
         updateAvailable: true,
         latestVersion: remote.version,
         downloadUrl: remote.downloadUrl,
+        latestSha256: remote.sha256,
+        latestSize: remote.size,
         changelog: remote.changelog,
       }
     })

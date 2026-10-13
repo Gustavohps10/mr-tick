@@ -26,6 +26,7 @@ export interface IAddonsFacade {
   downloadFile(
     downloadUrl: string,
     onProgress?: (event: IJobEvent) => void,
+    expectedSha256?: string,
   ): Promise<Either<AppError, Uint8Array>>
 
   uninstallAddon(

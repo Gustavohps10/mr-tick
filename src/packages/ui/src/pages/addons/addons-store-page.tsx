@@ -2,10 +2,21 @@
 
 import type { AddonManifest } from '@mr-tick/application'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { DownloadIcon, LayoutGrid, Search } from 'lucide-react'
+import {
+  DownloadIcon,
+  KeyRound,
+  LayoutGrid,
+  Search,
+  Sparkles,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
+import {
+  LicenseActivationDialog,
+  LicenseSettingsCard,
+  useLicensingState,
+} from '@/components/addons-manager/license-settings-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,6 +29,57 @@ import {
 } from './components/addon-dialogs'
 import type { AddonItem } from './types'
 
+function resolveString(value: string | undefined): string {
+  if (value) {
+    return value
+  }
+  return ''
+}
+
+function resolveErrorMessage(
+  error: string | undefined,
+  fallback: string,
+): string {
+  if (error) {
+    return error
+  }
+  return fallback
+}
+
+function resolveTabButtonVariant(
+  activeTab: 'installed' | 'available',
+  targetTab: 'installed' | 'available',
+): 'default' | 'outline' {
+  if (activeTab === targetTab) {
+    return 'default'
+  }
+  return 'outline'
+}
+
+function resolveStatusBadgeClass(installed: boolean): string {
+  if (installed) {
+    return 'border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-600 dark:text-emerald-400'
+  }
+  return 'bg-muted text-muted-foreground text-[10px]'
+}
+
+function resolveStatusBadgeLabel(installed: boolean): string {
+  if (installed) {
+    return 'Instalado'
+  }
+  return 'Disponível'
+}
+
+function matchesTabFilter(
+  activeTab: 'installed' | 'available',
+  installed: boolean,
+): boolean {
+  if (activeTab === 'installed') {
+    return installed
+  }
+  return !installed
+}
+
 function manifestToAddonItem(
   m: AddonManifest,
   category: AddonCategory,
@@ -25,27 +87,37 @@ function manifestToAddonItem(
   return {
     id: m.id,
     name: m.name,
-    description: m.description ?? '',
-    author: m.creator ?? '',
+    description: resolveString(m.description),
+    author: resolveString(m.creator),
     version: m.version,
-    logo: m.logo ?? '',
+    logo: resolveString(m.logo),
     installed: m.installed,
     category,
     connections: [],
     documentationUrl: m.sourceUrl,
     installerManifestUrl: m.installerManifestUrl,
+    tier: m.tier,
+    sha256: m.sha256,
+    size: m.size,
   }
 }
 
 function addonCategory(m: AddonManifest): AddonCategory {
-  const tags = (m.tags ?? []).map((t) => t.toLowerCase())
+  let rawTags: string[] = []
+  if (m.tags) {
+    rawTags = m.tags
+  }
+  const tags = rawTags.map((t) => t.toLowerCase())
   const name = m.name.toLowerCase()
 
-  if (tags.some((t) => t.includes('theme') || t === 'tema')) return 'themes'
-  if (tags.some((t) => t.includes('util') || t === 'utility'))
+  if (tags.some((t) => Boolean(t.includes('theme') || t === 'tema'))) {
+    return 'themes'
+  }
+  if (tags.some((t) => Boolean(t.includes('util') || t === 'utility'))) {
     return 'utilities'
+  }
   if (
-    tags.some((t) => t.includes('watch') || t === 'watcher') ||
+    tags.some((t) => Boolean(t.includes('watch') || t === 'watcher')) ||
     tags.includes('ia') ||
     tags.includes('ai') ||
     name.includes('ia ') ||
@@ -60,6 +132,7 @@ function addonCategory(m: AddonManifest): AddonCategory {
 export function AddonsStorePage() {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
+  const { data: licenseState } = useLicensingState()
 
   const [activeTab, setActiveTab] = useState<'installed' | 'available'>(
     'installed',
@@ -68,18 +141,26 @@ export function AddonsStorePage() {
   const [selectedAddon, setSelectedAddon] = useState<AddonItem | null>(null)
   const [installDialogOpen, setInstallDialogOpen] = useState(false)
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
+  const [activationDialogOpen, setActivationDialogOpen] = useState(false)
   const [installVersions, setInstallVersions] = useState<
     { value: string; label: string }[]
   >([])
+
+  const isPlusAuthorized = Boolean(licenseState?.isPlusActive)
 
   const { data: installedList = [] } = useQuery({
     queryKey: ['plugins', 'installed'],
     queryFn: async () => {
       const res = await bridge.addons.listInstalled()
       if (!res.isSuccess) {
-        throw new Error(res.error ?? 'Falha ao listar plugins instalados')
+        throw new Error(
+          resolveErrorMessage(res.error, 'Falha ao listar plugins instalados'),
+        )
       }
-      return res.data ?? []
+      if (!res.data) {
+        return []
+      }
+      return res.data
     },
   })
 
@@ -88,9 +169,14 @@ export function AddonsStorePage() {
     queryFn: async () => {
       const res = await bridge.addons.listAvailable()
       if (!res.isSuccess) {
-        throw new Error(res.error ?? 'Falha ao listar plugins disponíveis')
+        throw new Error(
+          resolveErrorMessage(res.error, 'Falha ao listar plugins disponíveis'),
+        )
       }
-      return res.data ?? []
+      if (!res.data) {
+        return []
+      }
+      return res.data
     },
   })
 
@@ -98,6 +184,7 @@ export function AddonsStorePage() {
     mutationFn: async (input: {
       installerManifestUrl: string
       version: string
+      fallbackSha256?: string
     }) => {
       const installer = await bridge.addons.getInstaller({
         body: { installerUrl: input.installerManifestUrl },
@@ -108,12 +195,28 @@ export function AddonsStorePage() {
       if (!pkg) {
         throw new Error('Versão não encontrada.')
       }
-      return bridge.addons.install({
-        body: { downloadUrl: pkg.downloadUrl },
+      let expectedSha256 = pkg.sha256
+      if (!expectedSha256) {
+        expectedSha256 = input.fallbackSha256
+      }
+      const installRes = await bridge.addons.install({
+        body: {
+          downloadUrl: pkg.downloadUrl,
+          expectedSha256,
+        },
       })
+      if (!installRes.isSuccess) {
+        throw new Error(
+          resolveErrorMessage(
+            installRes.error,
+            'Falha ao iniciar instalação do plugin.',
+          ),
+        )
+      }
+      return installRes
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['plugins'] })
+      void queryClient.invalidateQueries({ queryKey: ['plugins'] })
       toast.success('Plugin instalado com sucesso!')
       setInstallDialogOpen(false)
     },
@@ -124,7 +227,9 @@ export function AddonsStorePage() {
     const byId = new Map<string, AddonManifest>()
     installedList.forEach((m) => byId.set(m.id, { ...m, installed: true }))
     availableList.forEach((m) => {
-      if (!byId.has(m.id)) byId.set(m.id, { ...m, installed: false })
+      if (!byId.has(m.id)) {
+        byId.set(m.id, { ...m, installed: false })
+      }
     })
 
     return Array.from(byId.values()).map((m) =>
@@ -135,19 +240,27 @@ export function AddonsStorePage() {
   const filteredAddons = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     return allAddons.filter((addon) => {
-      const matchesTab =
-        activeTab === 'installed' ? addon.installed : !addon.installed
-      if (!matchesTab) return false
-      if (!query) return true
+      if (!matchesTabFilter(activeTab, addon.installed)) {
+        return false
+      }
+      if (!query) {
+        return true
+      }
 
-      return (
+      return Boolean(
         addon.name.toLowerCase().includes(query) ||
-        addon.description.toLowerCase().includes(query)
+        addon.description.toLowerCase().includes(query),
       )
     })
   }, [allAddons, activeTab, searchQuery])
 
   const handleOpenInstallDialog = async (addon: AddonItem) => {
+    if (addon.tier === 'plus' && !isPlusAuthorized) {
+      setSelectedAddon(addon)
+      setActivationDialogOpen(true)
+      return
+    }
+
     setSelectedAddon(addon)
     setInstallVersions([{ value: addon.version, label: `v${addon.version}` }])
 
@@ -177,11 +290,13 @@ export function AddonsStorePage() {
 
   return (
     <div className="space-y-6">
+      <LicenseSettingsCard />
+
       {/* Header Bar */}
       <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <Button
-            variant={activeTab === 'installed' ? 'default' : 'outline'}
+            variant={resolveTabButtonVariant(activeTab, 'installed')}
             size="sm"
             onClick={() => setActiveTab('installed')}
             className="gap-2"
@@ -190,7 +305,7 @@ export function AddonsStorePage() {
             Instalados ({allAddons.filter((a) => a.installed).length})
           </Button>
           <Button
-            variant={activeTab === 'available' ? 'default' : 'outline'}
+            variant={resolveTabButtonVariant(activeTab, 'available')}
             size="sm"
             onClick={() => setActiveTab('available')}
             className="gap-2"
@@ -233,26 +348,32 @@ export function AddonsStorePage() {
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="bg-secondary/40 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border">
-                    {addon.logo ? (
+                    {addon.logo && (
                       <img
                         src={addon.logo}
                         alt={addon.name}
                         className="h-8 w-8 object-contain"
                       />
-                    ) : (
-                      <span className="text-xl">📦</span>
                     )}
+                    {!addon.logo && <span className="text-xl">📦</span>}
                   </div>
-                  <Badge
-                    variant="outline"
-                    className={
-                      addon.installed
-                        ? 'border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-600 dark:text-emerald-400'
-                        : 'bg-muted text-muted-foreground text-[10px]'
-                    }
-                  >
-                    {addon.installed ? 'Instalado' : 'Disponível'}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    {addon.tier === 'plus' && (
+                      <Badge
+                        variant="outline"
+                        className="gap-1 border-amber-500/40 bg-amber-500/10 text-[9px] font-bold tracking-wider text-amber-600 uppercase dark:text-amber-400"
+                      >
+                        <Sparkles className="h-2.5 w-2.5" />
+                        PLUS
+                      </Badge>
+                    )}
+                    <Badge
+                      variant="outline"
+                      className={resolveStatusBadgeClass(addon.installed)}
+                    >
+                      {resolveStatusBadgeLabel(addon.installed)}
+                    </Badge>
+                  </div>
                 </div>
 
                 <div>
@@ -286,16 +407,31 @@ export function AddonsStorePage() {
                     Detalhes
                   </Button>
 
-                  {!addon.installed && (
-                    <Button
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs"
-                      onClick={() => handleOpenInstallDialog(addon)}
-                    >
-                      <DownloadIcon className="h-3.5 w-3.5" />
-                      Instalar
-                    </Button>
-                  )}
+                  {!addon.installed &&
+                    addon.tier === 'plus' &&
+                    !isPlusAuthorized && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1.5 border-amber-500/40 text-xs text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
+                        onClick={() => handleOpenInstallDialog(addon)}
+                      >
+                        <KeyRound className="h-3.5 w-3.5" />
+                        Requer Plus
+                      </Button>
+                    )}
+
+                  {!addon.installed &&
+                    (addon.tier !== 'plus' || isPlusAuthorized) && (
+                      <Button
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs"
+                        onClick={() => handleOpenInstallDialog(addon)}
+                      >
+                        <DownloadIcon className="h-3.5 w-3.5" />
+                        Instalar
+                      </Button>
+                    )}
                 </div>
               </div>
             </div>
@@ -317,6 +453,7 @@ export function AddonsStorePage() {
           installMutation.mutate({
             installerManifestUrl: addon.installerManifestUrl,
             version,
+            fallbackSha256: addon.sha256,
           })
         }}
         isInstalling={installMutation.isPending}
@@ -327,6 +464,16 @@ export function AddonsStorePage() {
         onOpenChange={setDetailsDialogOpen}
         addon={selectedAddon}
         onInstall={handleOpenInstallDialog}
+      />
+
+      <LicenseActivationDialog
+        open={activationDialogOpen}
+        onOpenChange={setActivationDialogOpen}
+        onActivated={() => {
+          if (selectedAddon) {
+            void handleOpenInstallDialog(selectedAddon)
+          }
+        }}
       />
     </div>
   )

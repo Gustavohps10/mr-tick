@@ -4,6 +4,7 @@ import { IJobEvent } from '@mr-tick/shared/transport'
 export interface UpdateAddonInput {
   addonId: string
   downloadUrl: string
+  expectedSha256?: string
 }
 
 export interface IUpdateAddonUseCase {

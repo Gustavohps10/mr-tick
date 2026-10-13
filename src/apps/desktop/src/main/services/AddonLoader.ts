@@ -1,12 +1,14 @@
 import { EventEmitter } from 'node:events'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { IAddonAccessService } from '@mr-tick/application'
 import {
   IAddonReloader,
   ICoreReadAPI,
   ICredentialsVault,
+  ILicensingFacade,
   ILocalRuntimeAPI,
 } from '@mr-tick/application'
 import {
@@ -42,7 +44,11 @@ import {
   TimerbarMenuItem,
 } from '@mr-tick/sdk'
 import {
+  hasProperty,
   isApiVersionCompatible,
+  isBoolean,
+  isFunction,
+  isNonEmptyString,
   isRecord,
   isString,
 } from '@mr-tick/shared/helpers'
@@ -212,6 +218,7 @@ export class AddonLoader implements IAddonReloader {
   private activeAddons = new Map<string, ActiveAddonInfo>()
   private readonly timerControlLock = new AddonTimerControlLock()
   private toastListeners: Array<(toastData: AddonToastEventData) => void> = []
+  private licensingFacade: ILicensingFacade | null = null
 
   public readonly sidebarRegistry = new MemoryRegistry<SidebarMenuItem>()
   private addonTimerbarItems = new Map<string, TimerbarMenuItem>()
@@ -238,9 +245,14 @@ export class AddonLoader implements IAddonReloader {
     private readonly localRuntime: ILocalRuntimeAPI,
     private readonly hostSdkVersion: string,
     private readonly core: ICoreReadAPI,
+    private readonly addonAccessService: IAddonAccessService,
   ) {
     this.registerThemeCommands()
     this.restoreActiveTheme()
+  }
+
+  public setLicensingFacade(licensingFacade: ILicensingFacade): void {
+    this.licensingFacade = licensingFacade
   }
 
   public getHostSdkVersion(): string {
@@ -249,8 +261,10 @@ export class AddonLoader implements IAddonReloader {
 
   private registerThemeCommands(): void {
     this.commandRegistry.register('theme:set', async (themeId) => {
-      const targetThemeId =
-        typeof themeId === 'string' && themeId.length > 0 ? themeId : null
+      let targetThemeId: string | null = null
+      if (isNonEmptyString(themeId)) {
+        targetThemeId = themeId
+      }
       this.setActiveTheme(targetThemeId)
       return { status: 'success', themeId: targetThemeId }
     })
@@ -279,9 +293,10 @@ export class AddonLoader implements IAddonReloader {
     title?: string,
     toastId?: string,
   ): string {
-    const generatedId =
-      toastId ||
-      `toast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+    let generatedId = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+    if (toastId) {
+      generatedId = toastId
+    }
     const toastData: AddonToastEventData = {
       action: 'show',
       type,
@@ -289,8 +304,12 @@ export class AddonLoader implements IAddonReloader {
       title,
       toastId: generatedId,
     }
+    let displayTitle = ''
+    if (title) {
+      displayTitle = title
+    }
     console.log(
-      `🔔 [AddonLoader] Broadcasting toast [${type}]: "${message}" (${title ?? ''})`,
+      `🔔 [AddonLoader] Broadcasting toast [${type}]: "${message}" (${displayTitle})`,
     )
     this.toastListeners.forEach((listener) => listener(toastData))
 
@@ -354,11 +373,17 @@ export class AddonLoader implements IAddonReloader {
     if (workspaceId && workspaceId !== this.activeWorkspaceId) {
       const previousWorkspaceId = this.activeWorkspaceId
       this.activeWorkspaceId = workspaceId
+      let prevDisplay = 'Nenhum'
+      let prevValue: string | undefined
+      if (previousWorkspaceId) {
+        prevDisplay = previousWorkspaceId
+        prevValue = previousWorkspaceId
+      }
       console.log(
-        `[AddonLoader] 🔄 Workspace alterado de "${previousWorkspaceId || 'Nenhum'}" para "${workspaceId}"`,
+        `[AddonLoader] 🔄 Workspace alterado de "${prevDisplay}" para "${workspaceId}"`,
       )
       this.systemEventEmitter.emit('workspace:changed', {
-        previousWorkspaceId: previousWorkspaceId || undefined,
+        previousWorkspaceId: prevValue,
         currentWorkspaceId: workspaceId,
       })
     }
@@ -372,7 +397,6 @@ export class AddonLoader implements IAddonReloader {
 
     const addonTimerbarRegistry: IRegistry<TimerbarMenuItem> = {
       register: (item: TimerbarMenuItem) => {
-        // Restrição Estrutural: Cada addon possui no máximo 1 item na Timerbar
         const itemWithAddon = { ...item, addonId }
         if (!lifetime.isActive()) return
         this.addonTimerbarItems.set(addonId, itemWithAddon)
@@ -386,7 +410,8 @@ export class AddonLoader implements IAddonReloader {
       },
       getItems: () => {
         const item = this.addonTimerbarItems.get(addonId)
-        return item ? [item] : []
+        if (!item) return []
+        return [item]
       },
     }
 
@@ -416,7 +441,13 @@ export class AddonLoader implements IAddonReloader {
     const timeEntries = capabilities.timeEntries
     const oauth: IAddonOAuthAPI = {
       generatePKCE: () => generatePKCE(),
-      generateState: (prefix?: string) => generateOAuthState(prefix || addonId),
+      generateState: (prefix?: string) => {
+        let statePrefix = addonId
+        if (prefix) {
+          statePrefix = prefix
+        }
+        return generateOAuthState(statePrefix)
+      },
       authorize: (options: OAuthAuthorizeOptions) => {
         return new Promise<OAuthResult>((resolve, reject) => {
           try {
@@ -449,7 +480,10 @@ export class AddonLoader implements IAddonReloader {
               )
             }
 
-            const state = options.state ?? generateOAuthState(addonId)
+            let state = generateOAuthState(addonId)
+            if (options.state) {
+              state = options.state
+            }
             const existingStateInUrl = parsedUrl.searchParams.get('state')
 
             if (existingStateInUrl && existingStateInUrl !== state) {
@@ -462,10 +496,10 @@ export class AddonLoader implements IAddonReloader {
 
             parsedUrl.searchParams.set('state', state)
 
-            const timeoutMs =
-              options.timeoutMs && options.timeoutMs > 0
-                ? options.timeoutMs
-                : 120000
+            let timeoutMs = 120000
+            if (options.timeoutMs && options.timeoutMs > 0) {
+              timeoutMs = options.timeoutMs
+            }
 
             const timeoutId = setTimeout(() => {
               this.pendingOAuthRequests.delete(state)
@@ -483,14 +517,22 @@ export class AddonLoader implements IAddonReloader {
             Promise.resolve(shell.openExternal(finalUrl)).catch((err) => {
               clearTimeout(timeoutId)
               this.pendingOAuthRequests.delete(state)
+              let errText = String(err)
+              if (err instanceof Error) {
+                errText = err.message
+              }
               reject(
                 new Error(
-                  `Falha ao abrir navegador para autorização: ${err instanceof Error ? err.message : String(err)}`,
+                  `Falha ao abrir navegador para autorização: ${errText}`,
                 ),
               )
             })
           } catch (err) {
-            reject(err instanceof Error ? err : new Error(String(err)))
+            if (err instanceof Error) {
+              reject(err)
+              return
+            }
+            reject(new Error(String(err)))
           }
         })
       },
@@ -613,7 +655,10 @@ export class AddonLoader implements IAddonReloader {
 
       const state = params.state
       const code = params.code
-      const error = params.error || params.error_description
+      let error = params.error
+      if (!error && params.error_description) {
+        error = params.error_description
+      }
 
       if (!state) {
         console.warn(
@@ -630,22 +675,24 @@ export class AddonLoader implements IAddonReloader {
         return false
       }
 
-      // Prevenção de replay: remove imediatamente e cancela timeout antes de resolver/rejeitar
       clearTimeout(req.timeoutId)
       this.pendingOAuthRequests.delete(state)
 
       if (error) {
-        const errorDesc =
-          params.error && params.error_description
-            ? `${params.error}: ${params.error_description}`
-            : error
+        let errorDesc = error
+        if (params.error && params.error_description) {
+          errorDesc = `${params.error}: ${params.error_description}`
+        }
         req.reject(new Error(errorDesc))
-      } else if (code) {
-        req.resolve({ code, state, ...params })
-      } else {
-        req.reject(new Error('Código de autorização não retornado.'))
+        return true
       }
 
+      if (code) {
+        req.resolve({ code, state, ...params })
+        return true
+      }
+
+      req.reject(new Error('Código de autorização não retornado.'))
       return true
     } catch (err) {
       console.error(
@@ -714,44 +761,40 @@ export class AddonLoader implements IAddonReloader {
     addonFolderPath: string,
   ): Promise<boolean> {
     try {
-      if (this.hasActiveAddon(addonId)) {
-        return true
+      const authorization = await this.addonAccessService.authorizeDirectory(
+        addonId,
+        addonFolderPath,
+        'load',
+      )
+      if (authorization.isFailure()) {
+        if (this.hasActiveAddon(addonId)) await this.deactivateAddon(addonId)
+        console.warn(
+          '[AddonLoader] Pacote bloqueado:',
+          addonId,
+          authorization.failure.messageKey,
+        )
+        return false
       }
-
-      // Trava de compatibilidade de versão SemVer
-      const manifestYaml = join(addonFolderPath, 'manifest.yaml')
-      const manifestYml = join(addonFolderPath, 'manifest.yml')
-      let requiredApiVersion: string | undefined = undefined
-
-      const targetManifest = existsSync(manifestYaml)
-        ? manifestYaml
-        : existsSync(manifestYml)
-          ? manifestYml
-          : null
-
-      if (targetManifest) {
-        try {
-          const content = readFileSync(targetManifest, 'utf-8')
-          const match = content.match(
-            /(?:requiredApiVersion|RequiredApiVersion)\s*:\s*['"]?([^'"\r\n]+)['"]?/,
-          )
-          if (match && match[1]) {
-            requiredApiVersion = match[1].trim()
-          }
-        } catch {
-          // Silencia falha pontual de leitura de manifesto
-        }
-      }
+      if (this.hasActiveAddon(addonId)) return true
+      const requiredApiVersion = authorization.success.requiredApiVersion
 
       const isPlaywrightE2E = process.env.PLAYWRIGHT_TEST === '1'
 
-      const currentVersion = isPlaywrightE2E
-        ? '-1'
-        : this.hostSdkVersion || sdkPkg.version
+      let currentVersion = sdkPkg.version
+      if (this.hostSdkVersion) {
+        currentVersion = this.hostSdkVersion
+      }
+      if (isPlaywrightE2E) {
+        currentVersion = '-1'
+      }
 
       if (!isApiVersionCompatible(requiredApiVersion, currentVersion)) {
+        let reqDisplay = 'desconhecida'
+        if (requiredApiVersion) {
+          reqDisplay = requiredApiVersion
+        }
         console.warn(
-          `⚠️ [AddonLoader] Addon "${addonId}" ignorado: requer API ${requiredApiVersion ?? 'desconhecida'}, mas o aplicativo suporta a API ${currentVersion}`,
+          `⚠️ [AddonLoader] Addon "${addonId}" ignorado: requer API ${reqDisplay}, mas o aplicativo suporta a API ${currentVersion}`,
         )
         return false
       }
@@ -778,20 +821,22 @@ export class AddonLoader implements IAddonReloader {
       }
 
       const fileUrl = pathToFileURL(targetEntry).href
-      const module = await import(fileUrl)
-      const AddonClass = module.default || module
+      const loadedModule: object = await import(fileUrl)
+      let exportedCandidate: object | Function = loadedModule
+      if (isRecord(loadedModule) && hasProperty(loadedModule, 'default')) {
+        const defaultExport = loadedModule.default
+        if (isRecord(defaultExport) || isFunction(defaultExport)) {
+          exportedCandidate = defaultExport
+        }
+      }
 
-      if (typeof AddonClass === 'function') {
-        const addonInstance: IAddon = new AddonClass()
+      if (isAddonConstructor(exportedCandidate)) {
+        const addonInstance = new exportedCandidate()
         return await this.activateAddon(addonId, addonInstance)
       }
 
-      if (
-        typeof AddonClass === 'object' &&
-        AddonClass !== null &&
-        isAddonInstance(AddonClass)
-      ) {
-        return await this.activateAddon(addonId, AddonClass)
+      if (isAddonInstance(exportedCandidate)) {
+        return await this.activateAddon(addonId, exportedCandidate)
       }
 
       console.warn(
@@ -799,7 +844,10 @@ export class AddonLoader implements IAddonReloader {
       )
       return false
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      let message = String(err)
+      if (err instanceof Error) {
+        message = err.message
+      }
       console.error(
         `❌ [AddonLoader] Erro ao carregar addon "${addonId}" do disco (${addonFolderPath}):`,
         message,
@@ -815,10 +863,14 @@ export class AddonLoader implements IAddonReloader {
       if (!addon.id || !addon.path) continue
       try {
         await this.loadAndActivateFromDisk(addon.id, addon.path)
-      } catch (err: any) {
+      } catch (err) {
+        let errMessage = String(err)
+        if (err instanceof Error) {
+          errMessage = err.message
+        }
         console.error(
           `❌ [AddonLoader] Falha ao inicializar addon instalado "${addon.id}":`,
-          err?.message || err,
+          errMessage,
         )
       }
     }
@@ -833,9 +885,10 @@ export class AddonLoader implements IAddonReloader {
     let schema: AddonSettingsSchema = []
 
     const provider = this.addonSettingsSchemas.get(addonId)
-    if (typeof provider === 'function') {
+    if (isFunction(provider)) {
       schema = await provider()
-    } else if (provider) {
+    }
+    if (provider && !isFunction(provider)) {
       schema = provider
     }
 
@@ -855,30 +908,22 @@ export class AddonLoader implements IAddonReloader {
         ],
       }
 
-      if (Array.isArray(schema)) {
-        if (
-          schema.length > 0 &&
-          !('groups' in schema[0]) &&
-          !('fields' in schema[0])
-        ) {
-          // Schema is a flat array of fields. Convert to tabs.
-          const fields = schema as AddonSettingsField[]
-          schema = [
-            instancesTab,
-            {
-              id: 'general',
-              label: 'Geral',
-              fields,
-            },
-          ]
-        } else {
-          // Schema is already tabs (or empty)
-          const tabs = schema as AddonSettingsTab[]
-          schema = [instancesTab, ...tabs]
-        }
-      } else {
-        schema = [instancesTab]
+      if (!Array.isArray(schema)) {
+        return [instancesTab]
       }
+
+      if (isFlatSettingsFieldList(schema)) {
+        return [
+          instancesTab,
+          {
+            id: 'general',
+            label: 'Geral',
+            fields: schema,
+          },
+        ]
+      }
+
+      return [instancesTab, ...schema]
     }
 
     return schema
@@ -908,30 +953,42 @@ export class AddonLoader implements IAddonReloader {
     const targetCommandId = `${addonId}:${actionId}`
 
     if (this.commandRegistry.has(targetCommandId)) {
+      let commandPayload: Record<string, string | number | boolean> = {}
+      if (payload) {
+        commandPayload = payload
+      }
       const result = await this.commandRegistry.execute(
         targetCommandId,
-        payload ?? {},
+        commandPayload,
       )
-      if (isRecord(result) && typeof result.isSuccess === 'boolean') {
-        const display = isRecord(result.display)
-          ? {
-              title: isString(result.display.title)
-                ? result.display.title
-                : undefined,
-              message: isString(result.display.message)
-                ? result.display.message
-                : undefined,
-              avatarUrl: isString(result.display.avatarUrl)
-                ? result.display.avatarUrl
-                : undefined,
-              data: isRecord(result.display.data)
-                ? extractStringMap(result.display.data)
-                : undefined,
-            }
-          : undefined
+      if (isRecord(result) && isBoolean(result.isSuccess)) {
+        let display: AddonActionResponse['display']
+        if (isRecord(result.display)) {
+          let title: string | undefined
+          if (isString(result.display.title)) {
+            title = result.display.title
+          }
+          let message: string | undefined
+          if (isString(result.display.message)) {
+            message = result.display.message
+          }
+          let avatarUrl: string | undefined
+          if (isString(result.display.avatarUrl)) {
+            avatarUrl = result.display.avatarUrl
+          }
+          let data: Record<string, string> | undefined
+          if (isRecord(result.display.data)) {
+            data = extractStringMap(result.display.data)
+          }
+          display = { title, message, avatarUrl, data }
+        }
+        let errorText: string | undefined
+        if (isString(result.error)) {
+          errorText = result.error
+        }
         const response: AddonActionResponse = {
           isSuccess: result.isSuccess,
-          error: isString(result.error) ? result.error : undefined,
+          error: errorText,
           display,
         }
         return response
@@ -961,7 +1018,6 @@ export class AddonLoader implements IAddonReloader {
     const themes = this.themesRegistry.getItems()
     const exact = themes.find((theme) => theme.id === this.activeThemeId)
     if (exact !== undefined) return exact
-    // Preserve an existing pre-namespace selection only if its owner is unambiguous.
     const matches: AddonTheme[] = []
     for (const addonId of this.activeAddons.keys()) {
       const candidate = themes.find(
@@ -977,7 +1033,6 @@ export class AddonLoader implements IAddonReloader {
   public setActiveTheme(themeId: string | null): void {
     this.activeThemeId = themeId
 
-    // Persiste o tema nas configurações do aplicativo
     try {
       const currentSettings = getSettings()
       saveSettings({
@@ -989,9 +1044,11 @@ export class AddonLoader implements IAddonReloader {
     }
 
     const activeTheme = this.getActiveTheme()
-    console.log(
-      `🎨 [AddonLoader] Tema ativo alterado para: ${themeId || 'Padrão (Nenhum)'}`,
-    )
+    let themeDisplay = 'Padrão (Nenhum)'
+    if (themeId) {
+      themeDisplay = themeId
+    }
+    console.log(`🎨 [AddonLoader] Tema ativo alterado para: ${themeDisplay}`)
     try {
       const windows = BrowserWindow.getAllWindows()
       windows.forEach((win) => {
@@ -1022,7 +1079,14 @@ export class AddonLoader implements IAddonReloader {
     const active = this.activeAddons.get(addonId)
     const meta = active?.instance?.metadata
 
-    const name = meta?.name || addonId.split('/').pop() || addonId
+    let name = addonId
+    const lastSegment = addonId.split('/').pop()
+    if (lastSegment) {
+      name = lastSegment
+    }
+    if (meta && meta.name) {
+      name = meta.name
+    }
     const imageUrl = meta?.iconUrl
 
     return {
@@ -1033,13 +1097,28 @@ export class AddonLoader implements IAddonReloader {
   }
 }
 
-function isAddonInstance(candidate: object): candidate is IAddon {
-  return 'onActivate' in candidate || 'activate' in candidate
+function isAddonConstructor(
+  candidate: object | Function,
+): candidate is new () => IAddon {
+  return isFunction(candidate)
 }
 
-function extractStringMap(
-  data: Record<string, unknown>,
-): Record<string, string> {
+function isAddonInstance(candidate: object | Function): candidate is IAddon {
+  if (!isRecord(candidate)) return false
+  return (
+    hasProperty(candidate, 'onActivate') || hasProperty(candidate, 'activate')
+  )
+}
+
+function isFlatSettingsFieldList(
+  schema: AddonSettingsSchema,
+): schema is AddonSettingsField[] {
+  const first = schema[0]
+  if (!first) return false
+  return hasProperty(first, 'type')
+}
+
+function extractStringMap(data: object): Record<string, string> {
   const result: Record<string, string> = {}
   for (const [key, value] of Object.entries(data)) {
     if (isString(value)) result[key] = value

@@ -4,8 +4,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { FileData, IFileManager, IFileStorage } from '@/contracts'
 import type { IAddonsFacade } from '@/contracts/facades'
+import type { IAddonAccessService } from '@/contracts/use-cases/IAddonAccessService'
+import type { AddonManifestDTO } from '@/dtos'
 
 import { ImportAddonService } from './ImportAddonService'
+
+function createBaseManifest(
+  overrides: Partial<AddonManifestDTO> = {},
+): AddonManifestDTO {
+  return {
+    id: 'my-addon-123',
+    version: '0.1.0',
+    name: 'My Addon',
+    creator: 'Community',
+    description: 'Desc',
+    path: '',
+    logo: '',
+    downloads: 0,
+    stars: 0,
+    installed: false,
+    ...overrides,
+  }
+}
 
 describe('ImportAddonService', () => {
   let sut: ImportAddonService
@@ -13,9 +33,9 @@ describe('ImportAddonService', () => {
   let fileStorageMock: Mocked<IFileStorage>
   let fileManagerMock: Mocked<IFileManager>
   let addonsFacadeMock: Mocked<IAddonsFacade>
+  let addonAccessServiceMock: Mocked<IAddonAccessService>
 
-  const makeFakeFileData = (): FileData =>
-    Buffer.from('fake-zip-content') as any
+  const makeFakeFileData = (): FileData => Buffer.from('fake-tladdon-content')
 
   const makeExtractedFiles = () => [
     { name: 'manifest.yaml', content: Buffer.from('id: my-addon-123') },
@@ -31,41 +51,69 @@ describe('ImportAddonService', () => {
       exists: vi.fn(),
       delete: vi.fn(),
       getPublicUrl: vi.fn(),
-    } as Mocked<IFileStorage>
+    }
 
     fileManagerMock = {
       zip: vi.fn(),
       unzipInMemory: vi.fn(),
       getMimeType: vi.fn(),
-    } as Mocked<IFileManager>
+    }
 
     addonsFacadeMock = {
+      listAvailable: vi.fn(),
+      listInstalled: vi.fn(),
+      getInstalledById: vi.fn(),
+      getInstaller: vi.fn(),
       parseManifest: vi.fn(),
-    } as Partial<IAddonsFacade> as Mocked<IAddonsFacade>
+      parseInstaller: vi.fn(),
+      downloadFile: vi.fn(),
+      uninstallAddon: vi.fn(),
+      checkUpdates: vi.fn(),
+      backupAddon: vi.fn(),
+      restoreAddonBackup: vi.fn(),
+      removeAddonBackup: vi.fn(),
+    }
+
+    addonAccessServiceMock = {
+      authorizeFiles: vi.fn().mockResolvedValue(
+        Either.success({
+          addonId: 'my-addon-123',
+          version: '0.1.0',
+          classification: 'free',
+          fingerprint: 'a'.repeat(64),
+        }),
+      ),
+      authorizeDirectory: vi.fn().mockResolvedValue(
+        Either.success({
+          addonId: 'my-addon-123',
+          version: '0.1.0',
+          classification: 'free',
+          fingerprint: 'a'.repeat(64),
+        }),
+      ),
+    }
 
     sut = new ImportAddonService(
       fileStorageMock,
       fileManagerMock,
       addonsFacadeMock,
+      addonAccessServiceMock,
     )
   })
 
   it('should successfully unzip, parse manifest and save addon files', async () => {
-    // Arrange
     const inputData = makeFakeFileData()
     const extractedFiles = makeExtractedFiles()
     const fakeAddonId = 'my-addon-123'
 
     fileManagerMock.unzipInMemory.mockResolvedValue(extractedFiles)
     addonsFacadeMock.parseManifest.mockResolvedValue(
-      Either.success({ id: fakeAddonId } as any),
+      Either.success(createBaseManifest({ id: fakeAddonId, version: '' })),
     )
     fileStorageMock.write.mockResolvedValue(undefined)
 
-    // Act
     const result = await sut.execute(inputData)
 
-    // Assert
     expect(result.isSuccess()).toBe(true)
 
     expect(fileManagerMock.unzipInMemory).toHaveBeenCalledWith(inputData)
@@ -84,79 +132,92 @@ describe('ImportAddonService', () => {
     )
   })
 
-  it('should return InternalServerError when unzip fails', async () => {
-    // Arrange
-    fileManagerMock.unzipInMemory.mockRejectedValue(new Error('Corrupted zip'))
+  it('should block importing a Plus addon when the Plus license is inactive', async () => {
+    const inputData = makeFakeFileData()
+    fileManagerMock.unzipInMemory.mockResolvedValue(makeExtractedFiles())
+    addonsFacadeMock.parseManifest.mockResolvedValue(
+      Either.success(
+        createBaseManifest({
+          id: 'mistertick-discord',
+          tier: 'plus',
+        }),
+      ),
+    )
+    addonAccessServiceMock.authorizeFiles.mockResolvedValue(
+      Either.failure(
+        AppError.Unauthorized('LICENCA_PLUS_NECESSARIA_PARA_ADDON'),
+      ),
+    )
 
-    // Act
+    const result = await sut.execute(inputData)
+
+    expect(result.isFailure()).toBe(true)
+    expect(result.failure.messageKey).toBe('LICENCA_PLUS_NECESSARIA_PARA_ADDON')
+    expect(fileStorageMock.write).not.toHaveBeenCalled()
+  })
+
+  it('should return error when unzip fails', async () => {
+    fileManagerMock.unzipInMemory.mockRejectedValue(
+      new Error('Corrupted tladdon'),
+    )
+
     const result = await sut.execute(makeFakeFileData())
 
-    // Assert
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBeInstanceOf(AppError)
     expect(fileStorageMock.write).not.toHaveBeenCalled()
   })
 
   it('should return NotFoundError when manifest.yaml is not present', async () => {
-    // Arrange
     const filesWithoutManifest = [
       { name: 'random-file.txt', content: Buffer.from('...') },
     ]
     fileManagerMock.unzipInMemory.mockResolvedValue(filesWithoutManifest)
 
-    // Act
     const result = await sut.execute(makeFakeFileData())
 
-    // Assert
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBeInstanceOf(AppError)
     expect(result.failure.messageKey).toBe('MANIFEST_NAO_ENCONTRADO')
   })
 
   it('should forward failure when parsing manifest fails', async () => {
-    // Arrange
     const facadeError = AppError.ValidationError('SCHEMA_INVALIDO')
     fileManagerMock.unzipInMemory.mockResolvedValue(makeExtractedFiles())
     addonsFacadeMock.parseManifest.mockResolvedValue(
       Either.failure(facadeError),
     )
 
-    // Act
     const result = await sut.execute(makeFakeFileData())
 
-    // Assert
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBe(facadeError)
   })
 
   it('should return NotFoundError when manifest does not contain an id', async () => {
-    // Arrange
     fileManagerMock.unzipInMemory.mockResolvedValue(makeExtractedFiles())
-    addonsFacadeMock.parseManifest.mockResolvedValue(Either.success({} as any))
+    addonsFacadeMock.parseManifest.mockResolvedValue(
+      Either.success(createBaseManifest({ id: '' })),
+    )
 
-    // Act
     const result = await sut.execute(makeFakeFileData())
 
-    // Assert
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBeInstanceOf(AppError)
     expect(result.failure.messageKey).toBe('ADDONID_NAO_ENCONTRADO')
   })
 
-  it('should return InternalServerError when file storage fails to write', async () => {
-    // Arrange
+  it('should return error when file storage fails to write', async () => {
     fileManagerMock.unzipInMemory.mockResolvedValue(makeExtractedFiles())
     addonsFacadeMock.parseManifest.mockResolvedValue(
-      Either.success({ id: 'addon-123' } as any),
+      Either.success(createBaseManifest({ id: 'addon-123' })),
     )
     fileStorageMock.write.mockRejectedValue(
       new Error('No space left on device'),
     )
 
-    // Act
     const result = await sut.execute(makeFakeFileData())
 
-    // Assert
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBeInstanceOf(AppError)
   })

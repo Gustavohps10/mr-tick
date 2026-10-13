@@ -15,6 +15,7 @@ import {
   IUpdateAddonUseCase,
   UpdateAddonInput,
 } from '@/contracts'
+import { IAddonAccessService } from '@/contracts/use-cases/IAddonAccessService'
 
 export class UpdateAddonService implements IUpdateAddonUseCase {
   constructor(
@@ -22,6 +23,7 @@ export class UpdateAddonService implements IUpdateAddonUseCase {
     private readonly fileManager: IFileManager,
     private readonly addonsFacade: IAddonsFacade,
     private readonly addonReloader: IAddonReloader,
+    private readonly addonAccessService: IAddonAccessService,
   ) {}
 
   public async execute(
@@ -59,6 +61,7 @@ export class UpdateAddonService implements IUpdateAddonUseCase {
         const scaled = 10 + Math.floor(event.value * 0.4)
         onProgress?.({ status: 'progress', value: scaled })
       },
+      input.expectedSha256,
     )
 
     if (downloadResult.isFailure()) return downloadResult.forwardFailure()
@@ -92,6 +95,14 @@ export class UpdateAddonService implements IUpdateAddonUseCase {
     const newManifest = manifestResult.success
     if (newManifest.id !== input.addonId)
       return Either.failure(AppError.ValidationError('ADDON_ID_INCOMPATIVEL'))
+
+    const authorized = await this.addonAccessService.authorizeFiles(
+      extractedFiles,
+      newManifest.id,
+      newManifest.version,
+      'install',
+    )
+    if (authorized.isFailure()) return authorized.forwardFailure()
 
     const newVersion = newManifest.version
     const parsedNewVersion = parseSemVer(newVersion)

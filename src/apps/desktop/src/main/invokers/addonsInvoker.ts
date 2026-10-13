@@ -18,11 +18,8 @@ export const addonsInvoker: IAddonsAPI = {
   getInstaller: (payload: IRequest<{ installerUrl: string }>) =>
     IpcInvoker.invoke('ADDONS_GET_INSTALLER', payload),
 
-  install: (
-    payload: IRequest<
-      { downloadUrl: string } & { onProgress?: (progress: number) => void }
-    >,
-  ) => IpcInvoker.invoke('ADDONS_INSTALL', payload),
+  install: (payload: Parameters<IAddonsAPI['install']>[0]) =>
+    IpcInvoker.invoke('ADDONS_INSTALL', payload),
 
   update: (payload: Parameters<IAddonsAPI['update']>[0]) =>
     IpcInvoker.invoke('ADDONS_UPDATE', payload),
@@ -33,7 +30,7 @@ export const addonsInvoker: IAddonsAPI = {
   getSidebarMenus: () => IpcInvoker.invoke('ADDONS_GET_SIDEBAR_MENUS'),
 
   getTimerbarMenus: () => IpcInvoker.invoke('ADDONS_GET_TIMERBAR_MENUS'),
-  executeCommand: (payload: IRequest<{ commandId: string; args?: any[] }>) =>
+  executeCommand: (payload: Parameters<IAddonsAPI['executeCommand']>[0]) =>
     IpcInvoker.invoke('ADDONS_EXECUTE_COMMAND', payload),
   showToast: (payload: Parameters<IAddonsAPI['showToast']>[0]) =>
     IpcInvoker.invoke('ADDONS_SHOW_TOAST', payload),

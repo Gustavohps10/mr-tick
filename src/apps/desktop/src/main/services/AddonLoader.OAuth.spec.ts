@@ -8,7 +8,10 @@ import {
 import { shell } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { unavailableCore } from './addon-core-test-fixture'
+import {
+  permissiveAddonAccessService,
+  unavailableCore,
+} from './addon-core-test-fixture'
 import { AddonLoader } from './AddonLoader'
 
 const unavailableRuntime: ILocalRuntimeAPI = {
@@ -48,6 +51,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       unavailableRuntime,
       '1.4.0',
       unavailableCore,
+      permissiveAddonAccessService,
     )
   })
 

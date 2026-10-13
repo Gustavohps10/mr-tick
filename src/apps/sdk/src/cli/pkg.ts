@@ -1,23 +1,145 @@
+import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 
-import { AddonPackage, IAddonManifest } from '../contracts/manifest'
+import { AddonConfig } from '../AddonConfig'
+import {
+  ADDON_CATALOG_RECEIPT_FILE,
+  type AddonCatalogManifestV1,
+  type AddonCatalogManifestV2,
+  type AddonPackage,
+  type AddonTier,
+  type SignedAddonCatalogManifestV1,
+} from '../contracts/manifest'
 import { readPackageJson } from '../utils/packageJsonData'
 import { readYaml, writeYaml } from '../utils/yaml'
-import { packageAddon } from '../utils/zip'
+import { collectAddonPackageFiles, packageAddon } from '../utils/zip'
+import {
+  type AddonCatalogSigningOptions,
+  prepareCatalogSigning,
+  signCatalogManifest,
+} from './catalogSigning'
 import { validateAddon } from './validate'
 
 export interface BuildAddonOptions {
+  signing?: AddonCatalogSigningOptions
   apiVersion: string
   downloadUrl?: string
+  tier?: AddonTier
   changelog?: string[]
 }
 
-function sanitizeFileName(name: string) {
+export interface BuildAddonResult {
+  catalogManifestFile?: string
+  outFile: string
+  addonId: string
+  version: string
+  sha256: string
+  size: number
+  downloadUrl: string
+  tier?: AddonTier
+}
+
+function sanitizeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9-_.]/g, '')
 }
 
-export function buildAddon(addonDir: string, options: BuildAddonOptions) {
+function resolveAddonId(manifest: AddonConfig): string {
+  if (manifest.id) {
+    const trimmed = manifest.id.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  if (manifest.AddonId) {
+    const trimmed = manifest.AddonId.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  return 'plugin'
+}
+
+function resolveAddonVersion(
+  pkgVersion: string | undefined,
+  manifest: AddonConfig,
+): string {
+  if (pkgVersion) {
+    const trimmed = pkgVersion.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  if (manifest.version) {
+    const trimmed = manifest.version.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  if (manifest.Version) {
+    const trimmed = manifest.Version.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  return '0.1.0'
+}
+
+function resolveAddonTier(
+  optionTier: AddonTier | undefined,
+  manifest: AddonConfig,
+): AddonTier | undefined {
+  if (optionTier === 'plus' || optionTier === 'free') return optionTier
+  if (manifest.tier === 'plus' || manifest.tier === 'free') return manifest.tier
+  if (manifest.Tier === 'plus' || manifest.Tier === 'free') return manifest.Tier
+  return undefined
+}
+
+function resolveDownloadUrl(
+  optionDownloadUrl: string | undefined,
+  manifest: AddonConfig,
+  tier: AddonTier | undefined,
+  addonId: string,
+  version: string,
+): string {
+  if (optionDownloadUrl) {
+    const trimmed = optionDownloadUrl.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  if (tier === 'plus') {
+    return `https://mistertick-api.mistertick.workers.dev/catalog/plus-addons/${addonId}/versions/${version}/download`
+  }
+  if (manifest.downloadUrl) {
+    const trimmed = manifest.downloadUrl.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  if (manifest.DownloadUrl) {
+    const trimmed = manifest.DownloadUrl.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  return ''
+}
+
+function resolveRequiredApiVersion(apiVersion: string): string {
+  if (apiVersion.startsWith('>=')) return apiVersion
+  return `>=${apiVersion}`
+}
+
+function resolveChangelog(
+  optionChangelog: string[] | undefined,
+  manifest: AddonConfig,
+  version: string,
+): string[] {
+  if (optionChangelog && optionChangelog.length > 0) return optionChangelog
+  if (manifest.changelog && manifest.changelog.length > 0)
+    return manifest.changelog
+  if (manifest.Changelog && manifest.Changelog.length > 0)
+    return manifest.Changelog
+  return [`Release ${version}`]
+}
+
+function filterExistingPackages(
+  packages: AddonPackage[] | undefined,
+  version: string,
+): AddonPackage[] {
+  if (!packages) return []
+  return packages.filter((pkgItem) => pkgItem.version !== version)
+}
+
+export function buildAddon(
+  addonDir: string,
+  options: BuildAddonOptions,
+): BuildAddonResult {
   const rootDir = path.resolve(addonDir)
   const manifestPath = path.join(rootDir, 'manifest.yaml')
   const packageJsonPath = path.join(rootDir, 'package.json')
@@ -27,7 +149,6 @@ export function buildAddon(addonDir: string, options: BuildAddonOptions) {
     throw new Error(`Arquivo manifest.yaml não encontrado em: ${rootDir}`)
   }
 
-  // Validação prévia
   const validation = validateAddon(rootDir)
   if (!validation.valid) {
     console.error('❌ Erros de validação no manifesto:')
@@ -41,75 +162,78 @@ export function buildAddon(addonDir: string, options: BuildAddonOptions) {
     )
   }
 
-  const manifest = readYaml(manifestPath) as Partial<IAddonManifest> & {
-    AddonId?: string
-    Name?: string
-    Version?: string
-  }
+  const manifest = readYaml<AddonConfig>(manifestPath)
   const pkg = readPackageJson(rootDir)
 
-  const addonId = (manifest.id || manifest.AddonId || 'plugin').trim()
-  const version = (
-    pkg.version ||
-    manifest.version ||
-    manifest.Version ||
-    '0.1.0'
-  ).trim()
-  const releaseDate = new Date().toISOString().split('T')[0]
-  const downloadUrl = (options.downloadUrl || manifest.downloadUrl || '').trim()
-  const changelog =
-    options.changelog && options.changelog.length > 0
-      ? options.changelog
-      : manifest.changelog || [`Release ${version}`]
+  const addonId = resolveAddonId(manifest)
+  const version = resolveAddonVersion(pkg.version, manifest)
+  const tier = resolveAddonTier(options.tier, manifest)
+  if (options.signing && tier === undefined)
+    throw new Error('SIGNED_ADDON_CLASSIFICATION_REQUIRED')
+  let signing = undefined
+  if (options.signing) {
+    signing = prepareCatalogSigning(options.signing)
+  }
+  const knownEntryPaths = ['dist/index.js', 'dist/index.mjs', 'index.js']
+  const main = knownEntryPaths.find((entry) => {
+    const entryPath = path.join(rootDir, entry)
+    if (!fs.existsSync(entryPath)) return false
+    const stats = fs.lstatSync(entryPath)
+    if (stats.isSymbolicLink())
+      throw new Error('ADDON_PACKAGE_SYMLINK_FORBIDDEN')
+    return stats.isFile()
+  })
+  if (!main) throw new Error('ADDON_PACKAGE_ENTRY_NOT_FOUND')
 
-  const newPackage: AddonPackage = {
+  const releaseDate = new Date().toISOString().slice(0, 10)
+  const downloadUrl = resolveDownloadUrl(
+    options.downloadUrl,
+    manifest,
+    tier,
+    addonId,
     version,
-    requiredApiVersion: options.apiVersion.startsWith('>=')
-      ? options.apiVersion
-      : `>=${options.apiVersion}`,
+  )
+  const requiredApiVersion = resolveRequiredApiVersion(options.apiVersion)
+  const changelog = resolveChangelog(options.changelog, manifest, version)
+  const existingPackages = filterExistingPackages(manifest.packages, version)
+
+  const prePackageEntry: AddonPackage = {
+    version,
+    requiredApiVersion,
     releaseDate,
     downloadUrl,
     changelog,
   }
 
-  const existingPackages: AddonPackage[] = (manifest.packages || []).filter(
-    (p) => p.version !== version,
-  )
-  const updatedPackages = [newPackage, ...existingPackages]
-
-  // Atualiza o manifesto unificado
-  const updatedManifest: Record<string, unknown> = {
+  const preUpdatedManifest: AddonConfig = {
     ...manifest,
     id: addonId,
+    main,
     version,
     downloadUrl,
-    requiredApiVersion: newPackage.requiredApiVersion,
+    requiredApiVersion,
     releaseDate,
     changelog,
-    packages: updatedPackages,
+    packages: [prePackageEntry, ...existingPackages],
   }
+  if (tier) {
+    preUpdatedManifest.tier = tier
+  }
+  delete preUpdatedManifest.sha256
+  delete preUpdatedManifest.size
+  delete preUpdatedManifest.AddonId
+  delete preUpdatedManifest.Version
+  delete preUpdatedManifest.Name
+  delete preUpdatedManifest.Tier
 
-  // Remove campos legados se existirem
-  delete updatedManifest.AddonId
-  delete updatedManifest.Version
-  delete updatedManifest.Name
-
-  writeYaml(manifestPath, updatedManifest)
+  writeYaml(manifestPath, preUpdatedManifest)
 
   const outFile = path.join(
     rootDir,
     sanitizeFileName(`${addonId}-${version}.tladdon`),
   )
 
-  const filesToInclude: string[] = []
-
-  // Inclui todos os arquivos da pasta dist
-  const distFiles = fs.readdirSync(distDir)
-  for (const file of distFiles) {
-    filesToInclude.push(path.join(distDir, file))
-  }
-
-  // Inclui arquivos principais da raiz
+  const filesToInclude: string[] = [distDir]
   const optionalRootFiles = [
     manifestPath,
     packageJsonPath,
@@ -118,6 +242,7 @@ export function buildAddon(addonDir: string, options: BuildAddonOptions) {
     path.join(rootDir, 'icon.png'),
     path.join(rootDir, 'icon.jpg'),
     path.join(rootDir, 'icon.svg'),
+    path.join(rootDir, 'index.js'),
   ]
 
   for (const filePath of optionalRootFiles) {
@@ -126,16 +251,89 @@ export function buildAddon(addonDir: string, options: BuildAddonOptions) {
     }
   }
 
-  packageAddon(filesToInclude, outFile)
+  const files = collectAddonPackageFiles(filesToInclude, rootDir)
+  const inventory = files.map((file) => ({
+    path: file.path,
+    sha256: crypto.createHash('sha256').update(file.contents).digest('hex'),
+  }))
+  if (signing) {
+    if (tier === undefined)
+      throw new Error('SIGNED_ADDON_CLASSIFICATION_REQUIRED')
+    const catalogManifest: AddonCatalogManifestV2 = {
+      formatVersion: 2,
+      keyId: signing.keyId,
+      addonId,
+      version,
+      sdkVersionRange: requiredApiVersion,
+      classification: tier,
+      files: inventory,
+      publishedAt: signing.publishedAt,
+    }
+    const signed = signCatalogManifest(catalogManifest, signing.privateKey)
+    files.push({
+      path: ADDON_CATALOG_RECEIPT_FILE,
+      contents: Buffer.from(JSON.stringify(signed), 'utf8'),
+    })
+  }
+  packageAddon(files, outFile)
+
+  const archiveBuffer = fs.readFileSync(outFile)
+  const sha256 = crypto.createHash('sha256').update(archiveBuffer).digest('hex')
+  const size = archiveBuffer.byteLength
+  let catalogManifestFile: string | undefined
+  if (signing) {
+    if (tier === undefined)
+      throw new Error('SIGNED_ADDON_CLASSIFICATION_REQUIRED')
+    const detachedManifest: AddonCatalogManifestV1 = {
+      formatVersion: 1,
+      keyId: signing.keyId,
+      addonId,
+      version,
+      sdkVersionRange: requiredApiVersion,
+      classification: tier,
+      packageSha256: sha256,
+      files: inventory,
+      publishedAt: signing.publishedAt,
+    }
+    const detached: SignedAddonCatalogManifestV1 = {
+      manifest: detachedManifest,
+      ...signCatalogManifest(detachedManifest, signing.privateKey),
+    }
+    catalogManifestFile = `${outFile}.manifest.json`
+    fs.writeFileSync(catalogManifestFile, JSON.stringify(detached), 'utf8')
+  }
+
+  const finalPackageEntry: AddonPackage = {
+    version,
+    requiredApiVersion,
+    releaseDate,
+    downloadUrl,
+    sha256,
+    size,
+    changelog,
+  }
+
+  const finalManifest: AddonConfig = {
+    ...preUpdatedManifest,
+    sha256,
+    size,
+    packages: [finalPackageEntry, ...existingPackages],
+  }
+
+  writeYaml(manifestPath, finalManifest)
 
   console.log(`\n📦 Pacote gerado com sucesso: ${outFile}`)
-  console.log(`✅ Manifesto atualizado em: ${manifestPath}`)
-  console.log('\nPróximos passos para publicação:')
-  console.log(
-    `  1. Crie uma Release no seu repositório GitHub (tag: v${version}).`,
-  )
-  console.log(`  2. Anexe o arquivo "${path.basename(outFile)}" na Release.`)
-  console.log(
-    `  3. Abra um Pull Request no repositório "addons-manifest" adicionando o arquivo "addons/${addonId}.yaml".\n`,
-  )
+  console.log(`🔒 SHA-256: ${sha256} (${size} bytes)`)
+  console.log(`✅ Manifesto atualizado em: ${manifestPath}\n`)
+
+  return {
+    catalogManifestFile,
+    outFile,
+    addonId,
+    version,
+    sha256,
+    size,
+    downloadUrl,
+    tier,
+  }
 }

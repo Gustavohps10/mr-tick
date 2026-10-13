@@ -1,3 +1,5 @@
+import { AddonTier } from '@mr-tick/domain'
+
 export interface AddonScreenshotDTO {
   url: string
   caption?: string
@@ -8,6 +10,8 @@ export interface AddonPackageDTO {
   requiredApiVersion?: string
   releaseDate?: string
   downloadUrl: string
+  sha256?: string
+  size?: number
   changelog?: string[]
 }
 
@@ -22,6 +26,9 @@ export interface AddonManifestDTO {
   downloads: number
   stars: number
   installed: boolean
+  tier?: AddonTier
+  sha256?: string
+  size?: number
   installerManifestUrl?: string
   sourceUrl?: string
   homepage?: string
@@ -37,6 +44,8 @@ export interface AddonManifestDTO {
   updateAvailable?: boolean
   latestVersion?: string
   latestDownloadUrl?: string
+  latestSha256?: string
+  latestSize?: number
   incompatibleUpdate?: boolean
   incompatibleReason?: string
 }

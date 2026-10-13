@@ -1,6 +1,8 @@
 export type AddonCategory =
   'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme'
 
+export type AddonTier = 'free' | 'plus'
+
 export const VALID_ADDON_CATEGORIES: AddonCategory[] = [
   'dataSource',
   'watcher',
@@ -8,6 +10,8 @@ export const VALID_ADDON_CATEGORIES: AddonCategory[] = [
   'punch',
   'theme',
 ]
+
+export const VALID_ADDON_TIERS: AddonTier[] = ['free', 'plus']
 
 export interface AddonScreenshot {
   url: string
@@ -19,6 +23,8 @@ export interface AddonPackage {
   requiredApiVersion?: string
   releaseDate?: string
   downloadUrl: string
+  sha256?: string
+  size?: number
   changelog?: string[]
 }
 
@@ -26,6 +32,7 @@ export interface IAddonManifest {
   id: string
   name: string
   version: string
+  tier?: AddonTier
   categories: AddonCategory[]
   author: string
   shortDescription: string
@@ -36,6 +43,8 @@ export interface IAddonManifest {
   tags?: string[]
   screenshots?: AddonScreenshot[]
   downloadUrl?: string
+  sha256?: string
+  size?: number
   requiredApiVersion?: string
   releaseDate?: string
   changelog?: string[]

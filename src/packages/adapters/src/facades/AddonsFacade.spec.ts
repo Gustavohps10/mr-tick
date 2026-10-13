@@ -1,4 +1,7 @@
+import { ILicensingFacade } from '@mr-tick/application'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 import axios from 'axios'
+import crypto from 'crypto'
 import { describe, expect, it, vi } from 'vitest'
 
 import { HardDiskStorage } from '../tools/HardDiskStorage'
@@ -6,46 +9,106 @@ import { AddonsFacade } from './AddonsFacade'
 
 vi.mock('axios')
 
+function createMockLicensingFacade(): ILicensingFacade {
+  return {
+    getStatus: vi.fn().mockResolvedValue(
+      Either.success({
+        state: 'active',
+        tier: 'plus',
+        isPlusActive: true,
+        entitlements: ['plus_addons', 'plus_updates'],
+      }),
+    ),
+    activateLicense: vi.fn(),
+    refreshLicense: vi.fn(),
+    deactivateLicense: vi.fn(),
+    downloadPlusPackage: vi.fn().mockImplementation(async () => {
+      const bytes = new Uint8Array([80, 75, 3, 4])
+      const sha256 = crypto.createHash('sha256').update(bytes).digest('hex')
+      return Either.success({ bytes, sha256 })
+    }),
+  }
+}
+
 describe('AddonsFacade', () => {
-  it('should parse unified manifest YAML correctly', async () => {
-    const facade = new AddonsFacade(new HardDiskStorage('./storage'))
+  it('should parse unified manifest YAML correctly including tier, sha256 and size', async () => {
+    const facade = new AddonsFacade(
+      new HardDiskStorage('./storage'),
+      createMockLicensingFacade(),
+    )
     const yamlContent = `
-id: mr-tick-datasource-redmine
-name: Redmine Integration
-version: 1.0.0
+id: mistertick-discord
+name: Discord Integration
+version: 0.1.0
+tier: plus
+sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+size: 4096
 categories:
-  - dataSource
-author: Mr-tick Community
-shortDescription: Integração com Redmine
-description: Plugin completo do Redmine
+  - watcher
+author: Mr. Tick Official
+shortDescription: Integração com Discord
+description: Plugin oficial Plus do Discord
 iconUrl: https://example.com/icon.png
-sourceUrl: https://github.com/mr-tick/addon-redmine
+sourceUrl: https://github.com/mistertick/discord-addon
 screenshots:
   - url: https://example.com/screen1.png
     caption: Tela 1
-downloadUrl: https://example.com/redmine-1.0.0.tladdon
-requiredApiVersion: '>=1.0.0'
-releaseDate: '2026-08-24'
+downloadUrl: https://mistertick-api.mistertick.workers.dev/catalog/plus-addons/mistertick-discord/versions/0.1.0/download
+requiredApiVersion: '>=0.8.0'
+releaseDate: '2026-10-12'
 changelog:
-  - Suporte a tarefas
+  - Suporte ao Discord
 `
     const result = await facade.parseManifest(yamlContent)
 
     expect(result.isSuccess()).toBe(true)
     if (result.isSuccess()) {
-      expect(result.success.id).toBe('mr-tick-datasource-redmine')
-      expect(result.success.name).toBe('Redmine Integration')
-      expect(result.success.categories).toEqual(['dataSource'])
+      expect(result.success.id).toBe('mistertick-discord')
+      expect(result.success.tier).toBe('plus')
+      expect(result.success.sha256).toBe(
+        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      )
+      expect(result.success.size).toBe(4096)
+      expect(result.success.categories).toEqual(['watcher'])
       expect(result.success.screenshots).toHaveLength(1)
       expect(result.success.screenshots?.[0].caption).toBe('Tela 1')
-      expect(result.success.downloadUrl).toBe(
-        'https://example.com/redmine-1.0.0.tladdon',
-      )
     }
   })
 
+  it('should route Plus catalog download URLs through licensingFacade and verify SHA-256', async () => {
+    const licensingFacade = createMockLicensingFacade()
+    const facade = new AddonsFacade(
+      new HardDiskStorage('./storage'),
+      licensingFacade,
+    )
+
+    const result = await facade.downloadFile(
+      'https://mistertick-api.mistertick.workers.dev/catalog/plus-addons/mistertick-discord/versions/0.1.0/download',
+    )
+
+    expect(result.isSuccess()).toBe(true)
+    expect(licensingFacade.downloadPlusPackage).toHaveBeenCalledWith(
+      'mistertick-discord',
+      '0.1.0',
+    )
+
+    const badShaResult = await facade.downloadFile(
+      'https://mistertick-api.mistertick.workers.dev/catalog/plus-addons/mistertick-discord/versions/0.1.0/download',
+      undefined,
+      'f'.repeat(64),
+    )
+    expect(badShaResult.isFailure()).toBe(true)
+    expect(badShaResult.failure).toBeInstanceOf(AppError)
+    expect(badShaResult.failure.messageKey).toBe(
+      'INTEGRIDADE_SHA256_ADDON_INVALIDA',
+    )
+  })
+
   it('should maintain backward compatibility with legacy PascalCase manifests', async () => {
-    const facade = new AddonsFacade(new HardDiskStorage('./storage'))
+    const facade = new AddonsFacade(
+      new HardDiskStorage('./storage'),
+      createMockLicensingFacade(),
+    )
     const legacyYaml = `
 AddonId: mr-tick-legacy
 Name: Legacy Addon
@@ -69,7 +132,10 @@ IconUrl: https://example.com/legacy.png
   })
 
   it('should fetch available addons in a single HTTP request without N+1', async () => {
-    const facade = new AddonsFacade(new HardDiskStorage('./storage'))
+    const facade = new AddonsFacade(
+      new HardDiskStorage('./storage'),
+      createMockLicensingFacade(),
+    )
     const mockConsolidatedCatalog = [
       {
         id: 'mr-tick-datasource-redmine',
@@ -111,7 +177,10 @@ IconUrl: https://example.com/legacy.png
 
   describe('checkUpdates', () => {
     it('should mark updateAvailable: true when remote version is higher and compatible with host', () => {
-      const facade = new AddonsFacade(new HardDiskStorage('./storage'))
+      const facade = new AddonsFacade(
+        new HardDiskStorage('./storage'),
+        createMockLicensingFacade(),
+      )
       const installed = [
         {
           id: 'mr-tick-datasource-redmine',
@@ -160,7 +229,10 @@ IconUrl: https://example.com/legacy.png
     })
 
     it('should mark incompatibleUpdate: true when remote version requires newer host SDK', () => {
-      const facade = new AddonsFacade(new HardDiskStorage('./storage'))
+      const facade = new AddonsFacade(
+        new HardDiskStorage('./storage'),
+        createMockLicensingFacade(),
+      )
       const installed = [
         {
           id: 'mr-tick-datasource-redmine',
@@ -207,7 +279,10 @@ IconUrl: https://example.com/legacy.png
 
   describe('backupAddon, restoreAddonBackup and removeAddonBackup', () => {
     it('deve ter os métodos backupAddon, restoreAddonBackup e removeAddonBackup definidos na facade', () => {
-      const facade = new AddonsFacade(new HardDiskStorage('./storage'))
+      const facade = new AddonsFacade(
+        new HardDiskStorage('./storage'),
+        createMockLicensingFacade(),
+      )
       expect(typeof facade.backupAddon).toBe('function')
       expect(typeof facade.restoreAddonBackup).toBe('function')
       expect(typeof facade.removeAddonBackup).toBe('function')

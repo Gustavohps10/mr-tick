@@ -2,7 +2,10 @@ import type { ICredentialsVault, ILocalRuntimeAPI } from '@mr-tick/application'
 import type { AddonContext, IAddon, IDataSource } from '@mr-tick/sdk'
 import { describe, expect, it, vi } from 'vitest'
 
-import { unavailableCore } from './addon-core-test-fixture'
+import {
+  permissiveAddonAccessService,
+  unavailableCore,
+} from './addon-core-test-fixture'
 import { AddonLoader } from './AddonLoader'
 vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
@@ -53,6 +56,7 @@ describe('Addon ownership and lifecycle', () => {
       runtime,
       '1.0.0',
       unavailableCore,
+      permissiveAddonAccessService,
     )
     const first = new ProbeAddon('first')
     const second = new ProbeAddon('second')
@@ -86,6 +90,7 @@ describe('Addon ownership and lifecycle', () => {
       runtime,
       '1.0.0',
       unavailableCore,
+      permissiveAddonAccessService,
     )
     const addon = new ProbeAddon('probe')
     vi.spyOn(addon, 'activate').mockImplementation((context) => {
@@ -114,7 +119,13 @@ it('releases availability subscriptions and registrations even when deactivate f
     ...unavailableCore,
     runtime: { getState: () => 'starting', onStateChanged },
   }
-  const loader = new AddonLoader(credentials, runtime, '1.0.0', core)
+  const loader = new AddonLoader(
+    credentials,
+    runtime,
+    '1.0.0',
+    core,
+    permissiveAddonAccessService,
+  )
   const addon = new ProbeAddon('probe')
   await loader.activateAddon('probe', addon)
   addon.deactivate.mockRejectedValue(new Error('EXTERNAL_CLEANUP_FAILED'))
@@ -127,7 +138,13 @@ it('releases availability subscriptions and registrations even when deactivate f
   expect(loader.commandRegistry.has('probe:probe')).toBe(false)
 })
 it('keeps reused datasource definitions owned by distinct addons without mutating them', async () => {
-  const loader = new AddonLoader(credentials, runtime, '1.0.0', unavailableCore)
+  const loader = new AddonLoader(
+    credentials,
+    runtime,
+    '1.0.0',
+    unavailableCore,
+    permissiveAddonAccessService,
+  )
   const source: IDataSource = {
     getConnectionSchema: () => [],
     createInstance: vi.fn<IDataSource['createInstance']>(),
@@ -147,7 +164,13 @@ it('keeps reused datasource definitions owned by distinct addons without mutatin
 })
 
 it('preserves the built-in theme command while resolving addon themes by their owner', async () => {
-  const loader = new AddonLoader(credentials, runtime, '1.0.0', unavailableCore)
+  const loader = new AddonLoader(
+    credentials,
+    runtime,
+    '1.0.0',
+    unavailableCore,
+    permissiveAddonAccessService,
+  )
   const first = new ProbeAddon('first')
   const second = new ProbeAddon('second')
   await loader.activateAddon('first', first)
@@ -160,7 +183,13 @@ it('preserves the built-in theme command while resolving addon themes by their o
 })
 
 it('never resolves another addon alias when the selected addon has no such action', async () => {
-  const loader = new AddonLoader(credentials, runtime, '1.0.0', unavailableCore)
+  const loader = new AddonLoader(
+    credentials,
+    runtime,
+    '1.0.0',
+    unavailableCore,
+    permissiveAddonAccessService,
+  )
   const first = new ProbeAddon('first')
   const second = new ProbeAddon('second')
   await loader.activateAddon('first', first)

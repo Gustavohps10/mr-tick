@@ -1,3 +1,4 @@
+export * from './IAddonAccessService'
 export * from './IConnectDataSourceUseCase'
 export * from './ICreateWorkspaceUseCase'
 export * from './IDeleteWorkspaceUseCase'
