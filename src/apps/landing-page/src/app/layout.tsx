@@ -2,6 +2,8 @@ import '../index.css'
 
 import type { Metadata } from 'next'
 import { Geist_Mono } from 'next/font/google'
+import { NextIntlClientProvider } from 'next-intl'
+import { getLocale, getMessages } from 'next-intl/server'
 import { ThemeProvider } from 'next-themes'
 
 const geistMono = Geist_Mono({
@@ -11,19 +13,22 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Mr-tick — Apontamento de Horas Inteligente',
+  title: 'Mr. Tick — The "Local-First" Workflow Observability Toolkit',
   description:
-    'Controle cada minuto do seu time com integrações poderosas. Jira, Redmine, Trello, Slack, GitHub e Asana em um só lugar.',
+    'Instant local-first cockpit unifying tasks, time tracking, and workflow observability with zero friction.',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const locale = await getLocale()
+  const messages = await getMessages()
+
   return (
     <html
-      lang="pt-BR"
+      lang={locale}
       suppressHydrationWarning
       className={`${geistMono.variable} h-full font-mono antialiased`}
     >
@@ -38,7 +43,9 @@ export default function RootLayout({
           disableTransitionOnChange
           enableColorScheme={false}
         >
-          {children}
+          <NextIntlClientProvider locale={locale} messages={messages}>
+            {children}
+          </NextIntlClientProvider>
         </ThemeProvider>
       </body>
     </html>

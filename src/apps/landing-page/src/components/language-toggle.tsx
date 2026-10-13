@@ -25,21 +25,7 @@ export function LanguageToggle() {
   const switchLocale = (newLocale: 'en' | 'pt-br') => {
     if (newLocale === currentLocale) return
     document.cookie = `NEXT_LOCALE=${newLocale}; path=/; max-age=31536000; SameSite=Lax`
-
-    const pathname = window.location.pathname
-    let targetPath = pathname
-    if (newLocale === 'pt-br') {
-      if (!pathname.startsWith('/pt-br')) {
-        targetPath = `/pt-br${pathname === '/' ? '' : pathname}`
-      }
-    } else {
-      if (pathname.startsWith('/pt-br')) {
-        targetPath = pathname.replace(/^\/pt-br/, '') || '/'
-      }
-    }
-    window.location.assign(
-      `${targetPath}${window.location.search}${window.location.hash}`,
-    )
+    window.location.reload()
   }
 
   return (
