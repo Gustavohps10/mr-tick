@@ -2,8 +2,31 @@
 
 import { Button } from '@mr-tick/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@mr-tick/ui/tabs'
-import { Building2, Check, Sparkles, User, X } from 'lucide-react'
+import {
+  Building2,
+  Check,
+  CheckCircle2,
+  Clock,
+  Globe,
+  Loader2,
+  Sparkles,
+  User,
+  X,
+} from 'lucide-react'
 import * as React from 'react'
+
+import {
+  createPlusCheckout,
+  detectBrowserPreferredCurrency,
+  fetchPlusPlansCatalog,
+  findCurrencyOption,
+  formatFreePrice,
+  formatPlanInterval,
+  formatUnitAmount,
+  normalizeSupportedCurrency,
+  type PlusPlanCatalogItem,
+  type SupportedBillingCurrency,
+} from '@/lib/billing'
 
 export interface PricingFeature {
   text: string
@@ -11,6 +34,7 @@ export interface PricingFeature {
 }
 
 export interface PricingPlan {
+  id: string
   name: string
   price: string
   period?: string
@@ -18,64 +42,39 @@ export interface PricingPlan {
   features: PricingFeature[]
   highlighted?: boolean
   badge?: string
+  comingSoon?: boolean
   cta: string
+  actionKind: 'download' | 'checkout' | 'coming-soon'
+  stripePriceId?: string
 }
 
-const INDIVIDUAL_PLANS: PricingPlan[] = [
+const PLUS_FEATURES: PricingFeature[] = [
+  { text: 'Official Mr. Tick Plus Addons catalog access', status: 'check' },
   {
-    name: 'Free (Open Core)',
-    price: '$0',
-    description:
-      'Everything an individual developer needs for local task execution and time tracking.',
-    features: [
-      { text: 'Native Desktop App (macOS, Windows, Linux)', status: 'check' },
-      {
-        text: '100% Local Persistence (Embedded Local Storage)',
-        status: 'check',
-      },
-      { text: 'Global keyboard shortcuts & quick timer bar', status: 'check' },
-      { text: 'Basic daily time & activity summaries', status: 'check' },
-      { text: '1 Workspace and 1 integrated DataSource', status: 'check' },
-      { text: 'Advanced Deep Work focus analytics', status: 'block' },
-      { text: 'Team coordination & squad dashboards', status: 'block' },
-    ],
-    cta: 'Download Free',
+    text: 'Multiple integrations (Redmine, Jira, GitHub, YouTrack)',
+    status: 'check',
   },
   {
-    name: 'Individual Pro',
-    price: '$4',
-    period: '/month',
-    description:
-      'For engineers aiming for maximum focus, Deep Work metrics, and multiple tool integrations.',
-    features: [
-      { text: 'Unlimited Workspaces & DataSources', status: 'check' },
-      {
-        text: 'Multiple integrations (Jira, Redmine, GitHub, YouTrack)',
-        status: 'check',
-      },
-      { text: 'Advanced Deep Work & focus analytics', status: 'check' },
-      {
-        text: 'Context switching frequency detection',
-        status: 'check',
-      },
-      {
-        text: 'Exportable effort reports (JSON, CSV)',
-        status: 'check',
-      },
-      { text: 'Commit & Pull Request correlation', status: 'check' },
-      { text: 'Team squad aggregation', status: 'block' },
-    ],
-    highlighted: true,
-    badge: 'Most Popular',
-    cta: 'Start 14-Day Free Trial',
+    text: 'Up to 2 simultaneous activated desktop devices',
+    status: 'check',
   },
+  { text: 'Advanced synchronization & effort correlation', status: 'check' },
+  {
+    text: 'Signed Ed25519 offline lease & automatic renewal',
+    status: 'check',
+  },
+  {
+    text: 'Instant activation key delivery via email',
+    status: 'check',
+  },
+  { text: 'Team squad aggregation (Enterprise)', status: 'block' },
 ]
 
 const ENTERPRISE_PLANS: PricingPlan[] = [
   {
+    id: 'team-squads',
     name: 'Team Squads',
-    price: '$10',
-    period: '/user /month',
+    price: 'Coming Soon',
     description:
       'Shared visibility, effort allocation, and workflow observability for engineering teams.',
     features: [
@@ -87,13 +86,15 @@ const ENTERPRISE_PLANS: PricingPlan[] = [
       { text: 'Member role management & team admin', status: 'check' },
       { text: 'Dedicated self-hosted deployment', status: 'block' },
     ],
-    highlighted: true,
-    badge: 'For Tech Teams',
-    cta: 'Start Team Trial',
+    badge: 'Coming Soon',
+    comingSoon: true,
+    cta: 'Coming Soon',
+    actionKind: 'coming-soon',
   },
   {
+    id: 'self-hosted-enterprise',
     name: 'Self-Hosted Enterprise',
-    price: 'Custom',
+    price: 'Coming Soon',
     description:
       'On-premise enterprise infrastructure, custom SSO, audit logs, and dedicated SLA.',
     features: [
@@ -107,11 +108,189 @@ const ENTERPRISE_PLANS: PricingPlan[] = [
       { text: 'Dedicated account manager & 99.9% SLA', status: 'check' },
       { text: 'Custom DataSource connectors built on demand', status: 'check' },
     ],
-    cta: 'Contact Sales',
+    badge: 'Coming Soon',
+    comingSoon: true,
+    cta: 'Coming Soon',
+    actionKind: 'coming-soon',
   },
 ]
 
+function resolveDefaultPlusPriceLabel(
+  currency: SupportedBillingCurrency,
+): string {
+  if (currency === 'brl') return formatUnitAmount(1990, 'brl')
+  return formatUnitAmount(700, 'usd')
+}
+
+function buildPlusPlanCard(
+  stripePlan: PlusPlanCatalogItem | null,
+  currency: SupportedBillingCurrency,
+): PricingPlan {
+  let name = 'Mr. Tick Plus'
+  let description =
+    'Official Plus addons, advanced synchronization, and activation on up to 2 simultaneous devices.'
+  let price = resolveDefaultPlusPriceLabel(currency)
+  let period = '/month'
+  let stripePriceId: string | undefined = undefined
+
+  if (stripePlan) {
+    if (stripePlan.name.trim().length > 0) {
+      name = stripePlan.name
+    }
+    if (stripePlan.description) {
+      if (stripePlan.description.trim().length > 0) {
+        description = stripePlan.description
+      }
+    }
+    const matchedOption = findCurrencyOption(stripePlan, currency)
+    if (matchedOption) {
+      price = formatUnitAmount(matchedOption.unitAmount, currency)
+    }
+    period = formatPlanInterval(stripePlan.interval, stripePlan.intervalCount)
+    stripePriceId = stripePlan.priceId
+  }
+
+  return {
+    id: 'mr-tick-plus',
+    name,
+    price,
+    period,
+    description,
+    features: PLUS_FEATURES,
+    highlighted: true,
+    badge: 'Most Popular',
+    cta: 'Subscribe to Mr. Tick Plus',
+    actionKind: 'checkout',
+    stripePriceId,
+  }
+}
+
+function buildIndividualPlans(
+  stripePlan: PlusPlanCatalogItem | null,
+  currency: SupportedBillingCurrency,
+): PricingPlan[] {
+  const freePlan: PricingPlan = {
+    id: 'free-open-core',
+    name: 'Free (Open Core)',
+    price: formatFreePrice(currency),
+    period: '/forever',
+    description:
+      'Everything an individual developer needs for local task execution and time tracking.',
+    features: [
+      { text: 'Native Desktop App (macOS, Windows, Linux)', status: 'check' },
+      {
+        text: '100% Local Persistence (Embedded Local Storage)',
+        status: 'check',
+      },
+      { text: 'Global keyboard shortcuts & quick timer bar', status: 'check' },
+      { text: 'Basic daily time & activity summaries', status: 'check' },
+      { text: 'Community & Open Core integrations', status: 'check' },
+      { text: 'Official Mr. Tick Plus Addons catalog', status: 'block' },
+      { text: 'Team coordination & squad dashboards', status: 'block' },
+    ],
+    cta: 'Download Free',
+    actionKind: 'download',
+  }
+
+  return [freePlan, buildPlusPlanCard(stripePlan, currency)]
+}
+
+function getCurrencyButtonClass(isActive: boolean): string {
+  if (isActive) {
+    return 'bg-background text-foreground shadow-xs rounded-md px-3 py-1 text-xs font-semibold transition-all'
+  }
+  return 'text-muted-foreground hover:text-foreground rounded-md px-3 py-1 text-xs font-medium transition-all'
+}
+
+function getCardContainerClass(plan: PricingPlan): string {
+  if (plan.highlighted) {
+    return 'border-primary/50 bg-card shadow-primary/5 ring-primary/20 relative flex flex-col justify-between rounded-lg border p-8 shadow-xl ring-1 backdrop-blur-sm transition-all duration-300'
+  }
+  if (plan.comingSoon) {
+    return 'border-border/50 bg-card/50 relative flex flex-col justify-between rounded-lg border p-8 opacity-90 backdrop-blur-sm transition-all duration-300'
+  }
+  return 'border-border/60 bg-card/70 hover:border-border relative flex flex-col justify-between rounded-lg border p-8 backdrop-blur-sm transition-all duration-300'
+}
+
+function getBadgeClass(plan: PricingPlan): string {
+  if (plan.comingSoon) {
+    return 'border-border bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full border px-3 py-1 font-mono text-[10px] font-bold tracking-wide uppercase'
+  }
+  return 'bg-primary text-primary-foreground rounded-full px-3 py-1 font-mono text-[10px] font-bold tracking-wide uppercase shadow-md'
+}
+
+function getFeatureTextClass(status: PricingFeature['status']): string {
+  if (status === 'check') return 'text-foreground font-medium'
+  return 'text-muted-foreground/60 line-through'
+}
+
+function renderFeatureIcon(status: PricingFeature['status']): React.ReactNode {
+  if (status === 'check') {
+    return <Check className="text-primary mt-0.5 size-4 shrink-0" />
+  }
+  return <X className="text-muted-foreground/40 mt-0.5 size-4 shrink-0" />
+}
+
 export function Pricing() {
+  const [currency, setCurrency] =
+    React.useState<SupportedBillingCurrency>('usd')
+  const [stripePlan, setStripePlan] =
+    React.useState<PlusPlanCatalogItem | null>(null)
+  const [isLoadingCheckout, setIsLoadingCheckout] = React.useState(false)
+  const [checkoutError, setCheckoutError] = React.useState<string | null>(null)
+  const [checkoutSuccess, setCheckoutSuccess] = React.useState(false)
+
+  React.useEffect(() => {
+    const preferred = detectBrowserPreferredCurrency()
+    setCurrency(preferred)
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('checkout') === 'success') {
+        setCheckoutSuccess(true)
+      }
+    }
+
+    let isMounted = true
+    fetchPlusPlansCatalog().then((catalog) => {
+      if (!isMounted) return
+      if (!catalog) return
+      const firstPlan = catalog.plans[0]
+      if (firstPlan) {
+        setStripePlan(firstPlan)
+      }
+      if (catalog.countryCode) {
+        setCurrency(normalizeSupportedCurrency(catalog.recommendedCurrency))
+      }
+    })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const handleCheckout = async (plan: PricingPlan) => {
+    setCheckoutError(null)
+    setIsLoadingCheckout(true)
+    const origin = window.location.origin
+    const session = await createPlusCheckout({
+      priceId: plan.stripePriceId,
+      currency,
+      successUrl: `${origin}/?checkout=success#pricing`,
+      cancelUrl: `${origin}/#pricing`,
+    })
+    if (!session) {
+      setIsLoadingCheckout(false)
+      setCheckoutError(
+        'Could not start checkout session right now. Please try again in a moment.',
+      )
+      return
+    }
+    window.location.assign(session.url)
+  }
+
+  const individualPlans = buildIndividualPlans(stripePlan, currency)
+
   return (
     <section
       id="pricing"
@@ -119,21 +298,61 @@ export function Pricing() {
     >
       <div className="container mx-auto px-6 lg:px-8">
         {/* Section Header */}
-        <div className="mb-14 text-center">
+        <div className="mb-12 text-center">
           <div className="border-primary/25 bg-primary/5 text-primary mb-3.5 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1 text-xs font-semibold">
             <Sparkles className="size-3.5" />
             Simple, Transparent Pricing
           </div>
 
           <h2 className="text-foreground text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl">
-            Start free. Upgrade when you need team power.
+            Start free. Upgrade to Mr. Tick Plus anytime.
           </h2>
 
           <p className="text-muted-foreground mx-auto mt-4 max-w-xl text-base leading-relaxed sm:text-lg">
             Mr. Tick is Open Core. Free forever for local individual use, with
-            Pro analytics and Team collaboration plans.
+            Mr. Tick Plus for official addons and multi-device sync.
           </p>
+
+          {/* Currency Switcher */}
+          <div className="mt-6 flex items-center justify-center">
+            <div className="border-border/60 bg-muted/60 inline-flex items-center gap-1 rounded-lg border p-1">
+              <span className="text-muted-foreground flex items-center gap-1 px-2.5 text-[11px] font-medium">
+                <Globe className="size-3" />
+                Currency:
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrency('brl')}
+                className={getCurrencyButtonClass(currency === 'brl')}
+              >
+                BRL (R$) · Brasil
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrency('usd')}
+                className={getCurrencyButtonClass(currency === 'usd')}
+              >
+                USD ($) · International
+              </button>
+            </div>
+          </div>
         </div>
+
+        {checkoutSuccess && (
+          <div className="border-primary/40 bg-primary/10 text-foreground mx-auto mb-8 flex max-w-2xl items-center gap-3 rounded-lg border px-4 py-3 text-xs font-medium">
+            <CheckCircle2 className="text-primary size-4 shrink-0" />
+            <span>
+              Subscription confirmed! Your Mr. Tick Plus activation key has been
+              sent to your checkout email.
+            </span>
+          </div>
+        )}
+
+        {checkoutError && (
+          <div className="border-destructive/40 bg-destructive/10 text-destructive mx-auto mb-8 max-w-2xl rounded-lg border px-4 py-3 text-center text-xs font-medium">
+            {checkoutError}
+          </div>
+        )}
 
         {/* Pricing Tabs */}
         <Tabs defaultValue="individual" className="mx-auto max-w-4xl">
@@ -152,6 +371,9 @@ export function Pricing() {
               >
                 <Building2 className="size-3.5" />
                 For Engineering Teams
+                <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 font-mono text-[9px] font-bold uppercase">
+                  Soon
+                </span>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -159,8 +381,13 @@ export function Pricing() {
           {/* Individual Plans */}
           <TabsContent value="individual">
             <div className="grid gap-6 md:grid-cols-2">
-              {INDIVIDUAL_PLANS.map((plan) => (
-                <PlanCard key={plan.name} plan={plan} />
+              {individualPlans.map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  isLoadingCheckout={isLoadingCheckout}
+                  onCheckout={handleCheckout}
+                />
               ))}
             </div>
           </TabsContent>
@@ -169,7 +396,12 @@ export function Pricing() {
           <TabsContent value="enterprise">
             <div className="grid gap-6 md:grid-cols-2">
               {ENTERPRISE_PLANS.map((plan) => (
-                <PlanCard key={plan.name} plan={plan} />
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  isLoadingCheckout={isLoadingCheckout}
+                  onCheckout={handleCheckout}
+                />
               ))}
             </div>
           </TabsContent>
@@ -179,19 +411,22 @@ export function Pricing() {
   )
 }
 
-function PlanCard({ plan }: { plan: PricingPlan }) {
+function PlanCard({
+  plan,
+  isLoadingCheckout,
+  onCheckout,
+}: {
+  plan: PricingPlan
+  isLoadingCheckout: boolean
+  onCheckout: (plan: PricingPlan) => Promise<void>
+}) {
   return (
-    <div
-      className={`relative flex flex-col justify-between rounded-lg border p-8 backdrop-blur-sm transition-all duration-300 ${
-        plan.highlighted
-          ? 'border-primary/50 bg-card shadow-primary/5 ring-primary/20 shadow-xl ring-1'
-          : 'border-border/60 bg-card/70 hover:border-border'
-      }`}
-    >
+    <div className={getCardContainerClass(plan)}>
       {/* Badge */}
       {plan.badge && (
         <div className="absolute -top-3 right-6">
-          <span className="bg-primary text-primary-foreground rounded-full px-3 py-1 font-mono text-[10px] font-bold tracking-wide uppercase shadow-md">
+          <span className={getBadgeClass(plan)}>
+            {plan.comingSoon && <Clock className="size-3" />}
             {plan.badge}
           </span>
         </div>
@@ -226,18 +461,8 @@ function PlanCard({ plan }: { plan: PricingPlan }) {
                 key={feature.text}
                 className="flex items-start gap-2.5 text-xs"
               >
-                {feature.status === 'check' ? (
-                  <Check className="text-primary mt-0.5 size-4 shrink-0" />
-                ) : (
-                  <X className="text-muted-foreground/40 mt-0.5 size-4 shrink-0" />
-                )}
-                <span
-                  className={
-                    feature.status === 'check'
-                      ? 'text-foreground font-medium'
-                      : 'text-muted-foreground/60 line-through'
-                  }
-                >
+                {renderFeatureIcon(feature.status)}
+                <span className={getFeatureTextClass(feature.status)}>
                   {feature.text}
                 </span>
               </li>
@@ -248,13 +473,42 @@ function PlanCard({ plan }: { plan: PricingPlan }) {
 
       {/* CTA Button */}
       <div className="mt-8">
-        <Button
-          asChild
-          variant={plan.highlighted ? 'default' : 'outline'}
-          className="w-full text-xs font-semibold"
-        >
-          <a href="/download">{plan.cta}</a>
-        </Button>
+        {plan.actionKind === 'download' && (
+          <Button
+            asChild
+            variant="outline"
+            className="w-full text-xs font-semibold"
+          >
+            <a href="/download">{plan.cta}</a>
+          </Button>
+        )}
+
+        {plan.actionKind === 'checkout' && (
+          <Button
+            type="button"
+            variant="default"
+            disabled={isLoadingCheckout}
+            onClick={() => void onCheckout(plan)}
+            className="w-full text-xs font-semibold"
+          >
+            {isLoadingCheckout && (
+              <Loader2 className="mr-2 size-3.5 animate-spin" />
+            )}
+            {plan.cta}
+          </Button>
+        )}
+
+        {plan.actionKind === 'coming-soon' && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled
+            className="w-full cursor-not-allowed text-xs font-semibold opacity-60"
+          >
+            <Clock className="mr-1.5 size-3.5" />
+            {plan.cta}
+          </Button>
+        )}
       </div>
     </div>
   )
