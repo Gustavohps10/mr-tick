@@ -156,14 +156,19 @@ export class SignedAddonPackageVerifier implements IAddonPackageVerifier {
         Buffer.from(JSON.stringify({ addonId, version, inventory })),
       )
       const receipt = entries.get(ADDON_CATALOG_RECEIPT_FILE)
-      if (!receipt)
+      if (!receipt) {
+        let classification: 'free' | 'plus' = 'free'
+        if (metadata.success.tier === 'plus') {
+          classification = 'plus'
+        }
         return Either.success({
-          classification: 'unknown',
+          classification,
           fingerprint,
           addonId,
           version,
           requiredApiVersion: metadata.success.requiredApiVersion,
         })
+      }
       const envelope: object = JSON.parse(
         Buffer.from(receipt.content).toString('utf8'),
       )
@@ -234,8 +239,12 @@ export class SignedAddonPackageVerifier implements IAddonPackageVerifier {
             AppError.Unauthorized('INTEGRIDADE_ADDON_INVALIDA'),
           )
       }
+      let resolvedClassification = publication.classification
+      if (metadata.success.tier === 'plus') {
+        resolvedClassification = 'plus'
+      }
       return Either.success({
-        classification: publication.classification,
+        classification: resolvedClassification,
         fingerprint,
         addonId,
         version,
@@ -253,15 +262,28 @@ export class SignedAddonPackageVerifier implements IAddonPackageVerifier {
     directory: string,
   ): Promise<Either<AppError, VerifiedAddonPackage>> {
     try {
-      const root = await fs.lstat(directory)
-      if (!root.isDirectory() || root.isSymbolicLink())
+      const resolvedDirectory = await fs.realpath(directory)
+      const root = await fs.stat(resolvedDirectory)
+      if (!root.isDirectory())
         return Either.failure(AppError.Unauthorized('CAMINHO_ADDON_INSEGURO'))
+      const ignoredDirectories = new Set([
+        'node_modules',
+        '.git',
+        '.turbo',
+        '.vscode',
+        '.idea',
+        'coverage',
+        'test-results',
+      ])
       const files: AddonPackageFile[] = []
       async function collect(
         current: string,
         relative: string,
       ): Promise<boolean> {
         for (const item of await fs.readdir(current, { withFileTypes: true })) {
+          if (ignoredDirectories.has(item.name)) continue
+          if (item.name.startsWith('.') && item.name !== '.manifest.yaml')
+            continue
           const fullPath = path.join(current, item.name)
           const entryPath = relative + item.name
           const stat = await fs.lstat(fullPath)
@@ -275,7 +297,7 @@ export class SignedAddonPackageVerifier implements IAddonPackageVerifier {
         }
         return true
       }
-      if (!(await collect(directory, '')))
+      if (!(await collect(resolvedDirectory, '')))
         return Either.failure(AppError.Unauthorized('CAMINHO_ADDON_INSEGURO'))
       const manifests = files.filter(
         (file) => file.name === 'manifest.yaml' || file.name === 'manifest.yml',
