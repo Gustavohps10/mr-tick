@@ -12,6 +12,7 @@ import {
   User,
   X,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import * as React from 'react'
 
 import {
@@ -224,6 +225,7 @@ function renderFeatureIcon(status: PricingFeature['status']): React.ReactNode {
 }
 
 export function Pricing() {
+  const t = useTranslations('pricing')
   const [currency, setCurrency] =
     React.useState<SupportedBillingCurrency>('usd')
   const [stripePlan, setStripePlan] =
@@ -265,9 +267,7 @@ export function Pricing() {
     })
     if (!session) {
       setIsLoadingCheckout(false)
-      setCheckoutError(
-        'Could not start checkout session right now. Please try again in a moment.',
-      )
+      setCheckoutError(t('checkoutError'))
       return
     }
     window.location.assign(session.url)
@@ -285,16 +285,15 @@ export function Pricing() {
         <div className="mb-12 text-center">
           <div className="border-primary/25 bg-primary/5 text-primary mb-3.5 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1 text-xs font-semibold">
             <Sparkles className="size-3.5" />
-            Simple, Transparent Pricing
+            {t('badge')}
           </div>
 
           <h2 className="text-foreground text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl">
-            Start free. Upgrade to Mr. Tick Plus anytime.
+            {t('title')}
           </h2>
 
           <p className="text-muted-foreground mx-auto mt-4 max-w-xl text-base leading-relaxed sm:text-lg">
-            Mr. Tick is Open Core. Free forever for local individual use, with
-            Mr. Tick Plus for official addons and multi-device sync.
+            {t('subtitle')}
           </p>
 
           {/* Currency Switcher */}
@@ -343,16 +342,16 @@ export function Pricing() {
                 className="data-[state=active]:bg-background data-[state=active]:text-foreground flex items-center gap-2 rounded-md px-5 py-2 text-xs font-semibold data-[state=active]:shadow-xs"
               >
                 <User className="size-3.5" />
-                For Developers
+                {t('forDevelopers')}
               </TabsTrigger>
               <TabsTrigger
                 value="enterprise"
                 className="data-[state=active]:bg-background data-[state=active]:text-foreground flex items-center gap-2 rounded-md px-5 py-2 text-xs font-semibold data-[state=active]:shadow-xs"
               >
                 <Building2 className="size-3.5" />
-                For Engineering Teams
+                {t('forTeams')}
                 <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 font-mono text-[9px] font-bold uppercase">
-                  Soon
+                  {t('soon')}
                 </span>
               </TabsTrigger>
             </TabsList>

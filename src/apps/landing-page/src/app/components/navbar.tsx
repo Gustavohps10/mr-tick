@@ -4,28 +4,25 @@ import { Separator } from '@mr-tick/ui/separator'
 import { BookOpenTextIcon, Github, Star } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import * as React from 'react'
 
 import { LanguageToggle } from '@/components/language-toggle'
 import { MobileMenu } from '@/components/mobile-menu'
 import { ServerSideModeToggle } from '@/components/mode-toggle'
 
-export interface NavItem {
-  href: string
-  label: string
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { href: '/#positioning', label: 'Why Mr. Tick' },
-  { href: '/#integrations', label: 'Integrations & SDK' },
-  { href: '/#offline', label: 'Architecture' },
-  { href: '/#pricing', label: 'Pricing' },
-  { href: '/download', label: 'Download' },
-]
-
 export function Navbar() {
+  const t = useTranslations('navbar')
   const [scrolled, setScrolled] = React.useState(false)
   const [stars, setStars] = React.useState<number | null>(null)
+
+  const navItems = [
+    { href: '/#positioning', label: t('whyMrTick') },
+    { href: '/#integrations', label: t('integrations') },
+    { href: '/#offline', label: t('architecture') },
+    { href: '/#pricing', label: t('pricing') },
+    { href: '/download', label: t('download') },
+  ]
 
   React.useEffect(() => {
     fetch('/api/github-stars')
@@ -86,7 +83,7 @@ export function Navbar() {
         {/* Desktop Navigation */}
         <nav className="hidden h-full items-center py-2 md:flex">
           <div className="mr-4 flex items-center gap-5">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <a
                 key={item.href}
                 href={item.href}
@@ -104,7 +101,7 @@ export function Navbar() {
             className="text-muted-foreground hover:text-foreground flex items-center gap-2 text-sm font-medium transition-colors"
           >
             <BookOpenTextIcon className="size-4" />
-            Docs
+            {t('docs')}
           </Link>
 
           <Separator orientation="vertical" className="mx-2 !h-4 self-center" />

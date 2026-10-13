@@ -11,6 +11,7 @@ import {
   Zap,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import * as React from 'react'
 
 import { DesktopAppMockup } from './desktop-app-mockup'
@@ -18,6 +19,8 @@ import { HeroBackgroundWaves } from './hero/hero-background-waves'
 import { HeroFloatingIntegrations } from './hero/hero-floating-integrations'
 
 export function Hero() {
+  const t = useTranslations('hero')
+
   return (
     <section
       id="hero"
@@ -31,26 +34,22 @@ export function Hero() {
         <div className="border-border/80 bg-muted/50 text-muted-foreground hover:text-foreground mb-6 inline-flex items-center gap-2 rounded-full border px-3.5 py-1 text-xs font-medium shadow-xs backdrop-blur-md transition-colors">
           <span className="text-foreground font-semibold">Mr. Tick</span>
           <span className="opacity-40">&middot;</span>
-          <span>Local-First Workflow & Observability</span>
+          <span>{t('badge')}</span>
           <ArrowRight className="size-3 opacity-60" />
         </div>
 
         {/* Headline (Strictly 2 Lines with Observability Emphasis) */}
         <h1 className="text-foreground mx-auto max-w-5xl text-3xl leading-[1.2] font-normal tracking-tight sm:text-4xl md:text-[2.75rem] lg:text-[3.1rem]">
-          The &ldquo;Local-First&rdquo; Workflow{' '}
+          {t('titleLine1')}{' '}
           <span className="decoration-foreground/30 font-bold underline underline-offset-8">
-            Observability
+            {t('titleHighlight')}
           </span>{' '}
-          Toolkit
-          <br className="hidden sm:inline" />
-          for Technical Teams
+          {t('titleLine2')}
         </h1>
 
         {/* Subtitle (Strictly 2 Lines with Observability) */}
         <p className="text-muted-foreground mx-auto mt-4 max-w-2xl text-xs leading-relaxed sm:text-sm md:text-base">
-          An instant local-first cockpit unifying tasks, time tracking,
-          <br className="hidden sm:inline" />
-          and workflow observability with zero friction.
+          {t('subtitle')}
         </p>
 
         {/* Actions / CTA Buttons */}
@@ -61,7 +60,7 @@ export function Hero() {
           >
             <Link href="/download">
               <Download className="size-4" />
-              Download Mr. Tick
+              {t('ctaDownload')}
             </Link>
           </Button>
 
