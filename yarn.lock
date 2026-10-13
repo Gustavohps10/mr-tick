@@ -3686,6 +3686,7 @@ __metadata:
   dependencies:
     "@mr-tick/application": "workspace:*"
     "@mr-tick/domain": "workspace:*"
+    "@mr-tick/sdk": "workspace:*"
     "@mr-tick/shared": "workspace:*"
     "@types/archiver": "npm:^6.0.3"
     "@types/jsonwebtoken": "npm:^9.0.6"
