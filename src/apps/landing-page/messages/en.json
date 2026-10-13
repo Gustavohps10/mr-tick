@@ -1,0 +1,77 @@
+{
+  "navbar": {
+    "whyMrTick": "Why Mr. Tick",
+    "integrations": "Integrations & SDK",
+    "architecture": "Architecture",
+    "pricing": "Pricing",
+    "download": "Download",
+    "docs": "Docs"
+  },
+  "hero": {
+    "badge": "Local-First Workflow & Observability",
+    "titleLine1": "The \"Local-First\" Workflow",
+    "titleHighlight": "Observability",
+    "titleLine2": "Toolkit for Technical Teams",
+    "subtitle": "An instant local-first cockpit unifying tasks, time tracking, and workflow observability with zero friction.",
+    "ctaDownload": "Download Desktop App",
+    "ctaExplore": "Explore Observability",
+    "openCoreFree": "100% Local-First · Zero Cloud Lock-in · SQLite Persistence"
+  },
+  "pricing": {
+    "badge": "Simple, Transparent Pricing",
+    "title": "Start free. Upgrade to Mr. Tick Plus anytime.",
+    "subtitle": "Mr. Tick is Open Core. Free forever for local individual use, with Mr. Tick Plus for official addons and multi-device sync.",
+    "currency": "Currency",
+    "forDevelopers": "For Developers",
+    "forTeams": "For Engineering Teams",
+    "soon": "Soon",
+    "downloadFree": "Download Free",
+    "upgradePlus": "Upgrade to Plus",
+    "comingSoon": "Coming Soon",
+    "checkoutError": "Could not start checkout session right now. Please try again in a moment.",
+    "freePlan": {
+      "name": "Free (Open Core)",
+      "period": "/forever",
+      "description": "Everything an individual developer needs for local task execution and time tracking.",
+      "features": {
+        "desktop": "Native Desktop App (macOS, Windows, Linux)",
+        "persistence": "100% Local Persistence (Embedded Local Storage)",
+        "shortcuts": "Global keyboard shortcuts & quick timer bar",
+        "summaries": "Basic daily time & activity summaries",
+        "community": "Community & Open Core integrations",
+        "addonsBlock": "Official Mr. Tick Plus Addons catalog",
+        "teamsBlock": "Team coordination & squad dashboards"
+      }
+    },
+    "plusPlan": {
+      "period": "/month",
+      "badge": "Popular",
+      "features": {
+        "addons": "Official Mr. Tick Plus Addons catalog access",
+        "integrations": "Multiple integrations (Redmine, Jira, GitHub, YouTrack)",
+        "devices": "Up to 2 simultaneous activated desktop devices",
+        "sync": "Advanced synchronization & effort correlation",
+        "offline": "Signed Ed25519 offline lease & automatic renewal",
+        "delivery": "Instant activation key delivery via email",
+        "enterpriseBlock": "Team squad aggregation (Enterprise)"
+      }
+    }
+  },
+  "success": {
+    "title": "Welcome to Mr. Tick Plus!",
+    "subtitle": "Your subscription is active. Here is everything you need to start using official Plus addons right now.",
+    "keyTitle": "Your Activation Key",
+    "keyHelp": "We also sent this key to your checkout email. Keep it safe!",
+    "copyKey": "Copy Key",
+    "copied": "Copied to clipboard!",
+    "activateOneClick": "Activate in Mr. Tick Desktop",
+    "step1Title": "1. Download & Open Mr. Tick",
+    "step1Desc": "Download the latest version for your operating system and launch the app.",
+    "step2Title": "2. Go to Global Settings > License",
+    "step2Desc": "Click the gear icon in the bottom-left corner of the app, then select the License tab.",
+    "step3Title": "3. Paste & Activate",
+    "step3Desc": "Paste your key and click Activate. Official addons like Discord Presence are unlocked immediately!",
+    "downloadDesktop": "Download Desktop App",
+    "backHome": "Back to Home"
+  }
+}

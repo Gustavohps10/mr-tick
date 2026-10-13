@@ -6,6 +6,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import * as React from 'react'
 
+import { LanguageToggle } from '@/components/language-toggle'
 import { MobileMenu } from '@/components/mobile-menu'
 import { ServerSideModeToggle } from '@/components/mode-toggle'
 
@@ -24,6 +25,18 @@ const NAV_ITEMS: NavItem[] = [
 
 export function Navbar() {
   const [scrolled, setScrolled] = React.useState(false)
+  const [stars, setStars] = React.useState<number | null>(null)
+
+  React.useEffect(() => {
+    fetch('/api/github-stars')
+      .then((res) => res.json())
+      .then((data) => {
+        if (typeof data.stars === 'number') {
+          setStars(data.stars)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   React.useEffect(() => {
     const handleScroll = () => {
@@ -112,9 +125,15 @@ export function Navbar() {
             <span className="text-foreground/90">gustavohps10/mr-tick</span>
             <div className="ml-0.5 flex items-center gap-1">
               <Star className="size-3.5 transition-transform duration-200 group-hover:scale-110" />
-              <span className="text-xs tabular-nums opacity-80">120</span>
+              <span className="text-xs tabular-nums opacity-80">
+                {stars !== null ? stars : '—'}
+              </span>
             </div>
           </a>
+
+          <Separator orientation="vertical" className="mx-2 !h-4 self-center" />
+
+          <LanguageToggle />
         </nav>
 
         {/* Mobile Menu */}

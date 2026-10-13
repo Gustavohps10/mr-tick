@@ -5,7 +5,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@mr-tick/ui/tabs'
 import {
   Building2,
   Check,
-  CheckCircle2,
   Clock,
   Globe,
   Loader2,
@@ -195,13 +194,6 @@ function buildIndividualPlans(
   return [freePlan, buildPlusPlanCard(stripePlan, currency)]
 }
 
-function getCurrencyButtonClass(isActive: boolean): string {
-  if (isActive) {
-    return 'bg-background text-foreground shadow-xs rounded-md px-3 py-1 text-xs font-semibold transition-all'
-  }
-  return 'text-muted-foreground hover:text-foreground rounded-md px-3 py-1 text-xs font-medium transition-all'
-}
-
 function getCardContainerClass(plan: PricingPlan): string {
   if (plan.highlighted) {
     return 'border-primary/50 bg-card shadow-primary/5 ring-primary/20 relative flex flex-col justify-between rounded-lg border p-8 shadow-xl ring-1 backdrop-blur-sm transition-all duration-300'
@@ -238,18 +230,10 @@ export function Pricing() {
     React.useState<PlusPlanCatalogItem | null>(null)
   const [isLoadingCheckout, setIsLoadingCheckout] = React.useState(false)
   const [checkoutError, setCheckoutError] = React.useState<string | null>(null)
-  const [checkoutSuccess, setCheckoutSuccess] = React.useState(false)
 
   React.useEffect(() => {
     const preferred = detectBrowserPreferredCurrency()
     setCurrency(preferred)
-
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search)
-      if (params.get('checkout') === 'success') {
-        setCheckoutSuccess(true)
-      }
-    }
 
     let isMounted = true
     fetchPlusPlansCatalog().then((catalog) => {
@@ -276,7 +260,7 @@ export function Pricing() {
     const session = await createPlusCheckout({
       priceId: plan.stripePriceId,
       currency,
-      successUrl: `${origin}/?checkout=success#pricing`,
+      successUrl: `${origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${origin}/#pricing`,
     })
     if (!session) {
@@ -315,38 +299,34 @@ export function Pricing() {
 
           {/* Currency Switcher */}
           <div className="mt-6 flex items-center justify-center">
-            <div className="border-border/60 bg-muted/60 inline-flex items-center gap-1 rounded-lg border p-1">
-              <span className="text-muted-foreground flex items-center gap-1 px-2.5 text-[11px] font-medium">
-                <Globe className="size-3" />
-                Currency:
-              </span>
+            <div className="border-border/60 bg-muted/40 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs">
+              <Globe className="text-muted-foreground size-3.5" />
               <button
                 type="button"
                 onClick={() => setCurrency('brl')}
-                className={getCurrencyButtonClass(currency === 'brl')}
+                className={`rounded-full px-3 py-0.5 text-xs font-semibold transition-all ${
+                  currency === 'brl'
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
-                BRL (R$) · Brasil
+                R$ BRL
               </button>
+              <span className="text-muted-foreground/30">|</span>
               <button
                 type="button"
                 onClick={() => setCurrency('usd')}
-                className={getCurrencyButtonClass(currency === 'usd')}
+                className={`rounded-full px-3 py-0.5 text-xs font-semibold transition-all ${
+                  currency === 'usd'
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
-                USD ($) · International
+                $ USD
               </button>
             </div>
           </div>
         </div>
-
-        {checkoutSuccess && (
-          <div className="border-primary/40 bg-primary/10 text-foreground mx-auto mb-8 flex max-w-2xl items-center gap-3 rounded-lg border px-4 py-3 text-xs font-medium">
-            <CheckCircle2 className="text-primary size-4 shrink-0" />
-            <span>
-              Subscription confirmed! Your Mr. Tick Plus activation key has been
-              sent to your checkout email.
-            </span>
-          </div>
-        )}
 
         {checkoutError && (
           <div className="border-destructive/40 bg-destructive/10 text-destructive mx-auto mb-8 max-w-2xl rounded-lg border px-4 py-3 text-center text-xs font-medium">

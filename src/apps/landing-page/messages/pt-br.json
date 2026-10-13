@@ -1,0 +1,77 @@
+{
+  "navbar": {
+    "whyMrTick": "Por que Mr. Tick",
+    "integrations": "Integrações & SDK",
+    "architecture": "Arquitetura",
+    "pricing": "Preços",
+    "download": "Download",
+    "docs": "Docs"
+  },
+  "hero": {
+    "badge": "Workflow Local-First & Observabilidade",
+    "titleLine1": "O Toolkit \"Local-First\" de",
+    "titleHighlight": "Observabilidade",
+    "titleLine2": "de Fluxo de Trabalho para Times Técnicos",
+    "subtitle": "Um cockpit local-first instantâneo unificando tarefas, apontamento de horas e observabilidade com atrito zero.",
+    "ctaDownload": "Baixar Aplicativo Desktop",
+    "ctaExplore": "Explorar Observabilidade",
+    "openCoreFree": "100% Local-First · Sem Lock-in na Nuvem · Persistência SQLite"
+  },
+  "pricing": {
+    "badge": "Preços Simples e Transparentes",
+    "title": "Comece grátis. Faça upgrade para Mr. Tick Plus quando quiser.",
+    "subtitle": "Mr. Tick é Open Core. Gratuito para sempre para uso individual local, com Mr. Tick Plus para addons oficiais e sincronização multidispositivo.",
+    "currency": "Moeda",
+    "forDevelopers": "Para Desenvolvedores",
+    "forTeams": "Para Times de Engenharia",
+    "soon": "Em Breve",
+    "downloadFree": "Baixar Grátis",
+    "upgradePlus": "Assinar Plus",
+    "comingSoon": "Em Breve",
+    "checkoutError": "Não foi possível iniciar o checkout no momento. Tente novamente em instantes.",
+    "freePlan": {
+      "name": "Gratuito (Open Core)",
+      "period": "/para sempre",
+      "description": "Tudo o que um desenvolvedor individual precisa para execução de tarefas locais e apontamento de horas.",
+      "features": {
+        "desktop": "App Desktop Nativo (macOS, Windows, Linux)",
+        "persistence": "100% Persistência Local (Armazenamento Integrado)",
+        "shortcuts": "Atalhos de teclado globais & barra de timer rápida",
+        "summaries": "Resumos diários básicos de tempo e atividades",
+        "community": "Integrações comunitárias e de código aberto",
+        "addonsBlock": "Catálogo de addons oficiais Mr. Tick Plus",
+        "teamsBlock": "Coordenação de times e painéis de squads"
+      }
+    },
+    "plusPlan": {
+      "period": "/mês",
+      "badge": "Popular",
+      "features": {
+        "addons": "Acesso ao catálogo oficial de addons Mr. Tick Plus",
+        "integrations": "Múltiplas integrações (Redmine, Jira, GitHub, YouTrack)",
+        "devices": "Ativação em até 2 dispositivos desktop simultâneos",
+        "sync": "Sincronização avançada & correlação de esforço",
+        "offline": "Lease offline assinado com Ed25519 e renovação automática",
+        "delivery": "Envio instantâneo da chave de ativação por e-mail",
+        "enterpriseBlock": "Agregação de squads corporativos (Enterprise)"
+      }
+    }
+  },
+  "success": {
+    "title": "Bem-vindo ao Mr. Tick Plus!",
+    "subtitle": "Sua assinatura está ativa. Aqui está tudo o que você precisa para começar a usar os addons oficiais Plus agora mesmo.",
+    "keyTitle": "Sua Chave de Ativação",
+    "keyHelp": "Também enviamos esta chave para o seu e-mail cadastrado no checkout. Guarde-a em segurança!",
+    "copyKey": "Copiar Chave",
+    "copied": "Chave copiada para a área de transferência!",
+    "activateOneClick": "Ativar no Mr. Tick Desktop",
+    "step1Title": "1. Baixe e Abra o Mr. Tick",
+    "step1Desc": "Baixe a versão mais recente para o seu sistema operacional e inicie o aplicativo.",
+    "step2Title": "2. Vá em Configurações > License",
+    "step2Desc": "Clique no ícone de engrenagem no rodapé esquerdo do app e acesse a aba License.",
+    "step3Title": "3. Cole e Ative",
+    "step3Desc": "Cole a sua chave e clique em Ativar. Addons oficiais como Discord Presence serão liberados imediatamente!",
+    "downloadDesktop": "Baixar Aplicativo Desktop",
+    "backHome": "Voltar para o Início"
+  }
+}
