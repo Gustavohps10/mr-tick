@@ -171,7 +171,7 @@ export class LicensingService implements ILicensingFacade {
   async activateLicense(
     licenseKey: string,
   ): Promise<Either<AppError, LicensingStatusDTO>> {
-    const normalizedKey = licenseKey.trim().toUpperCase()
+    const normalizedKey = licenseKey.trim()
     if (normalizedKey.length < 10) {
       return Either.failure(AppError.ValidationError('CHAVE_LICENCA_INVALIDA'))
     }
