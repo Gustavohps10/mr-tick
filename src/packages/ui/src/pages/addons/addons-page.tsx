@@ -25,7 +25,6 @@ import {
 } from '@/components/addons-manager/addon-install-modal'
 import {
   LicenseActivationDialog,
-  LicenseSettingsCard,
   useLicensingState,
 } from '@/components/addons-manager/license-settings-card'
 import {
@@ -633,8 +632,6 @@ export function AddonsPage() {
 
   return (
     <div className="space-y-6">
-      <LicenseSettingsCard />
-
       <AddonInstallModal
         addon={jobTarget}
         open={jobTarget !== null}

@@ -4,6 +4,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { GeneralSettingsTab } from './general-settings-tab'
+import { LicenseSettingsTab } from './license-settings-tab'
 import { UpdateSettingsTab } from './update-settings-tab'
 
 export function GlobalSettingsDialog({
@@ -30,6 +31,7 @@ export function GlobalSettingsDialog({
             <TabsList className="w-fit">
               <TabsTrigger value="general">General</TabsTrigger>
               <TabsTrigger value="updates">Updates</TabsTrigger>
+              <TabsTrigger value="license">License</TabsTrigger>
             </TabsList>
           </div>
 
@@ -40,6 +42,10 @@ export function GlobalSettingsDialog({
 
             <TabsContent value="updates" className="mt-0 outline-none">
               <UpdateSettingsTab />
+            </TabsContent>
+
+            <TabsContent value="license" className="mt-0 outline-none">
+              <LicenseSettingsTab />
             </TabsContent>
           </div>
         </Tabs>

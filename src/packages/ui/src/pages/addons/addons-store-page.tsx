@@ -14,7 +14,6 @@ import { toast } from 'sonner'
 
 import {
   LicenseActivationDialog,
-  LicenseSettingsCard,
   useLicensingState,
 } from '@/components/addons-manager/license-settings-card'
 import { Badge } from '@/components/ui/badge'
@@ -290,8 +289,6 @@ export function AddonsStorePage() {
 
   return (
     <div className="space-y-6">
-      <LicenseSettingsCard />
-
       {/* Header Bar */}
       <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
