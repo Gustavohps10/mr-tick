@@ -4,6 +4,7 @@ version: 1.0.6
 requiredApiVersion: '-1'
 categories:
   - dataSource
+  - theme
 author: Mr-tick
 shortDescription: Datasource mock para testes
 description: Datasource com dados locais fixos (1000 tarefas, 1000 apontamentos) para testes e validação de envio de dados.
@@ -12,3 +13,4 @@ tags:
   - mock
   - dataSource
   - desenvolvimento
+  - theme

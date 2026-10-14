@@ -1,5 +1,7 @@
+import { RefreshCw } from 'lucide-react'
 import React from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { useHostBridge } from '@/hooks'
@@ -27,50 +29,61 @@ export function UpdateSettingsTab() {
   }
 
   const handleCheckUpdates = async () => {
-    console.log('[UpdateSettingsTab] Calling bridge.updater.checkForUpdates()')
     setUpdaterState('checking')
     setShowModal(true)
     try {
-      const res = await bridge.updater.checkForUpdates()
-      console.log('[UpdateSettingsTab] checkForUpdates resolved', res)
+      await bridge.updater.checkForUpdates()
     } catch (error) {
-      console.error('[UpdateSettingsTab] checkForUpdates rejected', error)
       setUpdaterState('error')
       setErrorMessage(error instanceof Error ? error.message : String(error))
     }
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-medium">Updates</h3>
-          <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs">
-            {isPortable ? 'Portable' : 'Instalado'}
-          </span>
-        </div>
-        <p className="text-muted-foreground text-sm">
-          Current version: {version || 'Loading...'}
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-4 border-t pt-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <label className="text-sm font-medium">Beta Channel</label>
-            <p className="text-muted-foreground text-xs">
-              Receive early access to new features and bug fixes.
+    <div className="space-y-6">
+      <div className="space-y-1">
+        {/* Versão Atual */}
+        <div className="border-border/40 flex items-center justify-between gap-4 border-b py-3.5">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h4 className="text-foreground text-sm font-medium">
+                Versão do Mr. Tick
+              </h4>
+              <Badge
+                variant="outline"
+                className="px-1.5 py-0 font-mono text-[10px]"
+              >
+                {isPortable ? 'Portable' : 'Instalado'}
+              </Badge>
+            </div>
+            <p className="text-muted-foreground mt-0.5 text-xs">
+              Versão instalada: {version || '1.0.0'}
             </p>
           </div>
-          <Switch checked={allowBeta} onCheckedChange={handleToggleBeta} />
+          <div className="shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCheckUpdates}
+              className="h-8 cursor-pointer gap-1.5 text-xs"
+            >
+              <RefreshCw className="size-3.5" />
+              <span>Verificar Atualizações</span>
+            </Button>
+          </div>
         </div>
 
-        <div className="bg-muted/50 flex flex-col gap-2 rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Auto Updater</span>
-            <Button size="sm" variant="outline" onClick={handleCheckUpdates}>
-              Check for Updates
-            </Button>
+        {/* Canal Beta */}
+        <div className="border-border/40 flex items-center justify-between gap-4 border-b py-3.5">
+          <div className="min-w-0 flex-1">
+            <h4 className="text-foreground text-sm font-medium">Canal Beta</h4>
+            <p className="text-muted-foreground mt-0.5 text-xs">
+              Receba acesso antecipado a novos recursos, melhorias e correções
+              antes do lançamento oficial.
+            </p>
+          </div>
+          <div className="shrink-0">
+            <Switch checked={allowBeta} onCheckedChange={handleToggleBeta} />
           </div>
         </div>
       </div>

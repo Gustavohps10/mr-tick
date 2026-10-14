@@ -104,7 +104,7 @@ export function ConnectionCard({
     Boolean(s.isPulling || s.isPushing),
   )
   const hasError = syncStatuses.some((s) => Boolean(s.error))
-  const member = live?.member
+  const member = live?.member ?? connection.member
   const addon = live?.addon
 
   return (

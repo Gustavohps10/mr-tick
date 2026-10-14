@@ -16,11 +16,14 @@ import { useHostBridge } from '@/hooks'
 import { useAutoUpdater } from '@/hooks/use-auto-updater'
 import { GlobalConflictResolutionDialog } from '@/pages/time-entries/components/conflict-resolution-dialog'
 import { DataSourceConnectionsProvider } from '@/providers'
+import { useSettingsModalStore } from '@/stores/settingsModalStore'
 import { SyncProvider } from '@/stores/syncStore'
 
 export function AppLayout() {
   const [workspaceDialogIsOpen, setWorkspaceDialogIsOpen] = useState(false)
-  const [settingsDialogIsOpen, setSettingsDialogIsOpen] = useState(false)
+  const isSettingsOpen = useSettingsModalStore((s) => s.isOpen)
+  const openSettings = useSettingsModalStore((s) => s.openModal)
+  const closeSettings = useSettingsModalStore((s) => s.closeModal)
   const [editingDraftId, setEditingDraftId] = useState<string | undefined>()
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<
     string | undefined
@@ -85,8 +88,10 @@ export function AppLayout() {
                 onWorkspaceCreated={handleWorkspaceCreated}
               />
               <GlobalSettingsDialog
-                isOpen={settingsDialogIsOpen}
-                setIsOpen={setSettingsDialogIsOpen}
+                isOpen={isSettingsOpen}
+                setIsOpen={(open) => {
+                  if (!open) closeSettings()
+                }}
               />
               <UpdateModal />
               {/* Sidebar */}
@@ -95,7 +100,8 @@ export function AppLayout() {
                   setEditingDraftId(undefined)
                   setWorkspaceDialogIsOpen(true)
                 }}
-                onSettingsClick={() => setSettingsDialogIsOpen(true)}
+                onSettingsClick={() => openSettings('about')}
+                onAddonsClick={() => openSettings('addons-browse')}
               />
 
               {/* Painel de drafts */}

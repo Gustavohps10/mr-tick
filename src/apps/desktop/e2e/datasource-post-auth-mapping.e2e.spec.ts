@@ -21,24 +21,24 @@ test.describe('E2E - Configuração de Mapeamento Pós-Autenticação em Instân
       window.localStorage.clear()
     })
 
-    // 2. Abre o modal de gerenciamento de addons
-    const addonsButton = page.locator('button[aria-label="Gerenciar Addons"]')
-    await expect(addonsButton.first()).toBeVisible({ timeout: 10000 })
-    await addonsButton.first().click()
+    // 2. Abre o diálogo global de configurações via AppRail
+    const settingsButton = page.locator('[data-testid="app-rail-settings-btn"]')
+    await expect(settingsButton.first()).toBeVisible({ timeout: 10000 })
+    await settingsButton.first().click()
 
-    // 3. Clica na categoria "Fontes De Dados" no menu de configurações
-    const dataSourcesCategoryBtn = page.locator(
-      '[data-testid="addons-manager-category-DataSources"]',
+    // 3. Clica na aba "Addons Instalados" no menu de configurações
+    const installedTabBtn = page.locator(
+      '[data-testid="settings-nav-tab-addons-installed"]',
     )
-    await expect(dataSourcesCategoryBtn).toBeVisible({ timeout: 10000 })
-    await dataSourcesCategoryBtn.click()
+    await expect(installedTabBtn).toBeVisible({ timeout: 10000 })
+    await installedTabBtn.click()
 
-    // 4. Seleciona o addon fake instalado na lista
-    const fakeAddonItem = page.locator(
-      '[data-testid="addon-settings-item-mr-tick-datasource-fake"]',
+    // 4. Clica em "Configurar" no addon fake instalado
+    const configureFakeAddonBtn = page.locator(
+      '[data-testid="addon-configure-btn-mr-tick-datasource-fake"]',
     )
-    await expect(fakeAddonItem).toBeVisible({ timeout: 10000 })
-    await fakeAddonItem.click()
+    await expect(configureFakeAddonBtn).toBeVisible({ timeout: 10000 })
+    await configureFakeAddonBtn.click()
 
     // 5. Valida que a conexão semeada está presente e exibe status "Conectado"
     const connectedMemberLogin = page
@@ -150,22 +150,22 @@ test.describe('E2E - Configuração de Mapeamento Pós-Autenticação em Instân
       window.localStorage.clear()
     })
 
-    // 2. Abre Gerenciar Addons -> Fontes De Dados -> mr-tick-datasource-fake
-    const addonsButton = page.locator('button[aria-label="Gerenciar Addons"]')
-    await expect(addonsButton.first()).toBeVisible({ timeout: 10000 })
-    await addonsButton.first().click()
+    // 2. Abre o diálogo global de configurações via AppRail
+    const settingsButton = page.locator('[data-testid="app-rail-settings-btn"]')
+    await expect(settingsButton.first()).toBeVisible({ timeout: 10000 })
+    await settingsButton.first().click()
 
-    const dataSourcesCategoryBtn = page.locator(
-      '[data-testid="addons-manager-category-DataSources"]',
+    const installedTabBtn = page.locator(
+      '[data-testid="settings-nav-tab-addons-installed"]',
     )
-    await expect(dataSourcesCategoryBtn).toBeVisible({ timeout: 10000 })
-    await dataSourcesCategoryBtn.click()
+    await expect(installedTabBtn).toBeVisible({ timeout: 10000 })
+    await installedTabBtn.click()
 
-    const fakeAddonItem = page.locator(
-      '[data-testid="addon-settings-item-mr-tick-datasource-fake"]',
+    const configureFakeAddonBtn = page.locator(
+      '[data-testid="addon-configure-btn-mr-tick-datasource-fake"]',
     )
-    await expect(fakeAddonItem).toBeVisible({ timeout: 10000 })
-    await fakeAddonItem.click()
+    await expect(configureFakeAddonBtn).toBeVisible({ timeout: 10000 })
+    await configureFakeAddonBtn.click()
 
     // 3. Abre o modal de mapeamento
     const perInstanceMappingBtn = page.locator(

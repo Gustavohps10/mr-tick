@@ -95,6 +95,13 @@ export default class FakeDataSourceAddon implements IAddon {
     console.log('🟢 [FakeDataSourceAddon] Registrando FakeDataSource...')
     context.contributions.dataSources.register(FakeDataSource)
 
+    context.contributions.themes.register({
+      id: 'fake-matrix-theme',
+      name: 'Matrix Neon (Fake Addon)',
+      description: 'Tema de teste Matrix Neon com acentos verdes.',
+      css: ':root { --primary: oklch(0.7 0.25 140); } .dark { --primary: oklch(0.7 0.25 140); }',
+    })
+
     // --- REGISTRO DO MENU DE TESTES / CAOS NA TIMERBAR ---
     context.contributions.menus.timerbar.register({
       id: 'fake-db-simulator',

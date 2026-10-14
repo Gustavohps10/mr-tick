@@ -53,6 +53,7 @@ export const addonsInvoker: IAddonsAPI = {
     payload: Parameters<IAddonsAPI['setActiveWorkspace']>[0],
   ) => IpcInvoker.invoke('ADDONS_SET_ACTIVE_WORKSPACE', payload),
   getActiveTheme: () => IpcInvoker.invoke('ADDONS_GET_ACTIVE_THEME'),
+  listThemes: () => IpcInvoker.invoke('ADDONS_LIST_THEMES'),
   setActiveTheme: (payload: Parameters<IAddonsAPI['setActiveTheme']>[0]) =>
     IpcInvoker.invoke('ADDONS_SET_ACTIVE_THEME', payload),
 }

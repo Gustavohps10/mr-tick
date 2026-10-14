@@ -206,6 +206,7 @@ const mockBridgeClient: IHostBridge = {
     executeAction: async () => mockSuccess({ isSuccess: true }),
     setActiveWorkspace: async () => mockSuccess(undefined),
     getActiveTheme: async () => mockSuccess(null),
+    listThemes: async () => mockSuccess([]),
     setActiveTheme: async () => mockSuccess(undefined),
   },
   system: {

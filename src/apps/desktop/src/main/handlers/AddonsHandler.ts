@@ -420,6 +420,18 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     }
   }
 
+  public async listThemes(): Promise<ViewModel<AddonThemeViewModel[]>> {
+    let themes: AddonThemeViewModel[] = []
+    if (this.addonLoader) {
+      themes = this.addonLoader.getThemes()
+    }
+    return {
+      isSuccess: true,
+      statusCode: 200,
+      data: themes,
+    }
+  }
+
   public async setActiveTheme(
     event: IpcMainInvokeEvent,
     { body }: IRequest<{ themeId: string | null }>,

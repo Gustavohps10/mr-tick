@@ -232,6 +232,7 @@ export function openIpcRoutes(
   IpcHandler.register('ADDONS_GET_ACTIVE_THEME', () =>
     addonsHandler.getActiveTheme(),
   )
+  IpcHandler.register('ADDONS_LIST_THEMES', () => addonsHandler.listThemes())
   IpcHandler.register('ADDONS_SET_ACTIVE_THEME', (e, req) =>
     addonsHandler.setActiveTheme(e, req),
   )

@@ -353,3 +353,8 @@ export function useDataSourceConnections(): DataSourceConnectionsContextType {
 
   return context
 }
+
+export function useOptionalDataSourceConnections():
+  DataSourceConnectionsContextType | undefined {
+  return useContext(DataSourceConnectionsContext)
+}

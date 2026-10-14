@@ -475,6 +475,7 @@ export interface IAddonsAPI {
     payload: IRequest<{ workspaceId: string }>,
   ): Promise<ViewModel<void>>
   getActiveTheme(): Promise<ViewModel<AddonThemeViewModel | null>>
+  listThemes(): Promise<ViewModel<AddonThemeViewModel[]>>
   setActiveTheme(
     payload: IRequest<{ themeId: string | null }>,
   ): Promise<ViewModel<void>>

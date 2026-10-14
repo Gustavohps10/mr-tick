@@ -5,6 +5,7 @@ import {
   AddonSettingsValues,
   AddonVaultScope,
 } from '@mr-tick/application'
+import type { AddonManifestViewModel } from '@mr-tick/sdk'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -25,35 +26,86 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useDataSourceConnections } from '@/contexts/DataSourceConnectionsContext'
+import {
+  useDataSourceConnections,
+  useOptionalDataSourceConnections,
+} from '@/contexts/DataSourceConnectionsContext'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { ConnectionCard } from '@/pages/addons/components/addon-list'
 
 import { AddonFieldRenderer } from './addon-field-renderer'
+import { AddonGenericCapabilityPanel } from './addon-generic-capability-panel'
+import { AddonThemeSettingsPanel } from './addon-theme-settings-panel'
+import { WorkspaceGroupedDataSourceManager } from './workspace-grouped-datasource-manager'
 
 const emptySettings: AddonSettingsValues = {}
 
-export function AddonSettingsRenderer({ addonId }: { addonId: string }) {
-  const { workspaceId } = useDataSourceConnections()
+export interface AddonSettingsRendererProps {
+  addonId: string
+  activeCapability?: string
+  addon?: AddonManifestViewModel | null
+  hideHeader?: boolean
+}
+
+export function AddonSettingsRenderer({
+  addonId,
+  activeCapability,
+  addon,
+  hideHeader = false,
+}: AddonSettingsRendererProps) {
+  if (activeCapability === 'datasources') {
+    return <WorkspaceGroupedDataSourceManager addonId={addonId} />
+  }
+
+  if (activeCapability === 'themes') {
+    return <AddonThemeSettingsPanel addonId={addonId} addon={addon} />
+  }
+
+  if (
+    activeCapability === 'watchers' ||
+    activeCapability === 'calendars' ||
+    activeCapability === 'punch'
+  ) {
+    return (
+      <AddonGenericCapabilityPanel
+        addonId={addonId}
+        addon={addon}
+        capability={activeCapability}
+      />
+    )
+  }
+
+  const dsContext = useOptionalDataSourceConnections()
+  const workspaceId = dsContext?.workspaceId
   const scope: AddonVaultScope =
     workspaceId === undefined
       ? { kind: 'addon' }
       : { kind: 'workspace', workspaceId }
+
   return (
     <ScopedAddonSettingsRenderer
-      key={JSON.stringify({ addonId, scope })}
+      key={JSON.stringify({ addonId, scope, activeCapability })}
       addonId={addonId}
+      activeCapability={activeCapability}
+      addon={addon}
       scope={scope}
+      hideHeader={hideHeader}
     />
   )
 }
 
 function ScopedAddonSettingsRenderer({
   addonId,
+  activeCapability,
+  addon,
   scope,
+  hideHeader,
 }: {
   addonId: string
+  activeCapability?: string
+  addon?: AddonManifestViewModel | null
   scope: AddonVaultScope
+  hideHeader?: boolean
 }) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
@@ -166,27 +218,13 @@ function ScopedAddonSettingsRenderer({
   }
 
   if (!schema || (Array.isArray(schema) && schema.length === 0)) {
-    if (isDataSource) {
-      return (
-        <div className="bg-card/50 flex h-full flex-1 flex-col">
-          <div className="border-b p-4">
-            <h2 className="text-lg font-semibold">
-              {currentAddon?.name || addonId}
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              Gerencie as instâncias de conexão deste DataSource
-            </p>
-          </div>
-          <div className="flex-1 overflow-auto p-4">
-            <DataSourceInstancesManager addonId={addonId} />
-          </div>
-        </div>
-      )
+    if (!activeCapability && isDataSource) {
+      return <WorkspaceGroupedDataSourceManager addonId={addonId} />
     }
 
     return (
-      <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
-        Este addon não possui configurações disponíveis.
+      <div className="text-muted-foreground flex flex-1 items-center justify-center p-8 text-center text-sm">
+        Este addon não possui parâmetros adicionais para esta capacidade.
       </div>
     )
   }
@@ -196,14 +234,18 @@ function ScopedAddonSettingsRenderer({
 
   return (
     <div className="bg-card/50 flex h-full flex-1 flex-col">
-      <div className="border-b p-4">
-        <h2 className="text-lg font-semibold">{addonId}</h2>
-        <p className="text-muted-foreground text-sm">
-          Configure os parâmetros deste addon
-        </p>
-      </div>
+      {!hideHeader && (
+        <div className="border-b p-4">
+          <h2 className="text-lg font-semibold">
+            {addon?.name || currentAddon?.name || addonId}
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Configure os parâmetros deste addon
+          </p>
+        </div>
+      )}
 
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto px-8 py-6">
         <Tabs defaultValue={defaultTab} className="w-full">
           {tabs.length > 1 && (
             <TabsList className="mb-4">
@@ -234,7 +276,7 @@ function ScopedAddonSettingsRenderer({
                           </p>
                         )}
                       </div>
-                      <div className="grid max-w-2xl gap-4">
+                      <div className="grid w-full gap-4">
                         {group.fields.map((field) => (
                           <FieldRenderer
                             key={field.id}
@@ -249,7 +291,7 @@ function ScopedAddonSettingsRenderer({
                     </div>
                   ))
                 : tab.fields?.map((field) => (
-                    <div key={field.id} className="grid max-w-2xl gap-4">
+                    <div key={field.id} className="grid w-full gap-4">
                       <FieldRenderer
                         field={field}
                         addonId={addonId}

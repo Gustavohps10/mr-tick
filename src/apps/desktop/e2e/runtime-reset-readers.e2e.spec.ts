@@ -22,6 +22,9 @@ async function createLocal(
     commandId: crypto.randomUUID(),
     entryId: crypto.randomUUID(),
   }))
+  const now = new Date()
+  const startDate = new Date(now.getTime() - 60000).toISOString()
+  const endDate = now.toISOString()
   const response = await page.evaluate(
     (scope) =>
       window.api.localRuntime.request({
@@ -33,12 +36,12 @@ async function createLocal(
           taskId: '',
           activityId: '',
           timeSpentSeconds: 60,
-          startDate: '2026-10-08T10:00:00.000Z',
-          endDate: '2026-10-08T10:01:00.000Z',
+          startDate: scope.startDate,
+          endDate: scope.endDate,
           comments: scope.comments,
         },
       }),
-    { workspaceId, comments, ...identity },
+    { workspaceId, comments, startDate, endDate, ...identity },
   )
   expect(response, JSON.stringify(response)).toMatchObject({ ok: true })
   if (!response.ok) throw new Error(response.error.messageKey)

@@ -1013,6 +1013,10 @@ export class AddonLoader implements IAddonReloader {
       .find((ds) => ds.id === dataSourceId)
   }
 
+  public getThemes(): AddonTheme[] {
+    return this.themesRegistry.getItems()
+  }
+
   public getActiveTheme(): AddonTheme | null {
     if (this.activeThemeId === null) return null
     const themes = this.themesRegistry.getItems()
@@ -1025,8 +1029,13 @@ export class AddonLoader implements IAddonReloader {
       )
       if (candidate !== undefined) matches.push(candidate)
     }
-    if (matches.length !== 1) return null
-    for (const theme of matches) return theme
+    if (matches.length === 1) return matches[0]
+
+    const byAddon = themes.filter((theme) =>
+      theme.id.startsWith(`${this.activeThemeId}:`),
+    )
+    if (byAddon.length === 1) return byAddon[0]
+
     return null
   }
 

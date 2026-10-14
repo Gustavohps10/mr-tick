@@ -11,6 +11,12 @@ export interface AddonConnection {
   lastSync?: string
   userName?: string
   userId?: string
+  member?: {
+    id?: string
+    name?: string
+    login: string
+    avatarUrl?: string
+  }
 }
 
 export interface AddonItem {

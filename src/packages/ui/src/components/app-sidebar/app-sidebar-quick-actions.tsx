@@ -1,4 +1,4 @@
-import { Puzzle, Search, Settings } from 'lucide-react'
+import { Search, Settings } from 'lucide-react'
 import * as React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -11,7 +11,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { useAddonsModalStore } from '@/stores/addonsModalStore'
 
 export interface AppSidebarQuickActionsProps extends React.HTMLAttributes<HTMLDivElement> {
   onSearchClick?: () => void
@@ -24,7 +23,6 @@ export function AppSidebarQuickActions({
 }: AppSidebarQuickActionsProps) {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const navigate = useNavigate()
-  const openAddonsModal = useAddonsModalStore((s) => s.openModal)
   const { open } = useSidebar()
 
   const isMac =
@@ -55,23 +53,6 @@ export function AppSidebarQuickActions({
             </TooltipTrigger>
             <TooltipContent side="right" className="text-xs">
               Busca ({isMac ? '⌘K' : 'Ctrl+K'})
-            </TooltipContent>
-          </Tooltip>
-
-          {/* Addons */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => openAddonsModal()}
-                className="hover:bg-muted/70 text-muted-foreground hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-md transition-colors"
-                aria-label="Gerenciar Addons"
-              >
-                <Puzzle className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs">
-              Addons & Integrações
             </TooltipContent>
           </Tooltip>
 
@@ -128,23 +109,6 @@ export function AppSidebarQuickActions({
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
             Busca Rápida
-          </TooltipContent>
-        </Tooltip>
-
-        {/* Atalho Addons */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={() => openAddonsModal()}
-              className="hover:bg-muted/70 text-muted-foreground hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-md transition-colors"
-              aria-label="Gerenciar Addons"
-            >
-              <Puzzle className="size-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">
-            Addons & Integrações
           </TooltipContent>
         </Tooltip>
 

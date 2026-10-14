@@ -74,6 +74,7 @@ export const IpcChannels = {
   ADDON_EXECUTE_ACTION: 'addon:execute-action',
   ADDONS_SET_ACTIVE_WORKSPACE: 'addons:set-active-workspace',
   ADDONS_GET_ACTIVE_THEME: 'addons:get-active-theme',
+  ADDONS_LIST_THEMES: 'addons:list-themes',
   ADDONS_SET_ACTIVE_THEME: 'addons:set-active-theme',
 
   LICENSING_GET_STATUS: 'licensing:get-status',

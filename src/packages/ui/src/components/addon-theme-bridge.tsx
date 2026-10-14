@@ -79,14 +79,19 @@ export function AddonThemeBridge() {
       }
 
       // Reconstrói um CSS válido e de alta especificidade (sem at-rules inválidas)
-      const cleanCss = `
-        :root:root {
-          ${rootVars}
-        }
-        .dark:root {
-          ${darkVars}
-        }
-      `
+      let cleanCss = ''
+      if (rootVars || darkVars) {
+        cleanCss = `
+          :root:root {
+            ${rootVars}
+          }
+          .dark:root {
+            ${darkVars}
+          }
+        `
+      } else {
+        cleanCss = activeTheme.css
+      }
 
       styleEl.textContent = cleanCss
       console.log(

@@ -74,9 +74,11 @@ function RailIndicators({ isActive, isHovered }: IndicatorProps) {
 export function AppRail({
   onNewWorkspaceClick,
   onSettingsClick,
+  onAddonsClick,
 }: {
   onNewWorkspaceClick: () => void
   onSettingsClick: () => void
+  onAddonsClick?: () => void
 }) {
   const { workspaces } = useWorkspace()
   const bridge = useHostBridge()
@@ -173,6 +175,9 @@ export function AppRail({
         </button>
 
         <button
+          onClick={onAddonsClick}
+          aria-label="Gerenciar Addons"
+          data-testid="app-rail-addons-btn"
           onMouseEnter={() => setHoveredId('explore')}
           className={cn(sidebarButtonVariants(), 'shrink-0')}
         >
@@ -185,6 +190,8 @@ export function AppRail({
         <button
           onClick={onSettingsClick}
           onMouseEnter={() => setHoveredId('settings')}
+          aria-label="Configurações"
+          data-testid="app-rail-settings-btn"
           className={cn(sidebarButtonVariants(), 'mt-auto mb-2 shrink-0')}
         >
           <RailIndicators
