@@ -1,13 +1,13 @@
 {
-  "title": "Documentação",
+  "title": "Documentation",
   "pages": [
-    "---Começando---",
+    "---Getting Started---",
     "index",
     "sync-engine",
     "quickstart",
-    "---Extensões---",
+    "---Extensions---",
     "categories",
-    "---APIs & Segurança---",
+    "---APIs & Security---",
     "apis"
   ]
 }

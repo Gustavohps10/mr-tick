@@ -6,7 +6,6 @@ import { Integrations } from '@/app/components/integrations'
 import { Navbar } from '@/app/components/navbar'
 import { OfflineArchitecture } from '@/app/components/offline-architecture'
 import { Positioning } from '@/app/components/positioning'
-import { Pricing } from '@/app/components/pricing'
 
 export default function LocaleLandingPage() {
   return (
@@ -17,7 +16,6 @@ export default function LocaleLandingPage() {
         <Positioning />
         <Integrations />
         <OfflineArchitecture />
-        <Pricing />
       </main>
       <Footer />
     </div>

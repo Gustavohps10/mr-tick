@@ -1,34 +1,34 @@
 ---
-title: Visão Geral e Arquitetura
-description: Conheça a filosofia, a estrutura em camadas e os princípios de segurança do ecossistema Mr-tick.
+title: Overview and Architecture
+description: Explore the philosophy, layered architecture, and security principles of the Mr. Tick ecosystem.
 ---
 
-# Visão Geral e Arquitetura
+# Overview and Architecture
 
-O **Mr-tick** foi projetado com uma arquitetura **100% descentralizada, desacoplada e agnóstica**.
+**Mr. Tick** was designed with a **decentralized, decoupled, provider-agnostic architecture**.
 
-O aplicativo principal (_Core Desktop_) não possui regras de negócio vinculadas a ferramentas específicas (como Jira, Redmine, YouTrack, Discord, Google ou Microsoft). Todo o poder de expansão, sincronização de tarefas, monitoramento de atividades e temas visuais é exposto através de extensões padronizadas via **`@mr-tick/sdk`**.
+The main application (_Core Desktop_) contains no business rules tied to specific tools such as Jira, Redmine, YouTrack, Discord, Google, or Microsoft. Extensibility, task synchronization, activity monitoring, and visual themes are exposed through standardized extensions using **`@mr-tick/sdk`**.
 
 ---
 
-## 🏛️ Arquitetura em Camadas
+## 🏛️ Layered Architecture
 
-O ecossistema do Mr-tick é composto por camadas com responsabilidades estritas e bem delimitadas:
+The Mr. Tick ecosystem separates layers with clearly defined responsibilities:
 
 ```text
 ┌────────────────────────────────────────────────────────┐
 │                   Mr-tick Core Desktop                  │
-│  (Janelas, Timers Nativos, Keytar Vault, AddonLoader)  │
+│  (Windows, Native Timers , Keytar Vault, AddonLoader)  │
 └──────────────────────────┬─────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────┐
-│                 Motor de Aplicação & Domínio           │
+│                 Application & Domain Engine            │
 │    (@mr-tick/domain  &  @mr-tick/application)    │
 │  (Workspaces, TimeEntries, Tasks, HTTP Sync Engine)    │
 └──────────────────────────┬─────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────┐
-│                   Mr-tick SDK Oficial                   │
+│                   Official Mr-tick SDK                   │
 │                  (@mr-tick/sdk)                     │
 │    (IAddon, AddonContext, IAddonOAuthAPI, Vault, Events)  │
 └──────────────────────────┬─────────────────────────────┘
@@ -42,28 +42,28 @@ O ecossistema do Mr-tick é composto por camadas com responsabilidades estritas 
 
 ### 1. Core Desktop (Electron / Node.js)
 
-Responsável pelo ciclo de vida do aplicativo, janelas, atalhos globais, persistência criptografada no chaveiro nativo do sistema operacional (Windows Credential Manager / macOS Keychain via Keytar) e inicialização isolada dos addons através do `AddonLoader`.
+Manages application lifecycle, windows, global shortcuts, encrypted persistence in the native operating system keychain (Windows Credential Manager / macOS Keychain through Keytar), and isolated addon initialization through `AddonLoader`.
 
-### 2. Camada de Domínio & Aplicação (`@mr-tick/domain` / `@mr-tick/application`)
+### 2. Domain & Application Layer (`@mr-tick/domain` / `@mr-tick/application`)
 
-Contém as regras de negócio puras:
+Contains pure business rules:
 
-- **Entidades Ricas**: `Workspace`, `Task` e `TimeEntry`, garantindo integridade de dados via Zod e tratamento funcional de erros (`Either` / `Result`).
-- **Casos de Uso**: Criação de Workspaces, conexão e desconexão de DataSources, e o **Motor de Sincronização HTTP** (Pull & Push de deltas).
+- **Rich Entities**: `Workspace`, `Task`, and `TimeEntry` ensure data integrity with Zod and functional error handling (`Either` / `Result`).
+- **Use Cases**: Workspace creation, DataSource connection and disconnection, and the **HTTP Synchronization Engine** (Pull & Push of deltas).
 
-### 3. Mr-tick SDK (`@mr-tick/sdk`)
+### 3. Mr. Tick SDK (`@mr-tick/sdk`)
 
-O ponto de contato para desenvolvedores. Fornece tipagens estritas de TypeScript, utilitários criptográficos (PKCE RFC 7636, geração de State), e abstrações seguras de storage, eventos em tempo real, timer e notificações.
+The entry point for developers. It provides strict TypeScript types, cryptographic utilities (PKCE RFC 7636 and State generation), and safe abstractions for storage, real-time events, timers, and notifications.
 
-### 4. Ponte de Deep Link (`mr-tick-app://`)
+### 4. Deep Link Bridge (`mr-tick-app://`)
 
-Uma ponte universal para fluxos web (como OAuth 2.0). A Landing Page intermediária recebe o retorno de provedores externos e despacha com segurança os parâmetros de volta ao aplicativo desktop através do protocolo `mr-tick-app://oauth/callback`.
+A universal bridge for web flows such as OAuth 2.0. The intermediate landing page receives external-provider callbacks and securely returns their parameters to the desktop application through `mr-tick-app://oauth/callback`.
 
 ---
 
-## 🛡️ Princípios Fundamentais de Segurança
+## 🛡️ Fundamental Security Principles
 
-1. **Zero Secrets**: Addons rodam como clientes públicos em ambiente desktop. Nenhuma chave secreta (`CLIENT_SECRET`) é embutida ou exigida no código do addon. Todo fluxo de autenticação utiliza a especificação **OAuth 2.0 com PKCE**.
-2. **Isolamento por Workspace (Multi-Tenant)**: Todas as credenciais, tokens de acesso e configurações persistidas via `context.host.vault` são isoladas pelo addon e pelo escopo explícito informado na chamada, sem depender do workspace ativo.
-3. **Imutabilidade e Prevenção de Conflitos**: O motor de sincronização utiliza _Optimistic Concurrency Control_ com `assumedMasterState`, detectando alterações concorrentes sem sobrescrever dados silenciosamente.
-4. **Comunicação Segura por Eventos**: Addons reagem a eventos do sistema operacional e do cronômetro (`onTimerStart`, `onTimerStop`, `onIdleDetected`) de forma assíncrona e não bloqueante.
+1. **Zero Secrets**: Addons run as public clients on the desktop. No secret key (`CLIENT_SECRET`) is embedded or required in addon code. Authentication uses **OAuth 2.0 with PKCE**.
+2. **Workspace Isolation (Multi-Tenant)**: Credentials, access tokens, and settings persisted through `context.host.vault` are isolated by addon and the explicit scope passed to each call, independently of the active workspace.
+3. **Immutability and Conflict Prevention**: The synchronization engine uses _Optimistic Concurrency Control_ with `assumedMasterState` to detect concurrent changes without silently overwriting data.
+4. **Safe Event Communication**: Addons react asynchronously to operating system and timer events (`onTimerStart`, `onTimerStop`, `onIdleDetected`) without blocking.

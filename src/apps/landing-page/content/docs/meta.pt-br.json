@@ -1,0 +1,13 @@
+{
+  "title": "Documentação",
+  "pages": [
+    "---Começando---",
+    "index",
+    "sync-engine",
+    "quickstart",
+    "---Extensões---",
+    "categories",
+    "---APIs & Segurança---",
+    "apis"
+  ]
+}

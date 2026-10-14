@@ -60,4 +60,10 @@ Ao escrever ou modificar código neste projeto, você DEVE seguir rigorosamente 
   - NUNCA declare parâmetros de construtor como opcionais (`?:`) em classes gerenciadas por IoC/DI (Services, Use Cases, Handlers, Repositories).
   - Toda dependência que a classe necessita para operar deve ser declarada como obrigatória e sem `?:`.
   - O uso de `?:` mascara falhas de registro no container de IoC e força o espalhamento de verificações nulas (`if (this.dep) ...`) no meio da regra de negócio. Se um comportamento for opcional para certos cenários (ex: testes ou modo headless), utilize o padrão Null Object (`NoOp`) registrado no container, garantindo determinismo total do grafo de dependências.
+32. **Validações Simples e Semânticas em TypeScript (Princípio da Menor Verificação Correta)**:
+  - Produza código TypeScript limpo, conciso e idiomático, confiando nos contratos tipados e evitando validações redundantes ou defensivas especulativas. Utilize a verificação mais simples que preserve a semântica do domínio.
+  - NUNCA utilize `typeof` redundante em propriedades que já possuem contrato tipado confiável no TypeScript (ex: `typeof input.maxDevices === 'number'`). Se o campo é opcional, verifique presença com `if (input.maxDevices !== undefined)` para números/booleanos (preservando `0` e `false`), ou `const key = input.encryptedActivationKey?.trim(); if (key) { ... }` para strings úteis.
+  - Restrinja `typeof` estritamente a cenários que demandam distinção em runtime: type guards canônicos de baixo nível (`isRecord`, `isString`), narrowing de uniões primitivas genéricas (`string | number`) e tratamento de erros ou dados externos desconhecidos (`unknown`) nas bordas do sistema.
+
+
 

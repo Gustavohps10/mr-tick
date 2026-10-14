@@ -264,6 +264,21 @@ export function LicenseSettingsTab() {
                 <span className="font-medium">Até 2 simultâneos</span>
               </div>
             </div>
+
+            <div className="border-border/60 flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-[11px]">
+              <span className="text-muted-foreground">
+                Chave vazou ou suspeita de invasão?
+              </span>
+              <a
+                href="https://mistertick.com/license?action=rotate"
+                target="_blank"
+                rel="noreferrer"
+                className="text-destructive inline-flex items-center gap-1 font-semibold transition-colors hover:underline"
+              >
+                <span>Revogar e Gerar Nova Chave</span>
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -304,10 +319,20 @@ export function LicenseSettingsTab() {
                   Ativar
                 </Button>
               </div>
-              <p className="text-muted-foreground text-[11px]">
-                Cole a chave recebida por e-mail após a confirmação da sua
-                assinatura.
-              </p>
+              <div className="flex items-center justify-between pt-0.5 text-[11px]">
+                <span className="text-muted-foreground">
+                  Cole a chave recebida após a confirmação da assinatura.
+                </span>
+                <a
+                  href="https://mistertick.com/license?action=recover"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary inline-flex items-center gap-1 font-semibold transition-colors hover:underline"
+                >
+                  <span>Recuperar Chave</span>
+                  <ExternalLink className="h-2.5 w-2.5" />
+                </a>
+              </div>
             </div>
           </form>
 
@@ -317,12 +342,12 @@ export function LicenseSettingsTab() {
                 Ainda não possui Mr. Tick Plus?
               </span>
               <a
-                href="https://mistertick.com/#pricing"
+                href="https://mistertick.com/license?action=checkout"
                 target="_blank"
                 rel="noreferrer"
                 className="text-primary hover:text-primary/80 flex items-center gap-1 font-semibold transition-colors"
               >
-                <span>Conhecer Planos</span>
+                <span>Assinar Mr. Tick Plus</span>
                 <ExternalLink className="h-3 w-3" />
               </a>
             </div>
@@ -331,6 +356,20 @@ export function LicenseSettingsTab() {
               sincronização avançada e suporte com garantia de ativação em até 2
               dispositivos.
             </p>
+            <div className="border-border/60 flex items-center justify-between border-t pt-2 text-[11px]">
+              <span className="text-muted-foreground">
+                Chave comprometida ou suspeita de invasão?
+              </span>
+              <a
+                href="https://mistertick.com/license?action=rotate"
+                target="_blank"
+                rel="noreferrer"
+                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 font-medium transition-colors"
+              >
+                <span>Gerar Nova Chave</span>
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            </div>
           </div>
         </div>
       )}

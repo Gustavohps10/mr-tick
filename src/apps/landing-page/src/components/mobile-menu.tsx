@@ -8,39 +8,47 @@ import {
   SheetTrigger,
 } from '@mr-tick/ui/sheet'
 import { BookOpenTextIcon, Github, Menu, Star } from 'lucide-react'
-import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import * as React from 'react'
 
 import { ServerSideModeToggle } from '@/components/mode-toggle'
+import { Link } from '@/i18n/navigation'
 
-export function MobileMenu() {
+import { LanguageToggle } from './language-toggle'
+
+export function MobileMenu({ stars }: { stars: number | null }) {
+  const t = useTranslations('navbar')
   return (
-    <div className="flex items-center md:hidden">
+    <div className="flex items-center lg:hidden">
       <Sheet>
         <SheetTrigger asChild>
-          <button className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-md p-2 transition-colors">
+          <button
+            aria-label={t('menu')}
+            className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-md p-2 transition-colors"
+          >
             <Menu className="size-5" />
           </button>
         </SheetTrigger>
 
         <SheetContent side="right" className="w-[300px] p-6">
-          <SheetTitle>Menu</SheetTitle>
+          <SheetTitle>{t('menu')}</SheetTitle>
           <div className="mt-6 flex flex-col gap-6">
             {/* Links */}
             <div className="flex flex-col gap-4">
               {[
-                { href: '/#features', label: 'Funcionalidades' },
-                { href: '/#integrations', label: 'Integrações' },
-                { href: '/#offline', label: 'Arquitetura' },
-                { href: '/#pricing', label: 'Preços' },
+                { href: '/#positioning', label: t('whyMrTick') },
+                { href: '/#integrations', label: t('integrations') },
+                { href: '/#offline', label: t('architecture') },
+                { href: '/license', label: t('license') },
+                { href: '/download', label: t('download') },
               ].map((item) => (
-                <a
+                <Link
                   key={item.href}
                   href={item.href}
                   className="text-muted-foreground hover:text-foreground text-sm font-medium transition-colors"
                 >
                   {item.label}
-                </a>
+                </Link>
               ))}
             </div>
 
@@ -52,15 +60,18 @@ export function MobileMenu() {
               className="text-muted-foreground hover:text-foreground flex items-center gap-2 text-sm font-medium"
             >
               <BookOpenTextIcon className="size-4" />
-              Docs
+              {t('docs')}
             </Link>
 
             <Separator />
 
             {/* Theme */}
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground text-sm">Tema</span>
+              <span className="text-muted-foreground text-sm">
+                {t('theme')}
+              </span>
               <ServerSideModeToggle />
+              <LanguageToggle />
             </div>
 
             <Separator />
@@ -79,7 +90,9 @@ export function MobileMenu() {
 
               <div className="flex items-center gap-1">
                 <Star className="size-3.5" />
-                <span className="text-xs tabular-nums opacity-80">120</span>
+                <span className="text-xs tabular-nums opacity-80">
+                  {stars !== null ? stars : '—'}
+                </span>
               </div>
             </a>
           </div>

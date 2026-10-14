@@ -8,6 +8,8 @@ const withMDX = createMDX()
 const nextConfig: NextConfig = {
   experimental: {
     externalDir: true,
+    rootParams: true,
+    globalNotFound: true,
   },
 
   reactCompiler: true,

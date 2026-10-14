@@ -1,9 +1,6 @@
-import '../index.css'
+import '../../index.css'
 
-import type { Metadata } from 'next'
 import { Geist_Mono } from 'next/font/google'
-import { NextIntlClientProvider } from 'next-intl'
-import { getLocale, getMessages } from 'next-intl/server'
 import { ThemeProvider } from 'next-themes'
 
 const geistMono = Geist_Mono({
@@ -12,20 +9,13 @@ const geistMono = Geist_Mono({
   display: 'swap',
 })
 
-export const metadata: Metadata = {
-  title: 'Mr. Tick — The "Local-First" Workflow Observability Toolkit',
-  description:
-    'Instant local-first cockpit unifying tasks, time tracking, and workflow observability with zero friction.',
-}
-
-export default async function RootLayout({
+export function PageShell({
   children,
+  locale,
 }: {
   children: React.ReactNode
+  locale: string
 }) {
-  const locale = await getLocale()
-  const messages = await getMessages()
-
   return (
     <html
       lang={locale}
@@ -43,9 +33,7 @@ export default async function RootLayout({
           disableTransitionOnChange
           enableColorScheme={false}
         >
-          <NextIntlClientProvider locale={locale} messages={messages}>
-            {children}
-          </NextIntlClientProvider>
+          {children}
         </ThemeProvider>
       </body>
     </html>

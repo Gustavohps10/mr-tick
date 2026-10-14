@@ -2,6 +2,7 @@
 
 import { Button } from '@mr-tick/ui/button'
 import { Moon, Sun } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useTheme } from 'next-themes'
 import * as React from 'react'
 
@@ -9,6 +10,7 @@ export function ServerSideModeToggle({
   className,
   ...props
 }: React.HTMLAttributes<HTMLButtonElement>) {
+  const t = useTranslations('navbar')
   const { setTheme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
 
@@ -46,7 +48,7 @@ export function ServerSideModeToggle({
         <Sun className="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
         <Moon className="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
       </div>
-      <span className="sr-only">Alternar tema</span>
+      <span className="sr-only">{t('toggleTheme')}</span>
     </Button>
   )
 }

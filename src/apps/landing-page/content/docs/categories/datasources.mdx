@@ -1,31 +1,31 @@
 ---
 title: DataSources
-description: Como criar integrações robustas para consulta de tarefas e envio de apontamentos de horas.
+description: Build robust integrations for querying tasks and submitting time entries.
 ---
 
-# DataSources (Provedores de Dados)
+# DataSources (Data Providers)
 
-Um **DataSource** é o tipo de Addon responsável por integrar o Mr-tick a ferramentas de gerenciamento de tarefas e projetos (como Jira, Redmine, YouTrack, GitHub Issues ou Azure DevOps).
+A **DataSource** is an addon that integrates Mr. Tick with task and project management tools such as Jira, Redmine, YouTrack, GitHub Issues, or Azure DevOps.
 
-Ele atua como a ponte de comunicação que o [Motor de Sincronização](/docs/sync-engine) utiliza para executar as fases de **Pull** (download de tarefas e metadados) e **Push** (upload de apontamentos de horas).
-
----
-
-## 🏗️ Arquitetura de um DataSource
-
-Um DataSource moderno no Mr-tick é registrado dentro do método `activate` do seu Addon e implementa o método `createInstance(context)`, retornando uma instância com seus **Providers**:
-
-1. **`authStrategy` (`IAuthenticationStrategy`)**: Estratégia de autenticação e validação de credenciais.
-2. **`tasksProvider` (`ITaskProvider`)**: Responsável por listar tarefas e executar o **Pull** com checkpoints.
-3. **`timeEntriesProvider` (`ITimeEntryProvider`)**: Responsável por listar, criar, atualizar e excluir apontamentos de horas (**Push**).
-4. **`membersProvider` (`IMemberProvider`)**: Responsável por retornar os dados do membro conectado e usuários.
-5. **`metadataProvider` (`IMetadataProvider`)**: Responsável por obter status, prioridades e atividades disponíveis.
+It provides the communication bridge used by the [Synchronization Engine](/docs/sync-engine) for **Pull** (downloading tasks and metadata) and **Push** (uploading time entries).
 
 ---
 
-## 💻 Exemplo Prático de Implementação
+## 🏗️ DataSource Architecture
 
-Abaixo está um exemplo completo e desacoplado de um DataSource:
+A modern Mr. Tick DataSource is registered in the addon's `activate` method and implements `createInstance(context)`, returning an instance with its **Providers**:
+
+1. **`authStrategy` (`IAuthenticationStrategy`)**: Authenticates and validates credentials.
+2. **`tasksProvider` (`ITaskProvider`)**: Lists tasks and performs checkpoint-based **Pull**.
+3. **`timeEntriesProvider` (`ITimeEntryProvider`)**: Lists, creates, updates, and deletes time entries (**Push**).
+4. **`membersProvider` (`IMemberProvider`)**: Returns information about the connected member and users.
+5. **`metadataProvider` (`IMetadataProvider`)**: Retrieves available statuses, priorities, and activities.
+
+---
+
+## 💻 Practical Implementation Example
+
+The following example shows a complete, decoupled DataSource:
 
 ```typescript
 import type {
@@ -192,9 +192,9 @@ export default class MeuDataSourceAddon implements IAddon {
 
 ---
 
-## 💡 Melhores Práticas para DataSources
+## 💡 DataSource Best Practices
 
-- **Desacoplamento por Providers**: Separe cada responsabilidade (Tarefas, Horas, Membros e Metadados) em classes especializadas que implementam suas respectivas interfaces.
-- **Respeito a Checkpoints**: Sempre utilize filtros de data de modificação (`checkpoint.updatedAt`) para minimizar o tráfego de dados no `pull`.
-- **Validação de Credenciais**: A autenticação deve ser realizada na `authStrategy`, garantindo que conexões inválidas sejam rejeitadas antes de qualquer sincronização.
-- **Configurações via Settings**: Utilize `context.contributions.settings.register(...)` para declarar campos de credenciais e configuração sem misturá-los com a lógica de rede.
+- **Separate Providers**: Put each responsibility (Tasks, Time Entries, Members, and Metadata) in a specialized class implementing the corresponding interface.
+- **Respect Checkpoints**: Use modification-date filters (`checkpoint.updatedAt`) to minimize traffic during `pull`.
+- **Validate Credentials**: Authenticate in `authStrategy` so invalid connections are rejected before synchronization begins.
+- **Declare Settings**: Use `context.contributions.settings.register(...)` for credential and configuration fields without mixing them with network logic.

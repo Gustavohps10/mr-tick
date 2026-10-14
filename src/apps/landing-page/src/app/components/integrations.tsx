@@ -8,8 +8,10 @@ import {
   Terminal,
 } from 'lucide-react'
 import Image from 'next/image'
-import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import * as React from 'react'
+
+import { Link } from '@/i18n/navigation'
 
 export interface IntegrationItem {
   name: string
@@ -20,69 +22,6 @@ export interface IntegrationItem {
   darkInvert?: boolean
   logoUrl: string
 }
-
-const INTEGRATIONS: IntegrationItem[] = [
-  {
-    name: 'Jira',
-    desc: 'Query tickets, update issue status, and push work logs directly without opening bloated browser tabs.',
-    status: 'live',
-    accentBg: 'bg-[#0052CC]/10',
-    accentBorder: 'border-[#0052CC]/25',
-    darkInvert: false,
-    logoUrl:
-      'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/jira.svg',
-  },
-  {
-    name: 'Redmine',
-    desc: 'Full bi-directional sync for time entries, custom activities, and percentage completion via official REST API.',
-    status: 'live',
-    accentBg: 'bg-red-600/10',
-    accentBorder: 'border-red-600/25',
-    darkInvert: false,
-    logoUrl:
-      'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/redmine.svg',
-  },
-  {
-    name: 'GitHub',
-    desc: 'Link commits, branches, and Pull Requests to your active time entries and issues seamlessly.',
-    status: 'live',
-    accentBg: 'bg-muted/40',
-    accentBorder: 'border-border/60',
-    darkInvert: true,
-    logoUrl:
-      'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/github.svg',
-  },
-  {
-    name: 'YouTrack',
-    desc: 'Manage sprints, work items, and native time tracking compatible with Cloud and On-Premise instances.',
-    status: 'live',
-    accentBg: 'bg-amber-500/10',
-    accentBorder: 'border-amber-500/25',
-    darkInvert: false,
-    logoUrl:
-      'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/jetbrains-youtrack.svg',
-  },
-  {
-    name: 'Linear',
-    desc: 'Instant sync for cycles, issues, and project states with automatic workflow resolution.',
-    status: 'soon',
-    accentBg: 'bg-violet-500/10',
-    accentBorder: 'border-violet-500/25',
-    darkInvert: true,
-    logoUrl:
-      'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/linear.svg',
-  },
-  {
-    name: 'GitLab',
-    desc: 'Track Merge Requests, pipelines, and native time logs through the GitLab REST API v4.',
-    status: 'soon',
-    accentBg: 'bg-orange-500/10',
-    accentBorder: 'border-orange-500/25',
-    darkInvert: false,
-    logoUrl:
-      'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/gitlab.svg',
-  },
-]
 
 export interface TechStackItem {
   name: string
@@ -121,6 +60,69 @@ const TECH_STACK: TechStackItem[] = [
 ]
 
 export function Integrations() {
+  const t = useTranslations('integrations')
+  const INTEGRATIONS: IntegrationItem[] = [
+    {
+      name: 'Jira',
+      desc: t('queryTicketsUpdateIssueStatusAnd'),
+      status: 'live',
+      accentBg: 'bg-[#0052CC]/10',
+      accentBorder: 'border-[#0052CC]/25',
+      darkInvert: false,
+      logoUrl:
+        'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/jira.svg',
+    },
+    {
+      name: 'Redmine',
+      desc: t('fullBiDirectionalSyncForTime'),
+      status: 'live',
+      accentBg: 'bg-red-600/10',
+      accentBorder: 'border-red-600/25',
+      darkInvert: false,
+      logoUrl:
+        'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/redmine.svg',
+    },
+    {
+      name: 'GitHub',
+      desc: t('linkCommitsBranchesAndPullRequests'),
+      status: 'live',
+      accentBg: 'bg-muted/40',
+      accentBorder: 'border-border/60',
+      darkInvert: true,
+      logoUrl:
+        'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/github.svg',
+    },
+    {
+      name: 'YouTrack',
+      desc: t('manageSprintsWorkItemsAndNative'),
+      status: 'live',
+      accentBg: 'bg-amber-500/10',
+      accentBorder: 'border-amber-500/25',
+      darkInvert: false,
+      logoUrl:
+        'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/jetbrains-youtrack.svg',
+    },
+    {
+      name: 'Linear',
+      desc: t('instantSyncForCyclesIssuesAnd'),
+      status: 'soon',
+      accentBg: 'bg-violet-500/10',
+      accentBorder: 'border-violet-500/25',
+      darkInvert: true,
+      logoUrl:
+        'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/linear.svg',
+    },
+    {
+      name: 'GitLab',
+      desc: t('trackMergeRequestsPipelinesAndNative'),
+      status: 'soon',
+      accentBg: 'bg-orange-500/10',
+      accentBorder: 'border-orange-500/25',
+      darkInvert: false,
+      logoUrl:
+        'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/gitlab.svg',
+    },
+  ]
   return (
     <section
       id="integrations"
@@ -128,25 +130,23 @@ export function Integrations() {
     >
       {/* Background Glow */}
       <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center">
-        <div className="h-[500px] w-[700px] rounded-full bg-blue-500/5 blur-[140px]" />
+        <div className="h-[500px] w-[700px] rounded-lg bg-blue-500/5 blur-[140px]" />
       </div>
 
       <div className="container mx-auto px-6 lg:px-8">
         {/* Section Header */}
         <div className="mb-16 text-center">
-          <div className="border-border/60 bg-muted/40 text-muted-foreground mb-3.5 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1 text-xs font-semibold">
+          <div className="border-border/60 bg-muted/40 text-muted-foreground mb-3.5 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-1 text-xs font-semibold">
             <Terminal className="size-3.5" />
-            Integrations &amp; Extensibility
+            {t('integrationsExtensibility')}
           </div>
 
           <h2 className="text-foreground mx-auto max-w-3xl text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl">
-            Plug your existing tools. Never break your flow.
+            {t('plugYourExistingToolsNeverBreak')}
           </h2>
 
           <p className="text-muted-foreground mx-auto mt-4 max-w-xl text-base leading-relaxed sm:text-lg">
-            Connect to the issue trackers and version control platforms you
-            already use. Mr. Tick aggregates them into a unified desktop
-            cockpit.
+            {t('connectToTheIssueTrackersAnd')}
           </p>
         </div>
 
@@ -176,13 +176,13 @@ export function Integrations() {
 
                   {/* Status Badge */}
                   {item.status === 'live' ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-emerald-500">
-                      <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
-                      AVAILABLE
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-emerald-500">
+                      <span className="size-1.5 animate-pulse rounded-lg bg-emerald-500" />
+                      {t('available')}
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-violet-400">
-                      COMING SOON
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-violet-400">
+                      {t('comingSoon')}
                     </span>
                   )}
                 </div>
@@ -198,8 +198,8 @@ export function Integrations() {
               <div className="border-border/40 mt-5 flex items-center justify-between border-t pt-3">
                 <span className="text-muted-foreground/60 font-mono text-[11px]">
                   {item.status === 'live'
-                    ? 'Bi-directional sync'
-                    : 'In development'}
+                    ? t('biDirectionalSync')
+                    : t('inDevelopment')}
                 </span>
                 <ArrowRight className="text-muted-foreground group-hover:text-foreground size-3.5 transition-transform group-hover:translate-x-0.5" />
               </div>
@@ -208,7 +208,7 @@ export function Integrations() {
         </div>
 
         {/* Extensibility & Tech Stack Card (Console Dark Card with Dotted Border & Terminal Watermark) */}
-        <div className="relative mt-16 overflow-hidden rounded-2xl border border-dashed border-zinc-800 bg-zinc-950 p-8 text-center text-white shadow-2xl sm:p-12">
+        <div className="relative mt-16 overflow-hidden rounded-lg border border-dashed border-zinc-800 bg-zinc-950 p-8 text-center text-white shadow-2xl sm:p-12">
           {/* Subtle Background Grid Drawing */}
           <svg
             className="pointer-events-none absolute inset-0 h-full w-full [mask-image:radial-gradient(100%_100%_at_50%_40%,white,transparent)] stroke-white/[0.04]"
@@ -242,7 +242,7 @@ export function Integrations() {
 
           {/* Ambient Inner Glow */}
           <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center">
-            <div className="h-[220px] w-[450px] rounded-full bg-blue-500/10 blur-[100px]" />
+            <div className="h-[220px] w-[450px] rounded-lg bg-blue-500/10 blur-[100px]" />
           </div>
 
           <div className="relative z-10">
@@ -253,13 +253,12 @@ export function Integrations() {
 
             {/* Headline */}
             <h3 className="text-xl font-bold tracking-tight text-white sm:text-2xl">
-              Have a proprietary tracker or custom backend?
+              {t('haveAProprietaryTrackerOrCustom')}
             </h3>
 
             {/* Subtitle */}
             <p className="mx-auto mt-3 max-w-xl font-mono text-xs leading-relaxed text-zinc-400 sm:text-sm">
-              Build custom TypeScript plugins with full access to local storage,
-              UI theme bridges, and sync hooks.
+              {t('buildCustomTypescriptPluginsWithFull')}
             </p>
 
             {/* CTA Buttons */}
@@ -269,7 +268,7 @@ export function Integrations() {
                 className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-xs font-semibold text-black shadow-sm transition-all hover:scale-105 hover:bg-zinc-200"
               >
                 <BookOpenText className="size-3.5" />
-                Read SDK Documentation
+                {t('readSdkDocumentation')}
               </Link>
 
               <a
@@ -279,14 +278,14 @@ export function Integrations() {
                 className="inline-flex h-9 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-4 text-xs font-semibold text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
               >
                 <MessageSquarePlus className="size-3.5" />
-                Request an Integration
+                {t('requestAnIntegration')}
               </a>
             </div>
 
             {/* Inner Divider & Tech Stack Ribbon */}
             <div className="mt-12 border-t border-zinc-800/80 pt-8">
               <p className="font-mono text-xs font-semibold tracking-wider text-zinc-500 uppercase">
-                Built on top of a rock-solid, modern engineering stack
+                {t('builtOnTopOfARock')}
               </p>
 
               <div className="mt-6 flex flex-wrap items-center justify-center gap-6 opacity-80 transition-all duration-300 hover:opacity-100 sm:gap-8">

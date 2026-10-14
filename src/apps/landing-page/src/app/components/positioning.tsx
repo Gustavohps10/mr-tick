@@ -8,9 +8,11 @@ import {
   Layers,
   XCircle,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import * as React from 'react'
 
 export function Positioning() {
+  const t = useTranslations('positioning')
   return (
     <section
       id="positioning"
@@ -18,26 +20,23 @@ export function Positioning() {
     >
       {/* Background radial glow */}
       <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center">
-        <div className="bg-primary/5 h-[400px] w-[600px] rounded-full blur-[120px]" />
+        <div className="bg-primary/5 h-[400px] w-[600px] rounded-lg blur-[120px]" />
       </div>
 
       <div className="container mx-auto px-6 lg:px-8">
         {/* Section Header */}
         <div className="mx-auto max-w-3xl text-center">
-          <div className="border-primary/25 bg-primary/5 text-primary mb-3.5 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1 text-xs font-semibold">
+          <div className="border-primary/25 bg-primary/5 text-primary mb-3.5 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-1 text-xs font-semibold">
             <Cpu className="size-3.5" />
-            Core Positioning
+            {t('corePositioning')}
           </div>
 
           <h2 className="text-foreground text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl">
-            One private cockpit for all your engineering context.
+            {t('onePrivateCockpitForAllYour')}
           </h2>
 
           <p className="text-muted-foreground mt-4 text-base leading-relaxed sm:text-lg">
-            Stop jumping across dozens of browser tabs. Unify remote tickets,
-            local tasks, PR code reviews, calendar meetings, and time logs into
-            one single dashboard — with 100% of your data saved securely on your
-            computer.
+            {t('stopJumpingAcrossDozensOfBrowser')}
           </p>
         </div>
 
@@ -48,11 +47,10 @@ export function Positioning() {
               <Layers className="size-5" />
             </div>
             <h3 className="text-foreground text-base font-bold">
-              Remote Tickets &amp; Local Tasks
+              {t('remoteTicketsLocalTasks')}
             </h3>
             <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
-              Consolidate issues from Jira, Redmine, and YouTrack alongside your
-              own private local to-do items without switching windows.
+              {t('consolidateIssuesFromJiraRedmineAnd')}
             </p>
           </div>
 
@@ -61,11 +59,10 @@ export function Positioning() {
               <GitPullRequest className="size-5" />
             </div>
             <h3 className="text-foreground text-base font-bold">
-              Code Reviews &amp; PRs
+              {t('codeReviewsPrs')}
             </h3>
             <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
-              Link GitHub and GitLab Pull Requests directly to active work items
-              and track review effort and branch activity with precision.
+              {t('linkGithubAndGitlabPullRequests')}
             </p>
           </div>
 
@@ -74,11 +71,10 @@ export function Positioning() {
               <CalendarDays className="size-5" />
             </div>
             <h3 className="text-foreground text-base font-bold">
-              Meetings &amp; Calendar Agenda
+              {t('meetingsCalendarAgenda')}
             </h3>
             <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
-              Import scheduled meetings and daily calendar events to convert
-              meeting hours into logged time entries in a single click.
+              {t('importScheduledMeetingsAndDailyCalendar')}
             </p>
           </div>
         </div>
@@ -94,11 +90,10 @@ export function Positioning() {
                 </div>
                 <div>
                   <h3 className="text-foreground text-lg font-bold">
-                    What Mr. Tick is NOT
+                    {t('whatMrTickIsNot')}
                   </h3>
                   <p className="text-muted-foreground text-xs">
-                    We don&apos;t add bloat or replace your team&apos;s source
-                    of truth
+                    {t('weDonTAddBloatOr')}
                   </p>
                 </div>
               </div>
@@ -108,10 +103,9 @@ export function Positioning() {
                   <XCircle className="text-destructive mt-0.5 size-4 shrink-0" />
                   <span className="text-muted-foreground">
                     <strong className="text-foreground font-semibold">
-                      Not a replacement for your issue tracker:
+                      {t('notAReplacementForYourIssue')}
                     </strong>{' '}
-                    Your team keeps using Jira, Redmine, or GitHub as the source
-                    of truth.
+                    {t('yourTeamKeepsUsingJiraRedmine')}
                   </span>
                 </li>
 
@@ -119,10 +113,9 @@ export function Positioning() {
                   <XCircle className="text-destructive mt-0.5 size-4 shrink-0" />
                   <span className="text-muted-foreground">
                     <strong className="text-foreground font-semibold">
-                      Not a heavy, slow web app:
+                      {t('notAHeavySlowWebApp')}
                     </strong>{' '}
-                    No endless loading spinners or browser tabs eating up your
-                    RAM while you write code.
+                    {t('noEndlessLoadingSpinnersOrBrowser')}
                   </span>
                 </li>
 
@@ -130,10 +123,9 @@ export function Positioning() {
                   <XCircle className="text-destructive mt-0.5 size-4 shrink-0" />
                   <span className="text-muted-foreground">
                     <strong className="text-foreground font-semibold">
-                      Not cloud surveillance:
+                      {t('notCloudSurveillance')}
                     </strong>{' '}
-                    Zero employee monitoring, zero keystroke logging, and zero
-                    data sent to third-party telemetry servers.
+                    {t('zeroEmployeeMonitoringZeroKeystrokeLogging')}
                   </span>
                 </li>
               </ul>
@@ -141,8 +133,7 @@ export function Positioning() {
 
             <div className="border-destructive/15 mt-8 border-t pt-4">
               <span className="text-muted-foreground/70 font-mono text-[11px]">
-                Zero clutter &middot; Zero friction &middot; 100% focused on
-                execution
+                {t('zeroClutterZeroFriction100Focused')}
               </span>
             </div>
           </div>
@@ -156,10 +147,10 @@ export function Positioning() {
                 </div>
                 <div>
                   <h3 className="text-foreground text-lg font-bold">
-                    What Mr. Tick DOES
+                    {t('whatMrTickDoes')}
                   </h3>
                   <p className="text-muted-foreground text-xs">
-                    Local-first execution and unified workflow cockpit
+                    {t('localFirstExecutionAndUnifiedWorkflow')}
                   </p>
                 </div>
               </div>
@@ -169,11 +160,9 @@ export function Positioning() {
                   <CheckCircle2 className="text-primary mt-0.5 size-4 shrink-0" />
                   <span className="text-muted-foreground">
                     <strong className="text-foreground font-semibold">
-                      Local data consolidation:
+                      {t('localDataConsolidation')}
                     </strong>{' '}
-                    Everything is saved locally on your computer. Unify Jira
-                    &amp; Redmine issues, private local tasks, meetings, and
-                    time entries in one single, responsive dashboard.
+                    {t('everythingIsSavedLocallyOnYour')}
                   </span>
                 </li>
 
@@ -181,11 +170,9 @@ export function Positioning() {
                   <CheckCircle2 className="text-primary mt-0.5 size-4 shrink-0" />
                   <span className="text-muted-foreground">
                     <strong className="text-foreground font-semibold">
-                      Two-way background sync:
+                      {t('twoWayBackgroundSync')}
                     </strong>{' '}
-                    Fetch assigned tickets and push time logs automatically back
-                    to your company&apos;s trackers without breaking your flow
-                    state.
+                    {t('fetchAssignedTicketsAndPushTime')}
                   </span>
                 </li>
 
@@ -193,10 +180,9 @@ export function Positioning() {
                   <CheckCircle2 className="text-primary mt-0.5 size-4 shrink-0" />
                   <span className="text-muted-foreground">
                     <strong className="text-foreground font-semibold">
-                      Deep Work Observability:
+                      {t('deepWorkObservability')}
                     </strong>{' '}
-                    Measure uninterrupted coding blocks, track context switches,
-                    and gain clear visibility into your technical day.
+                    {t('measureUninterruptedCodingBlocksTrackContext')}
                   </span>
                 </li>
               </ul>
@@ -204,8 +190,7 @@ export function Positioning() {
 
             <div className="border-border/50 mt-8 border-t pt-4">
               <span className="text-primary font-mono text-[11px] font-medium">
-                Local-First &middot; Open Core &middot; Built with TypeScript
-                &amp; React
+                {t('localFirstOpenCoreBuiltWith')}
               </span>
             </div>
           </div>

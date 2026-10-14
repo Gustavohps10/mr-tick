@@ -19,7 +19,6 @@ import { queryClient } from '@mr-tick/ui/lib'
 import { Metrics, TimeEntries } from '@mr-tick/ui/pages'
 import {
   DataSourceConnectionsProvider,
-  dropAppStorage,
   EnvironmentProvider,
   HostBridgeProvider,
   SidebarProvider,
@@ -49,6 +48,8 @@ import {
 } from 'lucide-react'
 import * as React from 'react'
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
+
+import { createDemoSession } from '@/lib/demo-session'
 
 // Mock environment for HostBridge/RxDB fallback in web (injected as darwin for macOS traffic lights)
 const mockEnvironment = { isDevelopment: false, platform: 'darwin' }
@@ -328,10 +329,12 @@ const mockBridgeClient: IHostBridge = {
 
 // Custom Mock Sidebar strictly matching original desktop UI
 function MockSidebar({
+  workspaceId,
   activeTab,
   setActiveTab,
   isOpen = true,
 }: {
+  workspaceId: string
   activeTab: 'time-entries' | 'metrics'
   setActiveTab: (tab: 'time-entries' | 'metrics') => void
   isOpen?: boolean
@@ -341,10 +344,10 @@ function MockSidebar({
   const handleTabClick = (tab: 'time-entries' | 'metrics') => {
     setActiveTab(tab)
     if (tab === 'time-entries') {
-      navigate('/workspaces/default/time-entries')
-    } else {
-      navigate('/workspaces/default/my-metric')
+      navigate('/workspaces/' + workspaceId + '/time-entries')
+      return
     }
+    navigate('/workspaces/' + workspaceId + '/my-metric')
   }
 
   // MODO ÍCONES (Sidebar Colapsada)
@@ -692,7 +695,7 @@ function MockSidebar({
   )
 }
 
-function MockDesktopShell() {
+function MockDesktopShell({ workspaceId }: { workspaceId: string }) {
   const [activeTab, setActiveTab] = React.useState<'time-entries' | 'metrics'>(
     'time-entries',
   )
@@ -719,6 +722,7 @@ function MockDesktopShell() {
         <section className="border-border bg-background relative flex h-full min-h-0 flex-1 overflow-hidden rounded-tl-md border-t border-l">
           {/* Mock Sidebar Exclusiva da Landing Page */}
           <MockSidebar
+            workspaceId={workspaceId}
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             isOpen={isSidebarOpen}
@@ -812,13 +816,13 @@ function MockDesktopShell() {
 }
 
 export function DesktopAppMockup() {
+  const [session] = React.useState(() =>
+    createDemoSession(mockWorkspace, mockBridgeClient),
+  )
   const [mounted, setMounted] = React.useState(false)
 
   React.useEffect(() => {
     setMounted(true)
-    if (typeof window !== 'undefined') {
-      void dropAppStorage('db-default')
-    }
   }, [])
 
   if (!mounted) {
@@ -833,17 +837,23 @@ export function DesktopAppMockup() {
       <div className="border-border bg-card text-foreground relative flex aspect-[16/9] w-full flex-col overflow-hidden rounded-lg border shadow-2xl transition-all">
         {/* Canvas do App com Proporção Desktop Nativa e Scroll Total */}
         <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-          <MemoryRouter initialEntries={['/workspaces/default/time-entries']}>
-            <HostBridgeProvider bridge={mockBridgeClient}>
+          <MemoryRouter
+            initialEntries={[
+              '/workspaces/' + session.workspace.id + '/time-entries',
+            ]}
+          >
+            <HostBridgeProvider bridge={session.bridge}>
               <EnvironmentProvider environment={mockEnvironment}>
                 <QueryClientProvider client={queryClient}>
-                  <WorkspaceProvider workspaceId="default">
+                  <WorkspaceProvider workspaceId={session.workspace.id}>
                     <DataSourceConnectionsProvider>
                       <SyncProvider useMemoryStorage={true}>
                         <TimeEntryProvider>
                           <TooltipProvider>
                             <SidebarProvider>
-                              <MockDesktopShell />
+                              <MockDesktopShell
+                                workspaceId={session.workspace.id}
+                              />
                             </SidebarProvider>
                           </TooltipProvider>
                         </TimeEntryProvider>

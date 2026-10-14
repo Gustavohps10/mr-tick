@@ -1,54 +1,54 @@
 ---
-title: Autenticação OAuth 2.0 PKCE
-description: Como autenticar usuários com segurança usando PKCE (RFC 7636), State criptográfico e Deep Linking (mr-tick-app://).
+title: OAuth 2.0 PKCE Authentication
+description: Authenticate users securely with PKCE (RFC 7636), cryptographic State, and deep linking (mr-tick-app://).
 ---
 
-# Autenticação OAuth 2.0 PKCE
+# OAuth 2.0 PKCE Authentication
 
-> O exemplo completo abaixo usa o contrato antigo do cofre. No SDK atual, passe `AddonVaultScope` explicitamente e trate o `Either` retornado, conforme [Vault e Eventos](/docs/apis/vault-and-events). Use escopo global somente se a conta for compartilhada entre workspaces.
+> The complete example below uses the old vault contract. In the current SDK, pass `AddonVaultScope` explicitly and handle the returned `Either`, as described in [Vault and Events](/docs/apis/vault-and-events). Use addon-wide scope only when the account is shared across workspaces.
 
-O Mr-tick fornece uma API nativa e padronizada de **OAuth 2.0 com PKCE (Proof Key for Code Exchange — RFC 7636)** através de `context.host.oauth`.
+Mr. Tick provides a native, standardized **OAuth 2.0 with PKCE (Proof Key for Code Exchange — RFC 7636)** API through `context.host.oauth`.
 
-Esse fluxo elimina totalmente a necessidade de embutir `CLIENT_SECRET` nos addons e dispensa a abertura de servidores HTTP locais na máquina do usuário.
+This flow removes the need to embed `CLIENT_SECRET` in addons or open local HTTP servers on the user's computer.
 
 ---
 
-## 🔄 Fluxo de Autenticação em 5 Passos
+## 🔄 Authentication Flow in 5 Steps
 
 ```text
 1. Addon (Desktop)
-   │ context.host.oauth.generatePKCE() → gera codeVerifier + codeChallenge (SHA-256)
-   │ context.host.oauth.generateState('discord') → gera state seguro (UUID)
+   │ context.host.oauth.generatePKCE() → generates codeVerifier + codeChallenge (SHA-256)
+   │ context.host.oauth.generateState('discord') → generates secure state (UUID)
    │ context.host.oauth.authorize({ authUrl, state })
    ▼
-2. Navegador Web do Usuário
-   │ Abre a tela de consentimento do Provedor OAuth (Discord, Google, Jira, etc.)
+2. User's Web Browser
+   │ Opens the OAuth provider's consent screen      (Discord, Google, Jira, etc.)
    ▼
-3. Redirecionamento Web
-   │ Provedor redireciona para a Landing Page:
+3. Web Redirect
+   │ The provider redirects to the landing page:
    │ https://mistertick.com/oauth/callback?code=AUTH_CODE&state=STATE
    ▼
-4. Deep Link do Sistema Operacional
-   │ A Landing Page executa o protocolo seguro:
+4. Operating System Deep Link
+   │ The landing page opens the secure protocol:
    │ mr-tick-app://oauth/callback?code=AUTH_CODE&state=STATE
    ▼
 5. Addon (Desktop)
-   │ AddonLoader valida o state, remove replay e resolve o authorization code
-   │ Addon executa a troca segura (POST /token com code_verifier, sem secret)
-   │ Salva o token estruturado no storage seguro (Keytar)
+   │ AddonLoader validates state, prevents replay, and resolves the authorization code
+   │ The addon performs a secure exchange (POST /token with code_verifier, without a secret)
+   │ Stores the structured token in secure storage (Keytar)
 ```
 
 ---
 
-## 🛡️ Por que PKCE é 100% Seguro em Apps Desktop?
+## 🛡️ Why PKCE Protects Desktop Apps
 
-1. **Sem Segredos Expostos**: Como o código do addon roda no dispositivo do usuário, qualquer `CLIENT_SECRET` embutido poderia ser extraído. O PKCE substitui o segredo por um desafio criptográfico único gerado em tempo de execução (`code_challenge` / `code_verifier`).
-2. **Proteção Contra Interceptação de Deep Link**: Mesmo que um aplicativo malicioso no sistema operacional capture o Deep Link contendo o `code` e o `state`, ele **não conseguirá** obter o token de acesso porque não possui o `code_verifier` (que permanece restrito à memória segura do Mr-tick).
-3. **Prevenção Contra CSRF e Replay**: O `state` é gerado via `crypto.randomUUID()`, validado estritamente no callback e consumido em modo _single-use_ (qualquer repetição é imediatamente rejeitada).
+1. **No Exposed Secrets**: Since addon code runs on the user's device, an embedded `CLIENT_SECRET` could be extracted. PKCE replaces the secret with a unique cryptographic challenge generated at runtime (`code_challenge` / `code_verifier`).
+2. **Protection Against Deep Link Interception**: Even if a malicious application captures a deep link containing the `code` and `state`, it **cannot** obtain the access token without the `code_verifier`, which stays in Mr. Tick's memory.
+3. **CSRF and Replay Prevention**: The `state` is generated with `crypto.randomUUID()`, strictly validated in the callback, and consumed once. Repeated use is rejected.
 
 ---
 
-## 💻 Exemplo Completo de Implementação
+## 💻 Complete Implementation Example
 
 ```typescript
 import type { AddonActionResponse, AddonContext, IAddon } from '@mr-tick/sdk'

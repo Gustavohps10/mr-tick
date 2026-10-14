@@ -17,6 +17,7 @@ export default defineConfig({
           name: 'unit',
           globals: true,
           environment: 'node',
+          server: { deps: { inline: ['next-intl'] } },
           include: [
             'src/packages/!(ui)/**/*.spec.ts',
             'src/apps/**/*.spec.ts',

@@ -3,53 +3,59 @@
 import { Separator } from '@mr-tick/ui/separator'
 import { Github, Linkedin, Twitter } from 'lucide-react'
 import Image from 'next/image'
-import Link from 'next/link'
-import * as React from 'react'
+import { useTranslations } from 'next-intl'
 
-const FOOTER_SECTIONS = [
-  {
-    title: 'Product',
-    links: [
-      { label: 'Why Mr. Tick', href: '/#positioning' },
-      { label: 'Integrations & SDK', href: '/#integrations' },
-      { label: 'Architecture', href: '/#offline' },
-      { label: 'Pricing', href: '/#pricing' },
-    ],
-  },
-  {
-    title: 'Resources & Docs',
-    links: [
-      { label: 'Documentation', href: '/docs' },
-      { label: 'Quickstart Guide', href: '/docs/quickstart' },
-      { label: 'Addon SDK', href: '/docs/apis/vault-and-events' },
-      {
-        label: 'GitHub Repository',
-        href: 'https://github.com/gustavohps10/mr-tick',
-        external: true,
-      },
-      {
-        label: 'Report an Issue',
-        href: 'https://github.com/gustavohps10/mr-tick/issues',
-        external: true,
-      },
-    ],
-  },
-  {
-    title: 'Legal & Privacy',
-    links: [
-      {
-        label: 'MIT License (Open Source)',
-        href: 'https://github.com/gustavohps10/mr-tick/blob/main/LICENSE',
-        external: true,
-      },
-      { label: 'Terms of Service', href: '#' },
-      { label: 'Privacy Policy', href: '#' },
-      { label: 'Local-First Security', href: '/#offline' },
-    ],
-  },
-]
+import { Link } from '@/i18n/navigation'
 
 export function Footer() {
+  const t = useTranslations('footer')
+
+  const FOOTER_SECTIONS = [
+    {
+      title: t('product'),
+      links: [
+        { label: t('whyMrTick'), href: '/#positioning' },
+        { label: t('integrationsSdk'), href: '/#integrations' },
+        { label: t('architecture'), href: '/#offline' },
+        { label: 'Mr. Tick Plus', href: '/license' },
+      ],
+    },
+    {
+      title: t('resourcesDocs'),
+      links: [
+        { label: t('documentation'), href: '/docs' },
+        { label: t('quickstartGuide'), href: '/docs/quickstart' },
+        { label: t('addonSdk'), href: '/docs/apis/vault-and-events' },
+        {
+          label: t('recoverLicense'),
+          href: '/license?action=recover',
+        },
+        {
+          label: t('githubRepository'),
+          href: 'https://github.com/gustavohps10/mr-tick',
+          external: true,
+        },
+        {
+          label: t('reportAnIssue'),
+          href: 'https://github.com/gustavohps10/mr-tick/issues',
+          external: true,
+        },
+      ],
+    },
+    {
+      title: t('legalPrivacy'),
+      links: [
+        {
+          label: t('mitLicenseOpenSource'),
+          href: 'https://github.com/gustavohps10/mr-tick/blob/main/LICENSE',
+          external: true,
+        },
+        { label: t('termsOfService'), href: '#' },
+        { label: t('privacyPolicy'), href: '#' },
+        { label: t('localFirstSecurity'), href: '/#offline' },
+      ],
+    },
+  ]
   return (
     <footer className="border-border/60 bg-card/60 relative border-t pt-16 pb-12">
       <div className="container mx-auto px-6 lg:px-8">
@@ -77,9 +83,7 @@ export function Footer() {
             </Link>
 
             <p className="text-muted-foreground mt-4 max-w-sm text-sm leading-relaxed">
-              The local-first workflow observability toolkit for software
-              engineering. Track hours with precision, unify tickets, and
-              protect your technical flow state.
+              {t('theLocalFirstWorkflowObservabilityToolkit')}
             </p>
 
             {/* Social Links */}
@@ -119,7 +123,7 @@ export function Footer() {
               <ul className="mt-4 space-y-2.5 text-xs">
                 {section.links.map((link) => (
                   <li key={link.label}>
-                    {link.external ? (
+                    {link.external && (
                       <a
                         href={link.href}
                         target="_blank"
@@ -128,7 +132,8 @@ export function Footer() {
                       >
                         {link.label}
                       </a>
-                    ) : (
+                    )}
+                    {!link.external && (
                       <Link
                         href={link.href}
                         className="text-muted-foreground hover:text-foreground transition-colors"
@@ -147,13 +152,13 @@ export function Footer() {
 
         <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
           <p className="text-muted-foreground font-mono text-xs">
-            © 2026 Mr. Tick. Released under the MIT License.
+            {t('2026MrTickReleasedUnderThe')}
           </p>
 
           <div className="flex items-center gap-2">
-            <span className="size-2 animate-pulse rounded-full bg-emerald-500" />
+            <span className="size-2 animate-pulse rounded-lg bg-emerald-500" />
             <span className="text-muted-foreground font-mono text-xs">
-              All systems operational · Local-First
+              {t('allSystemsOperationalLocalFirst')}
             </span>
           </div>
         </div>

@@ -29,21 +29,12 @@ export interface CreateCheckoutSessionResponse {
 
 const DEFAULT_MISTERTICK_API_URL =
   'https://mistertick-api.mistertick.workers.dev'
-const LOCAL_MISTERTICK_API_URL = 'http://localhost:8787'
 
 export function resolveMisterTickApiCandidateUrls(): string[] {
   const configured = process.env.NEXT_PUBLIC_MISTERTICK_API_URL
   if (configured) {
     const trimmed = configured.trim()
     if (trimmed.length > 0) return [trimmed.replace(/\/+$/, '')]
-  }
-  if (typeof window !== 'undefined') {
-    if (
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1'
-    ) {
-      return [LOCAL_MISTERTICK_API_URL, DEFAULT_MISTERTICK_API_URL]
-    }
   }
   return [DEFAULT_MISTERTICK_API_URL]
 }
@@ -54,6 +45,36 @@ export function normalizeSupportedCurrency(
   if (!currency) return 'usd'
   const normalized = currency.trim().toLowerCase()
   if (normalized === 'brl') return 'brl'
+  return 'usd'
+}
+
+export interface ResolveBillingCurrencyInput {
+  countryCode?: string | null
+  acceptLanguage?: string | null
+  locale?: string | null
+}
+
+export function resolveServerSideBillingCurrency(
+  input: ResolveBillingCurrencyInput,
+): SupportedBillingCurrency {
+  if (input.countryCode) {
+    const code = input.countryCode.trim().toUpperCase()
+    if (code === 'BR') {
+      return 'brl'
+    }
+  }
+  if (input.locale) {
+    const loc = input.locale.trim().toLowerCase()
+    if (loc === 'pt-br' || loc === 'pt') {
+      return 'brl'
+    }
+  }
+  if (input.acceptLanguage) {
+    const lang = input.acceptLanguage.toLowerCase()
+    if (lang.includes('pt-br')) {
+      return 'brl'
+    }
+  }
   return 'usd'
 }
 
@@ -142,8 +163,6 @@ export function findCurrencyOption(
     (option) => option.currency.toLowerCase() === currency,
   )
   if (match) return match
-  const fallback = plan.currencyOptions[0]
-  if (fallback) return fallback
   return null
 }
 
@@ -169,12 +188,229 @@ export async function fetchPlusPlansCatalog(): Promise<BillingPlansCatalogRespon
   return null
 }
 
+export interface SendVerificationCodeResponse {
+  sent: boolean
+  expiresInSeconds: number
+}
+
+export interface VerifyCodeResponse {
+  verified: boolean
+  verificationToken?: string
+  error?: string
+}
+
+export interface RecoveredLicenseItem {
+  id: string
+  licenseId: string
+  activationKey: string
+  status: string
+  maxDevices: number
+  tier?: string
+  expiresAt?: string | null
+  paidThrough?: number
+}
+
+export interface RecoverLicensesResponse {
+  recoveredCount: number
+  emailDispatched: boolean
+  licenses: RecoveredLicenseItem[]
+}
+
+export async function sendEmailVerificationCode(
+  email: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const candidates = resolveMisterTickApiCandidateUrls()
+  for (const baseUrl of candidates) {
+    try {
+      const response = await fetch(`${baseUrl}/billing/auth/send-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      })
+      if (!response.ok) {
+        let errMessage = 'REQUEST_FAILED'
+        try {
+          const body = (await response.json()) as { error?: string }
+          if (body.error) errMessage = body.error
+        } catch {}
+        return { ok: false, error: errMessage }
+      }
+      return { ok: true }
+    } catch {
+      continue
+    }
+  }
+  return { ok: false, error: 'NETWORK_ERROR' }
+}
+
+export async function verifyEmailVerificationCode(
+  email: string,
+  code: string,
+): Promise<{ ok: boolean; verificationToken?: string; error?: string }> {
+  const candidates = resolveMisterTickApiCandidateUrls()
+  for (const baseUrl of candidates) {
+    try {
+      const response = await fetch(`${baseUrl}/billing/auth/verify-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ email, code }),
+      })
+      if (!response.ok) {
+        let errMessage = 'INVALID_CODE'
+        try {
+          const body = (await response.json()) as { error?: string }
+          if (body.error) errMessage = body.error
+        } catch {}
+        return { ok: false, error: errMessage }
+      }
+      const data = (await response.json()) as VerifyCodeResponse
+      if (data.verificationToken) {
+        return { ok: true, verificationToken: data.verificationToken }
+      }
+      return { ok: false, error: 'INVALID_CODE' }
+    } catch {
+      continue
+    }
+  }
+  return { ok: false, error: 'NETWORK_ERROR' }
+}
+
+export async function recoverLicensesApi(
+  email: string,
+  verificationToken: string,
+): Promise<{ ok: boolean; data?: RecoverLicensesResponse; error?: string }> {
+  const candidates = resolveMisterTickApiCandidateUrls()
+  for (const baseUrl of candidates) {
+    try {
+      const response = await fetch(`${baseUrl}/billing/licenses/recover`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ email, verificationToken }),
+      })
+      if (!response.ok) {
+        let errMessage = 'RECOVERY_FAILED'
+        try {
+          const body = (await response.json()) as { error?: string }
+          if (body.error) errMessage = body.error
+        } catch {}
+        return { ok: false, error: errMessage }
+      }
+      const rawData = (await response.json()) as {
+        recoveredCount?: number
+        emailDispatched?: boolean
+        licenses?: Array<{
+          id?: string
+          licenseId?: string
+          activationKey: string
+          status: string
+          maxDevices?: number
+          tier?: string
+          expiresAt?: string | null
+          paidThrough?: number
+        }>
+      }
+      const rawList = Array.isArray(rawData.licenses) ? rawData.licenses : []
+      const licenses: RecoveredLicenseItem[] = rawList.map((lic) => {
+        let uniqueId = lic.licenseId
+        if (!uniqueId) uniqueId = lic.id
+        if (!uniqueId) uniqueId = lic.activationKey
+        let devices = 2
+        if (lic.maxDevices !== undefined && lic.maxDevices > 0) {
+          devices = lic.maxDevices
+        }
+        return {
+          id: uniqueId,
+          licenseId: uniqueId,
+          activationKey: lic.activationKey,
+          status: lic.status,
+          maxDevices: devices,
+          tier: lic.tier,
+          expiresAt: lic.expiresAt,
+          paidThrough: lic.paidThrough,
+        }
+      })
+      const count =
+        rawData.recoveredCount !== undefined
+          ? rawData.recoveredCount
+          : licenses.length
+      const data: RecoverLicensesResponse = {
+        recoveredCount: count,
+        emailDispatched: Boolean(rawData.emailDispatched),
+        licenses,
+      }
+      return { ok: true, data }
+    } catch {
+      continue
+    }
+  }
+  return { ok: false, error: 'NETWORK_ERROR' }
+}
+
+export interface RotateLicenseKeyResponse {
+  licenseId: string
+  newActivationKey: string
+  paidThrough: number
+  status: string
+  revokedDevicesCount: number
+}
+
+export async function rotateLicenseKeyApi(
+  email: string,
+  licenseId: string,
+  verificationToken: string,
+): Promise<{ ok: boolean; data?: RotateLicenseKeyResponse; error?: string }> {
+  const candidates = resolveMisterTickApiCandidateUrls()
+  for (const baseUrl of candidates) {
+    try {
+      const response = await fetch(`${baseUrl}/billing/licenses/rotate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ email, licenseId, verificationToken }),
+      })
+      if (!response.ok) {
+        let errMessage = 'ROTATE_FAILED'
+        try {
+          const body = (await response.json()) as { error?: string }
+          if (body.error) errMessage = body.error
+        } catch {}
+        return { ok: false, error: errMessage }
+      }
+      const data = (await response.json()) as RotateLicenseKeyResponse
+      return { ok: true, data }
+    } catch {
+      continue
+    }
+  }
+  return { ok: false, error: 'NETWORK_ERROR' }
+}
+
+export interface CreatePlusCheckoutResult {
+  ok: boolean
+  url?: string
+  sessionId?: string
+  error?: string
+}
+
 export async function createPlusCheckout(input: {
   priceId?: string
   currency: SupportedBillingCurrency
+  email: string
+  verificationToken: string
   successUrl: string
   cancelUrl: string
-}): Promise<CreateCheckoutSessionResponse | null> {
+}): Promise<CreatePlusCheckoutResult> {
   const candidates = resolveMisterTickApiCandidateUrls()
   for (const baseUrl of candidates) {
     try {
@@ -186,13 +422,28 @@ export async function createPlusCheckout(input: {
         },
         body: JSON.stringify(input),
       })
-      if (!response.ok) continue
+      if (!response.ok) {
+        let errMessage = 'CHECKOUT_CREATION_FAILED'
+        try {
+          const body = (await response.json()) as {
+            code?: string
+            error?: string
+          }
+          if (body.code) {
+            errMessage = body.code
+          }
+          if (!body.code && body.error) {
+            errMessage = body.error
+          }
+        } catch {}
+        return { ok: false, error: errMessage }
+      }
       const data: CreateCheckoutSessionResponse = await response.json()
-      if (!data.url) continue
-      return data
+      if (!data.url) return { ok: false, error: 'INVALID_CHECKOUT_SESSION' }
+      return { ok: true, url: data.url, sessionId: data.sessionId }
     } catch {
       continue
     }
   }
-  return null
+  return { ok: false, error: 'NETWORK_ERROR' }
 }

@@ -6,5 +6,5 @@ export default createMiddleware(routing)
 
 export const config = {
   // Match internationalized pathnames, skipping api, _next, docs, static assets
-  matcher: ['/((?!api|_next|_vercel|docs|.*\\..*).*)'],
+  matcher: ['/((?!api|_next|_vercel|oauth|.*\\..*).*)'],
 }

@@ -10,9 +10,10 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react'
-import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import * as React from 'react'
+
+import { Link } from '@/i18n/navigation'
 
 import { DesktopAppMockup } from './desktop-app-mockup'
 import { HeroBackgroundWaves } from './hero/hero-background-waves'
@@ -31,7 +32,7 @@ export function Hero() {
 
       <div className="relative z-10 container mx-auto px-6 text-center lg:px-8">
         {/* Eyebrow Badge */}
-        <div className="border-border/80 bg-muted/50 text-muted-foreground hover:text-foreground mb-6 inline-flex items-center gap-2 rounded-full border px-3.5 py-1 text-xs font-medium shadow-xs backdrop-blur-md transition-colors">
+        <div className="border-border/80 bg-muted/50 text-muted-foreground hover:text-foreground mb-6 inline-flex items-center gap-2 rounded-lg border px-3.5 py-1 text-xs font-medium shadow-xs backdrop-blur-md transition-colors">
           <span className="text-foreground font-semibold">Mr. Tick</span>
           <span className="opacity-40">&middot;</span>
           <span>{t('badge')}</span>
@@ -75,7 +76,7 @@ export function Hero() {
               rel="noreferrer"
             >
               <Github className="size-4" />
-              View on GitHub
+              {t('viewOnGithub')}
             </a>
           </Button>
         </div>
@@ -84,22 +85,22 @@ export function Hero() {
         <div className="text-muted-foreground/80 mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs">
           <span className="inline-flex items-center gap-1.5">
             <HardDrive className="size-3.5 opacity-70" />
-            100% Local-First (RxDB)
+            {t('100LocalFirstRxdb')}
           </span>
           <span className="hidden opacity-30 sm:inline">&middot;</span>
           <span className="inline-flex items-center gap-1.5">
             <Zap className="size-3.5 opacity-70" />
-            0ms Latency
+            {t('0msLatency')}
           </span>
           <span className="hidden opacity-30 sm:inline">&middot;</span>
           <span className="inline-flex items-center gap-1.5">
             <Sparkles className="size-3.5 opacity-70" />
-            Workflow Observability
+            {t('workflowObservability')}
           </span>
           <span className="hidden opacity-30 sm:inline">&middot;</span>
           <span className="inline-flex items-center gap-1.5">
             <ShieldCheck className="size-3.5 opacity-70" />
-            Full Data Privacy
+            {t('fullDataPrivacy')}
           </span>
         </div>
 

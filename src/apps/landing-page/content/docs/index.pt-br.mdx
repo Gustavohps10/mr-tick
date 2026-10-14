@@ -1,0 +1,69 @@
+---
+title: Visão Geral e Arquitetura
+description: Conheça a filosofia, a estrutura em camadas e os princípios de segurança do ecossistema Mr-tick.
+---
+
+# Visão Geral e Arquitetura
+
+O **Mr-tick** foi projetado com uma arquitetura **100% descentralizada, desacoplada e agnóstica**.
+
+O aplicativo principal (_Core Desktop_) não possui regras de negócio vinculadas a ferramentas específicas (como Jira, Redmine, YouTrack, Discord, Google ou Microsoft). Todo o poder de expansão, sincronização de tarefas, monitoramento de atividades e temas visuais é exposto através de extensões padronizadas via **`@mr-tick/sdk`**.
+
+---
+
+## 🏛️ Arquitetura em Camadas
+
+O ecossistema do Mr-tick é composto por camadas com responsabilidades estritas e bem delimitadas:
+
+```text
+┌────────────────────────────────────────────────────────┐
+│                   Mr-tick Core Desktop                  │
+│  (Janelas, Timers Nativos, Keytar Vault, AddonLoader)  │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+┌──────────────────────────▼─────────────────────────────┐
+│                 Motor de Aplicação & Domínio           │
+│    (@mr-tick/domain  &  @mr-tick/application)    │
+│  (Workspaces, TimeEntries, Tasks, HTTP Sync Engine)    │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+┌──────────────────────────▼─────────────────────────────┐
+│                   Mr-tick SDK Oficial                   │
+│                  (@mr-tick/sdk)                     │
+│    (IAddon, AddonContext, IAddonOAuthAPI, Vault, Events)  │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+ ┌──────▼──────┐    ┌──────▼──────┐    ┌──────▼──────┐
+ │ DataSources │    │  Watchers   │    │  Calendars  │ ...
+ └─────────────┘    └─────────────┘    └─────────────┘
+```
+
+### 1. Core Desktop (Electron / Node.js)
+
+Responsável pelo ciclo de vida do aplicativo, janelas, atalhos globais, persistência criptografada no chaveiro nativo do sistema operacional (Windows Credential Manager / macOS Keychain via Keytar) e inicialização isolada dos addons através do `AddonLoader`.
+
+### 2. Camada de Domínio & Aplicação (`@mr-tick/domain` / `@mr-tick/application`)
+
+Contém as regras de negócio puras:
+
+- **Entidades Ricas**: `Workspace`, `Task` e `TimeEntry`, garantindo integridade de dados via Zod e tratamento funcional de erros (`Either` / `Result`).
+- **Casos de Uso**: Criação de Workspaces, conexão e desconexão de DataSources, e o **Motor de Sincronização HTTP** (Pull & Push de deltas).
+
+### 3. Mr-tick SDK (`@mr-tick/sdk`)
+
+O ponto de contato para desenvolvedores. Fornece tipagens estritas de TypeScript, utilitários criptográficos (PKCE RFC 7636, geração de State), e abstrações seguras de storage, eventos em tempo real, timer e notificações.
+
+### 4. Ponte de Deep Link (`mr-tick-app://`)
+
+Uma ponte universal para fluxos web (como OAuth 2.0). A Landing Page intermediária recebe o retorno de provedores externos e despacha com segurança os parâmetros de volta ao aplicativo desktop através do protocolo `mr-tick-app://oauth/callback`.
+
+---
+
+## 🛡️ Princípios Fundamentais de Segurança
+
+1. **Zero Secrets**: Addons rodam como clientes públicos em ambiente desktop. Nenhuma chave secreta (`CLIENT_SECRET`) é embutida ou exigida no código do addon. Todo fluxo de autenticação utiliza a especificação **OAuth 2.0 com PKCE**.
+2. **Isolamento por Workspace (Multi-Tenant)**: Todas as credenciais, tokens de acesso e configurações persistidas via `context.host.vault` são isoladas pelo addon e pelo escopo explícito informado na chamada, sem depender do workspace ativo.
+3. **Imutabilidade e Prevenção de Conflitos**: O motor de sincronização utiliza _Optimistic Concurrency Control_ com `assumedMasterState`, detectando alterações concorrentes sem sobrescrever dados silenciosamente.
+4. **Comunicação Segura por Eventos**: Addons reagem a eventos do sistema operacional e do cronômetro (`onTimerStart`, `onTimerStop`, `onIdleDetected`) de forma assíncrona e não bloqueante.

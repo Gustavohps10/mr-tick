@@ -1,27 +1,27 @@
 ---
 title: Punch
-description: Integração com sistemas de controle de ponto corporativo para registro e conferência de horas de trabalho.
+description: Integrate corporate time-clock systems to record and review working hours.
 ---
 
-# Punch (Ponto Eletrônico & Jornada)
+# Punch (Time Clocks & Working Hours)
 
-> Este exemplo de categoria é conceitual e usa contratos antigos. Não copie suas APIs como referência do SDK atual; consulte [Vault e Eventos](/docs/apis/vault-and-events) e os contratos exportados por `@mr-tick/sdk`.
+> This category example is conceptual and uses old contracts. Do not copy its APIs as a reference for the current SDK; consult [Vault and Events](/docs/apis/vault-and-events) and the contracts exported by `@mr-tick/sdk`.
 
-Os addons da categoria **Punch** integram o Mr-tick a sistemas formais de **Bate-Ponto e Controle de Ponto Eletrônico** (como Pontomais, Ahgora, Factorial, Secullum e Kairos).
+**Punch** addons integrate Mr. Tick with formal **time-clock and attendance systems** such as Pontomais, Ahgora, Factorial, Secullum, and Kairos.
 
-A finalidade do Punch é permitir que o usuário bata o ponto diretamente pelo Mr-tick e realize a **conferência automática de jornada** — comparando o saldo de horas trabalhadas do dia com o total de horas alocadas em tarefas e projetos.
-
----
-
-## 🎯 Principais Recursos
-
-- **Batida de Ponto Rápida**: Botão de 1 clique no menu de contexto ou atalho de teclado para registrar Entrada, Intervalo e Saída.
-- **Auditoria de Horas (Jornada vs. Apontamentos)**: Exibe a diferença entre o tempo formal de trabalho e o tempo apontado em tarefas no DataSource, evitando inconsistências ao final do mês.
-- **Histórico e Espelho de Ponto**: Visualização do extrato diário de batidas diretamente no Mr-tick.
+Punch allows users to clock in directly from Mr. Tick and **automatically review working hours**, comparing the day's attendance balance with time allocated to tasks and projects.
 
 ---
 
-## 💻 Exemplo de Implementação de Punch
+## 🎯 Main Features
+
+- **Quick Clock In/Out**: Use a context-menu button or keyboard shortcut to record arrival, breaks, and departure.
+- **Hours Audit (Attendance vs. Time Entries)**: Show the difference between formal working hours and time logged against DataSource tasks to avoid inconsistencies at the end of the month.
+- **Attendance History**: View the daily clock-in/out record directly in Mr. Tick.
+
+---
+
+## 💻 Punch Implementation Example
 
 ### 1. `manifest.yaml`
 ```yaml

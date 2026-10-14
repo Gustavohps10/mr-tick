@@ -1,19 +1,19 @@
 ---
 title: Themes
-description: Como criar temas visuais personalizados, paletas de cores e estilos para a interface do Mr-tick.
+description: Create custom visual themes, color palettes, and styles for the Mr. Tick interface.
 ---
 
-# Themes (Temas & Customização Visual)
+# Themes (Visual Customization)
 
-Os addons da categoria **Themes** permitem personalizar completamente a estética visual do Mr-tick — definindo paletas de cores para modos Claro (Light) e Escuro (Dark), contrastes, bordas e tipografia.
+**Themes** addons customize Mr. Tick's appearance with color palettes for **Light** and **Dark** modes, contrast, borders, and typography.
 
-O Mr-tick adota o padrão de design system baseado em **Tokens CSS** (compatível com Tailwind CSS e shadcn/ui), tornando a criação de novos temas simples e declarativa.
+Mr. Tick uses a design system based on **CSS Tokens**, compatible with Tailwind CSS and shadcn/ui, so creating themes is simple and declarative.
 
 ---
 
-## 🎨 Estrutura de um Tema
+## 🎨 Theme Structure
 
-Um tema exporta a definição `AddonTheme` contendo o CSS completo (compatível com variáveis Tailwind CSS / shadcn/ui):
+A theme exports an `AddonTheme` definition containing its CSS, compatible with Tailwind CSS / shadcn/ui variables:
 
 ```typescript
 export interface AddonTheme {
@@ -26,7 +26,7 @@ export interface AddonTheme {
 
 ---
 
-## 💻 Exemplo de Implementação de Tema
+## 💻 Theme Implementation Example
 
 ### 1. `manifest.yaml`
 ```yaml
@@ -139,7 +139,7 @@ export default class CyberpunkThemeAddon implements IAddon {
 
 ---
 
-## ⚙️ Como o Mr-tick Aplica os Temas
+## ⚙️ How Mr. Tick Applies Themes
 
-1. Quando o usuário seleciona o tema nas preferências do Mr-tick, o Core injeta dinamicamente as variáveis CSS na raiz do DOM (`:root` ou classe `.dark`).
-2. Todos os componentes da interface (Time Bar, Listas de Tarefas, Modais e Menus) atualizam suas cores instantaneamente sem necessidade de recarregar a janela.
+1. When a user selects a theme in preferences, the Core dynamically injects its CSS variables into the DOM root (`:root` or the `.dark` class).
+2. All interface components (Time Bar, Task Lists, Dialogs, and Menus) update their colors immediately without reloading the window.

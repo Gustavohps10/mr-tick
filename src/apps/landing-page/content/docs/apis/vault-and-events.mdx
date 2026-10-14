@@ -1,15 +1,15 @@
 ---
-title: Vault, Eventos & Contexto
-description: Escopo explícito, consultas locais do Core e lifecycle de addons.
+title: Vault, Events & Context
+description: Explicit scopes, local Core queries, and addon lifecycle.
 ---
 
-# Vault, eventos e contexto
+# Vault, Events, and Context
 
-O addon importa os contratos de `@mr-tick/sdk`. O host fornece capacidades de produto; ele não entrega o HostBridge nem documentos RxDB.
+An addon imports contracts from `@mr-tick/sdk`. The host provides product capabilities; it does not expose HostBridge or RxDB documents.
 
-## Vault com escopo explícito
+## Vault with Explicit Scope
 
-O vault usa o chaveiro do sistema e pertence ao addon. Escolha o escopo na chamada: `{ kind: 'workspace', workspaceId }` ou `{ kind: 'addon' }`. A navegação da UI não altera o destino. `get`, `set` e `delete` retornam `Either<AppError, T>`.
+The vault uses the operating system keychain and belongs to the addon. Choose the scope on each call: `{ kind: 'workspace', workspaceId }` or `{ kind: 'addon' }`. UI navigation does not change the target. `get`, `set`, and `delete` return `Either<AppError, T>`.
 
 ```ts
 const scope: AddonVaultScope = { kind: 'workspace', workspaceId }
@@ -19,19 +19,19 @@ const channel = await context.host.vault.get(scope, 'channelId')
 if (channel.isFailure()) return channel.forwardFailure()
 ```
 
-As configurações existentes de workspace são preservadas. Dados inválidos produzem falha, sem sobrescrita automática.
+Existing workspace settings are preserved. Invalid data returns a failure without automatic overwriting.
 
-## Consultas do Core
+## Core Queries
 
-- `core.workspaces.list()` e `get(workspaceId)` retornam identidade, nome e estado.
-- `core.connections.list(workspaceId)` e `get(scope)` retornam identidade, datasource e estado, sem credenciais.
-- `core.tasks.get({ workspaceId, connectionInstanceId, taskId })` usa o ID puro da origem.
-- `core.tasks.list({ workspaceId, connectionInstanceId, limit, search? })` lê até 100 tarefas, em ordem de ID ascendente.
-- `core.metadata.get(scope)` lê atividades e demais metadados disponíveis localmente.
+- `core.workspaces.list()` and `get(workspaceId)` return identity, name, and state.
+- `core.connections.list(workspaceId)` and `get(scope)` return identity, datasource, and state, without credentials.
+- `core.tasks.get({ workspaceId, connectionInstanceId, taskId })` uses the original source ID.
+- `core.tasks.list({ workspaceId, connectionInstanceId, limit, search? })` reads up to 100 tasks in ascending ID order.
+- `core.metadata.get(scope)` reads activities and other locally available metadata.
 
-Todas retornam `Either`. A leitura não chama o provider remoto, não abre storage nem inicia sincronização. Cache indisponível retorna 503; tarefa não encontrada retorna 404. Datas são strings ISO 8601. Sucesso de uma escrita local não confirma aceitação remota.
+All queries return `Either`. Reading does not call a remote provider, open storage, or start synchronization. An unavailable cache returns 503; a missing task returns 404. Dates are ISO 8601 strings. A successful local write does not confirm remote acceptance.
 
-## Prontidão e desativação
+## Readiness and Deactivation
 
 ```ts
 activate(context: AddonContext): void {
@@ -42,11 +42,11 @@ activate(context: AddonContext): void {
 }
 ```
 
-Estados: `starting`, `ready`, `restarting`, `closed`. O listener recebe imediatamente o estado atual. `ready` não significa que o pull terminou. Na recuperação, consulte novamente o estado; para repetir uma escrita, mantenha os mesmos IDs de operação.
+States: `starting`, `ready`, `restarting`, `closed`. A listener immediately receives the current state. `ready` does not mean that pull has finished. After recovery, query the state again; when retrying a write, keep the same operation IDs.
 
-O host limpa contribuições e listeners na desativação ou falha parcial de ativação. O addon fecha sockets e clientes próprios em `deactivate`. Trocar de workspace não desativa automaticamente o addon.
+The host cleans up contributions and listeners during deactivation or partially failed activation. The addon closes its own sockets and clients in `deactivate`. Switching workspaces does not automatically deactivate an addon.
 
-## Eventos garantidos
+## Guaranteed Events
 
 ```ts
 context.host.events.on('timer:start', (data) => console.log(data.taskId))
@@ -54,12 +54,12 @@ context.host.events.on('timer:stop', (data) => console.log(data.currentSeconds))
 context.host.events.on('workspace:changed', (data) => console.log(data.currentWorkspaceId))
 ```
 
-Também existem `timer:pause`, `timer:resume`, `timer:update`. São projeções transitórias, sem replay e sem promessa de ticks por segundo. Eventos de apontamentos e idle não fazem parte do contrato garantido.
+`timer:pause`, `timer:resume`, and `timer:update` are also available. These are transient projections, without replay or a guarantee of one tick per second. Time-entry and idle events are not part of the guaranteed contract.
 
-## Timer, sugestões e notificações
+## Timer, Suggestions, and Notifications
 
-Use `timer.getActiveEntry(workspaceId)` e os métodos de timer com workspace e `LocalOperationIdentity`. `timeEntries.create` / `createSuggestion` recebem `(workspaceId, input, operation)`, duração em segundos e datas ISO. Reutilize `commandId` e `entryId` somente para repetir a mesma operação.
+Use `timer.getActiveEntry(workspaceId)` and timer methods with a workspace and `LocalOperationIdentity`. `timeEntries.create` / `createSuggestion` receive `(workspaceId, input, operation)`, duration in seconds, and ISO dates. Reuse `commandId` and `entryId` only to retry the same operation.
 
-`notifications.info`, `success`, `warning`, `error`, `loading` e `dismiss` continuam disponíveis para toasts.
+`notifications.info`, `success`, `warning`, `error`, `loading`, and `dismiss` remain available for toasts.
 
-Addons atuais executam código confiável no main. Estas capacidades não fornecem sandbox nem autorização granular.
+Current addons run trusted code in the main process. These capabilities do not provide sandboxing or granular authorization.

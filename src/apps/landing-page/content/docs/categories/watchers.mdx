@@ -1,25 +1,25 @@
 ---
 title: Observers & Watchers
-description: Como criar observadores em segundo plano, escutar eventos do sistema e emitir sugestões de apontamento com 1 clique.
+description: Build background observers, listen to system events, and emit one-click time-entry suggestions.
 ---
 
-# Observers & Watchers de Atividade
+# Activity Observers & Watchers
 
-Os **Watchers** (ou Observers) são plugins projetados para monitorar passivamente o fluxo de trabalho do usuário no computador — como presença em canais de voz, commits em repositórios Git, arquivos abertos em IDEs ou períodos de inatividade.
+**Watchers** (or Observers) are plugins that passively monitor the user's workflow, such as presence in voice channels, Git commits, files opened in IDEs, or idle periods.
 
-O objetivo de um Watcher é emitir **Sugestões Inteligentes de Apontamento** para que o usuário registre suas horas com apenas **1 clique**, sem digitação manual.
-
----
-
-## 🎧 Casos de Uso Comuns
-
-- **Monitor de Reuniões**: Detecta entrada e saída de chamadas de voz no Discord, Google Meet ou Slack e sugere o apontamento da reunião com a duração exata.
-- **Detector de Inatividade (Idle)**: Escuta o evento `onIdleDetected` do Mr-tick e sugere pausar o cronômetro ou alocar o tempo ausente.
-- **Monitor de Git / IDE**: Observa branches de desenvolvimento e sugere apontamentos vinculados aos tickets das branches trabalhadas no dia.
+A Watcher emits **Smart Time-Entry Suggestions** so users can record hours with **one click**, without typing them manually.
 
 ---
 
-## 💻 Exemplo Prático de um Watcher
+## 🎧 Common Use Cases
+
+- **Meeting Monitor**: Detect joining and leaving voice calls in Discord, Google Meet, or Slack, then suggest a time entry with the exact meeting duration.
+- **Idle Detector**: Listen to Mr. Tick's `onIdleDetected` event and suggest pausing the timer or allocating time away.
+- **Git / IDE Monitor**: Observe development branches and suggest time entries linked to the tickets worked on during the day.
+
+---
+
+## 💻 Practical Watcher Example
 
 ### 1. `manifest.yaml`
 ```yaml
@@ -98,8 +98,8 @@ export default class ReunioesWatcherAddon implements IAddon {
 
 ---
 
-## ⚡ Como a Interface Processa as Sugestões
+## ⚡ How the Interface Processes Suggestions
 
-1. O Watcher identifica o término de uma atividade contextual e dispara uma notificação ou evento.
-2. O Mr-tick exibe um **card de sugestão contextual** na tela de _Time Entries_.
-3. O usuário pode clicar em **Aceitar** (salvando o apontamento imediatamente com os dados sugeridos) ou **Descartar**.
+1. A Watcher detects the end of a contextual activity and emits a notification or event.
+2. Mr. Tick displays a **contextual suggestion card** on the _Time Entries_ screen.
+3. The user can click **Accept** to save the suggested time entry immediately or **Dismiss**.

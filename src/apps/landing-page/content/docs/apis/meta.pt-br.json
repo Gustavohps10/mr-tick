@@ -1,0 +1,8 @@
+{
+  "title": "Recursos & APIs",
+  "defaultOpen": true,
+  "pages": [
+    "oauth-pkce",
+    "vault-and-events"
+  ]
+}

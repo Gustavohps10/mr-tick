@@ -1,21 +1,21 @@
 ---
 title: Calendars
-description: Como integrar agendas externas (Google Calendar, Outlook) para sincronizar compromissos e convertê-los em tempo registrado.
+description: Integrate external calendars (Google Calendar, Outlook) to synchronize appointments and turn them into tracked time.
 ---
 
-# Calendars (Agendas & Reuniões)
+# Calendars (Schedules & Meetings)
 
-> Este exemplo de categoria é conceitual e usa contratos antigos. Não copie suas APIs como referência do SDK atual; consulte [Vault e Eventos](/docs/apis/vault-and-events) e os contratos exportados por `@mr-tick/sdk`.
+> This category example is conceptual and uses old contracts. Do not copy its APIs as a reference for the current SDK; consult [Vault and Events](/docs/apis/vault-and-events) and the contracts exported by `@mr-tick/sdk`.
 
-Os addons da categoria **Calendars** conectam o Mr-tick a provedores de agenda como **Google Calendar**, **Microsoft Outlook / 365** e calendários baseados em **iCal**.
+**Calendars** addons connect Mr. Tick to providers such as **Google Calendar**, **Microsoft Outlook / 365**, and **iCal** calendars.
 
-Essa integração permite que os compromissos diários apareçam diretamente na visualização de agenda do Mr-tick, possibilitando que o usuário transforme reuniões passadas em apontamentos de horas reais com um simples clique.
+This integration displays daily appointments in Mr. Tick's calendar view, allowing users to turn past meetings into actual time entries with one click.
 
 ---
 
-## 🎯 Estrutura de um Evento de Calendário
+## 🎯 Calendar Event Structure
 
-Para alimentar a interface do Mr-tick, o plugin de calendário normaliza os eventos externos para uma estrutura padrão:
+To populate Mr. Tick's interface, a calendar plugin normalizes external events into a standard structure:
 
 ```typescript
 export interface CalendarEventDTO {
@@ -32,7 +32,7 @@ export interface CalendarEventDTO {
 
 ---
 
-## 💻 Exemplo de Implementação de Calendário
+## 💻 Calendar Implementation Example
 
 ### 1. `manifest.yaml`
 ```yaml
@@ -150,10 +150,10 @@ export default class GoogleCalendarAddon implements IAddon {
 
 ---
 
-## 🚀 Conversão Rápida para Apontamento de Horas
+## 🚀 Quick Conversion to Time Entries
 
-Quando o usuário visualiza suas reuniões no Mr-tick:
+When a user views meetings in Mr. Tick:
 
-1. O Mr-tick destaca reuniões já encerradas.
-2. Com o botão **"Apontar Horas"**, o Mr-tick abre o formulário pré-preenchido com o título da reunião, as horas calculadas (`(endDate - startDate)`) e a atividade sugerida.
-3. Ao salvar, a entidade `TimeEntry` é criada e enviada para o [Motor de Sincronização](/docs/sync-engine).
+1. Mr. Tick highlights meetings that have already ended.
+2. The **"Log Time"** button opens a prefilled form with the meeting title, calculated duration (`(endDate - startDate)`), and suggested activity.
+3. Saving creates a `TimeEntry` entity and sends it to the [Synchronization Engine](/docs/sync-engine).
