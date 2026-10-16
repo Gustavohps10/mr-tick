@@ -1,5 +1,11 @@
 # @mr-tick/sdk
 
+## 0.9.0
+
+### Minor Changes
+
+- 83efe1e: Add workspace-scoped addon settings context, dynamic schema resolution and workspace-grouped settings UI
+
 ## 0.8.1
 
 ### Patch Changes
