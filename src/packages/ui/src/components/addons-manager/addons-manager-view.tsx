@@ -994,7 +994,13 @@ export function AddonsManagerView({
         </div>
         <div className="bg-background flex min-h-0 min-w-0 flex-1 flex-col">
           {selectedAddonId ? (
-            <AddonSettingsRenderer addonId={selectedAddonId} />
+            <AddonSettingsRenderer
+              addonId={selectedAddonId}
+              activeCapability={activeCategory?.toLowerCase()}
+              addon={
+                installedList.find((a) => a.id === selectedAddonId) || null
+              }
+            />
           ) : (
             <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
               Selecione um Addon para configurar

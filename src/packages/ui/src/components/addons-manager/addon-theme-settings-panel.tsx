@@ -113,7 +113,10 @@ export function AddonThemeSettingsPanel({
 
   return (
     <ScrollArea className="h-full w-full">
-      <div className="w-full space-y-6 px-8 py-6">
+      <div
+        data-testid="addon-theme-settings-panel"
+        className="w-full space-y-6 px-8 py-6"
+      >
         {/* Card de Visão Geral do Tema */}
         <div className="bg-card/70 border-border/70 overflow-hidden rounded-lg border p-5 shadow-xs">
           <div className="flex items-start justify-between gap-4">

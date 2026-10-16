@@ -442,7 +442,7 @@ export interface IAddonsAPI {
   ): Promise<ViewModel<void>>
 
   getSchema(
-    payload: IRequest<{ addonId: string }>,
+    payload: IRequest<{ addonId: string; scope?: AddonVaultScope }>,
   ): Promise<ViewModel<AddonSettingsSchema>>
   getConnectionSchema(
     payload: IRequest<{ addonId: string }>,
@@ -468,6 +468,8 @@ export interface IAddonsAPI {
     payload: IRequest<{
       addonId: string
       actionId: string
+      scope?: AddonVaultScope
+      workspaceId?: string
       payload?: Record<string, string | number | boolean>
     }>,
   ): Promise<ViewModel<AddonActionResponse>>

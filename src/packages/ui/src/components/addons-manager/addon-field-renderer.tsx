@@ -75,7 +75,10 @@ export function AddonFieldRenderer({
     if (!display) return null
 
     return (
-      <div className="bg-card mb-4 flex flex-col items-center gap-4 rounded-lg border p-4 py-4 shadow-sm">
+      <div
+        data-testid={`addon-info-card-${field.id}`}
+        className="bg-card mb-4 flex flex-col items-center gap-4 rounded-lg border p-4 py-4 shadow-sm"
+      >
         {display.title && (
           <h3 className="text-lg font-semibold">{display.title}</h3>
         )}
@@ -115,17 +118,29 @@ export function AddonFieldRenderer({
       <>
         <div className="flex flex-col gap-1.5 py-2">
           <Button
+            data-testid={`addon-action-btn-${field.id}`}
             variant={field.variant || 'default'}
             disabled={disabled || actionState.isLoading}
             onClick={async () => {
               if (!field.actionId) return
               setActionState({ isOpen: true, isLoading: true })
               try {
+                const effectiveScope = workspaceId
+                  ? { kind: 'workspace' as const, workspaceId }
+                  : undefined
                 const res = await bridge.addons.executeAction({
-                  body: { addonId, actionId: field.actionId },
+                  body: {
+                    addonId,
+                    actionId: field.actionId,
+                    workspaceId,
+                    scope: effectiveScope,
+                  },
                 })
                 queryClient.invalidateQueries({
                   queryKey: ['addon-schema', addonId],
+                })
+                queryClient.invalidateQueries({
+                  queryKey: ['addon-settings', addonId],
                 })
                 await queryClient.refetchQueries({
                   queryKey: ['addons', 'activeTheme'],

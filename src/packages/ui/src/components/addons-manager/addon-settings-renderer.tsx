@@ -6,8 +6,10 @@ import {
   AddonVaultScope,
 } from '@mr-tick/application'
 import type { AddonManifestViewModel } from '@mr-tick/sdk'
+import type { WorkspaceViewModel } from '@mr-tick/sdk'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Plus, SlidersHorizontal } from 'lucide-react'
+import { Check, Loader2, Plus, SlidersHorizontal } from 'lucide-react'
+import { FolderKanban } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -16,6 +18,8 @@ import {
   DataSourceInstanceFormData,
   NewDataSourceInstanceForm,
 } from '@/components/new-datasource-instance-form'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -24,17 +28,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  useDataSourceConnections,
-  useOptionalDataSourceConnections,
-} from '@/contexts/DataSourceConnectionsContext'
+import { useDataSourceConnections } from '@/contexts/DataSourceConnectionsContext'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { ConnectionCard } from '@/pages/addons/components/addon-list'
 
 import { AddonFieldRenderer } from './addon-field-renderer'
-import { AddonGenericCapabilityPanel } from './addon-generic-capability-panel'
 import { AddonThemeSettingsPanel } from './addon-theme-settings-panel'
 import { WorkspaceGroupedDataSourceManager } from './workspace-grouped-datasource-manager'
 
@@ -45,6 +46,7 @@ export interface AddonSettingsRendererProps {
   activeCapability?: string
   addon?: AddonManifestViewModel | null
   hideHeader?: boolean
+  scope?: AddonVaultScope
 }
 
 export function AddonSettingsRenderer({
@@ -52,7 +54,21 @@ export function AddonSettingsRenderer({
   activeCapability,
   addon,
   hideHeader = false,
+  scope,
 }: AddonSettingsRendererProps) {
+  if (scope) {
+    return (
+      <ScopedAddonSettingsRenderer
+        key={JSON.stringify({ addonId, scope, activeCapability })}
+        addonId={addonId}
+        activeCapability={activeCapability}
+        addon={addon}
+        scope={scope}
+        hideHeader={hideHeader}
+      />
+    )
+  }
+
   if (activeCapability === 'datasources') {
     return <WorkspaceGroupedDataSourceManager addonId={addonId} />
   }
@@ -61,36 +77,133 @@ export function AddonSettingsRenderer({
     return <AddonThemeSettingsPanel addonId={addonId} addon={addon} />
   }
 
-  if (
-    activeCapability === 'watchers' ||
-    activeCapability === 'calendars' ||
-    activeCapability === 'punch'
-  ) {
-    return (
-      <AddonGenericCapabilityPanel
-        addonId={addonId}
-        addon={addon}
-        capability={activeCapability}
-      />
-    )
-  }
-
-  const dsContext = useOptionalDataSourceConnections()
-  const workspaceId = dsContext?.workspaceId
-  const scope: AddonVaultScope =
-    workspaceId === undefined
-      ? { kind: 'addon' }
-      : { kind: 'workspace', workspaceId }
-
   return (
-    <ScopedAddonSettingsRenderer
-      key={JSON.stringify({ addonId, scope, activeCapability })}
+    <WorkspaceGroupedGenericSettingsManager
       addonId={addonId}
       activeCapability={activeCapability}
       addon={addon}
-      scope={scope}
       hideHeader={hideHeader}
     />
+  )
+}
+
+function WorkspaceGroupedGenericSettingsManager({
+  addonId,
+  activeCapability,
+  addon,
+  hideHeader,
+}: {
+  addonId: string
+  activeCapability?: string
+  addon?: AddonManifestViewModel | null
+  hideHeader?: boolean
+}) {
+  const bridge = useHostBridge()
+  const { data: workspaces = [], isLoading: isLoadingWorkspaces } = useQuery<
+    WorkspaceViewModel[]
+  >({
+    queryKey: ['workspaces'],
+    queryFn: async () => {
+      const res = await bridge.workspaces.listAll()
+      if (!res.isSuccess) throw new Error(res.error)
+      return res.data ?? []
+    },
+  })
+
+  if (isLoadingWorkspaces) {
+    return (
+      <div className="space-y-4 p-6" aria-label="Carregando workspaces">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-28 w-full rounded-lg" />
+        <Skeleton className="h-28 w-full rounded-lg" />
+      </div>
+    )
+  }
+
+  if (workspaces.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+        <FolderKanban className="text-muted-foreground/40 mb-3 size-10" />
+        <h3 className="text-foreground text-sm font-semibold">
+          Nenhum workspace encontrado
+        </h3>
+        <p className="text-muted-foreground mt-1 max-w-sm text-xs">
+          As configurações e observadores desta extensão pertencem aos
+          Workspaces. Crie ou abra um workspace para configurar esta extensão.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <ScrollArea className="h-full w-full">
+        <div className="w-full space-y-6 px-8 py-6">
+          <div className="flex items-center justify-between border-b pb-3">
+            <div>
+              <h3 className="text-foreground text-sm font-semibold">
+                Workspaces & Configurações
+              </h3>
+              <p className="text-muted-foreground mt-0.5 text-xs">
+                Contas conectadas e observadores configurados individualmente
+                por Workspace.
+              </p>
+            </div>
+            <Badge variant="outline" className="font-mono text-xs">
+              {workspaces.length}{' '}
+              {workspaces.length === 1 ? 'Workspace' : 'Workspaces'}
+            </Badge>
+          </div>
+
+          <div className="space-y-6">
+            {workspaces.map((ws) => (
+              <div
+                key={ws.id}
+                data-testid={`workspace-addon-group-${ws.id}`}
+                className="bg-card/70 border-border/70 overflow-hidden rounded-lg border shadow-xs"
+              >
+                {/* Cabeçalho do Workspace */}
+                <div className="bg-muted/30 border-border/60 flex items-center justify-between border-b px-4 py-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Avatar className="border-border/40 size-8 shrink-0 rounded-lg border">
+                      <AvatarImage
+                        src={ws.avatarUrl}
+                        alt={ws.name}
+                        className="size-full object-cover"
+                      />
+                      <AvatarFallback className="bg-primary/10 text-primary rounded-lg text-xs font-semibold">
+                        {ws.name.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <h4 className="text-foreground truncate text-xs font-semibold">
+                        {ws.name}
+                      </h4>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Conteúdo isolado do Workspace */}
+                <div className="p-4">
+                  <ScopedAddonSettingsRenderer
+                    key={JSON.stringify({
+                      addonId,
+                      workspaceId: ws.id,
+                      activeCapability,
+                    })}
+                    addonId={addonId}
+                    activeCapability={activeCapability}
+                    addon={addon}
+                    scope={{ kind: 'workspace', workspaceId: ws.id }}
+                    hideHeader={true}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </ScrollArea>
+    </div>
   )
 }
 
@@ -112,10 +225,10 @@ function ScopedAddonSettingsRenderer({
   const workspaceId = scope.kind === 'workspace' ? scope.workspaceId : undefined
 
   const { data: schema, isLoading: isLoadingSchema } = useQuery({
-    queryKey: ['addon-schema', addonId],
+    queryKey: ['addon-schema', addonId, scope],
     queryFn: async () => {
       const res = await bridge.addons.getSchema({
-        body: { addonId },
+        body: { addonId, scope },
       })
       if (!res.isSuccess) throw new Error(res.error)
       return res.data
@@ -217,20 +330,53 @@ function ScopedAddonSettingsRenderer({
     )
   }
 
-  if (!schema || (Array.isArray(schema) && schema.length === 0)) {
+  const allTabs = settingsTabs(schema || [])
+
+  const matchingTab = activeCapability
+    ? allTabs.find((t) => t.id === activeCapability)
+    : undefined
+
+  const tabs: AddonSettingsTab[] = matchingTab ? [matchingTab] : allTabs
+
+  if (tabs.length === 0) {
     if (!activeCapability && isDataSource) {
       return <WorkspaceGroupedDataSourceManager addonId={addonId} />
     }
 
     return (
-      <div className="text-muted-foreground flex flex-1 items-center justify-center p-8 text-center text-sm">
-        Este addon não possui parâmetros adicionais para esta capacidade.
+      <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center p-8 text-center text-sm">
+        <Check className="mb-2 size-8 text-emerald-500/80" />
+        <span className="text-foreground font-semibold">Módulo Ativo</span>
+        <p className="mt-1 max-w-sm text-xs">
+          Esta extensão está ativa e operando em segundo plano.
+        </p>
       </div>
     )
   }
 
-  const tabs = settingsTabs(schema)
   const defaultTab = initialSettingsTab(tabs)
+
+  const hasEditableFields = tabs.some((tab) => {
+    if (tab.groups && tab.groups.length > 0) {
+      return tab.groups.some((group) =>
+        group.fields.some(
+          (field) =>
+            field.type !== 'button' &&
+            field.type !== 'info-card' &&
+            field.type !== 'datasource-instances',
+        ),
+      )
+    }
+    if (tab.fields && tab.fields.length > 0) {
+      return tab.fields.some(
+        (field) =>
+          field.type !== 'button' &&
+          field.type !== 'info-card' &&
+          field.type !== 'datasource-instances',
+      )
+    }
+    return false
+  })
 
   return (
     <div className="bg-card/50 flex h-full flex-1 flex-col">
@@ -306,21 +452,23 @@ function ScopedAddonSettingsRenderer({
         </Tabs>
       </div>
 
-      <div className="bg-muted/20 flex justify-end gap-2 border-t p-4">
-        <Button
-          variant="outline"
-          onClick={handleReset}
-          disabled={saveMutation.isPending}
-        >
-          Cancelar
-        </Button>
-        <Button onClick={handleSave} disabled={saveMutation.isPending}>
-          {saveMutation.isPending && (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          )}
-          Salvar
-        </Button>
-      </div>
+      {hasEditableFields && (
+        <div className="bg-muted/20 flex justify-end gap-2 border-t px-8 py-4">
+          <Button
+            variant="outline"
+            onClick={handleReset}
+            disabled={saveMutation.isPending}
+          >
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={saveMutation.isPending}>
+            {saveMutation.isPending && (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            )}
+            Salvar
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

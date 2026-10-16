@@ -1,11 +1,20 @@
+import { AddonVaultScope } from '../../host/vault/IAddonVaultAPI'
 import { AddonSettingsSchema } from './AddonSettingsSchema'
+
+export interface AddonSettingsContext {
+  scope?: AddonVaultScope
+  workspaceId?: string
+}
 
 export type AddonSettingsSchemaProvider =
   | AddonSettingsSchema
-  | (() => Promise<AddonSettingsSchema> | AddonSettingsSchema)
+  | ((
+      context?: AddonSettingsContext,
+    ) => Promise<AddonSettingsSchema> | AddonSettingsSchema)
 
 export interface IAddonSettingsAPI {
   register(schema: AddonSettingsSchemaProvider): void
-  getSchema():
-    Promise<AddonSettingsSchema | undefined> | AddonSettingsSchema | undefined
+  getSchema(
+    context?: AddonSettingsContext,
+  ): Promise<AddonSettingsSchema | undefined> | AddonSettingsSchema | undefined
 }

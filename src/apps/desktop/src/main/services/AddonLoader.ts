@@ -544,12 +544,11 @@ export class AddonLoader implements IAddonReloader {
         this.addonSettingsSchemas.set(addonId, schema)
         lifetime.track(() => this.addonSettingsSchemas.delete(addonId))
       },
-      getSchema: () => {
+      getSchema: (context) => {
         const item = this.addonSettingsSchemas.get(addonId)
-        if (typeof item === 'function') {
-          return item()
-        }
-        return item
+        if (!item) return undefined
+        if (Array.isArray(item)) return item
+        return item(context)
       },
     }
 
@@ -876,20 +875,37 @@ export class AddonLoader implements IAddonReloader {
     }
   }
 
+  public getActiveWorkspaceId(): string | null {
+    return this.activeWorkspaceId
+  }
+
   public async getSettingsSchema(
     addonId: string,
+    scope?: AddonVaultScope,
   ): Promise<AddonSettingsSchema> {
     const item = this.activeAddons.get(addonId)
     if (!item?.instance) return []
 
     let schema: AddonSettingsSchema = []
 
-    const provider = this.addonSettingsSchemas.get(addonId)
-    if (isFunction(provider)) {
-      schema = await provider()
+    let resolvedScope = scope
+    if (!resolvedScope && this.activeWorkspaceId) {
+      resolvedScope = { kind: 'workspace', workspaceId: this.activeWorkspaceId }
     }
-    if (provider && !isFunction(provider)) {
+    const resolvedWorkspaceId =
+      resolvedScope?.kind === 'workspace'
+        ? resolvedScope.workspaceId
+        : this.activeWorkspaceId || undefined
+
+    const provider = this.addonSettingsSchemas.get(addonId)
+    if (Array.isArray(provider)) {
       schema = provider
+    }
+    if (provider && !Array.isArray(provider)) {
+      schema = await provider({
+        scope: resolvedScope,
+        workspaceId: resolvedWorkspaceId,
+      })
     }
 
     const dataSources = this.dataSourceRegistry.getItems()
@@ -945,6 +961,8 @@ export class AddonLoader implements IAddonReloader {
     addonId: string,
     actionId: string,
     payload?: Record<string, string | number | boolean>,
+    scope?: AddonVaultScope,
+    workspaceId?: string,
   ): Promise<AddonActionResponse> {
     const item = this.activeAddons.get(addonId)
     if (!item) {
@@ -955,7 +973,16 @@ export class AddonLoader implements IAddonReloader {
     if (this.commandRegistry.has(targetCommandId)) {
       let commandPayload: Record<string, string | number | boolean> = {}
       if (payload) {
-        commandPayload = payload
+        commandPayload = { ...payload }
+      }
+      const effectiveWorkspaceId =
+        workspaceId ||
+        (scope?.kind === 'workspace' ? scope.workspaceId : undefined) ||
+        this.activeWorkspaceId ||
+        undefined
+
+      if (effectiveWorkspaceId && !commandPayload.workspaceId) {
+        commandPayload.workspaceId = effectiveWorkspaceId
       }
       const result = await this.commandRegistry.execute(
         targetCommandId,

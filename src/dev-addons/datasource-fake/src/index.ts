@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto'
 
 import {
   type AddonContext,
+  type AddonSettingsContext,
   type AddonSettingsGroup,
+  type CommandArgument,
   type CoreRuntimeState,
   type IAddon,
   type IDataSource,
@@ -101,6 +103,129 @@ export default class FakeDataSourceAddon implements IAddon {
       description: 'Tema de teste Matrix Neon com acentos verdes.',
       css: ':root { --primary: oklch(0.7 0.25 140); } .dark { --primary: oklch(0.7 0.25 140); }',
     })
+
+    const connectedWatchersByWorkspace = new Set<string>()
+
+    const resolveWorkspaceId = (arg?: CommandArgument): string => {
+      if (arg && typeof arg === 'object' && !Array.isArray(arg)) {
+        const candidate = arg.workspaceId
+        if (typeof candidate === 'string' && candidate) return candidate
+      }
+      return 'global'
+    }
+
+    context.contributions.settings.register(
+      (settingsContext?: AddonSettingsContext) => {
+        const targetWorkspaceId = settingsContext?.workspaceId ?? 'global'
+        const isConnected = connectedWatchersByWorkspace.has(targetWorkspaceId)
+
+        if (isConnected) {
+          return [
+            {
+              id: 'watchers',
+              label: 'Observador Fake',
+              description: 'Monitoramento simulado de eventos em tempo real.',
+              groups: [
+                {
+                  id: 'auth_group',
+                  label: 'Conta Conectada',
+                  description: `O observador simulado está ativo (${targetWorkspaceId}).`,
+                  fields: [
+                    {
+                      id: 'connected_card',
+                      type: 'info-card',
+                      label: '',
+                      display: {
+                        title: 'Observador Conectado com Sucesso!',
+                        message: `Sessão ativa e escutando eventos de teste.`,
+                        data: {
+                          Status: 'Ativo',
+                          Canal: '#test-channel',
+                          Workspace: targetWorkspaceId,
+                          Modo: 'Simulação',
+                        },
+                      },
+                    },
+                    {
+                      id: 'disconnect_btn',
+                      type: 'button',
+                      label: 'Desconectar Observador',
+                      variant: 'destructive',
+                      actionId: 'fake-watcher:disconnect',
+                    },
+                  ],
+                },
+              ],
+            },
+          ]
+        }
+
+        return [
+          {
+            id: 'watchers',
+            label: 'Observador Fake',
+            description: 'Monitoramento simulado de eventos em tempo real.',
+            groups: [
+              {
+                id: 'auth_group',
+                label: 'Autenticação Simulada',
+                description: 'Conecte para iniciar a escuta de eventos.',
+                fields: [
+                  {
+                    id: 'connect_btn',
+                    type: 'button',
+                    label: 'Conectar Observador Fake',
+                    actionId: 'fake-watcher:connect',
+                  },
+                ],
+              },
+            ],
+          },
+        ]
+      },
+    )
+
+    const handleConnect = async (payload?: CommandArgument) => {
+      const targetWs = resolveWorkspaceId(payload)
+      connectedWatchersByWorkspace.add(targetWs)
+      return {
+        isSuccess: true,
+        display: {
+          title: 'Conectado!',
+          message: `Observador fake conectado com sucesso no workspace ${targetWs}.`,
+        },
+      }
+    }
+
+    const handleDisconnect = async (payload?: CommandArgument) => {
+      const targetWs = resolveWorkspaceId(payload)
+      connectedWatchersByWorkspace.delete(targetWs)
+      return {
+        isSuccess: true,
+        display: {
+          title: 'Desconectado!',
+          message: `Observador fake desconectado no workspace ${targetWs}.`,
+        },
+      }
+    }
+
+    context.contributions.commands.register(
+      'mr-tick-datasource-fake:fake-watcher:connect',
+      handleConnect,
+    )
+    context.contributions.commands.register(
+      'fake-watcher:connect',
+      handleConnect,
+    )
+
+    context.contributions.commands.register(
+      'mr-tick-datasource-fake:fake-watcher:disconnect',
+      handleDisconnect,
+    )
+    context.contributions.commands.register(
+      'fake-watcher:disconnect',
+      handleDisconnect,
+    )
 
     // --- REGISTRO DO MENU DE TESTES / CAOS NA TIMERBAR ---
     context.contributions.menus.timerbar.register({

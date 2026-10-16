@@ -160,7 +160,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
 
   public async getSchema(
     event: IpcMainInvokeEvent,
-    { body }: IRequest<{ addonId: string }>,
+    { body }: IRequest<{ addonId: string; scope?: AddonVaultScope }>,
   ): Promise<ViewModel<AddonSettingsSchema>> {
     if (!event || !this.addonLoader) {
       return { isSuccess: true, statusCode: 200, data: [] }
@@ -178,7 +178,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         }
       }
 
-      const schema = await this.addonLoader.getSettingsSchema(body.addonId)
+      const schema = await this.addonLoader.getSettingsSchema(
+        body.addonId,
+        body?.scope,
+      )
       return { isSuccess: true, statusCode: 200, data: schema }
     } catch (e) {
       let error = 'FAILED_TO_GET_SCHEMA'
@@ -354,6 +357,8 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     }: IRequest<{
       addonId: string
       actionId: string
+      scope?: AddonVaultScope
+      workspaceId?: string
       payload?: Record<string, string | number | boolean>
     }>,
   ): Promise<ViewModel<AddonActionResponse>> {
@@ -377,6 +382,8 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         body.addonId,
         body.actionId,
         body.payload,
+        body.scope,
+        body.workspaceId,
       )
       return { isSuccess: true, statusCode: 200, data }
     } catch (e) {
