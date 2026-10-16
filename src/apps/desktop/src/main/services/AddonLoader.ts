@@ -53,7 +53,7 @@ import {
   isString,
 } from '@mr-tick/shared/helpers'
 import { ISystemEvents } from '@mr-tick/shared/transport'
-import { BrowserWindow, shell } from 'electron'
+import { BrowserWindow, Notification, shell } from 'electron'
 
 import { getSettings, saveSettings } from '@/main/settings'
 
@@ -312,6 +312,24 @@ export class AddonLoader implements IAddonReloader {
       `🔔 [AddonLoader] Broadcasting toast [${type}]: "${message}" (${displayTitle})`,
     )
     this.toastListeners.forEach((listener) => listener(toastData))
+
+    try {
+      if (
+        typeof Notification !== 'undefined' &&
+        Notification.isSupported &&
+        Notification.isSupported()
+      ) {
+        new Notification({
+          title: title || 'Mr. Tick',
+          body: message,
+        }).show()
+      }
+    } catch (notifErr) {
+      console.warn(
+        '[AddonLoader] Falha ao exibir notificação nativa:',
+        notifErr,
+      )
+    }
 
     try {
       const windows = BrowserWindow.getAllWindows()
