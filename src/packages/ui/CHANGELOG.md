@@ -1,5 +1,22 @@
 ﻿# @mr-tick/ui
 
+## 1.9.0
+
+### Minor Changes
+
+- e4c7f21: Modal de configurações renovado no estilo Obsidian, seletor de temas visuais com swatches de cores e unificação de addons por aplicação
+- 83efe1e: Add workspace-scoped addon settings context, dynamic schema resolution and workspace-grouped settings UI
+
+### Patch Changes
+
+- 9de4c25: Adiciona aba dedicada de Licença nas Configurações Globais, remove cards redundantes de páginas de addons e preserva o formato exato da chave de ativação para validação criptográfica.
+- 0638cbb: Adiciona links explícitos de autoatendimento para recuperação de chave, contratação e rotação de licença comprometida na aba de licenciamento.
+- Updated dependencies [9de4c25]
+- Updated dependencies [e4c7f21]
+- Updated dependencies [83efe1e]
+  - @mr-tick/application@1.7.0
+  - @mr-tick/sdk@0.9.0
+
 ## 1.8.1
 
 ### Patch Changes
