@@ -51,60 +51,55 @@ export function AddonThemeBridge() {
         : 'Nenhum (Padrão)',
     )
 
-    if (activeTheme?.css) {
-      if (!styleEl) {
-        styleEl = document.createElement('style')
-        styleEl.id = STYLE_ID
-        styleEl.setAttribute('type', 'text/css')
-        document.head.appendChild(styleEl)
-        console.log(
-          '🎨 [AddonThemeBridge] Tag <style id="mr-tick-addon-active-theme"> inserida no <head>.',
-        )
-      }
-
-      // Extrai apenas as variáveis :root e .dark do CSS bruto, ignorando @theme e @apply
-      // Isso é necessário porque o Tailwind v4 no lado do cliente (Vite) já injeta o necessário,
-      // nós só precisamos substituir os valores das variáveis CSS.
-      let rootVars = ''
-      let darkVars = ''
-
-      const rootMatch = activeTheme.css.match(/:root\s*{([^}]*)}/)
-      if (rootMatch) {
-        rootVars = rootMatch[1].trim()
-      }
-
-      const darkMatch = activeTheme.css.match(/\.dark\s*{([^}]*)}/)
-      if (darkMatch) {
-        darkVars = darkMatch[1].trim()
-      }
-
-      // Reconstrói um CSS válido e de alta especificidade (sem at-rules inválidas)
-      let cleanCss = ''
-      if (rootVars || darkVars) {
-        cleanCss = `
-          :root:root {
-            ${rootVars}
-          }
-          .dark:root {
-            ${darkVars}
-          }
-        `
-      } else {
-        cleanCss = activeTheme.css
-      }
-
-      styleEl.textContent = cleanCss
-      console.log(
-        `🎨 [AddonThemeBridge] CSS tratado do Addon (${activeTheme.name}) aplicado no DOM:\n${cleanCss}`,
-      )
-    } else {
+    if (!activeTheme?.css) {
       if (styleEl) {
         styleEl.remove()
         console.log(
           '🎨 [AddonThemeBridge] Tag de estilo removida. Interface retornou ao tema padrão nativo.',
         )
       }
+      return
     }
+
+    if (!styleEl) {
+      styleEl = document.createElement('style')
+      styleEl.id = STYLE_ID
+      styleEl.setAttribute('type', 'text/css')
+      document.head.appendChild(styleEl)
+      console.log(
+        '🎨 [AddonThemeBridge] Tag <style id="mr-tick-addon-active-theme"> inserida no <head>.',
+      )
+    }
+
+    // Extrai apenas as variáveis :root e .dark do CSS bruto, ignorando @theme e @apply
+    // Isso é necessário porque o Tailwind v4 no lado do cliente (Vite) já injeta o necessário,
+    // nós só precisamos substituir os valores das variáveis CSS.
+    let rootVars = ''
+    let darkVars = ''
+
+    const rootMatch = activeTheme.css.match(/:root\s*{([^}]*)}/)
+    if (rootMatch) rootVars = rootMatch[1].trim()
+
+    const darkMatch = activeTheme.css.match(/\.dark\s*{([^}]*)}/)
+    if (darkMatch) darkVars = darkMatch[1].trim()
+
+    // Reconstrói um CSS válido e com seletores adequados para light e dark mode
+    let cleanCss = activeTheme.css
+    if (rootVars || darkVars) {
+      cleanCss = `
+        :root {
+          ${rootVars}
+        }
+        :root.dark, .dark {
+          ${darkVars}
+        }
+      `
+    }
+
+    styleEl.textContent = cleanCss
+    console.log(
+      `🎨 [AddonThemeBridge] CSS tratado do Addon (${activeTheme.name}) aplicado no DOM:\n${cleanCss}`,
+    )
   }, [activeTheme])
 
   return null
