@@ -1,5 +1,6 @@
 'use client'
 
+import { useQueryClient } from '@tanstack/react-query'
 import { ExpandedState } from '@tanstack/react-table'
 import { format, isSameDay, parseISO } from 'date-fns'
 import { useCallback, useMemo, useState } from 'react'
@@ -10,6 +11,7 @@ import { useHostBridge } from '@/hooks'
 import { useFieldMappings } from '@/hooks/use-field-mappings'
 import { cn } from '@/lib/utils'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
+import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { requestEntryPersistence } from '@/local-runtime/persistence-client'
 import { TimeEntriesColumnsProvider } from '@/pages/time-entries/components/time-entries-columns-context'
 import { TimeEntriesDayCard } from '@/pages/time-entries/components/time-entries-day-card'
@@ -33,6 +35,7 @@ export interface TimeEntriesProps {
 
 export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
   const bridge = useHostBridge()
+  const queryClient = useQueryClient()
   const { mappings } = useFieldMappings()
   const {
     db,
@@ -135,6 +138,7 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
     async (suggestions: SuggestionRow[]) => {
       if (!db || suggestions.length === 0) return
       try {
+        const updatedEntries: SyncTimeEntryRxDBDTO[] = []
         for (const sug of suggestions) {
           const doc = await db.timeEntries.findOne(sug.id).exec()
           if (doc) {
@@ -147,7 +151,22 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
               toast.error(accepted.failure.messageKey)
               return
             }
+            if (accepted.success) updatedEntries.push(accepted.success)
           }
+        }
+        if (updatedEntries.length > 0) {
+          const updatedMap = new Map(updatedEntries.map((e) => [e.id, e]))
+          queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
+            { queryKey: ['time-entries-range'] },
+            (previous) => {
+              if (!previous) return updatedEntries
+              return previous.map((item) => {
+                const replacement = updatedMap.get(item.id)
+                if (replacement) return replacement
+                return item
+              })
+            },
+          )
         }
         toast.success(
           `${suggestions.length} sugestões confirmadas com sucesso!`,
@@ -157,7 +176,7 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
         toast.error('Erro ao aceitar sugestões')
       }
     },
-    [db, bridge],
+    [db, bridge, queryClient],
   )
 
   const handleDismissAllSuggestions = useCallback(
@@ -177,13 +196,23 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
             }
           }
         }
+        if (suggestions.length > 0) {
+          const dismissedIds = new Set(suggestions.map((s) => s.id))
+          queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
+            { queryKey: ['time-entries-range'] },
+            (previous) => {
+              if (!previous) return []
+              return previous.filter((item) => !dismissedIds.has(item.id))
+            },
+          )
+        }
         toast.info(`${suggestions.length} sugestões descartadas`)
       } catch (err) {
         console.error('Erro ao descartar todas sugestoes:', err)
         toast.error('Erro ao descartar sugestões')
       }
     },
-    [db, bridge],
+    [db, bridge, queryClient],
   )
 
   const handlePauseTimer = useCallback(

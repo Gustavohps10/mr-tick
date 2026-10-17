@@ -1,6 +1,7 @@
 import { CheckCheck, Sparkles, X } from 'lucide-react'
 import { useMemo } from 'react'
 
+import { discordLogo } from '@/assets'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
@@ -9,6 +10,16 @@ import {
 } from '@/components/ui/popover'
 import { AddonSourceInfo } from '@/local-db/schemas/time-entries-sync-schema'
 import { SuggestionRow } from '@/pages/time-entries/lib/time-entries-utils'
+
+function getSourceIcon(source: AddonSourceInfo): string | null {
+  if (source.imageUrl) return source.imageUrl
+  const lowerId = (source.pluginId || '').toLowerCase()
+  const lowerName = (source.name || '').toLowerCase()
+  if (lowerId.includes('discord') || lowerName.includes('discord')) {
+    return discordLogo
+  }
+  return null
+}
 
 interface TimeEntrySuggestionBannerProps {
   count: number
@@ -46,7 +57,10 @@ export function TimeEntrySuggestionBanner({
     uniqueSources.length > 3 ? uniqueSources.slice(2) : []
 
   return (
-    <div className="bg-primary/5 border-primary/20 text-foreground flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-2.5 shadow-xs">
+    <div
+      data-testid="time-entry-suggestion-banner"
+      className="bg-primary/5 border-primary/20 text-foreground flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-2.5 shadow-xs"
+    >
       <div className="flex flex-wrap items-center gap-3">
         <div className="bg-primary/10 text-primary flex h-7 w-7 items-center justify-center rounded-full">
           <Sparkles className="h-4 w-4" />
@@ -63,14 +77,15 @@ export function TimeEntrySuggestionBanner({
             {visibleSources.map((source) => {
               const displayName = source.name || source.pluginId
               const key = source.pluginId || displayName
+              const iconUrl = getSourceIcon(source)
               return (
                 <div
                   key={key}
                   className="border-border/70 bg-background/80 text-foreground inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs"
                 >
-                  {source.imageUrl ? (
+                  {iconUrl ? (
                     <img
-                      src={source.imageUrl}
+                      src={iconUrl}
                       alt={displayName}
                       className="h-3.5 w-3.5 rounded-sm object-cover"
                     />
@@ -101,14 +116,15 @@ export function TimeEntrySuggestionBanner({
                     {uniqueSources.map((source) => {
                       const displayName = source.name || source.pluginId
                       const key = source.pluginId || displayName
+                      const iconUrl = getSourceIcon(source)
                       return (
                         <div
                           key={key}
                           className="hover:bg-accent flex items-center gap-2 rounded-md px-2 py-1 text-xs"
                         >
-                          {source.imageUrl ? (
+                          {iconUrl ? (
                             <img
-                              src={source.imageUrl}
+                              src={iconUrl}
                               alt={displayName}
                               className="h-4 w-4 rounded-sm object-cover"
                             />
@@ -134,6 +150,7 @@ export function TimeEntrySuggestionBanner({
           <Button
             size="sm"
             variant="default"
+            data-testid="suggestion-accept-all-button"
             className="h-7 gap-1.5 px-2.5 text-xs"
             onClick={onAcceptAll}
           >
@@ -145,6 +162,7 @@ export function TimeEntrySuggestionBanner({
           <Button
             size="sm"
             variant="ghost"
+            data-testid="suggestion-dismiss-all-button"
             className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive h-7 gap-1.5 px-2 text-xs"
             onClick={onDismissAll}
           >

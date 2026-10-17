@@ -129,7 +129,10 @@ export const test = baseTest.extend<ElectronTestFixtures>({
       MR_TICK_TEST_USER_DATA_DIR: userDataPath,
     }
     delete appEnv.MR_TICK_OPEN_WIDGET_IN_TEST
-    if (testInfo.file.includes('timerbar-'))
+    if (
+      testInfo.file.includes('timerbar-') ||
+      testInfo.file.includes('suggestions')
+    )
       appEnv.MR_TICK_OPEN_WIDGET_IN_TEST = 'true'
 
     const app = await electronLauncher.launch({

@@ -105,6 +105,17 @@ export default class FakeDataSourceAddon implements IAddon {
     })
 
     const connectedWatchersByWorkspace = new Set<string>()
+    let currentActiveWorkspaceId =
+      process.env.MR_TICK_RUNTIME_PROBE_WORKSPACE || ''
+
+    context.host.events.on<{ currentWorkspaceId: string }>(
+      'workspace:changed',
+      (data) => {
+        if (data?.currentWorkspaceId) {
+          currentActiveWorkspaceId = data.currentWorkspaceId
+        }
+      },
+    )
 
     const resolveWorkspaceId = (arg?: CommandArgument): string => {
       if (arg && typeof arg === 'object' && !Array.isArray(arg)) {
@@ -236,6 +247,12 @@ export default class FakeDataSourceAddon implements IAddon {
       tooltip: 'Simulador de Cenários Remotos (Fake DB)',
       items: [
         {
+          id: 'fake-db:suggest-today',
+          label: 'Lançar sugestão hoje',
+          icon: 'Sparkles',
+          description: 'Gera uma sugestão de apontamento hoje via Core SDK',
+        },
+        {
           id: 'fake-db:delete-today',
           label: 'Excluir hoje',
           icon: 'Trash2',
@@ -312,12 +329,33 @@ export default class FakeDataSourceAddon implements IAddon {
       )
       context.contributions.commands.register(
         'fake-db:runtime-core-suggest',
-        async () => {
-          const workspaceId = process.env.MR_TICK_RUNTIME_PROBE_WORKSPACE
-          const connectionInstanceId =
-            process.env.MR_TICK_RUNTIME_PROBE_CONNECTION
+        async (rawArg?: CommandArgument) => {
+          const parsed = z
+            .object({
+              workspaceId: z.string().optional(),
+              connectionInstanceId: z.string().optional(),
+              taskId: z.string().optional(),
+              activityId: z.string().optional(),
+              startDate: z.string().optional(),
+              endDate: z.string().optional(),
+              comments: z.string().optional(),
+              timeSpentSeconds: z.number().optional(),
+              operationId: z.string().optional(),
+            })
+            .safeParse(rawArg)
+          const arg = parsed.success ? parsed.data : {}
+
+          let workspaceId = arg.workspaceId
+          if (!workspaceId) {
+            workspaceId = process.env.MR_TICK_RUNTIME_PROBE_WORKSPACE
+          }
+          let connectionInstanceId = arg.connectionInstanceId
+          if (!connectionInstanceId) {
+            connectionInstanceId = process.env.MR_TICK_RUNTIME_PROBE_CONNECTION
+          }
           if (workspaceId === undefined || connectionInstanceId === undefined)
             return { ok: false, error: 'PROBE_SCOPE_REQUIRED' }
+
           const scope = { workspaceId, connectionInstanceId }
           const workspace = await context.core.workspaces.get(workspaceId)
           if (workspace.isFailure())
@@ -325,34 +363,56 @@ export default class FakeDataSourceAddon implements IAddon {
           const connection = await context.core.connections.get(scope)
           if (connection.isFailure())
             return { ok: false, error: connection.failure.messageKey }
+
+          const targetTaskId = arg.taskId || CORE_SDK_PROBE_TASK_ID
           const task = await context.core.tasks.get({
             ...scope,
-            taskId: CORE_SDK_PROBE_TASK_ID,
+            taskId: targetTaskId,
           })
           if (task.isFailure())
             return { ok: false, error: task.failure.messageKey }
+
           const metadata = await context.core.metadata.get(scope)
           if (metadata.isFailure())
             return { ok: false, error: metadata.failure.messageKey }
+
+          const targetActivityId = arg.activityId || 'act-coding'
           const activity = metadata.success.values.activities.find(
-            (item) => item.id === 'act-coding',
+            (item) => item.id === targetActivityId,
           )
           if (activity === undefined)
             return { ok: false, error: 'PROBE_ACTIVITY_UNAVAILABLE' }
+
+          const startDate = arg.startDate || '2026-10-08T10:00:00.000Z'
+          const timeSpentSeconds = arg.timeSpentSeconds || 900
+          const endDate =
+            arg.endDate ||
+            (arg.startDate
+              ? new Date(
+                  new Date(startDate).getTime() + timeSpentSeconds * 1000,
+                ).toISOString()
+              : '2026-10-08T10:15:00.000Z')
+          const comments = arg.comments || 'SDK core suggestion proof'
+          const op = arg.operationId
+            ? { commandId: arg.operationId, entryId: arg.operationId }
+            : this.runtimeSuggestionOperation
+
           const result = await context.core.timeEntries.createSuggestion(
             workspaceId,
             {
               taskId: task.success.taskId,
               connectionInstanceId,
               dataSourceId: connection.success.dataSourceId,
+              userId: String(FAKE_MEMBER.id),
+              userName: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
               activityId: activity.id,
               activityName: activity.name,
-              timeSpentSeconds: 900,
-              startDate: '2026-10-08T10:00:00.000Z',
-              endDate: '2026-10-08T10:15:00.000Z',
-              comments: 'SDK core suggestion proof',
+              timeSpentSeconds,
+              startDate,
+              endDate,
+              comments,
             },
-            this.runtimeSuggestionOperation,
+            op,
           )
           if (result.isFailure())
             return { ok: false, error: result.failure.messageKey }
@@ -866,6 +926,137 @@ export default class FakeDataSourceAddon implements IAddon {
         )
         return { success: true }
       },
+    )
+
+    const handleSuggestToday = async (rawArg?: CommandArgument) => {
+      let targetWs = resolveWorkspaceId(rawArg)
+      if (targetWs === 'global' || !targetWs) {
+        targetWs =
+          currentActiveWorkspaceId ||
+          process.env.MR_TICK_RUNTIME_PROBE_WORKSPACE ||
+          ''
+      }
+      if (!targetWs) {
+        const wsList = await context.core.workspaces.list()
+        if (wsList.isSuccess() && wsList.success.length > 0) {
+          targetWs = wsList.success[0].id
+        }
+      }
+      if (!targetWs) {
+        await context.host.notifications.error(
+          'Nenhum workspace ativo encontrado para gerar sugestão.',
+          'Fake DB',
+        )
+        return { ok: false, error: 'NO_ACTIVE_WORKSPACE' }
+      }
+
+      let targetConnectionId =
+        process.env.MR_TICK_RUNTIME_PROBE_CONNECTION || ''
+      if (!targetConnectionId) {
+        const connsResult = await context.core.connections.list(targetWs)
+        if (connsResult.isSuccess()) {
+          const found =
+            connsResult.success.find(
+              (c) =>
+                c.dataSourceId === 'mr-tick-datasource-fake' &&
+                c.status === 'connected',
+            ) ||
+            connsResult.success.find(
+              (c) => c.dataSourceId === 'mr-tick-datasource-fake',
+            )
+          if (found) targetConnectionId = found.connectionInstanceId
+        }
+      }
+
+      if (!targetConnectionId) {
+        await context.host.notifications.error(
+          'Nenhuma conexão Fake DB encontrada no workspace.',
+          'Fake DB',
+        )
+        return { ok: false, error: 'NO_CONNECTION_FOUND' }
+      }
+
+      const scope = {
+        workspaceId: targetWs,
+        connectionInstanceId: targetConnectionId,
+      }
+      const connection = await context.core.connections.get(scope)
+      if (connection.isFailure()) {
+        return { ok: false, error: connection.failure.messageKey }
+      }
+
+      const metadata = await context.core.metadata.get(scope)
+      const targetActivity = (metadata.isSuccess() &&
+        metadata.success.values.activities[0]) || {
+        id: 'act-coding',
+        name: 'Coding',
+      }
+
+      const targetTaskId = CORE_SDK_PROBE_TASK_ID
+      const task = await context.core.tasks.get({
+        ...scope,
+        taskId: targetTaskId,
+      })
+      const taskTitle = task.isSuccess()
+        ? task.success.title
+        : 'Tarefa Fake de Teste'
+
+      const now = new Date()
+      const timeSpentSeconds = 1800
+      const startDate = new Date(
+        now.getTime() - timeSpentSeconds * 1000,
+      ).toISOString()
+      const endDate = now.toISOString()
+      const uniqueOpId = `sug-bar-${Date.now()}`
+      const comments = `Sugestão gerada pela Timerbar (${now.toLocaleTimeString('pt-BR')})`
+
+      const result = await context.core.timeEntries.createSuggestion(
+        targetWs,
+        {
+          taskId: targetTaskId,
+          connectionInstanceId: targetConnectionId,
+          dataSourceId: connection.success.dataSourceId,
+          userId: String(FAKE_MEMBER.id),
+          userName: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
+          activityId: targetActivity.id,
+          activityName: targetActivity.name,
+          timeSpentSeconds,
+          startDate,
+          endDate,
+          comments,
+        },
+        {
+          commandId: uniqueOpId,
+          entryId: uniqueOpId,
+        },
+      )
+
+      if (result.isFailure()) {
+        await context.host.notifications.error(
+          `Falha ao sugerir apontamento: ${result.failure.messageKey}`,
+          'Fake DB',
+        )
+        return { ok: false, error: result.failure.messageKey }
+      }
+
+      await context.host.notifications.success(
+        `Sugestão gerada com sucesso na tarefa "${taskTitle}"!`,
+        'Sugestão Criada',
+      )
+
+      return {
+        ok: true,
+        entry: result.success,
+      }
+    }
+
+    context.contributions.commands.register(
+      'mr-tick-datasource-fake:fake-db:suggest-today',
+      handleSuggestToday,
+    )
+    context.contributions.commands.register(
+      'fake-db:suggest-today',
+      handleSuggestToday,
     )
   }
 

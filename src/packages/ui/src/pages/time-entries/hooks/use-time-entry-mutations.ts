@@ -717,6 +717,7 @@ export function useTimeEntryMutations(
         }
         const updatedJson = acceptance.success
         if (!updatedJson) return
+        toast.success('Sugestão confirmada com sucesso!')
         queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
           { queryKey: ['time-entries-range'] },
           (previous) => {

@@ -30,7 +30,14 @@ interface DataTableProps<TData> {
   compact?: boolean
 }
 
-export function DataTable<TData extends { subRows?: TData[]; id: string }>({
+export function DataTable<
+  TData extends {
+    subRows?: TData[]
+    id: string
+    isSuggestion?: boolean
+    timeStatus?: string
+  },
+>({
   columns,
   data,
   expanded = {},
@@ -78,9 +85,16 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
                     style={{ width: header.getSize() }}
                     className={cn(
                       'text-muted-foreground font-bold tracking-wider uppercase',
-                      compact
-                        ? 'px-1.5 py-1 text-[10px]'
-                        : 'px-2 py-3 text-[10px]',
+                      header.id === 'actions' && 'px-0 pr-1',
+                      header.id === 'syncStatus' &&
+                        (compact
+                          ? 'px-2 py-1 text-[10px]'
+                          : 'px-2.5 py-3 text-[10px]'),
+                      header.id !== 'actions' &&
+                        header.id !== 'syncStatus' &&
+                        (compact
+                          ? 'px-1.5 py-1 text-[10px]'
+                          : 'px-2 py-3 text-[10px]'),
                       isHiddenOnCompact && 'hidden',
                       !compact &&
                         header.id === 'createdAt' &&
@@ -109,6 +123,12 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
                 key={row.id}
                 data-testid="time-entry-row"
                 data-entry-id={row.original.id}
+                data-is-suggestion={
+                  row.original.isSuggestion ||
+                  row.original.timeStatus === 'suggestion'
+                    ? 'true'
+                    : 'false'
+                }
                 data-state={row.getIsExpanded() ? 'expanded' : 'collapsed'}
                 onDoubleClick={() => {
                   const isGroupMaster =
@@ -136,8 +156,12 @@ export function DataTable<TData extends { subRows?: TData[]; id: string }>({
                       className={cn(
                         'border-border/40 border-b',
                         compact ? 'py-1 text-[11px]' : 'py-2 text-sm',
-                        cell.column.id === 'actions' ? 'px-0 pr-1' : 'px-1.5',
-                        cell.column.id === 'syncStatus' && compact && 'px-0.5',
+                        cell.column.id === 'actions' && 'px-0 pr-1',
+                        cell.column.id === 'syncStatus' &&
+                          (compact ? 'px-2' : 'px-2.5'),
+                        cell.column.id !== 'actions' &&
+                          cell.column.id !== 'syncStatus' &&
+                          'px-1.5',
                         isHiddenOnCompact && 'hidden',
                         !compact &&
                           cell.column.id === 'createdAt' &&

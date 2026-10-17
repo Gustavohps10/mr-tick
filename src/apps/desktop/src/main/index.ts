@@ -285,6 +285,16 @@ if (gotTheLock) {
     'CalculateNativeWinOcclusion',
   )
 
+  const remoteDebugPort =
+    process.env.MR_TICK_REMOTE_DEBUG_PORT ||
+    (process.env.MR_TICK_DEBUG === '1' ? '9333' : null)
+  if (remoteDebugPort) {
+    app.commandLine.appendSwitch('remote-debugging-port', remoteDebugPort)
+    console.log(
+      `🐞 [Mr-tick Core] Remote debugging port ativo: http://localhost:${remoteDebugPort}`,
+    )
+  }
+
   protocol.registerSchemesAsPrivileged([
     {
       scheme: 'mr-tick-app',

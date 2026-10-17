@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -54,6 +54,7 @@ import {
 } from '@mr-tick/shared/helpers'
 import { ISystemEvents } from '@mr-tick/shared/transport'
 import { BrowserWindow, Notification, shell } from 'electron'
+import yaml from 'js-yaml'
 
 import { getSettings, saveSettings } from '@/main/settings'
 
@@ -216,6 +217,8 @@ export class AddonEventEmitter implements IAddonEventsAPI {
 
 export class AddonLoader implements IAddonReloader {
   private activeAddons = new Map<string, ActiveAddonInfo>()
+  private loadingAddons = new Map<string, Promise<boolean>>()
+  private addonMetadata = new Map<string, { name?: string; iconUrl?: string }>()
   private readonly timerControlLock = new AddonTimerControlLock()
   private toastListeners: Array<(toastData: AddonToastEventData) => void> = []
   private licensingFacade: ILicensingFacade | null = null
@@ -743,6 +746,12 @@ export class AddonLoader implements IAddonReloader {
     }
     this.activeAddons.set(addonId, { addonId, instance: addonInstance })
     console.log(`✅ [AddonLoader] Addon ativado com sucesso: ${addonId}`)
+    if (this.activeWorkspaceId) {
+      this.systemEventEmitter.emit('workspace:changed', {
+        previousWorkspaceId: this.activeWorkspaceId,
+        currentWorkspaceId: this.activeWorkspaceId,
+      })
+    }
     return true
   }
 
@@ -774,6 +783,28 @@ export class AddonLoader implements IAddonReloader {
   }
 
   public async loadAndActivateFromDisk(
+    addonId: string,
+    addonFolderPath: string,
+  ): Promise<boolean> {
+    if (this.hasActiveAddon(addonId)) return true
+    const inFlight = this.loadingAddons.get(addonId)
+    if (inFlight !== undefined) {
+      return await inFlight
+    }
+
+    const loadPromise = this.performLoadAndActivateFromDisk(
+      addonId,
+      addonFolderPath,
+    )
+    this.loadingAddons.set(addonId, loadPromise)
+    try {
+      return await loadPromise
+    } finally {
+      this.loadingAddons.delete(addonId)
+    }
+  }
+
+  private async performLoadAndActivateFromDisk(
     addonId: string,
     addonFolderPath: string,
   ): Promise<boolean> {
@@ -838,6 +869,58 @@ export class AddonLoader implements IAddonReloader {
       }
 
       const fileUrl = pathToFileURL(targetEntry).href
+
+      let metaName: string | undefined
+      let metaIconUrl: string | undefined
+      const manifestPathYaml = join(addonFolderPath, 'manifest.yaml')
+      const manifestPathYml = join(addonFolderPath, 'manifest.yml')
+      const manifestPathJson = join(addonFolderPath, 'manifest.json')
+
+      try {
+        if (existsSync(manifestPathYaml)) {
+          const parsed = yaml.load(readFileSync(manifestPathYaml, 'utf-8'))
+          if (isRecord(parsed)) {
+            if (isString(parsed.name)) metaName = parsed.name
+            if (isString(parsed.iconUrl)) metaIconUrl = parsed.iconUrl
+          }
+        }
+        if (!metaName && existsSync(manifestPathYml)) {
+          const parsed = yaml.load(readFileSync(manifestPathYml, 'utf-8'))
+          if (isRecord(parsed)) {
+            if (isString(parsed.name)) metaName = parsed.name
+            if (isString(parsed.iconUrl)) metaIconUrl = parsed.iconUrl
+          }
+        }
+        if (!metaName && existsSync(manifestPathJson)) {
+          const raw: unknown = JSON.parse(
+            readFileSync(manifestPathJson, 'utf-8'),
+          )
+          if (isRecord(raw)) {
+            if (isString(raw.name)) metaName = raw.name
+            if (isString(raw.iconUrl)) metaIconUrl = raw.iconUrl
+          }
+        }
+      } catch {
+        // Ignora erro de leitura de manifesto
+      }
+
+      const iconPngPath = join(addonFolderPath, 'icon.png')
+      if (!metaIconUrl && existsSync(iconPngPath)) {
+        try {
+          const iconBuffer = readFileSync(iconPngPath)
+          metaIconUrl = `data:image/png;base64,${iconBuffer.toString('base64')}`
+        } catch {
+          // Ignora erro de leitura de ícone
+        }
+      }
+
+      if (metaName || metaIconUrl) {
+        this.addonMetadata.set(addonId, {
+          name: metaName,
+          iconUrl: metaIconUrl,
+        })
+      }
+
       const loadedModule: object = await import(fileUrl)
       let exportedCandidate: object | Function = loadedModule
       if (isRecord(loadedModule) && hasProperty(loadedModule, 'default')) {
@@ -1130,18 +1213,21 @@ export class AddonLoader implements IAddonReloader {
     name: string
     imageUrl?: string
   } {
-    const active = this.activeAddons.get(addonId)
-    const meta = active?.instance?.metadata
+    const diskMeta = this.addonMetadata.get(addonId)
 
     let name = addonId
     const lastSegment = addonId.split('/').pop()
     if (lastSegment) {
       name = lastSegment
     }
-    if (meta && meta.name) {
-      name = meta.name
+    if (diskMeta?.name) {
+      name = diskMeta.name
     }
-    const imageUrl = meta?.iconUrl
+
+    let imageUrl: string | undefined = undefined
+    if (diskMeta?.iconUrl) {
+      imageUrl = diskMeta.iconUrl
+    }
 
     return {
       id: addonId,

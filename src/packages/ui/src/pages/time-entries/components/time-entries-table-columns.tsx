@@ -13,6 +13,7 @@ import {
 import React from 'react'
 import { useDebounce } from 'use-debounce'
 
+import { discordLogo } from '@/assets'
 import { DataSourceLogo } from '@/components/datasource-logo'
 import { TaskPopover } from '@/components/task-popover'
 import { TimerDisplay } from '@/components/time-bar/timer-display'
@@ -37,7 +38,10 @@ import { resolveEntityMapping } from '@/hooks/use-field-mappings'
 import { cn } from '@/lib/utils'
 import { SyncMetadataItem } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
-import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
+import {
+  AddonSourceInfo,
+  SyncTimeEntryRxDBDTO,
+} from '@/local-db/schemas/time-entries-sync-schema'
 import { TimeEntryRowActions } from '@/pages/time-entries/components/time-entry-row-actions'
 import {
   decimalToHMS,
@@ -254,32 +258,58 @@ function resolveRowTempData(
   return {}
 }
 
+function SuggestionSquareBadge({ source }: { source?: AddonSourceInfo }) {
+  const displayName = source?.name || source?.pluginId || 'Addon'
+  const sourceHandle = `@${displayName.toLowerCase().replace(/\s+/g, '')}`
+  let iconUrl = source?.imageUrl
+  if (!iconUrl) {
+    const lowerId = (source?.pluginId || '').toLowerCase()
+    const lowerName = displayName.toLowerCase()
+    if (lowerId.includes('discord') || lowerName.includes('discord')) {
+      iconUrl = discordLogo
+    }
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          className="border-border/70 bg-background/80 text-foreground hover:bg-muted/70 flex h-5 w-5 shrink-0 cursor-help items-center justify-center rounded-md border shadow-2xs transition-all"
+          data-testid="suggestion-source-badge"
+        >
+          {iconUrl ? (
+            <img
+              src={iconUrl}
+              alt={displayName}
+              className="h-3.5 w-3.5 rounded-xs object-cover"
+            />
+          ) : (
+            <Sparkles className="text-primary h-3 w-3" />
+          )}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="text-xs">
+        <p className="font-semibold">{displayName}</p>
+        <p className="text-muted-foreground font-mono text-[11px]">
+          Sugestão gerada por {sourceHandle}
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function ExpandCell({ row }: { row: TanStackRow<SuggestionRow> }) {
   const { isGrouped = true, compact = false } = useTimeEntriesColumnsOptions()
 
   if (row.original.isSuggestion || row.original.timeStatus === 'suggestion') {
-    const source = row.original.addonSource
-    const sourceName = source?.name
-      ? `@${source.name.toLowerCase().replace(/\s+/g, '')}`
-      : '@addon'
-
     return (
-      <div className="flex items-center justify-start pl-1">
-        <div
-          className="border-border/80 bg-background/80 text-foreground inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-2xs"
-          title={`Fonte: ${source?.name || 'Addon'}`}
-        >
-          {source?.imageUrl ? (
-            <img
-              src={source.imageUrl}
-              alt={source.name}
-              className="h-3.5 w-3.5 rounded-sm object-cover"
-            />
-          ) : (
-            <Sparkles className="text-primary h-3.5 w-3.5" />
-          )}
-          <span>{sourceName}</span>
-        </div>
+      <div
+        className={cn(
+          'flex items-center justify-start',
+          compact ? 'pl-[18px]' : 'pl-[21px]',
+        )}
+      >
+        <SuggestionSquareBadge source={row.original.addonSource} />
       </div>
     )
   }
@@ -385,6 +415,7 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
     setEditingRows,
     setTempData,
     tempData,
+    compact = false,
   } = useTimeEntriesColumnsOptions()
 
   const original = row.original
@@ -392,9 +423,12 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
   const isGroupMaster =
     (original.subRows?.length ?? 0) > 1 && !row.getParentRow()
 
+  const isSuggestionRow =
+    Boolean(original.isSuggestion) || original.timeStatus === 'suggestion'
+
   const isEditing =
     !isGroupMaster &&
-    (Boolean(original.isSuggestion) ||
+    (isSuggestionRow ||
       Boolean(editingRows[rowKey] || editingRows[original.id]))
 
   const data = resolveRowTempData(rowKey, original.id, tempData, getRowData)
@@ -463,7 +497,7 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
       ? taskTitle
         ? `#${cleanId} - ${taskTitle}`
         : `#${cleanId}`
-      : 'Escolher tarefa'
+      : 'Selecionar'
 
     return (
       <div className="flex w-full justify-start pl-1">
@@ -512,14 +546,15 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
               variant="outline"
               size="sm"
               className={cn(
-                'bg-background flex h-7 w-full max-w-[190px] items-center justify-between gap-1.5 px-2 text-xs font-medium shadow-2xs transition-all',
+                'bg-background flex items-center justify-between gap-1 px-2 font-medium shadow-2xs transition-all',
+                compact ? 'h-6 text-[10px]' : 'h-7 text-xs',
                 hasSelectedTask
-                  ? 'border-primary/40 hover:border-primary font-sans'
-                  : 'border-primary/50 bg-primary/5 hover:bg-primary/10 text-primary border-dashed font-sans',
+                  ? 'border-primary/40 hover:border-primary w-full max-w-[190px] font-sans'
+                  : 'border-primary/50 bg-primary/5 hover:bg-primary/10 text-primary w-auto max-w-[105px] shrink-0 border-dashed font-sans',
               )}
               title="Clique para abrir detalhes e selecionar tarefa"
             >
-              <div className="flex min-w-0 items-center gap-1.5 truncate">
+              <div className="flex min-w-0 items-center gap-1 truncate">
                 {hasSelectedTask ? (
                   <>
                     <DataSourceLogo
@@ -538,7 +573,12 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
                     )}
                   </>
                 ) : (
-                  <Plus className="text-primary h-3.5 w-3.5 shrink-0" />
+                  <Plus
+                    className={cn(
+                      'text-primary shrink-0',
+                      compact ? 'h-2.5 w-2.5' : 'h-3 w-3',
+                    )}
+                  />
                 )}
                 <span className="truncate">{displayLabel}</span>
               </div>
@@ -1267,9 +1307,9 @@ export function createTimeEntriesColumns(
           Ticket
         </div>
       ),
-      size: compact ? 160 : 210,
-      minSize: compact ? 130 : 170,
-      maxSize: compact ? 200 : 280,
+      size: compact ? 135 : 190,
+      minSize: compact ? 115 : 150,
+      maxSize: compact ? 180 : 250,
       cell: TaskCell,
     },
 
@@ -1280,9 +1320,9 @@ export function createTimeEntriesColumns(
           Sync
         </div>
       ),
-      size: compact ? 38 : 60,
-      minSize: compact ? 34 : 50,
-      maxSize: compact ? 46 : 75,
+      size: compact ? 84 : 100,
+      minSize: compact ? 76 : 90,
+      maxSize: compact ? 95 : 120,
       cell: SyncStatusTableCell,
     },
     {

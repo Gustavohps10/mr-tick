@@ -34,7 +34,9 @@
     "test:coverage": "vitest run --coverage",
     "dev:landing-page": "turbo watch dev --filter=@mr-tick/landing-page",
     "dev:desktop": "turbo watch dev --filter=@mr-tick/desktop",
+    "dev:desktop:debug": "turbo watch dev:debug --filter=@mr-tick/desktop",
     "dev": "turbo watch dev --filter=@mr-tick/desktop --filter=@mr-tick/landing-page",
+    "dev:debug": "cross-env MR_TICK_DEBUG=1 turbo watch dev:debug --filter=@mr-tick/desktop --filter=@mr-tick/landing-page",
     "build:landing-page": "turbo run build --filter=@mr-tick/landing-page",
     "build:desktop": "turbo run build --filter=@mr-tick/desktop",
     "build:desktop:dir": "yarn --cwd src/apps/desktop test:win",
@@ -55,7 +57,8 @@
     "addon:link": "tsx scripts/dev-addons.ts link",
     "addon:unlink": "tsx scripts/dev-addons.ts unlink",
     "addon:build": "tsx scripts/dev-addons.ts build",
-    "addon:watch": "tsx scripts/dev-addons.ts watch"
+    "addon:watch": "tsx scripts/dev-addons.ts watch",
+    "app:inspect": "tsx scripts/app-inspect.ts"
   },
   "dependencies": {
     "awilix": "^12.0.5"
@@ -78,6 +81,7 @@
     "@vitest/coverage-v8": "4.1.4",
     "@vitest/ui": "^4.1.4",
     "changeset": "^0.2.6",
+    "cross-env": "^10.1.0",
     "eslint": "^9.25.0",
     "eslint-config-prettier": "^10.1.2",
     "eslint-plugin-import": "^2.31.0",

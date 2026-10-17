@@ -2432,6 +2432,7 @@ function SystemAddonsButton({
               <Button
                 variant="ghost"
                 size="icon"
+                data-testid="timerbar-addons-button"
                 className={cn(
                   'text-muted-foreground hover:bg-muted/50 hover:text-foreground p-0 transition-colors',
                   isMini
@@ -2472,6 +2473,7 @@ function SystemAddonsButton({
               return (
                 <Button
                   key={menu.id}
+                  data-testid={`addon-timerbar-item-${menu.id}`}
                   variant="ghost"
                   className="flex h-8 w-full items-center justify-between px-2 text-xs font-normal"
                   onClick={() =>
@@ -2495,6 +2497,7 @@ function SystemAddonsButton({
                 {menu.items?.map((sub: AddonTimerbarPopoverSubItem) => (
                   <Button
                     key={sub.id}
+                    data-testid={`addon-timerbar-item-${sub.id}`}
                     variant="ghost"
                     className="flex h-8 w-full items-center justify-between px-2 pl-4 text-xs font-normal"
                     onClick={() => handleCommandExecute(sub.id, sub.label)}

@@ -61,6 +61,7 @@ export function TimeEntryRowActions({
         <Button
           size="sm"
           variant="default"
+          data-testid="suggestion-accept-button"
           className="h-6 gap-1 px-2 text-[11px] font-semibold"
           onClick={(e) => {
             e.stopPropagation()
@@ -75,6 +76,7 @@ export function TimeEntryRowActions({
         <Button
           size="sm"
           variant="ghost"
+          data-testid="suggestion-dismiss-button"
           className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-6 w-6 p-0"
           onClick={(e) => {
             e.stopPropagation()
