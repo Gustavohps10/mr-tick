@@ -1,5 +1,17 @@
 ﻿# @mr-tick/desktop
 
+## 0.11.1
+
+### Patch Changes
+
+- 02d6479: Melhorias no ciclo de vida de addons, sugestões de apontamento e suporte a depuração remota:
+  - Suporte a depuração remota no Electron via porta 9333 (`dev:debug`) e ferramenta `app:inspect`.
+  - Sincronização imediata do workspace ativo ao inicializar addons instalados no `AddonLoader`.
+  - Badges dinâmicos com ícones oficiais de addons (Discord e genéricos) na tabela e no banner de sugestões.
+  - Ajuste de espaçamentos nas colunas e no popover de seleção de tarefa na tabela de apontamentos.
+- Updated dependencies [02d6479]
+  - @mr-tick/ui@1.9.1
+
 ## 0.11.0
 
 ### Minor Changes
