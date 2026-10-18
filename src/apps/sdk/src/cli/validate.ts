@@ -3,7 +3,6 @@ import path from 'path'
 
 import { AddonConfig } from '../AddonConfig'
 import {
-  AddonCategory,
   VALID_ADDON_CATEGORIES,
   VALID_ADDON_TIERS,
 } from '../contracts/manifest'
@@ -26,16 +25,6 @@ function resolveOptionalString(
     return secondary.trim()
   }
   return undefined
-}
-
-function normalizeCategory(cat: string): AddonCategory | null {
-  const lower = cat.toLowerCase()
-  if (lower.includes('datasource')) return 'dataSource'
-  if (lower.includes('watcher')) return 'watcher'
-  if (lower.includes('calendar')) return 'calendar'
-  if (lower.includes('punch')) return 'punch'
-  if (lower.includes('theme')) return 'theme'
-  return null
 }
 
 function extractCategories(manifest: AddonConfig): string[] {
@@ -130,8 +119,7 @@ export function validateAddon(addonDir: string): ValidationResult {
     )
   }
   for (const rawCat of rawCategories) {
-    const normalized = normalizeCategory(rawCat)
-    if (!normalized) {
+    if (!VALID_ADDON_CATEGORIES.some((validCat) => validCat === rawCat)) {
       errors.push(
         `Categoria inválida "${rawCat}". Categorias válidas são: ${VALID_ADDON_CATEGORIES.join(', ')}`,
       )

@@ -40,12 +40,12 @@ test.describe('E2E - Configuração de Mapeamento Pós-Autenticação em Instân
     await expect(configureFakeAddonBtn).toBeVisible({ timeout: 10000 })
     await configureFakeAddonBtn.click()
 
-    // 5. Valida que a conexão semeada está presente e exibe status "Conectado"
-    const connectedMemberLogin = page
-      .locator('[data-testid="connection-member-login"]')
-      .first()
-    await expect(connectedMemberLogin).toBeVisible({ timeout: 15000 })
-    await expect(connectedMemberLogin).toContainText('Alex Silva')
+    // 5. Navega para a capacidade Fonte De Dados onde os mapeamentos de campos são configurados
+    const dsCapabilityTab = page.locator(
+      '[data-testid="addon-capability-tab-dataSource"]',
+    )
+    await expect(dsCapabilityTab).toBeVisible({ timeout: 10000 })
+    await dsCapabilityTab.click()
 
     // 6. Valida que o botão "Configurar Mapeamento" por instância conectada está visível
     const perInstanceMappingBtn = page.locator(
@@ -167,7 +167,13 @@ test.describe('E2E - Configuração de Mapeamento Pós-Autenticação em Instân
     await expect(configureFakeAddonBtn).toBeVisible({ timeout: 10000 })
     await configureFakeAddonBtn.click()
 
-    // 3. Abre o modal de mapeamento
+    // 3. Navega para a capacidade Fonte De Dados e abre o modal de mapeamento
+    const dsCapabilityTab = page.locator(
+      '[data-testid="addon-capability-tab-dataSource"]',
+    )
+    await expect(dsCapabilityTab).toBeVisible({ timeout: 10000 })
+    await dsCapabilityTab.click()
+
     const perInstanceMappingBtn = page.locator(
       '[data-testid="configure-mapping-instance-btn-mr-tick-datasource-fake-c3f15587"]',
     )

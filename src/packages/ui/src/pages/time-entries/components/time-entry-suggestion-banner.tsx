@@ -1,7 +1,6 @@
 import { CheckCheck, Sparkles, X } from 'lucide-react'
 import { useMemo } from 'react'
 
-import { discordLogo } from '@/assets'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
@@ -12,13 +11,7 @@ import { AddonSourceInfo } from '@/local-db/schemas/time-entries-sync-schema'
 import { SuggestionRow } from '@/pages/time-entries/lib/time-entries-utils'
 
 function getSourceIcon(source: AddonSourceInfo): string | null {
-  if (source.imageUrl) return source.imageUrl
-  const lowerId = (source.pluginId || '').toLowerCase()
-  const lowerName = (source.name || '').toLowerCase()
-  if (lowerId.includes('discord') || lowerName.includes('discord')) {
-    return discordLogo
-  }
-  return null
+  return source.imageUrl || null
 }
 
 interface TimeEntrySuggestionBannerProps {

@@ -1,16 +1,24 @@
 import {
   AddonSettingsField,
   AddonSettingsSchema,
-  AddonSettingsTab,
   AddonSettingsValues,
   AddonVaultScope,
 } from '@mr-tick/application'
-import type { AddonManifestViewModel } from '@mr-tick/sdk'
-import type { WorkspaceViewModel } from '@mr-tick/sdk'
+import type {
+  AddonManifestViewModel,
+  AddonSettingsTab,
+  WorkspaceViewModel,
+} from '@mr-tick/sdk'
+import { isString } from '@mr-tick/shared/helpers'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Loader2, Plus, SlidersHorizontal } from 'lucide-react'
-import { FolderKanban } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import {
+  Check,
+  FolderKanban,
+  Loader2,
+  Plus,
+  SlidersHorizontal,
+} from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { MappingConfigModal } from '@/components/mapping-config-modal'
@@ -33,10 +41,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDataSourceConnections } from '@/contexts/DataSourceConnectionsContext'
 import { useHostBridge } from '@/hooks/use-host-bridge'
+import { cn } from '@/lib/utils'
 import { ConnectionCard } from '@/pages/addons/components/addon-list'
+import type { AddonConnection, ConnectionStatus } from '@/pages/addons/types'
 
 import { AddonFieldRenderer } from './addon-field-renderer'
 import { AddonThemeSettingsPanel } from './addon-theme-settings-panel'
+import { addonMatchesCategory } from './addons-manager-view'
 import { WorkspaceGroupedDataSourceManager } from './workspace-grouped-datasource-manager'
 
 const emptySettings: AddonSettingsValues = {}
@@ -44,18 +55,64 @@ const emptySettings: AddonSettingsValues = {}
 export interface AddonSettingsRendererProps {
   addonId: string
   activeCapability?: string
+  activeCapabilityLabel?: string
+  activeCapabilityDescription?: string
   addon?: AddonManifestViewModel | null
   hideHeader?: boolean
   scope?: AddonVaultScope
 }
 
+function firstWorkspace(
+  items: WorkspaceViewModel[],
+): WorkspaceViewModel | null {
+  for (const item of items) return item
+  return null
+}
+
+function resolveConnectionName(
+  config: Record<string, unknown> | undefined,
+  fallbackId: string,
+): string {
+  if (config && isString(config.name) && config.name.trim().length > 0) {
+    return config.name
+  }
+  return fallbackId
+}
+
+function resolveConnectionUrl(
+  config: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!config) return undefined
+  if (isString(config.url) && config.url.trim().length > 0) {
+    return config.url
+  }
+  if (isString(config.baseUrl) && config.baseUrl.trim().length > 0) {
+    return config.baseUrl
+  }
+  if (isString(config.apiUrl) && config.apiUrl.trim().length > 0) {
+    return config.apiUrl
+  }
+  return undefined
+}
+
+function resolveConnectionStatus(status?: string): ConnectionStatus {
+  if (status === 'connected') return 'connected'
+  return 'disconnected'
+}
+
 export function AddonSettingsRenderer({
   addonId,
   activeCapability,
+  activeCapabilityLabel,
+  activeCapabilityDescription,
   addon,
   hideHeader = false,
   scope,
 }: AddonSettingsRendererProps) {
+  if (activeCapability === 'theme') {
+    return <AddonThemeSettingsPanel addonId={addonId} addon={addon} />
+  }
+
   if (scope) {
     return (
       <ScopedAddonSettingsRenderer
@@ -69,36 +126,36 @@ export function AddonSettingsRenderer({
     )
   }
 
-  if (activeCapability === 'datasources') {
-    return <WorkspaceGroupedDataSourceManager addonId={addonId} />
-  }
-
-  if (activeCapability === 'themes') {
-    return <AddonThemeSettingsPanel addonId={addonId} addon={addon} />
-  }
-
   return (
-    <WorkspaceGroupedGenericSettingsManager
+    <WorkspaceSubSidebarSettingsManager
       addonId={addonId}
       activeCapability={activeCapability}
+      activeCapabilityLabel={activeCapabilityLabel}
+      activeCapabilityDescription={activeCapabilityDescription}
       addon={addon}
       hideHeader={hideHeader}
     />
   )
 }
 
-function WorkspaceGroupedGenericSettingsManager({
+function WorkspaceSubSidebarSettingsManager({
   addonId,
   activeCapability,
+  activeCapabilityLabel,
+  activeCapabilityDescription,
   addon,
   hideHeader,
 }: {
   addonId: string
   activeCapability?: string
+  activeCapabilityLabel?: string
+  activeCapabilityDescription?: string
   addon?: AddonManifestViewModel | null
   hideHeader?: boolean
 }) {
   const bridge = useHostBridge()
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('')
+
   const { data: workspaces = [], isLoading: isLoadingWorkspaces } = useQuery<
     WorkspaceViewModel[]
   >({
@@ -106,21 +163,59 @@ function WorkspaceGroupedGenericSettingsManager({
     queryFn: async () => {
       const res = await bridge.workspaces.listAll()
       if (!res.isSuccess) throw new Error(res.error)
-      return res.data ?? []
+      if (!res.data) return []
+      return res.data
     },
   })
 
+  const { data: installedList = [] } = useQuery({
+    queryKey: ['plugins', 'installed'],
+    queryFn: async () => {
+      const res = await bridge.addons.listInstalled()
+      if (!res.isSuccess) throw new Error(res.error)
+      if (!res.data) return []
+      return res.data
+    },
+  })
+
+  const resolvedAddon = useMemo(() => {
+    if (addon) return addon
+    return installedList.find((a) => a.id === addonId) ?? null
+  }, [addon, installedList, addonId])
+
+  const isDataSource = useMemo(() => {
+    if (!resolvedAddon) return false
+    return addonMatchesCategory(resolvedAddon, 'dataSource')
+  }, [resolvedAddon])
+
+  const activeWorkspace = useMemo(() => {
+    if (selectedWorkspaceId) {
+      const match = workspaces.find((ws) => ws.id === selectedWorkspaceId)
+      if (match) return match
+    }
+    return firstWorkspace(workspaces)
+  }, [workspaces, selectedWorkspaceId])
+
   if (isLoadingWorkspaces) {
     return (
-      <div className="space-y-4 p-6" aria-label="Carregando workspaces">
-        <Skeleton className="h-6 w-48" />
-        <Skeleton className="h-28 w-full rounded-lg" />
-        <Skeleton className="h-28 w-full rounded-lg" />
+      <div
+        className="flex flex-1 flex-row overflow-hidden"
+        aria-label="Carregando workspaces"
+      >
+        <div className="border-border/50 w-52 shrink-0 space-y-2 border-r p-3">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-9 w-full rounded-md" />
+          <Skeleton className="h-9 w-full rounded-md" />
+        </div>
+        <div className="flex-1 space-y-4 p-6">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-28 w-full rounded-lg" />
+        </div>
       </div>
     )
   }
 
-  if (workspaces.length === 0) {
+  if (workspaces.length === 0 || !activeWorkspace) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
         <FolderKanban className="text-muted-foreground/40 mb-3 size-10" />
@@ -128,81 +223,159 @@ function WorkspaceGroupedGenericSettingsManager({
           Nenhum workspace encontrado
         </h3>
         <p className="text-muted-foreground mt-1 max-w-sm text-xs">
-          As configurações e observadores desta extensão pertencem aos
-          Workspaces. Crie ou abra um workspace para configurar esta extensão.
+          As conexões e capacidades pertencem aos Workspaces. Crie ou abra um
+          workspace para configurar esta extensão.
         </p>
       </div>
     )
   }
 
-  return (
-    <div className="flex h-full min-h-0 flex-1 flex-col">
-      <ScrollArea className="h-full w-full">
-        <div className="w-full space-y-6 px-8 py-6">
-          <div className="flex items-center justify-between border-b pb-3">
-            <div>
-              <h3 className="text-foreground text-sm font-semibold">
-                Workspaces & Configurações
-              </h3>
-              <p className="text-muted-foreground mt-0.5 text-xs">
-                Contas conectadas e observadores configurados individualmente
-                por Workspace.
-              </p>
-            </div>
-            <Badge variant="outline" className="font-mono text-xs">
-              {workspaces.length}{' '}
-              {workspaces.length === 1 ? 'Workspace' : 'Workspaces'}
-            </Badge>
-          </div>
+  const renderWorkspaceCapabilityContent = (ws: WorkspaceViewModel) => {
+    if (activeCapability === 'dataSource') {
+      return (
+        <WorkspaceGroupedDataSourceManager
+          key={`ds-cap-${addonId}-${ws.id}`}
+          addonId={addonId}
+          workspaceId={ws.id}
+          mode="dataSource"
+        />
+      )
+    }
 
-          <div className="space-y-6">
-            {workspaces.map((ws) => (
-              <div
-                key={ws.id}
-                data-testid={`workspace-addon-group-${ws.id}`}
-                className="bg-card/70 border-border/70 overflow-hidden rounded-lg border shadow-xs"
-              >
-                {/* Cabeçalho do Workspace */}
-                <div className="bg-muted/30 border-border/60 flex items-center justify-between border-b px-4 py-3">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <Avatar className="border-border/40 size-8 shrink-0 rounded-lg border">
-                      <AvatarImage
-                        src={ws.avatarUrl}
-                        alt={ws.name}
-                        className="size-full object-cover"
-                      />
-                      <AvatarFallback className="bg-primary/10 text-primary rounded-lg text-xs font-semibold">
-                        {ws.name.slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <h4 className="text-foreground truncate text-xs font-semibold">
-                        {ws.name}
-                      </h4>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Conteúdo isolado do Workspace */}
-                <div className="p-4">
-                  <ScopedAddonSettingsRenderer
-                    key={JSON.stringify({
-                      addonId,
-                      workspaceId: ws.id,
-                      activeCapability,
-                    })}
-                    addonId={addonId}
-                    activeCapability={activeCapability}
-                    addon={addon}
-                    scope={{ kind: 'workspace', workspaceId: ws.id }}
-                    hideHeader={true}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+    if (activeCapability === 'auth' && isDataSource) {
+      return (
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-y-auto">
+          <WorkspaceGroupedDataSourceManager
+            key={`ds-auth-${addonId}-${ws.id}`}
+            addonId={addonId}
+            workspaceId={ws.id}
+            mode="auth"
+          />
+          <ScopedAddonSettingsRenderer
+            key={`scoped-auth-${addonId}-${ws.id}`}
+            addonId={addonId}
+            activeCapability="auth"
+            addon={resolvedAddon}
+            scope={{ kind: 'workspace', workspaceId: ws.id }}
+            hideHeader={true}
+            hideWhenEmpty={true}
+          />
         </div>
-      </ScrollArea>
+      )
+    }
+
+    if (!activeCapability && isDataSource) {
+      return (
+        <WorkspaceGroupedDataSourceManager
+          key={`ds-default-${addonId}-${ws.id}`}
+          addonId={addonId}
+          workspaceId={ws.id}
+          mode="auth"
+        />
+      )
+    }
+
+    return (
+      <ScopedAddonSettingsRenderer
+        key={JSON.stringify({
+          addonId,
+          workspaceId: ws.id,
+          activeCapability,
+        })}
+        addonId={addonId}
+        activeCapability={activeCapability}
+        addon={resolvedAddon}
+        scope={{ kind: 'workspace', workspaceId: ws.id }}
+        hideHeader={hideHeader}
+      />
+    )
+  }
+
+  return (
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
+      {/* Coluna 2: Sub-sidebar de Workspaces */}
+      <aside
+        data-testid="addon-workspaces-sidebar"
+        className="border-border/50 bg-muted/10 flex min-h-0 w-64 shrink-0 flex-col border-r select-none"
+      >
+        <div className="border-border/40 flex items-center justify-between border-b px-3.5 py-2.5">
+          <span className="text-muted-foreground/80 text-[11px] font-bold tracking-wider uppercase">
+            Workspaces
+          </span>
+          <Badge
+            variant="outline"
+            className="px-1.5 py-0 font-mono text-[10px]"
+          >
+            {workspaces.length}
+          </Badge>
+        </div>
+
+        <ScrollArea className="flex-1 p-2">
+          <div className="space-y-1">
+            {workspaces.map((ws) => {
+              const isSelected = ws.id === activeWorkspace.id
+
+              return (
+                <button
+                  key={ws.id}
+                  type="button"
+                  title={ws.name}
+                  data-testid={`addon-workspace-tab-${ws.id}`}
+                  onClick={() => setSelectedWorkspaceId(ws.id)}
+                  className={cn(
+                    'flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-xs transition-colors',
+                    isSelected
+                      ? 'bg-primary/10 text-primary border-primary/20 border font-semibold shadow-2xs'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+                  )}
+                >
+                  <Avatar className="border-border/40 size-6 shrink-0 rounded-md border">
+                    <AvatarImage
+                      src={ws.avatarUrl}
+                      alt={ws.name}
+                      className="size-full object-cover"
+                    />
+                    <AvatarFallback className="bg-primary/10 text-primary rounded-md text-[10px] font-semibold">
+                      {ws.name.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="min-w-0 flex-1 truncate">{ws.name}</span>
+                </button>
+              )
+            })}
+          </div>
+        </ScrollArea>
+      </aside>
+
+      {/* Coluna 3: Outlet da Capacidade no Workspace Selecionado */}
+      <div
+        data-testid={`workspace-addon-group-${activeWorkspace.id}`}
+        className="bg-background flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      >
+        {activeCapabilityLabel && (
+          <div className="border-border/40 bg-muted/5 flex shrink-0 items-center justify-between border-b px-6 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-foreground text-sm font-semibold">
+                  {activeCapabilityLabel}
+                </h3>
+                <Badge variant="secondary" className="text-[10px] font-medium">
+                  {activeWorkspace.name}
+                </Badge>
+              </div>
+              {activeCapabilityDescription && (
+                <p className="text-muted-foreground mt-0.5 text-xs">
+                  {activeCapabilityDescription}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {renderWorkspaceCapabilityContent(activeWorkspace)}
+        </div>
+      </div>
     </div>
   )
 }
@@ -213,12 +386,14 @@ function ScopedAddonSettingsRenderer({
   addon,
   scope,
   hideHeader,
+  hideWhenEmpty = false,
 }: {
   addonId: string
   activeCapability?: string
   addon?: AddonManifestViewModel | null
   scope: AddonVaultScope
   hideHeader?: boolean
+  hideWhenEmpty?: boolean
 }) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
@@ -304,23 +479,21 @@ function ScopedAddonSettingsRenderer({
     queryFn: async () => {
       const res = await bridge.addons.listInstalled()
       if (!res.isSuccess) throw new Error(res.error)
-      return res.data ?? []
+      if (!res.data) return []
+      return res.data
     },
   })
 
   const currentAddon = installedList.find((a) => a.id === addonId)
-  const isDataSource =
-    Boolean(
-      currentAddon?.categories?.some(
-        (c) =>
-          c.toLowerCase() === 'datasource' || c.toLowerCase() === 'datasources',
-      ),
-    ) || currentAddon?.category?.toLowerCase() === 'datasource'
+  const isDataSource = currentAddon
+    ? addonMatchesCategory(currentAddon, 'dataSource')
+    : false
 
   if (isLoadingSchema || isLoadingSettings) {
+    if (hideWhenEmpty) return null
     return (
       <div
-        className="flex flex-1 flex-col gap-4 p-4"
+        className="flex flex-1 flex-col gap-4 p-6"
         aria-label="Carregando configurações"
       >
         <Skeleton className="h-6 w-48" />
@@ -331,16 +504,117 @@ function ScopedAddonSettingsRenderer({
   }
 
   const allTabs = settingsTabs(schema || [])
+  const isAuthTab = (t: AddonSettingsTab) => t.kind === 'auth'
+
+  const authTabs = allTabs.filter(isAuthTab)
+  const capabilityTabs = allTabs.filter((t) => !isAuthTab(t))
+
+  if (activeCapability === 'auth') {
+    if (authTabs.length === 0) {
+      if (hideWhenEmpty) return null
+      return (
+        <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center p-8 text-center text-sm">
+          <Check className="mb-2 size-8 text-emerald-500/80" />
+          <span className="text-foreground font-semibold">
+            Autenticação Automática
+          </span>
+          <p className="mt-1 max-w-sm text-xs">
+            Esta extensão não requer credenciais manuais neste workspace.
+          </p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="bg-card/50 flex h-full flex-1 flex-col">
+        <div className="flex-1 space-y-6 overflow-auto px-6 py-5">
+          <div
+            data-testid={`addon-workspace-auth-section-${addonId}`}
+            className="border-border/60 bg-muted/15 space-y-4 rounded-lg border p-4"
+          >
+            {authTabs.map((authTab) => (
+              <div key={authTab.id} className="space-y-4">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <div>
+                    <h3 className="text-sm font-semibold">{authTab.label}</h3>
+                    {authTab.description && (
+                      <p className="text-muted-foreground mt-0.5 text-xs">
+                        {authTab.description}
+                      </p>
+                    )}
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="font-mono text-[10px]"
+                    data-testid={`addon-auth-cardinality-${authTab.cardinality ?? 'single'}`}
+                  >
+                    {authTab.cardinality === 'multi'
+                      ? 'Múltiplas contas (1:N)'
+                      : 'Conta única (1:1)'}
+                  </Badge>
+                </div>
+
+                {authTab.groups
+                  ? authTab.groups.map((group) => (
+                      <div key={group.id} className="space-y-3">
+                        <div>
+                          <h4 className="text-xs font-medium">{group.label}</h4>
+                          {group.description && (
+                            <p className="text-muted-foreground mt-0.5 text-xs">
+                              {group.description}
+                            </p>
+                          )}
+                        </div>
+                        <div className="grid w-full gap-4">
+                          {group.fields.map((field) => (
+                            <FieldRenderer
+                              key={field.id}
+                              field={field}
+                              addonId={addonId}
+                              workspaceId={workspaceId}
+                              value={formValues[field.id]}
+                              onChange={handleFieldChange}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  : authTab.fields?.map((field) => (
+                      <div key={field.id} className="grid w-full gap-4">
+                        <FieldRenderer
+                          field={field}
+                          addonId={addonId}
+                          workspaceId={workspaceId}
+                          value={formValues[field.id]}
+                          onChange={handleFieldChange}
+                        />
+                      </div>
+                    ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const matchingTab = activeCapability
-    ? allTabs.find((t) => t.id === activeCapability)
+    ? capabilityTabs.find((t) => t.id === activeCapability)
     : undefined
 
-  const tabs: AddonSettingsTab[] = matchingTab ? [matchingTab] : allTabs
+  const tabs: AddonSettingsTab[] = matchingTab ? [matchingTab] : capabilityTabs
 
   if (tabs.length === 0) {
+    if (hideWhenEmpty) return null
+
     if (!activeCapability && isDataSource) {
-      return <WorkspaceGroupedDataSourceManager addonId={addonId} />
+      return (
+        <WorkspaceGroupedDataSourceManager
+          addonId={addonId}
+          workspaceId={workspaceId}
+          mode="auth"
+        />
+      )
     }
 
     return (
@@ -356,7 +630,10 @@ function ScopedAddonSettingsRenderer({
 
   const defaultTab = initialSettingsTab(tabs)
 
-  const hasEditableFields = tabs.some((tab) => {
+  const tabHasEditableFields = (tab: AddonSettingsTab) => {
+    if (tab.requiresAuth && tab.isAuthenticated === false) {
+      return false
+    }
     if (tab.groups && tab.groups.length > 0) {
       return tab.groups.some((group) =>
         group.fields.some(
@@ -376,22 +653,26 @@ function ScopedAddonSettingsRenderer({
       )
     }
     return false
-  })
+  }
+
+  const hasEditableFields = tabs.some(tabHasEditableFields)
+
+  let headerTitle = addonId
+  if (currentAddon?.name) headerTitle = currentAddon.name
+  if (addon?.name) headerTitle = addon.name
 
   return (
     <div className="bg-card/50 flex h-full flex-1 flex-col">
       {!hideHeader && (
         <div className="border-b p-4">
-          <h2 className="text-lg font-semibold">
-            {addon?.name || currentAddon?.name || addonId}
-          </h2>
+          <h2 className="text-lg font-semibold">{headerTitle}</h2>
           <p className="text-muted-foreground text-sm">
             Configure os parâmetros deste addon
           </p>
         </div>
       )}
 
-      <div className="flex-1 overflow-auto px-8 py-6">
+      <div className="flex-1 space-y-6 overflow-auto px-6 py-5">
         <Tabs defaultValue={defaultTab} className="w-full">
           {tabs.length > 1 && (
             <TabsList className="mb-4">
@@ -403,57 +684,88 @@ function ScopedAddonSettingsRenderer({
             </TabsList>
           )}
 
-          {tabs.map((tab) => (
-            <TabsContent key={tab.id} value={tab.id} className="m-0 space-y-6">
-              {tab.description && (
-                <p className="text-muted-foreground mb-4 text-sm">
-                  {tab.description}
-                </p>
-              )}
+          {tabs.map((tab) => {
+            const isAuthLocked = Boolean(
+              tab.requiresAuth && tab.isAuthenticated === false,
+            )
+            return (
+              <TabsContent
+                key={tab.id}
+                value={tab.id}
+                className="m-0 space-y-6"
+              >
+                {tab.description && (
+                  <p className="text-muted-foreground mb-4 text-sm">
+                    {tab.description}
+                  </p>
+                )}
 
-              {tab.groups
-                ? tab.groups.map((group) => (
-                    <div key={group.id} className="space-y-4">
-                      <div className="border-b pb-2">
-                        <h3 className="text-sm font-medium">{group.label}</h3>
-                        {group.description && (
-                          <p className="text-muted-foreground mt-1 text-xs">
-                            {group.description}
-                          </p>
-                        )}
-                      </div>
-                      <div className="grid w-full gap-4">
-                        {group.fields.map((field) => (
+                {isAuthLocked && (
+                  <div
+                    data-testid="addon-capability-auth-required-banner"
+                    className="border-border/70 bg-muted/30 text-muted-foreground rounded-md border border-dashed px-3.5 py-2.5 text-xs"
+                  >
+                    Conecte uma conta na aba <strong>Autenticação</strong> deste
+                    Workspace para habilitar e configurar esta capacidade.
+                  </div>
+                )}
+
+                <div
+                  className={
+                    isAuthLocked
+                      ? 'pointer-events-none space-y-6 opacity-50 select-none'
+                      : 'space-y-6'
+                  }
+                >
+                  {tab.groups
+                    ? tab.groups.map((group) => (
+                        <div key={group.id} className="space-y-4">
+                          <div className="border-b pb-2">
+                            <h3 className="text-sm font-medium">
+                              {group.label}
+                            </h3>
+                            {group.description && (
+                              <p className="text-muted-foreground mt-1 text-xs">
+                                {group.description}
+                              </p>
+                            )}
+                          </div>
+                          <div className="grid w-full gap-4">
+                            {group.fields.map((field) => (
+                              <FieldRenderer
+                                key={field.id}
+                                field={field}
+                                addonId={addonId}
+                                workspaceId={workspaceId}
+                                value={formValues[field.id]}
+                                onChange={handleFieldChange}
+                                disabled={isAuthLocked}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    : tab.fields?.map((field) => (
+                        <div key={field.id} className="grid w-full gap-4">
                           <FieldRenderer
-                            key={field.id}
                             field={field}
                             addonId={addonId}
                             workspaceId={workspaceId}
                             value={formValues[field.id]}
                             onChange={handleFieldChange}
+                            disabled={isAuthLocked}
                           />
-                        ))}
-                      </div>
-                    </div>
-                  ))
-                : tab.fields?.map((field) => (
-                    <div key={field.id} className="grid w-full gap-4">
-                      <FieldRenderer
-                        field={field}
-                        addonId={addonId}
-                        workspaceId={workspaceId}
-                        value={formValues[field.id]}
-                        onChange={handleFieldChange}
-                      />
-                    </div>
-                  ))}
-            </TabsContent>
-          ))}
+                        </div>
+                      ))}
+                </div>
+              </TabsContent>
+            )
+          })}
         </Tabs>
       </div>
 
       {hasEditableFields && (
-        <div className="bg-muted/20 flex justify-end gap-2 border-t px-8 py-4">
+        <div className="bg-muted/20 flex justify-end gap-2 border-t px-6 py-3">
           <Button
             variant="outline"
             onClick={handleReset}
@@ -507,7 +819,9 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
       }),
     onSuccess: (res) => {
       if (!res?.isSuccess || !res.data) {
-        toast.error(res?.error ?? 'Falha ao conectar')
+        let errorMsg = 'Falha ao conectar'
+        if (res?.error) errorMsg = res.error
+        toast.error(errorMsg)
         return
       }
       queryClient.invalidateQueries({ queryKey: ['workspace'] })
@@ -533,16 +847,13 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
     }
   }
 
-  const myConnections = connectionState
+  const myConnections: AddonConnection[] = connectionState
     .filter((c) => c.dataSourceId === addonId)
     .map((c) => ({
       id: c.connectionId,
-      name: (c.config?.name as string) || c.connectionId,
-      url:
-        (c.config?.url as string) || (c.config?.baseUrl as string) || undefined,
-      status: (c.status === 'connected'
-        ? 'connected'
-        : 'disconnected') as import('@/pages/addons/types').ConnectionStatus,
+      name: resolveConnectionName(c.config, c.connectionId),
+      url: resolveConnectionUrl(c.config),
+      status: resolveConnectionStatus(c.status),
     }))
 
   return (
@@ -650,12 +961,14 @@ function FieldRenderer({
   workspaceId,
   value,
   onChange,
+  disabled,
 }: {
   field: AddonSettingsField
   addonId: string
   workspaceId: string | undefined
   value: string | number | boolean | null | undefined
   onChange: (fieldId: string, value: string | number | boolean | null) => void
+  disabled?: boolean
 }) {
   return (
     <AddonFieldRenderer
@@ -664,6 +977,7 @@ function FieldRenderer({
       workspaceId={workspaceId}
       value={value}
       onChange={onChange}
+      disabled={disabled}
       renderDataSourceInstances={(id) => (
         <DataSourceInstancesManager addonId={id} />
       )}

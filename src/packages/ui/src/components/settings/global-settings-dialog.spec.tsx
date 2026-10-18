@@ -192,7 +192,7 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
     expect(screen.getByPlaceholderText('Buscar Addons...')).toBeTruthy()
   })
 
-  it('opens dedicated AddonSettingsDialog when clicking configure on an installed addon', async () => {
+  it('opens dedicated AddonSettingsDialog with Dual Sidebar (Autenticação + Capacidades + Workspaces) when clicking configure on an installed addon', async () => {
     hostBridgeMocks.listInstalled.mockResolvedValue({
       isSuccess: true,
       data: [
@@ -202,8 +202,8 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
           version: '1.2.0',
           creator: 'Gustavohps10',
           description: 'Sincronização com o Redmine',
-          category: 'DataSources',
-          categories: ['DataSources', 'Themes'],
+          category: 'dataSource',
+          categories: ['auth', 'dataSource', 'theme'],
         },
       ],
     })
@@ -221,20 +221,29 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
     expect(configureBtn).toBeTruthy()
     fireEvent.click(configureBtn)
 
-    // Aba Fonte De Dados ativa por padrão
-    expect(
-      await screen.findByTestId('addon-capability-tab-datasources'),
-    ).toBeTruthy()
-    expect(screen.getByTestId('addon-capability-tab-themes')).toBeTruthy()
+    // Aba Autenticação no topo + Fonte De Dados e Tema Visual nas Capacidades
+    expect(await screen.findByTestId('addon-capability-tab-auth')).toBeTruthy()
+    expect(screen.getByTestId('addon-capability-tab-dataSource')).toBeTruthy()
+    expect(screen.getByTestId('addon-capability-tab-theme')).toBeTruthy()
 
-    // Na capacidade de Fonte De Dados, deve agrupar por Workspace
+    // Sub-sidebar de Workspaces presente e workspace selecionado no Outlet
+    expect(await screen.findByTestId('addon-workspaces-sidebar')).toBeTruthy()
+    expect(screen.getByTestId('addon-workspace-tab-ws-1')).toBeTruthy()
     expect(
       await screen.findByTestId('workspace-datasource-group-ws-1'),
     ).toBeTruthy()
     expect(screen.getByTestId('add-instance-btn-ws-1')).toBeTruthy()
 
+    // Ao alternar para Fonte De Dados: exibe configuração de mapeamento sem botão de adicionar instância de credencial
+    const dataSourceTabBtn = screen.getByTestId(
+      'addon-capability-tab-dataSource',
+    )
+    fireEvent.click(dataSourceTabBtn)
+    expect(await screen.findByTestId('addon-workspaces-sidebar')).toBeTruthy()
+    expect(screen.queryByTestId('add-instance-btn-ws-1')).toBeNull()
+
     // Ao alternar para Tema Visual: NUNCA deve exibir instâncias de DataSource
-    const themesTabBtn = screen.getByTestId('addon-capability-tab-themes')
+    const themesTabBtn = screen.getByTestId('addon-capability-tab-theme')
     fireEvent.click(themesTabBtn)
 
     expect(await screen.findByText('Paleta de Cores do Tema')).toBeTruthy()
@@ -261,7 +270,7 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
           id: 'fake-addon',
           name: 'Fake Addon',
           version: '1.0.0',
-          categories: ['themes'],
+          categories: ['theme'],
         },
       ],
     })
@@ -285,5 +294,43 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
     expect(hostBridgeMocks.setActiveTheme).toHaveBeenCalledWith({
       body: { themeId: 'fake-addon:fake-matrix-theme' },
     })
+  })
+
+  it('separates Autenticação (cardinality: single) and Observador in Dual Sidebar without duplicating auth inside watcher tab', async () => {
+    hostBridgeMocks.listInstalled.mockResolvedValue({
+      isSuccess: true,
+      data: [
+        {
+          id: 'mistertick-discord',
+          name: 'Discord Presence',
+          version: '0.2.0',
+          creator: 'Mister Tick',
+          description: 'Captura automática de chamadas de voz.',
+          category: 'watcher',
+          categories: ['auth', 'watcher'],
+        },
+      ],
+    })
+
+    renderDialog()
+
+    fireEvent.click(screen.getByTestId('settings-nav-tab-addons-installed'))
+
+    const configureBtn = await screen.findByTestId(
+      'addon-configure-btn-mistertick-discord',
+    )
+    fireEvent.click(configureBtn)
+
+    const authCapBtn = await screen.findByTestId('addon-capability-tab-auth')
+    const watcherCapBtn = screen.getByTestId('addon-capability-tab-watcher')
+    expect(authCapBtn).toBeTruthy()
+    expect(watcherCapBtn).toBeTruthy()
+    expect(await screen.findByTestId('addon-workspaces-sidebar')).toBeTruthy()
+
+    // alternar para Observador
+    fireEvent.click(watcherCapBtn)
+    expect(
+      screen.queryByTestId('addon-workspace-auth-section-mistertick-discord'),
+    ).toBeNull()
   })
 })

@@ -410,57 +410,8 @@ export class AddonLoader implements IAddonReloader {
     }
   }
 
-  public createContext(addonId: string): AddonContext {
-    const lifetime = new AddonLifetime()
-    this.lifetimes.get(addonId)?.dispose()
-    this.lifetimes.set(addonId, lifetime)
-    const vault = this.vaultFor(addonId)
-
-    const addonTimerbarRegistry: IRegistry<TimerbarMenuItem> = {
-      register: (item: TimerbarMenuItem) => {
-        const itemWithAddon = { ...item, addonId }
-        if (!lifetime.isActive()) return
-        this.addonTimerbarItems.set(addonId, itemWithAddon)
-        lifetime.track(() => this.addonTimerbarItems.delete(addonId))
-      },
-      unregister: (id: string) => {
-        if (!lifetime.isActive()) return
-        const item = this.addonTimerbarItems.get(addonId)
-        if (item?.id !== id) return
-        this.addonTimerbarItems.delete(addonId)
-      },
-      getItems: () => {
-        const item = this.addonTimerbarItems.get(addonId)
-        if (!item) return []
-        return [item]
-      },
-    }
-
-    const menusRegistry: IAddonMenusAPI = {
-      sidebar: lifetime.registry(addonId, this.sidebarRegistry),
-      timerbar: addonTimerbarRegistry,
-    }
-
-    const notifications: IAddonNotificationsAPI = {
-      info: async (message, title) => this.showToast('info', message, title),
-      success: async (message, title) =>
-        this.showToast('success', message, title),
-      warning: async (message, title) =>
-        this.showToast('warning', message, title),
-      error: async (message, title) => this.showToast('error', message, title),
-      loading: async (message, title) =>
-        this.showToast('loading', message, title),
-      dismiss: async (toastId) => this.dismissToast(toastId),
-    }
-
-    const capabilities = new AddonRuntimeCapabilities(
-      this.localRuntime,
-      this.getAddonSourceInfo(addonId),
-      this.timerControlLock,
-    )
-    const timer = capabilities.timer
-    const timeEntries = capabilities.timeEntries
-    const oauth: IAddonOAuthAPI = {
+  public createOAuthAPI(addonId: string): IAddonOAuthAPI {
+    return {
       generatePKCE: () => generatePKCE(),
       generateState: (prefix?: string) => {
         let statePrefix = addonId
@@ -558,6 +509,59 @@ export class AddonLoader implements IAddonReloader {
         })
       },
     }
+  }
+
+  public createContext(addonId: string): AddonContext {
+    const lifetime = new AddonLifetime()
+    this.lifetimes.get(addonId)?.dispose()
+    this.lifetimes.set(addonId, lifetime)
+    const vault = this.vaultFor(addonId)
+
+    const addonTimerbarRegistry: IRegistry<TimerbarMenuItem> = {
+      register: (item: TimerbarMenuItem) => {
+        const itemWithAddon = { ...item, addonId }
+        if (!lifetime.isActive()) return
+        this.addonTimerbarItems.set(addonId, itemWithAddon)
+        lifetime.track(() => this.addonTimerbarItems.delete(addonId))
+      },
+      unregister: (id: string) => {
+        if (!lifetime.isActive()) return
+        const item = this.addonTimerbarItems.get(addonId)
+        if (item?.id !== id) return
+        this.addonTimerbarItems.delete(addonId)
+      },
+      getItems: () => {
+        const item = this.addonTimerbarItems.get(addonId)
+        if (!item) return []
+        return [item]
+      },
+    }
+
+    const menusRegistry: IAddonMenusAPI = {
+      sidebar: lifetime.registry(addonId, this.sidebarRegistry),
+      timerbar: addonTimerbarRegistry,
+    }
+
+    const notifications: IAddonNotificationsAPI = {
+      info: async (message, title) => this.showToast('info', message, title),
+      success: async (message, title) =>
+        this.showToast('success', message, title),
+      warning: async (message, title) =>
+        this.showToast('warning', message, title),
+      error: async (message, title) => this.showToast('error', message, title),
+      loading: async (message, title) =>
+        this.showToast('loading', message, title),
+      dismiss: async (toastId) => this.dismissToast(toastId),
+    }
+
+    const capabilities = new AddonRuntimeCapabilities(
+      this.localRuntime,
+      this.getAddonSourceInfo(addonId),
+      this.timerControlLock,
+    )
+    const timer = capabilities.timer
+    const timeEntries = capabilities.timeEntries
+    const oauth = this.createOAuthAPI(addonId)
 
     const settingsRegistry: IAddonSettingsAPI = {
       register: (schema: AddonSettingsSchemaProvider) => {
@@ -579,7 +583,11 @@ export class AddonLoader implements IAddonReloader {
         const itemWithId: IDataSource & { id: string } = {
           id: addonId,
           getConnectionSchema: () => item.getConnectionSchema(),
-          createInstance: (context) => item.createInstance(context),
+          createInstance: (context) =>
+            item.createInstance({
+              ...context,
+              oauth: context.oauth ?? oauth,
+            }),
         }
         if (item.getMappingFields !== undefined)
           itemWithId.getMappingFields = item.getMappingFields.bind(item)

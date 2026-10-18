@@ -84,6 +84,16 @@ export class DataSourceResolver implements IDataSourceResolver {
 
     if (!connection) throw new Error(`Conexao invalida`)
 
+    const oauth = this.options.addonLoader?.createOAuthAPI(
+      connection.dataSourceId,
+    )
+    if (oauth && !context.oauth) {
+      context = {
+        ...context,
+        oauth,
+      }
+    }
+
     const datasource = await this.loadModule(connection.dataSourceId)
     const instance = datasource.createInstance(context)
 

@@ -32,11 +32,37 @@ export interface IHttpClient {
   delete<T>(url: string, config?: unknown): Promise<Either<AppError, T>>
 }
 
+export interface DataSourcePKCEPair {
+  codeVerifier: string
+  codeChallenge: string
+}
+
+export interface DataSourceOAuthAuthorizeOptions {
+  authUrl: string
+  state?: string
+  timeoutMs?: number
+}
+
+export interface DataSourceOAuthResult {
+  code: string
+  state?: string
+  [param: string]: string | undefined
+}
+
+export interface IDataSourceOAuthAPI {
+  generatePKCE(): DataSourcePKCEPair
+  generateState(prefix?: string): string
+  authorize(
+    options: DataSourceOAuthAuthorizeOptions,
+  ): Promise<DataSourceOAuthResult>
+}
+
 export interface DataSourceContext {
   httpClient: IHttpClient
   authenticatedMemberData?: MemberDTO
   config?: Record<string, string | number | boolean>
   credentials?: Record<string, string | number | boolean>
+  oauth?: IDataSourceOAuthAPI
 }
 
 export interface ResolvedConnection {

@@ -225,7 +225,8 @@ export interface AddonManifest {
   sourceUrl?: string
   tags?: string[]
   category?:
-    'DataSources' | 'Watchers' | 'Calendars' | 'Punch' | 'Themes' | string
+    'auth' | 'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme' | string
+  categories?: string[]
   tier?: 'free' | 'plus'
   sha256?: string
   size?: number
@@ -345,10 +346,15 @@ export interface AddonSettingsField {
   }
 }
 
+export type AddonSettingsTabKind = 'auth' | 'capability'
+
+export type AddonSettingsAuthType = 'credentials' | 'oauth2'
+
 export interface AddonSettingsGroup {
   id: string
   label: string
   description?: string
+  authType?: AddonSettingsAuthType
   fields: AddonSettingsField[]
 }
 
@@ -356,6 +362,10 @@ export interface AddonSettingsTab {
   id: string
   label: string
   description?: string
+  kind?: AddonSettingsTabKind
+  requiresAuth?: boolean
+  isAuthenticated?: boolean
+  authType?: AddonSettingsAuthType
   groups?: AddonSettingsGroup[]
   fields?: AddonSettingsField[]
 }

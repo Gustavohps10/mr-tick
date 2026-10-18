@@ -88,9 +88,11 @@ async function run() {
   for (const candidate of pages) {
     const url = candidate.url()
     if (
-      url.includes('localhost') ||
-      url.includes('renderer') ||
-      url.includes('index.html')
+      (url.includes('localhost') ||
+        url.includes('renderer') ||
+        url.includes('index.html')) &&
+      !url.includes('#/runtime') &&
+      !url.includes('/widgets/timer')
     ) {
       page = candidate
       break
@@ -100,6 +102,13 @@ async function run() {
   const currentUrl = page.url()
   const title = await page.title()
   console.log(`📱 Janela conectada: "${title}" (${currentUrl})`)
+
+  page.on('console', (msg) => {
+    console.log(`💬 [PAGE ${msg.type()}]:`, msg.text())
+  })
+  page.on('pageerror', (err) => {
+    console.log(`💥 [PAGE UNCAUGHT]:`, err.message)
+  })
 
   switch (options.action) {
     case 'screenshot': {

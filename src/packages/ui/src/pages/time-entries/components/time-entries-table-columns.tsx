@@ -13,7 +13,6 @@ import {
 import React from 'react'
 import { useDebounce } from 'use-debounce'
 
-import { discordLogo } from '@/assets'
 import { DataSourceLogo } from '@/components/datasource-logo'
 import { TaskPopover } from '@/components/task-popover'
 import { TimerDisplay } from '@/components/time-bar/timer-display'
@@ -261,14 +260,7 @@ function resolveRowTempData(
 function SuggestionSquareBadge({ source }: { source?: AddonSourceInfo }) {
   const displayName = source?.name || source?.pluginId || 'Addon'
   const sourceHandle = `@${displayName.toLowerCase().replace(/\s+/g, '')}`
-  let iconUrl = source?.imageUrl
-  if (!iconUrl) {
-    const lowerId = (source?.pluginId || '').toLowerCase()
-    const lowerName = displayName.toLowerCase()
-    if (lowerId.includes('discord') || lowerName.includes('discord')) {
-      iconUrl = discordLogo
-    }
-  }
+  const iconUrl = source?.imageUrl
 
   return (
     <Tooltip>

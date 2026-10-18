@@ -1,8 +1,12 @@
 'use client'
 
-import type { WorkspaceViewModel } from '@mr-tick/sdk'
+import type {
+  AddonSettingsAuthCardinality,
+  WorkspaceViewModel,
+} from '@mr-tick/sdk'
+import { isString } from '@mr-tick/shared/helpers'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FolderKanban, Plus, SlidersHorizontal } from 'lucide-react'
+import { FolderKanban, KeyRound, Plus, SlidersHorizontal } from 'lucide-react'
 import React, { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -21,18 +25,54 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { ConnectionCard } from '@/pages/addons/components/addon-list'
-import type { ConnectionStatus } from '@/pages/addons/types'
+import type { AddonConnection, ConnectionStatus } from '@/pages/addons/types'
 
 export interface WorkspaceGroupedDataSourceManagerProps {
   addonId: string
+  workspaceId?: string
+  mode?: 'auth' | 'dataSource'
+  cardinality?: AddonSettingsAuthCardinality
+}
+
+function resolveConnectionName(
+  config: Record<string, unknown> | undefined,
+  fallbackId: string,
+): string {
+  if (config && isString(config.name) && config.name.trim().length > 0) {
+    return config.name
+  }
+  return fallbackId
+}
+
+function resolveConnectionUrl(
+  config: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!config) return undefined
+  if (isString(config.url) && config.url.trim().length > 0) {
+    return config.url
+  }
+  if (isString(config.baseUrl) && config.baseUrl.trim().length > 0) {
+    return config.baseUrl
+  }
+  if (isString(config.apiUrl) && config.apiUrl.trim().length > 0) {
+    return config.apiUrl
+  }
+  return undefined
+}
+
+function resolveConnectionStatus(status?: string): ConnectionStatus {
+  if (status === 'connected') return 'connected'
+  return 'disconnected'
 }
 
 export function WorkspaceGroupedDataSourceManager({
   addonId,
+  workspaceId,
+  mode = 'auth',
+  cardinality = 'multi',
 }: WorkspaceGroupedDataSourceManagerProps) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
@@ -58,7 +98,8 @@ export function WorkspaceGroupedDataSourceManager({
     queryFn: async () => {
       const res = await bridge.workspaces.listAll()
       if (!res.isSuccess) throw new Error(res.error)
-      return res.data ?? []
+      if (!res.data) return []
+      return res.data
     },
   })
 
@@ -81,7 +122,9 @@ export function WorkspaceGroupedDataSourceManager({
     },
     onSuccess: (res) => {
       if (!res?.isSuccess || !res.data) {
-        toast.error(res?.error ?? 'Falha ao conectar instância')
+        let errorMsg = 'Falha ao conectar instância'
+        if (res?.error) errorMsg = res.error
+        toast.error(errorMsg)
         return
       }
 
@@ -99,14 +142,14 @@ export function WorkspaceGroupedDataSourceManager({
 
   const disconnectMutation = useMutation({
     mutationFn: async ({
-      workspaceId,
+      targetWorkspaceId,
       connectionInstanceId,
     }: {
-      workspaceId: string
+      targetWorkspaceId: string
       connectionInstanceId: string
     }) => {
       const res = await bridge.workspaces.disconnectDataSource({
-        body: { workspaceId, connectionInstanceId },
+        body: { workspaceId: targetWorkspaceId, connectionInstanceId },
       })
       if (!res.isSuccess) throw new Error(res.error)
       return res
@@ -122,14 +165,14 @@ export function WorkspaceGroupedDataSourceManager({
 
   const unlinkMutation = useMutation({
     mutationFn: async ({
-      workspaceId,
+      targetWorkspaceId,
       connectionInstanceId,
     }: {
-      workspaceId: string
+      targetWorkspaceId: string
       connectionInstanceId: string
     }) => {
       const res = await bridge.workspaces.unlinkDataSource({
-        body: { workspaceId, connectionInstanceId },
+        body: { workspaceId: targetWorkspaceId, connectionInstanceId },
       })
       if (!res.isSuccess) throw new Error(res.error)
       return res
@@ -143,24 +186,24 @@ export function WorkspaceGroupedDataSourceManager({
     onError: (err: Error) => toast.error(err.message),
   })
 
-  const handleAddConnection = async (workspaceId: string) => {
+  const handleAddConnection = async (targetWorkspaceId: string) => {
     const unique = crypto.randomUUID().slice(0, 8)
     const newId = `${addonId}-${unique}`
-    setActiveWorkspaceId(workspaceId)
+    setActiveWorkspaceId(targetWorkspaceId)
     setConnectionTargetId(newId)
 
     try {
       await bridge.workspaces.linkDataSource({
         body: {
-          workspaceId,
+          workspaceId: targetWorkspaceId,
           dataSourceId: addonId,
           connectionInstanceId: newId,
         },
       })
       setConnectionDialogOpen(true)
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Falha ao vincular DataSource'
+    } catch (err) {
+      let message = 'Falha ao vincular DataSource'
+      if (err instanceof Error) message = err.message
       toast.error(message)
     }
   }
@@ -170,12 +213,15 @@ export function WorkspaceGroupedDataSourceManager({
       <div className="space-y-4 p-6">
         <Skeleton className="h-6 w-48" />
         <Skeleton className="h-28 w-full rounded-lg" />
-        <Skeleton className="h-28 w-full rounded-lg" />
       </div>
     )
   }
 
-  if (workspaces.length === 0) {
+  const targetWorkspaces = workspaceId
+    ? workspaces.filter((w) => w.id === workspaceId)
+    : workspaces
+
+  if (targetWorkspaces.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
         <FolderKanban className="text-muted-foreground/40 mb-3 size-10" />
@@ -184,7 +230,7 @@ export function WorkspaceGroupedDataSourceManager({
         </h3>
         <p className="text-muted-foreground mt-1 max-w-sm text-xs">
           Instâncias de conexão pertencem aos Workspaces. Crie ou abra um
-          workspace para gerenciar suas conexões com este DataSource.
+          workspace para gerenciar suas conexões.
         </p>
       </div>
     )
@@ -192,88 +238,77 @@ export function WorkspaceGroupedDataSourceManager({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <ScrollArea className="h-full w-full">
-        <div className="w-full space-y-6 px-8 py-6">
-          <div className="flex items-center justify-between border-b pb-3">
-            <div>
-              <h3 className="text-foreground text-sm font-semibold">
-                Workspaces & Instâncias Conectadas
-              </h3>
-              <p className="text-muted-foreground mt-0.5 text-xs">
-                Contas e conexões ativas deste provedor organizadas por
-                Workspace.
-              </p>
-            </div>
-            <Badge variant="outline" className="font-mono text-xs">
-              {workspaces.length}{' '}
-              {workspaces.length === 1 ? 'Workspace' : 'Workspaces'}
-            </Badge>
-          </div>
+      <div className="h-full w-full overflow-x-hidden overflow-y-auto">
+        <div className="w-full space-y-5 px-6 py-5">
+          {targetWorkspaces.map((ws) => {
+            let rawConnections = ws.dataSourceConnections
+            if (!rawConnections) rawConnections = []
 
-          <div className="space-y-5">
-            {workspaces.map((ws) => {
-              const connections = (ws.dataSourceConnections ?? []).filter(
-                (c) => c.dataSourceId === addonId,
-              )
-              const mappedConnections = connections.map((c) => ({
+            const connections = rawConnections.filter(
+              (c) => c.dataSourceId === addonId,
+            )
+
+            const mappedConnections: AddonConnection[] = connections.map(
+              (c) => ({
                 id: c.id,
-                name: (c.config?.name as string) || c.id,
-                url:
-                  (c.config?.url as string) ||
-                  (c.config?.baseUrl as string) ||
-                  undefined,
-                status: (c.status === 'connected'
-                  ? 'connected'
-                  : 'disconnected') as ConnectionStatus,
+                name: resolveConnectionName(c.config, c.id),
+                url: resolveConnectionUrl(c.config),
+                status: resolveConnectionStatus(c.status),
                 member: c.member,
-              }))
+              }),
+            )
 
-              return (
-                <div
-                  key={ws.id}
-                  data-testid={`workspace-datasource-group-${ws.id}`}
-                  className="bg-card/70 border-border/70 overflow-hidden rounded-lg border shadow-xs"
-                >
-                  {/* Cabeçalho do Workspace */}
-                  <div className="bg-muted/30 border-border/60 flex items-center justify-between border-b px-4 py-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <Avatar className="border-border/40 size-8 shrink-0 rounded-lg border">
-                        <AvatarImage
-                          src={ws.avatarUrl}
-                          alt={ws.name}
-                          className="size-full object-cover"
-                        />
-                        <AvatarFallback className="bg-primary/10 text-primary rounded-lg text-xs font-semibold">
-                          {ws.name.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-foreground truncate text-xs font-semibold">
-                            {ws.name}
-                          </h4>
-                          {connections.length > 0 ? (
-                            <Badge
-                              variant="secondary"
-                              className="border-emerald-500/20 bg-emerald-500/10 text-[10px] font-medium text-emerald-500"
-                            >
-                              {connections.length}{' '}
-                              {connections.length === 1
-                                ? 'conectada'
-                                : 'conectadas'}
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="text-muted-foreground text-[10px]"
-                            >
-                              0 conectadas
-                            </Badge>
-                          )}
-                        </div>
+            const canAddMoreInstances =
+              mode === 'auth' &&
+              (cardinality === 'multi' || mappedConnections.length === 0)
+
+            return (
+              <div
+                key={ws.id}
+                data-testid={`workspace-datasource-group-${ws.id}`}
+                className="bg-card/70 border-border/70 overflow-hidden rounded-lg border shadow-xs"
+              >
+                {/* Cabeçalho do Workspace */}
+                <div className="bg-muted/30 border-border/60 flex items-center justify-between border-b px-4 py-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Avatar className="border-border/40 size-8 shrink-0 rounded-lg border">
+                      <AvatarImage
+                        src={ws.avatarUrl}
+                        alt={ws.name}
+                        className="size-full object-cover"
+                      />
+                      <AvatarFallback className="bg-primary/10 text-primary rounded-lg text-xs font-semibold">
+                        {ws.name.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-foreground truncate text-xs font-semibold">
+                          {ws.name}
+                        </h4>
+                        {connections.length > 0 ? (
+                          <Badge
+                            variant="secondary"
+                            className="border-emerald-500/20 bg-emerald-500/10 text-[10px] font-medium text-emerald-500"
+                          >
+                            {connections.length}{' '}
+                            {connections.length === 1
+                              ? 'conectada'
+                              : 'conectadas'}
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-muted-foreground text-[10px]"
+                          >
+                            0 conectadas
+                          </Badge>
+                        )}
                       </div>
                     </div>
+                  </div>
 
+                  {canAddMoreInstances && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -284,78 +319,131 @@ export function WorkspaceGroupedDataSourceManager({
                       <Plus className="size-3.5" />
                       Nova Instância
                     </Button>
-                  </div>
+                  )}
+                </div>
 
-                  {/* Lista de Instâncias deste Workspace */}
-                  <div className="p-4">
-                    {mappedConnections.length > 0 ? (
-                      <div className="space-y-3">
-                        {mappedConnections.map((conn) => (
-                          <div key={conn.id} className="space-y-1.5">
-                            <ConnectionCard
-                              connection={conn}
-                              onOpenSettings={(c) => {
-                                setActiveWorkspaceId(ws.id)
-                                setConnectionTargetId(c.id)
-                                setConnectionDialogOpen(true)
-                              }}
-                              onDisconnect={(c) =>
-                                disconnectMutation.mutate({
-                                  workspaceId: ws.id,
-                                  connectionInstanceId: c.id,
-                                })
-                              }
-                              onUninstall={(c) =>
-                                unlinkMutation.mutate({
-                                  workspaceId: ws.id,
-                                  connectionInstanceId: c.id,
-                                })
-                              }
-                            />
+                {/* Conteúdo do Workspace conforme o modo ('auth' vs 'dataSource') */}
+                <div className="p-4">
+                  {mode === 'auth' && mappedConnections.length > 0 && (
+                    <div className="space-y-3">
+                      {mappedConnections.map((conn) => (
+                        <ConnectionCard
+                          key={conn.id}
+                          connection={conn}
+                          onOpenSettings={(c) => {
+                            setActiveWorkspaceId(ws.id)
+                            setConnectionTargetId(c.id)
+                            setConnectionDialogOpen(true)
+                          }}
+                          onDisconnect={(c) =>
+                            disconnectMutation.mutate({
+                              targetWorkspaceId: ws.id,
+                              connectionInstanceId: c.id,
+                            })
+                          }
+                          onUninstall={(c) =>
+                            unlinkMutation.mutate({
+                              targetWorkspaceId: ws.id,
+                              connectionInstanceId: c.id,
+                            })
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
 
-                            {conn.status === 'connected' && (
-                              <div className="flex justify-end px-1">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 cursor-pointer gap-1.5 text-xs"
-                                  data-testid={`configure-mapping-instance-btn-${conn.id}`}
-                                  onClick={() => {
-                                    setMappingWorkspaceId(ws.id)
-                                    setMappingTargetId(conn.id)
-                                  }}
+                  {mode === 'auth' && mappedConnections.length === 0 && (
+                    <div className="border-border/60 bg-muted/10 rounded-md border border-dashed py-6 text-center">
+                      <KeyRound className="text-muted-foreground/50 mx-auto mb-2 size-6" />
+                      <p className="text-muted-foreground text-xs">
+                        Nenhuma conta de {addonId} conectada neste workspace.
+                      </p>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={() => handleAddConnection(ws.id)}
+                        className="text-primary mt-1 h-6 cursor-pointer text-xs"
+                      >
+                        Conectar agora
+                      </Button>
+                    </div>
+                  )}
+
+                  {mode === 'dataSource' && mappedConnections.length > 0 && (
+                    <div className="space-y-3">
+                      {mappedConnections.map((conn) => (
+                        <div
+                          key={conn.id}
+                          data-testid={`datasource-mapping-card-${conn.id}`}
+                          className="border-border/60 bg-background/60 flex items-center justify-between gap-3 rounded-lg border px-4 py-3"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="text-foreground truncate text-xs font-semibold">
+                                {conn.name}
+                              </span>
+                              {conn.member?.login && (
+                                <Badge
+                                  variant="outline"
+                                  className="shrink-0 font-mono text-[10px]"
                                 >
-                                  <SlidersHorizontal className="size-3.5" />
-                                  Configurar Mapeamento
-                                </Button>
-                              </div>
+                                  @{conn.member.login}
+                                </Badge>
+                              )}
+                            </div>
+                            {conn.url && (
+                              <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
+                                {conn.url}
+                              </p>
                             )}
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="border-border/60 bg-muted/10 rounded-md border border-dashed py-5 text-center">
-                        <p className="text-muted-foreground text-xs">
-                          Nenhuma conta de {addonId} conectada neste workspace.
-                        </p>
-                        <Button
-                          variant="link"
-                          size="sm"
-                          onClick={() => handleAddConnection(ws.id)}
-                          className="text-primary mt-1 h-6 cursor-pointer text-xs"
-                        >
-                          Conectar agora
-                        </Button>
-                      </div>
-                    )}
-                  </div>
+
+                          {conn.status === 'connected' ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 shrink-0 cursor-pointer gap-1.5 text-xs"
+                              data-testid={`configure-mapping-instance-btn-${conn.id}`}
+                              onClick={() => {
+                                setMappingWorkspaceId(ws.id)
+                                setMappingTargetId(conn.id)
+                              }}
+                            >
+                              <SlidersHorizontal className="size-3.5" />
+                              Configurar Mapeamento
+                            </Button>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-muted-foreground shrink-0 text-[10px]"
+                            >
+                              Autenticação pendente
+                            </Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {mode === 'dataSource' && mappedConnections.length === 0 && (
+                    <div
+                      data-testid="datasource-auth-required-empty"
+                      className="border-border/60 bg-muted/10 rounded-md border border-dashed px-4 py-6 text-center"
+                    >
+                      <p className="text-muted-foreground text-xs">
+                        Nenhuma instância autenticada neste workspace. Conecte
+                        uma conta em <strong>Autenticação</strong> para
+                        configurar o mapeamento desta Fonte de Dados.
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )
-            })}
-          </div>
+              </div>
+            )
+          })}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Modal de Mapeamento de Campos */}
       {mappingWorkspaceId && mappingTargetId && (

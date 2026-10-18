@@ -679,4 +679,82 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       expect(codeChallenge).toMatch(/^[A-Za-z0-9_-]+$/)
     })
   })
+
+  describe('8. DataSourceContext OAuth Injection', () => {
+    it('injeta oauth no DataSourceContext permitindo que um DataSource autentique via OAuth 2.0 PKCE', async () => {
+      const addonContext = addonLoader.createContext('oauth-datasource-addon')
+      vi.mocked(shell.openExternal).mockResolvedValue(undefined)
+
+      let capturedOAuthState = ''
+      addonContext.contributions.dataSources.register({
+        getConnectionSchema: () => [],
+        createInstance: (dsContext) => {
+          expect(dsContext.oauth).toBeDefined()
+          return {
+            authStrategy: {
+              authenticate: async () => {
+                if (!dsContext.oauth) {
+                  throw new Error('oauth ausente no DataSourceContext')
+                }
+                capturedOAuthState = dsContext.oauth.generateState('oauth-ds')
+                const res = await dsContext.oauth.authorize({
+                  authUrl:
+                    'https://provider.example.com/oauth/authorize?client_id=ds-client',
+                  state: capturedOAuthState,
+                })
+                return {
+                  isFailure: () => false,
+                  isSuccess: () => true,
+                  success: {
+                    member: {
+                      id: 1,
+                      firstname: 'OAuth',
+                      lastname: 'User',
+                      login: 'oauth.user',
+                    },
+                    credentials: {
+                      accessToken: `token-for-${res.code}`,
+                    },
+                  },
+                  forwardFailure: () => {
+                    throw new Error('unexpected')
+                  },
+                } as any
+              },
+            },
+            tasksProvider: {} as any,
+            timeEntriesProvider: {} as any,
+            membersProvider: {} as any,
+            metadataProvider: {} as any,
+          }
+        },
+      })
+
+      const registeredDs = addonLoader.getDataSource('oauth-datasource-addon')
+      expect(registeredDs).toBeDefined()
+
+      const instance = registeredDs!.createInstance({
+        httpClient: {} as any,
+        config: { baseUrl: 'https://provider.example.com' },
+      })
+
+      const authPromise = instance.authStrategy.authenticate({
+        configuration: { baseUrl: 'https://provider.example.com' },
+        credentials: {},
+      })
+
+      expect(capturedOAuthState).toMatch(/^oauth-ds_[0-9a-f-]{36}$/)
+      addonLoader.handleOAuthCallbackUrl(
+        `mr-tick-app://oauth/callback?code=ds-oauth-code-777&state=${capturedOAuthState}`,
+      )
+
+      const authResult = await authPromise
+      expect(authResult.isSuccess()).toBe(true)
+      if (authResult.isSuccess()) {
+        expect(authResult.success.credentials).toEqual({
+          accessToken: 'token-for-ds-oauth-code-777',
+        })
+      }
+    })
+  })
 })

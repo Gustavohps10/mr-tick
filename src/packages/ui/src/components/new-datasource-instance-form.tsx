@@ -159,6 +159,37 @@ export function NewDataSourceInstanceForm({
     }
   }, [schema, methods])
 
+  const authTypeTabs = React.useMemo(
+    () => (schema || []).filter((t) => Boolean(t.authType)),
+    [schema],
+  )
+  const [selectedAuthTabId, setSelectedAuthTabId] = React.useState<
+    string | undefined
+  >(undefined)
+
+  React.useEffect(() => {
+    if (authTypeTabs.length > 0 && !selectedAuthTabId) {
+      setSelectedAuthTabId(authTypeTabs[0].id)
+    }
+  }, [authTypeTabs, selectedAuthTabId])
+
+  const activeAuthTab = React.useMemo(
+    () => authTypeTabs.find((t) => t.id === selectedAuthTabId),
+    [authTypeTabs, selectedAuthTabId],
+  )
+
+  const visibleTabs = React.useMemo(() => {
+    if (!schema) return []
+    if (authTypeTabs.length <= 1) return schema
+    return schema.filter(
+      (t) => !t.authType || t.id === (selectedAuthTabId ?? authTypeTabs[0]?.id),
+    )
+  }, [schema, authTypeTabs, selectedAuthTabId])
+
+  const isOAuthFlow =
+    activeAuthTab?.authType === 'oauth2' ||
+    (authTypeTabs.length === 1 && authTypeTabs[0].authType === 'oauth2')
+
   const handleFormSubmit = (values: Record<string, FieldPrimitiveValue>) => {
     const rawPluginId = values.pluginId ?? pluginId
     const rawConnectionInstanceId =
@@ -166,6 +197,10 @@ export function NewDataSourceInstanceForm({
 
     const credentials: Record<string, FieldPrimitiveValue> = {}
     const configuration: Record<string, FieldPrimitiveValue> = {}
+
+    if (activeAuthTab?.authType) {
+      configuration.authType = activeAuthTab.authType
+    }
 
     for (const [key, value] of Object.entries(values)) {
       if (key === 'pluginId' || key === 'connectionInstanceId') {
@@ -212,7 +247,31 @@ export function NewDataSourceInstanceForm({
   return (
     <FormProvider {...methods}>
       <div className="space-y-8">
-        {schema?.map((tab) => (
+        {authTypeTabs.length > 1 && (
+          <div
+            data-testid="datasource-auth-type-selector"
+            className="bg-muted/40 flex gap-1.5 rounded-lg border p-1"
+          >
+            {authTypeTabs.map((tab) => {
+              const isSelected =
+                tab.id === (selectedAuthTabId ?? authTypeTabs[0]?.id)
+              return (
+                <Button
+                  key={tab.id}
+                  type="button"
+                  size="sm"
+                  variant={isSelected ? 'default' : 'ghost'}
+                  className="flex-1 text-xs"
+                  onClick={() => setSelectedAuthTabId(tab.id)}
+                >
+                  {tab.label}
+                </Button>
+              )
+            })}
+          </div>
+        )}
+
+        {visibleTabs.map((tab) => (
           <div key={tab.id} className="space-y-4">
             <div className="text-foreground/80 flex items-center gap-2 text-sm font-semibold">
               <Settings className="h-4 w-4" />
@@ -309,7 +368,7 @@ export function NewDataSourceInstanceForm({
               ) : (
                 <PlugZap className="mr-2" />
               )}
-              Conectar
+              {isOAuthFlow ? 'Autenticar via OAuth e Conectar' : 'Conectar'}
             </Button>
           </div>
         )}

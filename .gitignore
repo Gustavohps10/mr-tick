@@ -33,4 +33,7 @@ src/dev-addons/*
 
 # E2E Native Test Harness Executables
 src/apps/desktop/e2e/harness/*.exe
-!src/apps/desktop/e2e/harness/timerbar_native_test.exe
+!src/apps/desktop/e2e/harness/timerbar_native_test.exe
+
+# Local screenshots and inspect artifacts
+.screenshots/

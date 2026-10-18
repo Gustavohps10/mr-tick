@@ -487,4 +487,88 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema DinÃ
     ).toBeNull()
     expect(screen.queryByText('Mapeamento de Status e Cores')).toBeNull()
   })
+
+  it('deve permitir alternar entre metodos de autenticacao (credentials vs oauth2) e submeter com authType no configuration', async () => {
+    const dualAuthSchema: AddonSettingsTab[] = [
+      {
+        id: 'general',
+        label: 'Servidor',
+        fields: [
+          {
+            id: 'baseUrl',
+            type: 'text',
+            label: 'URL Base',
+            defaultValue: 'https://tracker.example.com',
+          },
+        ],
+      },
+      {
+        id: 'token-auth',
+        label: 'API Token',
+        authType: 'credentials',
+        fields: [
+          {
+            id: 'apiKey',
+            type: 'password',
+            label: 'Chave de API',
+            scope: 'credential',
+          },
+        ],
+      },
+      {
+        id: 'oauth-auth',
+        label: 'OAuth 2.0',
+        authType: 'oauth2',
+        fields: [
+          {
+            id: 'clientId',
+            type: 'text',
+            label: 'Client ID Opcional',
+            defaultValue: 'public-client',
+          },
+        ],
+      },
+    ]
+
+    mockGetConnectionSchema.mockResolvedValueOnce({
+      isSuccess: true,
+      statusCode: 200,
+      data: dualAuthSchema,
+    })
+
+    const handleSubmit = vi.fn()
+
+    renderWithClient(
+      <NewDataSourceInstanceForm
+        pluginId="dual-auth-addon"
+        connectionInstanceId="conn-oauth-1"
+        onSubmit={handleSubmit}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('datasource-auth-type-selector')).toBeTruthy()
+    })
+
+    const oauthBtn = screen.getByRole('button', { name: 'OAuth 2.0' })
+    fireEvent.click(oauthBtn)
+
+    const submitBtn = screen.getByTestId('datasource-instance-connect-btn')
+    expect(submitBtn.textContent).toContain('Autenticar via OAuth e Conectar')
+
+    fireEvent.click(submitBtn)
+
+    await waitFor(() => {
+      expect(handleSubmit).toHaveBeenCalledWith({
+        pluginId: 'dual-auth-addon',
+        connectionInstanceId: 'conn-oauth-1',
+        credentials: {},
+        configuration: {
+          authType: 'oauth2',
+          baseUrl: 'https://tracker.example.com',
+          clientId: 'public-client',
+        },
+      })
+    })
+  })
 })

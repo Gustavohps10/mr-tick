@@ -145,7 +145,7 @@ describe('AddonsManagerModal version selection', () => {
       data: [
         {
           ...availableAddon,
-          categories: ['DataSources'],
+          categories: ['dataSource'],
           version: '0.5.0',
           installed: true,
         },

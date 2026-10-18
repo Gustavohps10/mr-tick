@@ -133,7 +133,8 @@ export default class FakeDataSourceAddon implements IAddon {
         if (isConnected) {
           return [
             {
-              id: 'watchers',
+              id: 'watcher',
+              kind: 'capability',
               label: 'Observador Fake',
               description: 'Monitoramento simulado de eventos em tempo real.',
               groups: [
@@ -173,7 +174,8 @@ export default class FakeDataSourceAddon implements IAddon {
 
         return [
           {
-            id: 'watchers',
+            id: 'watcher',
+            kind: 'capability',
             label: 'Observador Fake',
             description: 'Monitoramento simulado de eventos em tempo real.',
             groups: [

@@ -33,7 +33,13 @@ test.describe('E2E - Criação de Instâncias de Data Source com Schema Dinâmic
     await expect(configureFakeAddonBtn).toBeVisible({ timeout: 10000 })
     await configureFakeAddonBtn.click()
 
-    // 5. Clica no botão de adicionar nova instância para o workspace isolado
+    // 5. Clica no workspace isolado na sub-sidebar e depois no botão de adicionar nova instância
+    const isolatedWorkspaceTab = page.locator(
+      '[data-testid="addon-workspace-tab-ws-isolated-9999-8888-777766665555"]',
+    )
+    await expect(isolatedWorkspaceTab).toBeVisible({ timeout: 10000 })
+    await isolatedWorkspaceTab.click()
+
     const addInstanceBtn = page.locator(
       '[data-testid="add-instance-btn-ws-isolated-9999-8888-777766665555"]',
     )

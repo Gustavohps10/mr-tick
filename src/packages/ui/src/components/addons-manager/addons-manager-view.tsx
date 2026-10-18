@@ -1,4 +1,8 @@
-import { AddonManifestViewModel, AddonPackageViewModel } from '@mr-tick/sdk'
+import {
+  type AddonCategory,
+  AddonManifestViewModel,
+  AddonPackageViewModel,
+} from '@mr-tick/sdk'
 import {
   compareSemVer,
   isApiVersionCompatible,
@@ -50,17 +54,17 @@ import { AddonSettingsRenderer } from './addon-settings-renderer'
 export type SidebarSection = 'updates' | 'installed' | 'browse' | 'settings'
 
 export interface OfficialCategoryItem {
-  id: string
+  id: AddonCategory
   label: string
   icon: React.ComponentType<{ className?: string }>
 }
 
 export const OFFICIAL_CATEGORIES: OfficialCategoryItem[] = [
-  { id: 'DataSources', label: 'Fontes De Dados', icon: Database },
-  { id: 'Watchers', label: 'Observadores', icon: GlobeIcon },
-  { id: 'Calendars', label: 'Calendários', icon: Calendar },
-  { id: 'Punch', label: 'Ponto Eletrônico', icon: Clock },
-  { id: 'Themes', label: 'Temas', icon: Palette },
+  { id: 'dataSource', label: 'Fontes De Dados', icon: Database },
+  { id: 'watcher', label: 'Observadores', icon: GlobeIcon },
+  { id: 'calendar', label: 'Calendários', icon: Calendar },
+  { id: 'punch', label: 'Ponto Eletrônico', icon: Clock },
+  { id: 'theme', label: 'Temas', icon: Palette },
 ]
 
 function formatStarCount(stars?: number): string {
@@ -88,72 +92,20 @@ function getAddonPackages(
 }
 
 export function addonMatchesCategory(
-  addon: AddonManifestViewModel,
+  addon: Pick<AddonManifestViewModel, 'category' | 'categories'>,
   categoryId: string,
 ): boolean {
-  const targetCategory = categoryId.toLowerCase()
-  const primaryCategory = (addon.category || '').toLowerCase()
-  const categoriesList = (addon.categories || []).map((cat) =>
-    cat.toLowerCase(),
-  )
-  const tagsList = (addon.tags || []).map((tag) => tag.toLowerCase())
-
-  if (targetCategory === 'themes') {
-    return (
-      primaryCategory === 'themes' ||
-      primaryCategory === 'theme' ||
-      categoriesList.includes('theme') ||
-      categoriesList.includes('themes') ||
-      tagsList.includes('theme') ||
-      tagsList.includes('tema')
-    )
+  if (addon.category === categoryId) {
+    return true
   }
 
-  if (targetCategory === 'datasources') {
-    return (
-      primaryCategory === 'datasources' ||
-      primaryCategory === 'datasource' ||
-      categoriesList.includes('datasource') ||
-      categoriesList.includes('datasources') ||
-      tagsList.includes('datasource') ||
-      tagsList.includes('datasources')
-    )
+  if (addon.categories) {
+    for (const cat of addon.categories) {
+      if (cat === categoryId) return true
+    }
   }
 
-  if (targetCategory === 'watchers') {
-    return (
-      primaryCategory === 'watchers' ||
-      primaryCategory === 'watcher' ||
-      categoriesList.includes('watcher') ||
-      categoriesList.includes('watchers') ||
-      tagsList.includes('watcher') ||
-      tagsList.includes('watchers')
-    )
-  }
-
-  if (targetCategory === 'calendars') {
-    return (
-      primaryCategory === 'calendars' ||
-      primaryCategory === 'calendar' ||
-      categoriesList.includes('calendar') ||
-      tagsList.includes('calendar') ||
-      tagsList.includes('agenda')
-    )
-  }
-
-  if (targetCategory === 'punch') {
-    return (
-      primaryCategory === 'punch' ||
-      categoriesList.includes('punch') ||
-      tagsList.includes('punch') ||
-      tagsList.includes('ponto')
-    )
-  }
-
-  return (
-    primaryCategory === targetCategory ||
-    categoriesList.includes(targetCategory)
-  )
+  return false
 }
 
 export function SafeAddonLogo({
@@ -947,7 +899,7 @@ export function AddonsManagerView({
 
   const renderSettingsView = () => {
     const activeCategoryObj = OFFICIAL_CATEGORIES.find(
-      (c) => c.id.toLowerCase() === activeCategory?.toLowerCase(),
+      (c) => c.id === activeCategory,
     )
     const categoryLabel = activeCategoryObj?.label || activeCategory
     const addonsInCat = installedList.filter((a) =>

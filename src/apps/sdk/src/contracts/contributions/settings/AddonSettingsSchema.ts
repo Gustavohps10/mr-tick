@@ -57,10 +57,17 @@ export interface AddonSettingsField {
   } // For info-card
 }
 
+export type AddonSettingsTabKind = 'auth' | 'capability'
+
+export type AddonSettingsAuthType = 'credentials' | 'oauth2'
+
+export type AddonSettingsAuthCardinality = 'single' | 'multi'
+
 export interface AddonSettingsGroup {
   id: string
   label: string
   description?: string
+  authType?: AddonSettingsAuthType
   fields: AddonSettingsField[]
 }
 
@@ -68,6 +75,11 @@ export interface AddonSettingsTab {
   id: string
   label: string
   description?: string
+  kind?: AddonSettingsTabKind
+  cardinality?: AddonSettingsAuthCardinality
+  requiresAuth?: boolean
+  isAuthenticated?: boolean
+  authType?: AddonSettingsAuthType
   groups?: AddonSettingsGroup[]
   fields?: AddonSettingsField[]
 }

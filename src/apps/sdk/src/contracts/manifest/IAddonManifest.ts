@@ -1,9 +1,10 @@
 export type AddonCategory =
-  'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme'
+  'auth' | 'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme'
 
 export type AddonTier = 'free' | 'plus'
 
 export const VALID_ADDON_CATEGORIES: AddonCategory[] = [
+  'auth',
   'dataSource',
   'watcher',
   'calendar',

@@ -5,7 +5,9 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  renameSync,
   rmdirSync,
+  rmSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -46,6 +48,13 @@ interface DevAddonInfo {
 const currentFilePath = fileURLToPath(import.meta.url)
 const repoRoot = resolve(dirname(currentFilePath), '..')
 const devAddonsDir = join(repoRoot, 'src', 'dev-addons')
+const localSdkPath = join(repoRoot, 'src', 'apps', 'sdk')
+const parentContextDir = resolve(repoRoot, '..')
+
+interface ExtendedDevAddonInfo extends DevAddonInfo {
+  isExternalRepo: boolean
+  isSdkLinked: boolean
+}
 
 export function resolveMrTickAddonsDir(): string {
   const customPath = process.env.MR_TICK_ADDONS_PATH
@@ -95,20 +104,126 @@ function parseManifest(filePath: string): ManifestData {
   }
 }
 
-function checkIsLinked(targetPath: string, expectedSource: string): boolean {
+function checkIsLinked(
+  targetPath: string,
+  expectedSource: string,
+  version?: string,
+): boolean {
   if (!existsSync(targetPath)) {
     return false
   }
   try {
     const stat = lstatSync(targetPath)
-    if (!stat.isSymbolicLink()) {
-      return false
+    if (stat.isSymbolicLink()) {
+      const target = readlinkSync(targetPath)
+      return (
+        resolve(target).toLowerCase() === resolve(expectedSource).toLowerCase()
+      )
     }
-    const target = readlinkSync(targetPath)
-    return resolve(target) === resolve(expectedSource)
+    if (stat.isDirectory() && version) {
+      const versionPath = join(targetPath, version)
+      if (existsSync(versionPath)) {
+        const vStat = lstatSync(versionPath)
+        if (vStat.isSymbolicLink()) {
+          const vTarget = readlinkSync(versionPath)
+          return (
+            resolve(vTarget).toLowerCase() ===
+            resolve(expectedSource).toLowerCase()
+          )
+        }
+      }
+    }
+    return false
   } catch {
     return false
   }
+}
+
+function checkIsSdkLinked(addonSourcePath: string): boolean {
+  const addonSdkNodeModules = join(
+    addonSourcePath,
+    'node_modules',
+    '@mr-tick',
+    'sdk',
+  )
+  if (!existsSync(addonSdkNodeModules)) return false
+  try {
+    const stat = lstatSync(addonSdkNodeModules)
+    if (!stat.isSymbolicLink()) return false
+    const target = readlinkSync(addonSdkNodeModules)
+    return resolve(target).toLowerCase() === resolve(localSdkPath).toLowerCase()
+  } catch {
+    return false
+  }
+}
+
+function linkLocalSdkToAddon(addonSourcePath: string): void {
+  const mrTickScopeDir = join(addonSourcePath, 'node_modules', '@mr-tick')
+  if (!existsSync(mrTickScopeDir)) return
+
+  const sdkTarget = join(mrTickScopeDir, 'sdk')
+  const sdkBackup = join(mrTickScopeDir, '.sdk-npm-backup')
+
+  try {
+    if (existsSync(sdkTarget)) {
+      const stat = lstatSync(sdkTarget)
+      if (stat.isSymbolicLink()) {
+        removeSymbolicLink(sdkTarget)
+      } else {
+        if (!existsSync(sdkBackup)) {
+          renameSync(sdkTarget, sdkBackup)
+        } else {
+          rmSync(sdkTarget, { recursive: true, force: true })
+        }
+      }
+    }
+
+    const linkType = process.platform === 'win32' ? 'junction' : 'dir'
+    symlinkSync(localSdkPath, sdkTarget, linkType)
+    console.log(`   🔗 SDK Local vinculado em: ${sdkTarget}`)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.warn(`   ⚠️ Não foi possível vincular SDK local: ${message}`)
+  }
+}
+
+function unlinkLocalSdkFromAddon(addonSourcePath: string): void {
+  const mrTickScopeDir = join(addonSourcePath, 'node_modules', '@mr-tick')
+  if (!existsSync(mrTickScopeDir)) return
+
+  const sdkTarget = join(mrTickScopeDir, 'sdk')
+  const sdkBackup = join(mrTickScopeDir, '.sdk-npm-backup')
+
+  try {
+    if (existsSync(sdkTarget)) {
+      const stat = lstatSync(sdkTarget)
+      if (stat.isSymbolicLink()) {
+        removeSymbolicLink(sdkTarget)
+        console.log(`   🧹 Link do SDK local removido de: ${sdkTarget}`)
+      }
+    }
+
+    if (!existsSync(sdkTarget) && existsSync(sdkBackup)) {
+      renameSync(sdkBackup, sdkTarget)
+      console.log(`   📦 SDK do NPM restaurado em: ${sdkTarget}`)
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.warn(`   ⚠️ Erro ao restaurar SDK em ${sdkTarget}: ${message}`)
+  }
+}
+
+function removeSymbolicLink(targetPath: string): void {
+  if (process.platform === 'win32') {
+    try {
+      rmdirSync(targetPath)
+      return
+    } catch {
+      unlinkSync(targetPath)
+      return
+    }
+  }
+  unlinkSync(targetPath)
 }
 
 function getPackageVersion(packageJsonPath: string): string | null {
@@ -176,102 +291,208 @@ export function syncDevAddonManifest(sourcePath: string): void {
   }
 }
 
-export function scanDevAddons(): DevAddonInfo[] {
-  if (!existsSync(devAddonsDir)) return []
+function buildAddonInfoFromPath(
+  folderName: string,
+  sourcePath: string,
+  addonsDir: string,
+  isExternalRepo: boolean,
+): ExtendedDevAddonInfo | null {
+  const manifestPath = join(sourcePath, 'manifest.yaml')
+  if (!existsSync(manifestPath)) return null
 
-  const addonsDir = resolveMrTickAddonsDir()
-  const entries = readdirSync(devAddonsDir, { withFileTypes: true })
-  const result: DevAddonInfo[] = []
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-
-    const sourcePath = join(devAddonsDir, entry.name)
+  if (!isExternalRepo) {
     syncDevAddonManifest(sourcePath)
-    const manifestPath = join(sourcePath, 'manifest.yaml')
-    const manifest = parseManifest(manifestPath)
+  }
 
-    const id = manifest.id || manifest.AddonId || entry.name
-    const name = manifest.name || manifest.Name || entry.name
-    const version = manifest.version || manifest.Version || '1.0.0'
-    const rawCategories =
-      manifest.categories ||
-      manifest.Categories ||
-      (manifest.category || manifest.Category
-        ? [manifest.category || manifest.Category]
-        : [])
-    const category =
-      Array.isArray(rawCategories) && rawCategories.length > 0
-        ? rawCategories.join(', ')
-        : 'General'
+  const manifest = parseManifest(manifestPath)
+  const id = manifest.id || manifest.AddonId || folderName
+  const name = manifest.name || manifest.Name || folderName
+  const version = manifest.version || manifest.Version || '1.0.0'
+  const rawCategories =
+    manifest.categories ||
+    manifest.Categories ||
+    (manifest.category || manifest.Category
+      ? [manifest.category || manifest.Category]
+      : [])
+  const category =
+    Array.isArray(rawCategories) && rawCategories.length > 0
+      ? rawCategories.join(', ')
+      : 'General'
 
-    // O Mr-tick usa o id sanitizado ou nome da pasta como diretório destino
-    const sanitizedFolderName = id.replace(/[/\\?%*:|"<>]/g, '_')
-    const targetPath = join(addonsDir, sanitizedFolderName)
-    const isLinked = checkIsLinked(targetPath, sourcePath)
+  const sanitizedFolderName = id.replace(/[/\\?%*:|"<>]/g, '_')
+  const targetPath = join(addonsDir, sanitizedFolderName)
+  const isLinked = checkIsLinked(targetPath, sourcePath, version)
+  const isSdkLinked = isExternalRepo ? checkIsSdkLinked(sourcePath) : true
 
-    result.push({
-      folderName: entry.name,
-      sourcePath,
-      id,
-      name,
-      version,
-      category,
-      isLinked,
-      targetPath,
+  return {
+    folderName,
+    sourcePath,
+    id,
+    name,
+    version,
+    category,
+    isLinked,
+    targetPath,
+    isExternalRepo,
+    isSdkLinked,
+  }
+}
+
+export function scanDevAddons(): ExtendedDevAddonInfo[] {
+  const addonsDir = resolveMrTickAddonsDir()
+  const result: ExtendedDevAddonInfo[] = []
+
+  if (existsSync(devAddonsDir)) {
+    const entries = readdirSync(devAddonsDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const sourcePath = join(devAddonsDir, entry.name)
+      const info = buildAddonInfoFromPath(
+        entry.name,
+        sourcePath,
+        addonsDir,
+        false,
+      )
+      if (info) result.push(info)
+    }
+  }
+
+  if (existsSync(parentContextDir)) {
+    const siblingEntries = readdirSync(parentContextDir, {
+      withFileTypes: true,
     })
+    for (const entry of siblingEntries) {
+      if (!entry.isDirectory()) continue
+      const candidatePath = resolve(parentContextDir, entry.name)
+      if (candidatePath.toLowerCase() === repoRoot.toLowerCase()) continue
+
+      const pkgPath = join(candidatePath, 'package.json')
+      const manifestPath = join(candidatePath, 'manifest.yaml')
+      if (!existsSync(pkgPath) || !existsSync(manifestPath)) continue
+
+      const info = buildAddonInfoFromPath(
+        entry.name,
+        candidatePath,
+        addonsDir,
+        true,
+      )
+      if (info) result.push(info)
+    }
   }
 
   return result
 }
 
-export function linkAddon(addon: DevAddonInfo): boolean {
+export function linkAddon(addon: ExtendedDevAddonInfo): boolean {
   const addonsDir = resolveMrTickAddonsDir()
   if (!existsSync(addonsDir)) {
     mkdirSync(addonsDir, { recursive: true })
   }
 
+  if (addon.isExternalRepo) {
+    linkLocalSdkToAddon(addon.sourcePath)
+  }
+
+  const sanitizedFolderName = addon.id.replace(/[/\\?%*:|"<>]/g, '_')
+  const catalogBackupDir = join(
+    dirname(addonsDir),
+    'addons-catalog-backup',
+    sanitizedFolderName,
+  )
+
   if (existsSync(addon.targetPath)) {
     const stat = lstatSync(addon.targetPath)
     if (stat.isSymbolicLink()) {
-      unlinkSync(addon.targetPath)
-    }
-    if (!stat.isSymbolicLink()) {
-      console.warn(
-        `⚠️  O caminho destino ${addon.targetPath} já existe e não é um link simbólico. Pulando.`,
-      )
-      return false
+      removeSymbolicLink(addon.targetPath)
+    } else if (stat.isDirectory()) {
+      const subEntries = readdirSync(addon.targetPath)
+      for (const sub of subEntries) {
+        const subFull = join(addon.targetPath, sub)
+        const subStat = lstatSync(subFull)
+        if (subStat.isSymbolicLink()) {
+          removeSymbolicLink(subFull)
+        }
+      }
+      const remaining = readdirSync(addon.targetPath)
+      if (remaining.length === 0) {
+        rmdirSync(addon.targetPath)
+      } else {
+        mkdirSync(dirname(catalogBackupDir), { recursive: true })
+        if (existsSync(catalogBackupDir)) {
+          rmSync(catalogBackupDir, { recursive: true, force: true })
+        }
+        renameSync(addon.targetPath, catalogBackupDir)
+        console.log(
+          `   📦 Instalação do catálogo movida temporariamente para backup: ${catalogBackupDir}`,
+        )
+      }
     }
   }
 
   const linkType = process.platform === 'win32' ? 'junction' : 'dir'
   symlinkSync(addon.sourcePath, addon.targetPath, linkType)
-  console.log(`🔗 Link criado com sucesso:`)
+  console.log(`🔗 Addon vinculado com sucesso:`)
   console.log(`   De:   ${addon.sourcePath}`)
   console.log(`   Para: ${addon.targetPath}`)
   return true
 }
 
-export function unlinkAddon(addon: DevAddonInfo): boolean {
+export function unlinkAddon(addon: ExtendedDevAddonInfo): boolean {
+  if (addon.isExternalRepo) {
+    unlinkLocalSdkFromAddon(addon.sourcePath)
+  }
+
+  const addonsDir = resolveMrTickAddonsDir()
+  const sanitizedFolderName = addon.id.replace(/[/\\?%*:|"<>]/g, '_')
+  const catalogBackupDir = join(
+    dirname(addonsDir),
+    'addons-catalog-backup',
+    sanitizedFolderName,
+  )
+
   if (!existsSync(addon.targetPath)) {
-    console.log(`ℹ️  Addon ${addon.name} (${addon.id}) não está linkado.`)
+    if (existsSync(catalogBackupDir)) {
+      renameSync(catalogBackupDir, addon.targetPath)
+      console.log(
+        `   📦 Instalação do catálogo restaurada em: ${addon.targetPath}`,
+      )
+      return true
+    }
+    console.log(
+      `ℹ️  Addon ${addon.name} (${addon.id}) não está linkado em ${addon.targetPath}.`,
+    )
     return false
   }
 
   const stat = lstatSync(addon.targetPath)
   if (stat.isSymbolicLink()) {
-    if (process.platform === 'win32') {
-      try {
-        rmdirSync(addon.targetPath)
-      } catch {
-        unlinkSync(addon.targetPath)
+    removeSymbolicLink(addon.targetPath)
+    console.log(`🧹 Link removido: ${addon.targetPath}`)
+    if (existsSync(catalogBackupDir)) {
+      renameSync(catalogBackupDir, addon.targetPath)
+      console.log(
+        `   📦 Instalação do catálogo restaurada em: ${addon.targetPath}`,
+      )
+    }
+    return true
+  }
+
+  if (stat.isDirectory()) {
+    let removedSubLink = false
+    const subEntries = readdirSync(addon.targetPath)
+    for (const sub of subEntries) {
+      const subFull = join(addon.targetPath, sub)
+      const subStat = lstatSync(subFull)
+      if (subStat.isSymbolicLink()) {
+        removeSymbolicLink(subFull)
+        console.log(`🧹 Link de versão removido: ${subFull}`)
+        removedSubLink = true
       }
     }
-    if (process.platform !== 'win32') {
-      unlinkSync(addon.targetPath)
+    if (removedSubLink && readdirSync(addon.targetPath).length === 0) {
+      rmdirSync(addon.targetPath)
     }
-    console.log(`🧹 Link removido: ${addon.targetPath}`)
-    return true
+    if (removedSubLink) return true
   }
 
   console.warn(
@@ -296,14 +517,22 @@ export function listAddons(): void {
   }
 
   console.log(
-    `${'STATUS'.padEnd(10)} | ${'NOME'.padEnd(25)} | ${'ID'.padEnd(30)} | ${'PASTA'.padEnd(22)}`,
+    `${'STATUS'.padEnd(11)} | ${'SDK'.padEnd(11)} | ${'NOME'.padEnd(25)} | ${'ID'.padEnd(28)} | ${'PASTA'.padEnd(22)}`,
   )
-  console.log('-'.repeat(95))
+  console.log('-'.repeat(108))
 
   for (const addon of addons) {
     const statusText = addon.isLinked ? '✅ LINKED' : '❌ UNLINKED'
+    const sdkText = addon.isExternalRepo
+      ? addon.isSdkLinked
+        ? '🔗 LOCAL'
+        : '📦 NPM'
+      : '🏠 MONOREPO'
+    const folderLabel = addon.isExternalRepo
+      ? `../${addon.folderName}`
+      : addon.folderName
     console.log(
-      `${statusText.padEnd(10)} | ${addon.name.padEnd(25)} | ${addon.id.padEnd(30)} | ${addon.folderName.padEnd(22)}`,
+      `${statusText.padEnd(11)} | ${sdkText.padEnd(11)} | ${addon.name.padEnd(25)} | ${addon.id.padEnd(28)} | ${folderLabel.padEnd(22)}`,
     )
   }
 
@@ -325,7 +554,7 @@ export async function runBuild(
   const addons = scanDevAddons()
   const selectedAddons =
     !addonFolderName || addonFolderName === 'all'
-      ? addons
+      ? addons.filter((a) => !a.isExternalRepo || a.isLinked)
       : addons.filter(
           (a) =>
             a.folderName === addonFolderName ||
@@ -391,7 +620,7 @@ async function main(): Promise<void> {
     const addons = scanDevAddons()
     const targetAddons =
       !targetName || targetName === 'all'
-        ? addons
+        ? addons.filter((a) => !a.isExternalRepo)
         : addons.filter(
             (a) =>
               a.folderName === targetName ||

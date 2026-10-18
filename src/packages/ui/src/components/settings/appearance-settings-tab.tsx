@@ -149,7 +149,7 @@ export function AppearanceSettingsTab() {
   })
 
   const themeAddons = useMemo(
-    () => installedAddons.filter((a) => addonMatchesCategory(a, 'themes')),
+    () => installedAddons.filter((a) => addonMatchesCategory(a, 'theme')),
     [installedAddons],
   )
 
