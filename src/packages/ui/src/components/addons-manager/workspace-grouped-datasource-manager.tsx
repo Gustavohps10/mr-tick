@@ -1,7 +1,7 @@
 'use client'
 
 import type {
-  AddonSettingsAuthCardinality,
+  ConnectionProfileDescriptor,
   WorkspaceViewModel,
 } from '@mr-tick/sdk'
 import { isString } from '@mr-tick/shared/helpers'
@@ -27,14 +27,17 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHostBridge } from '@/hooks/use-host-bridge'
-import { ConnectionCard } from '@/pages/addons/components/addon-list'
-import type { AddonConnection, ConnectionStatus } from '@/pages/addons/types'
+
+import {
+  AddonConnection,
+  ConnectionCard,
+  ConnectionStatus,
+} from './connection-card'
 
 export interface WorkspaceGroupedDataSourceManagerProps {
   addonId: string
   workspaceId?: string
   mode?: 'auth' | 'dataSource'
-  cardinality?: AddonSettingsAuthCardinality
 }
 
 function resolveConnectionName(
@@ -68,11 +71,48 @@ function resolveConnectionStatus(status?: string): ConnectionStatus {
   return 'disconnected'
 }
 
+function resolveSelectedConnectionProfileId(
+  profiles: ConnectionProfileDescriptor[],
+  selectedProfileId: string | null,
+): string | undefined {
+  if (selectedProfileId !== null) return selectedProfileId
+  if (profiles.length === 1) {
+    const onlyProfile = profiles.find(() => true)
+    if (onlyProfile) return onlyProfile.connectionProfileId
+  }
+  return undefined
+}
+
+function resolveProfileSelectValue(
+  profileId: string | undefined,
+  profiles: ConnectionProfileDescriptor[],
+): string {
+  if (profileId !== undefined) return profileId
+  const defaultProfile = profiles.find((profile) => profile.default)
+  if (!defaultProfile) return ''
+  return defaultProfile.connectionProfileId
+}
+
+function resolveAuthorizationRole(
+  profile: ConnectionProfileDescriptor | undefined,
+  authProfileId: string,
+): string {
+  if (!profile || !profile.roles) return 'primary'
+  const matchingRole = profile.roles.find(
+    (role) =>
+      role.allowedAuthProfileIds.includes(authProfileId) ||
+      role.defaultAuthProfileId === authProfileId,
+  )
+  if (matchingRole) return matchingRole.authorizationRole
+  const firstRole = profile.roles.find(() => true)
+  if (firstRole) return firstRole.authorizationRole
+  return 'primary'
+}
+
 export function WorkspaceGroupedDataSourceManager({
   addonId,
   workspaceId,
   mode = 'auth',
-  cardinality = 'multi',
 }: WorkspaceGroupedDataSourceManagerProps) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
@@ -87,6 +127,30 @@ export function WorkspaceGroupedDataSourceManager({
   const [mappingTargetId, setMappingTargetId] = useState<string | null>(null)
   const [mappingWorkspaceId, setMappingWorkspaceId] = useState<string | null>(
     null,
+  )
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
+    null,
+  )
+
+  const { data: connectionProfiles = [], isLoading: isLoadingProfiles } =
+    useQuery<ConnectionProfileDescriptor[]>({
+      queryKey: ['addon-connection-profiles', addonId],
+      queryFn: async () => {
+        const response = await bridge.addons.getConnectionProfiles({
+          body: { addonId },
+        })
+        if (!response.isSuccess || !response.data)
+          throw new Error(response.error)
+        return response.data
+      },
+    })
+
+  const selectedConnectionProfileId = resolveSelectedConnectionProfileId(
+    connectionProfiles,
+    selectedProfileId,
+  )
+  const selectedProfile = connectionProfiles.find(
+    (profile) => profile.connectionProfileId === selectedConnectionProfileId,
   )
 
   const {
@@ -109,13 +173,22 @@ export function WorkspaceGroupedDataSourceManager({
         throw new Error('Nenhum workspace selecionado para esta conexão.')
       }
 
-      const res = await bridge.workspaces.connectDataSource({
+      const authorizationRole = resolveAuthorizationRole(
+        selectedProfile,
+        data.connectionProfileId,
+      )
+
+      const res = await bridge.workspaces.submitCredentials({
         body: {
           workspaceId: activeWorkspaceId,
-          pluginId: data.pluginId,
           connectionInstanceId: data.connectionInstanceId,
-          credentials: data.credentials,
-          configuration: data.configuration,
+          authenticationInput: {
+            kind: 'credentials',
+            authorizationRole,
+            authProfileId: data.connectionProfileId,
+            credentials: data.credentials,
+            configuration: data.configuration,
+          },
         },
       })
       return res
@@ -128,7 +201,15 @@ export function WorkspaceGroupedDataSourceManager({
         return
       }
 
-      toast.success(`${res.data.member.login} conectado com sucesso!`)
+      let label = 'Instância'
+      if (res.data.identity && res.data.identity.displayName) {
+        label = res.data.identity.displayName
+      }
+      if (label === 'Instância' && res.data.member && res.data.member.login) {
+        label = res.data.member.login
+      }
+
+      toast.success(`${label} conectado com sucesso!`)
       setConnectionDialogOpen(false)
       setConnectionTargetId(null)
       refetchWorkspaces()
@@ -187,19 +268,28 @@ export function WorkspaceGroupedDataSourceManager({
   })
 
   const handleAddConnection = async (targetWorkspaceId: string) => {
+    if (!selectedProfile) {
+      toast.error('Selecione um perfil de conexão declarado pelo addon.')
+      return
+    }
     const unique = crypto.randomUUID().slice(0, 8)
     const newId = `${addonId}-${unique}`
     setActiveWorkspaceId(targetWorkspaceId)
     setConnectionTargetId(newId)
 
     try {
-      await bridge.workspaces.linkDataSource({
+      const result = await bridge.workspaces.linkDataSource({
         body: {
           workspaceId: targetWorkspaceId,
-          dataSourceId: addonId,
+          addonId,
           connectionInstanceId: newId,
+          connectionProfileId: selectedProfile.connectionProfileId,
         },
       })
+      if (!result.isSuccess) {
+        toast.error(result.error ?? 'Falha ao vincular DataSource')
+        return
+      }
       setConnectionDialogOpen(true)
     } catch (err) {
       let message = 'Falha ao vincular DataSource'
@@ -240,12 +330,45 @@ export function WorkspaceGroupedDataSourceManager({
     <div className="flex h-full min-h-0 flex-1 flex-col">
       <div className="h-full w-full overflow-x-hidden overflow-y-auto">
         <div className="w-full space-y-5 px-6 py-5">
+          {mode === 'auth' && connectionProfiles.length > 1 && (
+            <label className="flex max-w-sm flex-col gap-2 text-xs">
+              <span>Perfil de conexão</span>
+              <select
+                aria-label="Perfil de conexão"
+                value={resolveProfileSelectValue(
+                  selectedConnectionProfileId,
+                  connectionProfiles,
+                )}
+                onChange={(event) =>
+                  setSelectedProfileId(event.currentTarget.value)
+                }
+                className="border-border bg-background rounded-md border px-3 py-2"
+              >
+                <option value="">Selecione um perfil</option>
+                {connectionProfiles.map((profile) => (
+                  <option
+                    key={profile.connectionProfileId}
+                    value={profile.connectionProfileId}
+                  >
+                    {profile.connectionProfileId}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {mode === 'auth' &&
+            !isLoadingProfiles &&
+            connectionProfiles.length === 0 && (
+              <p role="alert" className="text-destructive text-xs">
+                O addon não declarou perfis de conexão.
+              </p>
+            )}
           {targetWorkspaces.map((ws) => {
-            let rawConnections = ws.dataSourceConnections
+            let rawConnections = ws.connections
             if (!rawConnections) rawConnections = []
 
             const connections = rawConnections.filter(
-              (c) => c.dataSourceId === addonId,
+              (c) => c.addonId === addonId,
             )
 
             const mappedConnections: AddonConnection[] = connections.map(
@@ -258,9 +381,15 @@ export function WorkspaceGroupedDataSourceManager({
               }),
             )
 
+            const profileConnections = connections.filter(
+              (connection) =>
+                connection.connectionProfileId === selectedConnectionProfileId,
+            )
             const canAddMoreInstances =
               mode === 'auth' &&
-              (cardinality === 'multi' || mappedConnections.length === 0)
+              selectedProfile !== undefined &&
+              (selectedProfile.cardinality === 'multi' ||
+                profileConnections.length === 0)
 
             return (
               <div
@@ -358,14 +487,16 @@ export function WorkspaceGroupedDataSourceManager({
                       <p className="text-muted-foreground text-xs">
                         Nenhuma conta de {addonId} conectada neste workspace.
                       </p>
-                      <Button
-                        variant="link"
-                        size="sm"
-                        onClick={() => handleAddConnection(ws.id)}
-                        className="text-primary mt-1 h-6 cursor-pointer text-xs"
-                      >
-                        Conectar agora
-                      </Button>
+                      {selectedProfile && (
+                        <Button
+                          variant="link"
+                          size="sm"
+                          onClick={() => handleAddConnection(ws.id)}
+                          className="text-primary mt-1 h-6 cursor-pointer text-xs"
+                        >
+                          Conectar agora
+                        </Button>
+                      )}
                     </div>
                   )}
 
@@ -479,10 +610,11 @@ export function WorkspaceGroupedDataSourceManager({
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto py-2 pr-1">
-            {connectionTargetId && (
+            {connectionTargetId && selectedProfile && (
               <NewDataSourceInstanceForm
                 pluginId={addonId}
                 connectionInstanceId={connectionTargetId}
+                connectionProfileId={selectedProfile.connectionProfileId}
                 isSubmitting={connectMutation.isPending}
                 onSubmit={(data) => connectMutation.mutate(data)}
               />

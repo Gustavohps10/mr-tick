@@ -16,3 +16,43 @@ tags:
   - dataSource
   - desenvolvimento
   - theme
+capabilities:
+  - capabilityId: fake-datasource
+    kind: dataSource
+    contractVersion: 1.0.0
+    required: true
+    executionPolicy:
+      kind: independent
+    authRequirement:
+      kind: required
+      connectionProfileId: fake-main
+      authorizationRole: primary
+    supportedOperations:
+      - read
+      - write
+      - findByCorrelation
+      - updateConditional
+      - getMappingFields
+    settingsSchemaScope: connection
+  - capabilityId: watcher
+    kind: watcher
+    contractVersion: 1.0.0
+    required: false
+    executionPolicy:
+      kind: activeWorkspace
+    authRequirement:
+      kind: none
+    supportedOperations:
+      - read
+      - write
+    settingsSchemaScope: capability
+  - capabilityId: fake-matrix-theme
+    kind: theme
+    contractVersion: 1.0.0
+    required: false
+    executionPolicy:
+      kind: independent
+    authRequirement:
+      kind: none
+    supportedOperations:
+      - read

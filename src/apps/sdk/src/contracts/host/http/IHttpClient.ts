@@ -1,1 +1,9 @@
-export type { IHttpClient, IHttpClientConfig } from '@mr-tick/application'
+export type {
+  HttpPayload,
+  HttpResponseValidator,
+  IHttpClient,
+  IHttpClientConfig,
+  IHttpClientFactory,
+  IHttpRequestOptions,
+  JsonValue,
+} from '@mr-tick/application'

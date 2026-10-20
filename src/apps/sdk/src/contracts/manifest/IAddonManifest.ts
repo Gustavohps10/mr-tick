@@ -29,6 +29,31 @@ export interface AddonPackage {
   changelog?: string[]
 }
 
+export type CapabilityExecutionPolicy =
+  | { kind: 'activeWorkspace'; exclusivity?: 'exclusiveSocket' | 'none' }
+  | { kind: 'independent' }
+
+export type CapabilityAuthRequirement =
+  | { kind: 'none' }
+  | {
+      kind: 'required'
+      connectionProfileId: string
+      authorizationRole: string
+    }
+
+export interface AddonCapabilityDescriptor {
+  readonly capabilityId: string
+  readonly kind:
+    'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme' | 'custom'
+  readonly contractVersion: string
+  readonly required: boolean
+  readonly executionPolicy: CapabilityExecutionPolicy
+  readonly authRequirement: CapabilityAuthRequirement
+  readonly supportedOperations: readonly string[]
+  readonly settingsSchemaScope?:
+    'workspace' | 'connection' | 'capability' | 'addon'
+}
+
 export interface IAddonManifest {
   id: string
   name: string
@@ -50,4 +75,5 @@ export interface IAddonManifest {
   releaseDate?: string
   changelog?: string[]
   packages?: AddonPackage[]
+  capabilities?: AddonCapabilityDescriptor[]
 }

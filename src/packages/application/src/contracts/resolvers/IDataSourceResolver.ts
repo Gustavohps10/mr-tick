@@ -1,35 +1,76 @@
+import { ConnectionProfileDescriptor } from '@mr-tick/domain'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 
-import { MemberDTO } from '@/dtos'
-
-import { IDataSourceAdapter } from './IDataSourceAdapter'
+import { AuthenticatedMember, IDataSourceAdapter } from './IDataSourceAdapter'
 
 export interface IHttpClientConfig {
-  baseURL: string
-  params?: Record<string, string>
-  headers?: Record<string, string>
-  timeout?: number
+  readonly baseURL?: string
+  readonly params?: Record<string, string>
+  readonly headers?: Record<string, string>
+  readonly sensitiveHeaders?: readonly string[]
+  readonly timeout?: number
 }
 
+export const EMPTY_HTTP_CONFIG: IHttpClientConfig = Object.freeze({})
+
+export type JsonValue =
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
+
+export type HttpResponseValidator<T extends JsonValue> = (
+  value: JsonValue,
+) => value is T
+
+export interface IHttpRequestOptions<T extends JsonValue> {
+  readonly params?: Record<string, string | number | boolean>
+  readonly headers?: Record<string, string>
+  readonly sensitiveHeaders?: readonly string[]
+  readonly timeout?: number
+  readonly responseType?: 'json' | 'text'
+  readonly responseValidator: HttpResponseValidator<T>
+}
+
+export type HttpPayload =
+  | Record<
+      string,
+      | boolean
+      | number
+      | string
+      | null
+      | undefined
+      | object
+      | Array<boolean | number | string | object>
+    >
+  | string
+
 export interface IHttpClient {
-  configure(config: IHttpClientConfig): void
-  get<T>(url: string, config?: unknown): Promise<Either<AppError, T>>
-  post<T>(
+  get<T extends JsonValue>(
     url: string,
-    data?: unknown,
-    config?: unknown,
+    config: IHttpRequestOptions<T>,
   ): Promise<Either<AppError, T>>
-  put<T>(
+  post<T extends JsonValue>(
     url: string,
-    data?: unknown,
-    config?: unknown,
+    data: HttpPayload,
+    config: IHttpRequestOptions<T>,
   ): Promise<Either<AppError, T>>
-  patch<T>(
+  put<T extends JsonValue>(
     url: string,
-    data?: unknown,
-    config?: unknown,
+    data: HttpPayload,
+    config: IHttpRequestOptions<T>,
   ): Promise<Either<AppError, T>>
-  delete<T>(url: string, config?: unknown): Promise<Either<AppError, T>>
+  patch<T extends JsonValue>(
+    url: string,
+    data: HttpPayload,
+    config: IHttpRequestOptions<T>,
+  ): Promise<Either<AppError, T>>
+  delete<T extends JsonValue>(
+    url: string,
+    config: IHttpRequestOptions<T>,
+  ): Promise<Either<AppError, T>>
+  withConfig(config: IHttpClientConfig): IHttpClient
+}
+
+export interface IHttpClientFactory {
+  createClient(config: IHttpClientConfig): IHttpClient
 }
 
 export interface DataSourcePKCEPair {
@@ -59,10 +100,21 @@ export interface IDataSourceOAuthAPI {
 
 export interface DataSourceContext {
   httpClient: IHttpClient
-  authenticatedMemberData?: MemberDTO
+  authenticatedMemberData?: AuthenticatedMember
   config?: Record<string, string | number | boolean>
   credentials?: Record<string, string | number | boolean>
   oauth?: IDataSourceOAuthAPI
+  scope: {
+    workspaceId: string
+    connectionInstanceId: string
+  }
+}
+
+export type DataSourceOverrideContext = Omit<
+  DataSourceContext,
+  'httpClient' | 'scope'
+> & {
+  scope?: DataSourceContext['scope']
 }
 
 export interface ResolvedConnection {
@@ -72,11 +124,17 @@ export interface ResolvedConnection {
 }
 
 export interface IDataSourceResolver {
+  getConnectionProfiles(
+    addonId: string,
+  ): Promise<Either<AppError, ConnectionProfileDescriptor[]>>
+
   getDataSource(
     workspaceId: string,
     pluginId: string,
-    contextOverride?: Partial<DataSourceContext>,
-  ): Promise<IDataSourceAdapter>
+    contextOverride?: Partial<DataSourceOverrideContext>,
+  ): Promise<Either<AppError, IDataSourceAdapter>>
 
-  getDataSourcesForWorkspace(workspaceId: string): Promise<ResolvedConnection[]>
+  getDataSourcesForWorkspace(
+    workspaceId: string,
+  ): Promise<Either<AppError, ResolvedConnection[]>>
 }

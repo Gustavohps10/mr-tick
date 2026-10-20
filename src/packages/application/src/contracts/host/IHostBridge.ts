@@ -1,8 +1,11 @@
+import type { ConnectionProfileDescriptor } from '@mr-tick/domain'
 import { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
 
 import { TimeEntryPullCheckpointDTO, TimeEntryPullPageDTO } from '@/dtos'
 
+import type { AddonSettingsView } from '../addons/settings/IAddonSettingsRepository'
 import type { AddonVaultScope } from '../addons/vault/IAddonVaultAPI'
+import type { AddonSettingValue } from '../addons/vault/IAddonVaultAPI'
 export type { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
 export type {
   AddonInstallerViewModel,
@@ -72,8 +75,9 @@ export interface IWorkspacesAPI {
   linkDataSource(
     input: IRequest<{
       workspaceId: string
-      dataSourceId: string
+      addonId: string
       connectionInstanceId: string
+      connectionProfileId: string
     }>,
   ): Promise<ViewModel<WorkspaceViewModel>>
 
@@ -84,13 +88,17 @@ export interface IWorkspacesAPI {
     }>,
   ): Promise<ViewModel<WorkspaceViewModel>>
 
-  connectDataSource(
+  submitCredentials(
     input: IRequest<{
       workspaceId: string
-      pluginId: string
       connectionInstanceId: string
-      credentials: Record<string, string | number | boolean>
-      configuration: Record<string, string | number | boolean>
+      authenticationInput: {
+        kind: 'credentials'
+        authorizationRole?: string
+        authProfileId: string
+        credentials: Readonly<Record<string, string | number | boolean>>
+        configuration: Readonly<Record<string, string | number | boolean>>
+      }
     }>,
   ): Promise<ViewModel<ConnectionResultViewModel>>
 
@@ -100,13 +108,6 @@ export interface IWorkspacesAPI {
       connectionInstanceId: string
     }>,
   ): Promise<ViewModel>
-
-  getConnectionMember(
-    input: IRequest<{
-      workspaceId: string
-      connectionInstanceId: string
-    }>,
-  ): Promise<ViewModel<MemberViewModel | null>>
 
   updateIdentity(
     input: IRequest<UpdateWorkspaceIdentityInput>,
@@ -457,6 +458,9 @@ export interface IAddonsAPI {
   getConnectionSchema(
     payload: IRequest<{ addonId: string }>,
   ): Promise<ViewModel<AddonSettingsSchema>>
+  getConnectionProfiles(
+    payload: IRequest<{ addonId: string }>,
+  ): Promise<ViewModel<ConnectionProfileDescriptor[]>>
   getMappingFields(
     payload: IRequest<{
       addonId: string
@@ -466,14 +470,16 @@ export interface IAddonsAPI {
   ): Promise<ViewModel<MappingFieldDefinition[]>>
   getSettings(
     payload: IRequest<{ addonId: string; scope: AddonVaultScope }>,
-  ): Promise<ViewModel<Record<string, string | number | boolean | null>>>
+  ): Promise<ViewModel<AddonSettingsView>>
   saveSettings(
     payload: IRequest<{
       addonId: string
       scope: AddonVaultScope
-      settings: Record<string, string | number | boolean | null>
+      expectedRevision: number
+      patch: Record<string, AddonSettingValue>
+      credentials?: Record<string, string | null>
     }>,
-  ): Promise<ViewModel<void>>
+  ): Promise<ViewModel<AddonSettingsView>>
   executeAction(
     payload: IRequest<{
       addonId: string

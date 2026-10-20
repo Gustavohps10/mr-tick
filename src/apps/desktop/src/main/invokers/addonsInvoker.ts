@@ -41,6 +41,8 @@ export const addonsInvoker: IAddonsAPI = {
   getConnectionSchema: (
     payload: Parameters<IAddonsAPI['getConnectionSchema']>[0],
   ) => IpcInvoker.invoke('ADDON_GET_CONNECTION_SCHEMA', payload),
+  getConnectionProfiles: (payload) =>
+    IpcInvoker.invoke('ADDON_GET_CONNECTION_PROFILES', payload),
   getMappingFields: (payload: Parameters<IAddonsAPI['getMappingFields']>[0]) =>
     IpcInvoker.invoke('ADDON_GET_MAPPING_FIELDS', payload),
   getSettings: (payload: Parameters<IAddonsAPI['getSettings']>[0]) =>

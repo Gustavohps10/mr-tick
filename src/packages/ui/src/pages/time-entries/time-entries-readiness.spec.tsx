@@ -98,7 +98,7 @@ function renderTimeEntriesWithState(
       id: 'ws-1',
       name: 'Workspace 1',
       status: 'configured',
-      dataSourceConnections: [],
+      connections: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     },

@@ -185,32 +185,35 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
           for (const record of active) return Either.success(resultFor(record))
           return Either.success(emptyResult())
         }
-        const entries = records
-          .filter((record) => {
-            const filter = input.filter
-            if (
-              filter.connectionInstanceId !== undefined &&
-              record.connectionInstanceId !== filter.connectionInstanceId
-            )
-              return false
-            if (filter.taskId !== undefined && record.task.id !== filter.taskId)
-              return false
-            if (filter.source !== undefined && record.source !== filter.source)
-              return false
-            if (
-              filter.startDate !== undefined &&
-              record.startDate < filter.startDate
-            )
-              return false
-            if (
-              filter.endDate !== undefined &&
-              record.startDate > filter.endDate
-            )
-              return false
-            return true
-          })
-          .map((record) => toPublicRecord(record))
-        return Either.success({ ...emptyResult(), entries })
+        const selectedRecords = records.filter((record) => {
+          const filter = input.filter
+          if (
+            filter.connectionInstanceId !== undefined &&
+            record.connectionInstanceId !== filter.connectionInstanceId
+          )
+            return false
+          if (filter.taskId !== undefined && record.task.id !== filter.taskId)
+            return false
+          if (filter.source !== undefined && record.source !== filter.source)
+            return false
+          if (
+            filter.startDate !== undefined &&
+            record.startDate < filter.startDate
+          )
+            return false
+          if (filter.endDate !== undefined && record.startDate > filter.endDate)
+            return false
+          return true
+        })
+        const entries = selectedRecords.map((record) => toPublicRecord(record))
+        const pendingWrites = selectedRecords.some(
+          (record) =>
+            (!record._deleted && record.syncStatus !== 'synced') ||
+            (record._deleted &&
+              record.deletionConfirmed !== true &&
+              record.remoteDeleted !== true),
+        )
+        return Either.success({ ...emptyResult(), entries, pendingWrites })
       } catch (error) {
         if (error instanceof Error)
           return Either.failure(AppError.Internal(error.message))

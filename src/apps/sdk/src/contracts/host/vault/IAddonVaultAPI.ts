@@ -1,4 +1,5 @@
 export type {
+  AddonSettingsSnapshot,
   AddonSettingsValues,
   AddonSettingValue,
   AddonVaultScope,

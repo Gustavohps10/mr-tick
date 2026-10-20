@@ -15,10 +15,12 @@ export class ListTaskService implements IListTasksUseCase {
     input: ListTasksInput,
   ): Promise<Either<AppError, PagedResultDTO<TaskDTO>>> {
     try {
-      const adapter = await this.dataSourceResolver.getDataSource(
+      const adapterResult = await this.dataSourceResolver.getDataSource(
         input.workspaceId,
         input.connectionInstanceId,
       )
+      if (adapterResult.isFailure()) return adapterResult.forwardFailure()
+      const adapter = adapterResult.success
 
       const result = await adapter.getAuthenticatedMemberData()
       if (result.isFailure()) return result.forwardFailure()

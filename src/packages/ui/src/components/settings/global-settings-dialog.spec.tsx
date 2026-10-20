@@ -17,7 +17,8 @@ const hostBridgeMocks = vi.hoisted(() => ({
   workspacesListAll: vi.fn(),
   linkDataSource: vi.fn(),
   unlinkDataSource: vi.fn(),
-  connectDataSource: vi.fn(),
+  submitCredentials: vi.fn(),
+  getConnectionProfiles: vi.fn(),
   disconnectDataSource: vi.fn(),
   getActiveTheme: vi.fn().mockResolvedValue({ isSuccess: true, data: null }),
   listThemes: vi.fn().mockResolvedValue({ isSuccess: true, data: [] }),
@@ -56,12 +57,13 @@ vi.mock('@/hooks/use-host-bridge', () => ({
       getConnectionSchema: vi
         .fn()
         .mockResolvedValue({ isSuccess: true, data: [] }),
+      getConnectionProfiles: hostBridgeMocks.getConnectionProfiles,
     },
     workspaces: {
       listAll: hostBridgeMocks.workspacesListAll,
       linkDataSource: hostBridgeMocks.linkDataSource,
       unlinkDataSource: hostBridgeMocks.unlinkDataSource,
-      connectDataSource: hostBridgeMocks.connectDataSource,
+      submitCredentials: hostBridgeMocks.submitCredentials,
       disconnectDataSource: hostBridgeMocks.disconnectDataSource,
     },
     updater: {
@@ -118,6 +120,16 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
       isSuccess: true,
       data: [],
     })
+    hostBridgeMocks.getConnectionProfiles.mockResolvedValue({
+      isSuccess: true,
+      data: [
+        {
+          connectionProfileId: 'redmine-account',
+          cardinality: 'multi',
+          default: true,
+        },
+      ],
+    })
     hostBridgeMocks.listInstalled.mockResolvedValue({
       isSuccess: true,
       data: [],
@@ -128,7 +140,7 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
         {
           id: 'ws-1',
           name: 'Workspace Alpha',
-          dataSourceConnections: [],
+          connections: [],
         },
       ],
     })

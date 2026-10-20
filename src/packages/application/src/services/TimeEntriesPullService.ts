@@ -16,10 +16,12 @@ export class TimeEntriesPullService implements ITimeEntriesPullUseCase {
     input: PullTimeEntriesInput,
   ): Promise<Either<AppError, TimeEntryPullPageDTO>> {
     try {
-      const adapter = await this.dataSourceResolver.getDataSource(
+      const adapterResult = await this.dataSourceResolver.getDataSource(
         input.workspaceId,
         input.connectionInstanceId,
       )
+      if (adapterResult.isFailure()) return adapterResult.forwardFailure()
+      const adapter = adapterResult.success
 
       const result = await adapter.getAuthenticatedMemberData()
       if (result.isFailure()) return result.forwardFailure()
@@ -27,7 +29,7 @@ export class TimeEntriesPullService implements ITimeEntriesPullUseCase {
       const member = result.success
 
       return await adapter.timeEntriesProvider.pull(
-        member.id.toString(),
+        member.id,
         input.checkpoint,
         input.batch,
       )

@@ -1,10 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import type { IAddonAccessService, ICoreReadAPI } from '@mr-tick/application'
+import type {
+  IAddonAccessService,
+  ICoreAddonCapabilities,
+} from '@mr-tick/application'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 
-export const unavailableCore: ICoreReadAPI = {
+export const unavailableCore: ICoreAddonCapabilities = {
   runtime: {
     getState: () => 'starting',
     onStateChanged: (listener) => {
@@ -19,6 +22,26 @@ export const unavailableCore: ICoreReadAPI = {
   connections: {
     list: async () => Either.success([]),
     get: async () => Either.failure(AppError.NotFound('CONNECTION_NOT_FOUND')),
+    create: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
+    createAuthorizationRequest: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
+    completeAuthentication: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
+    submitCredentials: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
+    withCredentials: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
+    disconnect: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
+    archive: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
+    restore: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
+    refresh: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
+    remove: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
   },
   tasks: {
     list: async () =>

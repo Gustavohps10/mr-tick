@@ -63,6 +63,154 @@ function validateSizeField(
   }
 }
 
+function validateCapabilities(
+  rawCapabilities: unknown,
+  errors: string[],
+): void {
+  if (rawCapabilities === undefined || rawCapabilities === null) return
+  if (!Array.isArray(rawCapabilities)) {
+    errors.push('Campo "capabilities" deve ser um array.')
+    return
+  }
+  const seenCapabilityIds = new Set<string>()
+  let dataSourceCount = 0
+
+  for (let i = 0; i < rawCapabilities.length; i++) {
+    const cap = rawCapabilities[i]
+    if (!cap || typeof cap !== 'object') {
+      errors.push(`capabilities[${i}] deve ser um objeto válido.`)
+      continue
+    }
+    const capId =
+      'capabilityId' in cap && typeof cap.capabilityId === 'string'
+        ? cap.capabilityId.trim()
+        : ''
+    if (!capId) {
+      errors.push(`capabilities[${i}].capabilityId é obrigatório.`)
+      continue
+    }
+    if (seenCapabilityIds.has(capId)) {
+      errors.push(`ID de capacidade duplicado: "${capId}".`)
+    }
+    seenCapabilityIds.add(capId)
+
+    const kind = 'kind' in cap && typeof cap.kind === 'string' ? cap.kind : ''
+    if (!kind) {
+      errors.push(`capabilities[${i}].kind é obrigatório.`)
+    }
+    if (kind === 'dataSource') {
+      dataSourceCount += 1
+    }
+
+    const contractVersion =
+      'contractVersion' in cap && typeof cap.contractVersion === 'string'
+        ? cap.contractVersion
+        : ''
+    if (!contractVersion || !/^\d+\.\d+\.\d+/.test(contractVersion)) {
+      errors.push(
+        `capabilities[${i}].contractVersion deve seguir o padrão SemVer (ex: 1.0.0).`,
+      )
+    }
+
+    if (!('required' in cap) || typeof cap.required !== 'boolean') {
+      errors.push(`capabilities[${i}].required deve ser um boolean.`)
+    }
+
+    if (
+      !('executionPolicy' in cap) ||
+      !cap.executionPolicy ||
+      typeof cap.executionPolicy !== 'object'
+    ) {
+      errors.push(
+        `capabilities[${i}].executionPolicy é obrigatório e deve ser discriminado.`,
+      )
+    }
+    if (
+      'executionPolicy' in cap &&
+      cap.executionPolicy &&
+      typeof cap.executionPolicy === 'object'
+    ) {
+      const ep = cap.executionPolicy as {
+        kind?: string
+        exclusivity?: string
+      }
+      if (ep.kind !== 'activeWorkspace' && ep.kind !== 'independent') {
+        errors.push(
+          `capabilities[${i}].executionPolicy.kind deve ser 'activeWorkspace' ou 'independent'.`,
+        )
+      }
+      if (
+        ep.exclusivity !== undefined &&
+        ep.exclusivity !== 'exclusiveSocket' &&
+        ep.exclusivity !== 'none'
+      ) {
+        errors.push(
+          `capabilities[${i}].executionPolicy.exclusivity deve ser 'exclusiveSocket' ou 'none'.`,
+        )
+      }
+    }
+
+    if (
+      !('authRequirement' in cap) ||
+      !cap.authRequirement ||
+      typeof cap.authRequirement !== 'object'
+    ) {
+      errors.push(
+        `capabilities[${i}].authRequirement é obrigatório e deve ser discriminado ({ kind: 'none' } | { kind: 'required' }).`,
+      )
+    }
+    if (
+      'authRequirement' in cap &&
+      cap.authRequirement &&
+      typeof cap.authRequirement === 'object'
+    ) {
+      const auth = cap.authRequirement as {
+        kind?: string
+        connectionProfileId?: string
+        authorizationRole?: string
+      }
+      if (auth.kind !== 'none' && auth.kind !== 'required') {
+        errors.push(
+          `capabilities[${i}].authRequirement.kind deve ser 'none' ou 'required'.`,
+        )
+      }
+      if (auth.kind === 'required') {
+        if (
+          !auth.connectionProfileId ||
+          typeof auth.connectionProfileId !== 'string' ||
+          auth.connectionProfileId.trim().length === 0
+        ) {
+          errors.push(
+            `capabilities[${i}].authRequirement.connectionProfileId é obrigatório quando kind é 'required'.`,
+          )
+        }
+        if (
+          !auth.authorizationRole ||
+          typeof auth.authorizationRole !== 'string' ||
+          auth.authorizationRole.trim().length === 0
+        ) {
+          errors.push(
+            `capabilities[${i}].authRequirement.authorizationRole é obrigatório quando kind é 'required'.`,
+          )
+        }
+      }
+    }
+
+    if (
+      !('supportedOperations' in cap) ||
+      !Array.isArray(cap.supportedOperations)
+    ) {
+      errors.push(
+        `capabilities[${i}].supportedOperations deve ser um array de operações suportadas.`,
+      )
+    }
+  }
+
+  if (dataSourceCount > 1) {
+    errors.push('Um addon pode oferecer no máximo um dataSource.')
+  }
+}
+
 export function validateAddon(addonDir: string): ValidationResult {
   const rootDir = path.resolve(addonDir)
   const manifestPath = path.join(rootDir, 'manifest.yaml')
@@ -172,6 +320,9 @@ export function validateAddon(addonDir: string): ValidationResult {
       validateSizeField(pkgItem.size, `packages[${idx}].size`, errors)
     })
   }
+
+  const capabilities = manifest.capabilities || manifest.Capabilities
+  validateCapabilities(capabilities, errors)
 
   const distDir = path.join(rootDir, 'dist')
   if (!fs.existsSync(distDir)) {

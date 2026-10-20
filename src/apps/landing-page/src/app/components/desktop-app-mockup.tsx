@@ -73,10 +73,12 @@ const mockWorkspace: WorkspaceViewModel = {
   status: 'configured',
   description: 'Engineering Productivity Hub',
   avatarUrl: '',
-  dataSourceConnections: [
+  connections: [
     {
       id: 'conn-1',
-      dataSourceId: 'redmine',
+      addonId: 'redmine',
+      connectionProfileId: 'redmine-instance',
+      cardinality: 'multi',
       status: 'connected',
       member: {
         id: 'member-1',
@@ -87,7 +89,9 @@ const mockWorkspace: WorkspaceViewModel = {
     },
     {
       id: 'conn-2',
-      dataSourceId: 'jira',
+      addonId: 'jira',
+      connectionProfileId: 'jira-instance',
+      cardinality: 'multi',
       status: 'connected',
       member: {
         id: 'member-2',
@@ -167,14 +171,13 @@ const mockBridgeClient: IHostBridge = {
     markWorkspaceAsConfigured: async () => mockSuccess(undefined),
     linkDataSource: async () => mockSuccess(mockWorkspace),
     unlinkDataSource: async () => mockSuccess(mockWorkspace),
-    connectDataSource: async () =>
+    submitCredentials: async () =>
       mockSuccess({
         isSuccess: true,
         message: 'Connected',
         member: mockMember,
       }),
     disconnectDataSource: async () => mockSuccess(undefined),
-    getConnectionMember: async () => mockSuccess(mockMember),
   },
   session: {
     getCurrentUser: async () => mockSuccess(mockMember),
@@ -200,9 +203,29 @@ const mockBridgeClient: IHostBridge = {
     dismissToast: async () => mockSuccess(undefined),
     getSchema: async () => mockSuccess([]),
     getConnectionSchema: async () => mockSuccess([]),
+    getConnectionProfiles: async () =>
+      mockSuccess([
+        {
+          connectionProfileId: 'redmine-instance',
+          cardinality: 'multi',
+          default: true,
+        },
+      ]),
     getMappingFields: async () => mockSuccess([]),
-    getSettings: async () => mockSuccess({}),
-    saveSettings: async () => mockSuccess(undefined),
+    getSettings: async () =>
+      mockSuccess({
+        schemaVersion: 1,
+        revision: 0,
+        values: {},
+        credentialStates: {},
+      }),
+    saveSettings: async () =>
+      mockSuccess({
+        schemaVersion: 1,
+        revision: 0,
+        values: {},
+        credentialStates: {},
+      }),
     executeAction: async () => mockSuccess({ isSuccess: true }),
     setActiveWorkspace: async () => mockSuccess(undefined),
     getActiveTheme: async () => mockSuccess(null),
@@ -717,7 +740,11 @@ function MockDesktopShell({ workspaceId }: { workspaceId: string }) {
 
       <main className="bg-background relative mt-1.5 flex min-h-0 w-full flex-1 overflow-hidden">
         {/* 1. AppRail Oficial na Extrema Esquerda */}
-        <AppRail onNewWorkspaceClick={() => {}} onSettingsClick={() => {}} />
+        <AppRail
+          onNewWorkspaceClick={() => {}}
+          onSettingsClick={() => {}}
+          onAddonsClick={() => {}}
+        />
 
         {/* 2. Seção Interna do Workspace com Borda Superior/Esquerda Arredondada */}
         <section className="border-border bg-background relative flex h-full min-h-0 flex-1 overflow-hidden rounded-tl-md border-t border-l">

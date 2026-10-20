@@ -1,4 +1,9 @@
-import type { ICredentialsVault, ILocalRuntimeAPI } from '@mr-tick/application'
+import {
+  AddonAuthenticatorRegistry,
+  AddonConnectionProfilesResolver,
+  type ILocalRuntimeAPI,
+  OAuthAttemptCoordinator,
+} from '@mr-tick/application'
 import type { AddonContext, IAddon, IDataSource } from '@mr-tick/sdk'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -6,18 +11,21 @@ import {
   permissiveAddonAccessService,
   unavailableCore,
 } from './addon-core-test-fixture'
+import {
+  emptyAddonCredentialsVault,
+  emptyAddonSettingsRepository,
+  emptyWorkspaceReferenceRegistry,
+} from './addon-workspace-reference-test-fixture'
+import { AddonLifetime } from './AddonLifetime'
 import { AddonLoader } from './AddonLoader'
 vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
   BrowserWindow: { getAllWindows: () => [] },
 }))
-const credentials: ICredentialsVault = {
-  getToken: async () => undefined,
-  saveToken: async () => {},
-  deleteToken: async () => {},
-  hasToken: async () => false,
-  replaceToken: async () => {},
-}
+const credentials = emptyAddonCredentialsVault()
+const authenticatorRegistry = new AddonAuthenticatorRegistry()
+const profilesResolver = new AddonConnectionProfilesResolver()
+const oauthAttemptCoordinator = new OAuthAttemptCoordinator()
 const runtime: ILocalRuntimeAPI = {
   request: async () => ({
     ok: false,
@@ -55,8 +63,13 @@ describe('Addon ownership and lifecycle', () => {
       credentials,
       runtime,
       '1.0.0',
-      unavailableCore,
+      () => unavailableCore,
       permissiveAddonAccessService,
+      emptyWorkspaceReferenceRegistry,
+      emptyAddonSettingsRepository,
+      authenticatorRegistry,
+      profilesResolver,
+      oauthAttemptCoordinator,
     )
     const first = new ProbeAddon('first')
     const second = new ProbeAddon('second')
@@ -89,8 +102,13 @@ describe('Addon ownership and lifecycle', () => {
       credentials,
       runtime,
       '1.0.0',
-      unavailableCore,
+      () => unavailableCore,
       permissiveAddonAccessService,
+      emptyWorkspaceReferenceRegistry,
+      emptyAddonSettingsRepository,
+      authenticatorRegistry,
+      profilesResolver,
+      oauthAttemptCoordinator,
     )
     const addon = new ProbeAddon('probe')
     vi.spyOn(addon, 'activate').mockImplementation((context) => {
@@ -115,7 +133,7 @@ it('releases availability subscriptions and registrations even when deactivate f
     listener('starting')
     return unsubscribe
   })
-  const core: import('@mr-tick/application').ICoreReadAPI = {
+  const core: import('@mr-tick/application').ICoreAddonCapabilities = {
     ...unavailableCore,
     runtime: { getState: () => 'starting', onStateChanged },
   }
@@ -123,8 +141,13 @@ it('releases availability subscriptions and registrations even when deactivate f
     credentials,
     runtime,
     '1.0.0',
-    core,
+    () => core,
     permissiveAddonAccessService,
+    emptyWorkspaceReferenceRegistry,
+    emptyAddonSettingsRepository,
+    authenticatorRegistry,
+    profilesResolver,
+    oauthAttemptCoordinator,
   )
   const addon = new ProbeAddon('probe')
   await loader.activateAddon('probe', addon)
@@ -142,13 +165,38 @@ it('keeps reused datasource definitions owned by distinct addons without mutatin
     credentials,
     runtime,
     '1.0.0',
-    unavailableCore,
+    () => unavailableCore,
     permissiveAddonAccessService,
+    emptyWorkspaceReferenceRegistry,
+    emptyAddonSettingsRepository,
+    authenticatorRegistry,
+    profilesResolver,
+    oauthAttemptCoordinator,
   )
   const source: IDataSource = {
+    getConnectionProfiles: () => [
+      {
+        connectionProfileId: 'primary',
+        cardinality: 'multi',
+        default: true,
+      },
+    ],
     getConnectionSchema: () => [],
     createInstance: vi.fn<IDataSource['createInstance']>(),
   }
+  const dsDescriptor: import('@mr-tick/sdk').AddonCapabilityDescriptor[] = [
+    {
+      capabilityId: 'ds-main',
+      kind: 'dataSource',
+      contractVersion: '1.0.0',
+      required: true,
+      executionPolicy: { kind: 'independent' },
+      authRequirement: { kind: 'none' },
+      supportedOperations: ['read', 'write'],
+    },
+  ]
+  loader.registerManifestCapabilities('first', dsDescriptor)
+  loader.registerManifestCapabilities('second', dsDescriptor)
   const first = loader.createContext('first')
   const second = loader.createContext('second')
   first.contributions.dataSources.register(source)
@@ -168,8 +216,13 @@ it('preserves the built-in theme command while resolving addon themes by their o
     credentials,
     runtime,
     '1.0.0',
-    unavailableCore,
+    () => unavailableCore,
     permissiveAddonAccessService,
+    emptyWorkspaceReferenceRegistry,
+    emptyAddonSettingsRepository,
+    authenticatorRegistry,
+    profilesResolver,
+    oauthAttemptCoordinator,
   )
   const first = new ProbeAddon('first')
   const second = new ProbeAddon('second')
@@ -187,8 +240,13 @@ it('never resolves another addon alias when the selected addon has no such actio
     credentials,
     runtime,
     '1.0.0',
-    unavailableCore,
+    () => unavailableCore,
     permissiveAddonAccessService,
+    emptyWorkspaceReferenceRegistry,
+    emptyAddonSettingsRepository,
+    authenticatorRegistry,
+    profilesResolver,
+    oauthAttemptCoordinator,
   )
   const first = new ProbeAddon('first')
   const second = new ProbeAddon('second')
@@ -205,4 +263,95 @@ it('never resolves another addon alias when the selected addon has no such actio
     isSuccess: true,
   })
   expect(foreignAction).toHaveBeenCalledOnce()
+})
+
+describe('AddonBindingLifetime granular lifecycle', () => {
+  it('controls start, stop, cancellation and subscriptions per binding without affecting others', () => {
+    const parent = new AddonLifetime()
+    const binding1 = parent.getBinding('conn-1')
+    const binding2 = parent.getBinding('conn-2')
+
+    const cleanup1 = vi.fn()
+    const cleanup2 = vi.fn()
+
+    binding1.track(cleanup1)
+    binding2.track(cleanup2)
+
+    expect(binding1.isActive()).toBe(true)
+    expect(binding2.isActive()).toBe(true)
+
+    parent.stopBinding('conn-1')
+
+    expect(binding1.isActive()).toBe(false)
+    expect(cleanup1).toHaveBeenCalledOnce()
+    expect(binding2.isActive()).toBe(true)
+    expect(cleanup2).not.toHaveBeenCalled()
+
+    parent.dispose()
+    expect(binding2.isActive()).toBe(false)
+    expect(cleanup2).toHaveBeenCalledOnce()
+  })
+
+  it('increments generation on restart and invalidates callbacks from older generations', () => {
+    const parent = new AddonLifetime()
+    const binding = parent.getBinding('cap-watcher')
+
+    expect(binding.getGeneration()).toBe(1)
+    expect(binding.isCurrentGeneration(1)).toBe(true)
+    expect(binding.isCurrentGeneration(2)).toBe(false)
+
+    const prevCleanup = vi.fn()
+    binding.track(prevCleanup)
+
+    const nextGen = binding.startNextGeneration()
+    expect(nextGen).toBe(2)
+    expect(binding.getGeneration()).toBe(2)
+    expect(prevCleanup).toHaveBeenCalledOnce()
+
+    expect(binding.isCurrentGeneration(1)).toBe(false)
+    expect(binding.isCurrentGeneration(2)).toBe(true)
+
+    binding.stop()
+    expect(binding.isCurrentGeneration(2)).toBe(false)
+  })
+
+  it('scoped binding events remove subscriptions on binding restart to prevent duplicate listeners', () => {
+    const parent = new AddonLifetime()
+    const binding = parent.getBinding('conn-events')
+
+    const listeners = new Map<string, Array<(data?: unknown) => void>>()
+    const rawEvents: import('@mr-tick/sdk').IAddonEventsAPI = {
+      on: (channel: string, handler: (data: unknown) => void) => {
+        const list = listeners.get(channel) ?? []
+        list.push(handler)
+        listeners.set(channel, list)
+        return () => {
+          const updated = listeners.get(channel)?.filter((h) => h !== handler)
+          listeners.set(channel, updated ?? [])
+        }
+      },
+      emit: (channel: string, data?: unknown) => {
+        listeners.get(channel)?.forEach((h) => h(data))
+      },
+    }
+
+    const scopedEvents = binding.events(rawEvents)
+    const listenerMock = vi.fn()
+
+    scopedEvents.on('workspace:changed', listenerMock)
+    expect(listeners.get('workspace:changed')?.length).toBe(1)
+
+    binding.startNextGeneration()
+    expect(listeners.get('workspace:changed')?.length).toBe(0)
+
+    scopedEvents.on('workspace:changed', listenerMock)
+    expect(listeners.get('workspace:changed')?.length).toBe(0)
+
+    const restartedScopedEvents = binding.events(rawEvents)
+    restartedScopedEvents.on('workspace:changed', listenerMock)
+    expect(listeners.get('workspace:changed')?.length).toBe(1)
+
+    rawEvents.emit('workspace:changed', { currentWorkspaceId: 'ws-1' })
+    expect(listenerMock).toHaveBeenCalledTimes(1)
+  })
 })

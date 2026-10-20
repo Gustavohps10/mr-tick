@@ -223,7 +223,7 @@ describe('Calendar and Timesheet Decoupling & Reactive CRUD Tests', () => {
       id: 'ws-1',
       name: 'Default',
       status: 'configured',
-      dataSourceConnections: [],
+      connections: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     },

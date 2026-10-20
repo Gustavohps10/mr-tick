@@ -1,4 +1,4 @@
-﻿import { Workspace } from '@mr-tick/domain'
+import { Workspace } from '@mr-tick/domain'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -36,8 +36,9 @@ describe('CreateWorkspaceService', () => {
     vi.restoreAllMocks()
 
     workspacesRepositoryMock = {
+      create: vi.fn().mockResolvedValue(Either.success(undefined)),
       findById: vi.fn(),
-      create: vi.fn(),
+      findAll: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
     } as unknown as Mocked<IWorkspacesRepository>
@@ -224,5 +225,13 @@ describe('CreateWorkspaceService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure.statusCode).toBe(500)
     expect(workspacesRepositoryMock.create).not.toHaveBeenCalled()
+  })
+
+  it('creates workspace calling workspacesRepository.create directly adhering to Rule 37', async () => {
+    const input = makeInput()
+    const result = await sut.execute(input)
+
+    expect(result.isSuccess()).toBe(true)
+    expect(workspacesRepositoryMock.create).toHaveBeenCalledOnce()
   })
 })

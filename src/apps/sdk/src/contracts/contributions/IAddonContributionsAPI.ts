@@ -1,4 +1,5 @@
 import type { IAddonCommandsAPI } from './commands'
+import type { IAddonConnectionsContributionAPI } from './connections'
 import type { IAddonDataSourcesAPI } from './data-sources'
 import type { IAddonMenusAPI } from './menus'
 import type { IAddonSettingsAPI } from './settings'
@@ -10,5 +11,6 @@ export interface IAddonContributionsAPI {
   readonly menus: IAddonMenusAPI
   readonly settings: IAddonSettingsAPI
   readonly dataSources: IAddonDataSourcesAPI
+  readonly connections: IAddonConnectionsContributionAPI
   readonly themes: IAddonThemesAPI
 }

@@ -27,8 +27,9 @@ describe('GetCurrentUserService', () => {
   })
 
   const fakeAuthMember = {
-    id: 789,
-    name: 'John Doe',
+    id: '789',
+    firstname: 'John',
+    lastname: 'Doe',
   }
 
   const fakeMemberDTO: MemberDTO = {
@@ -46,7 +47,7 @@ describe('GetCurrentUserService', () => {
     vi.clearAllMocks()
 
     workspacesRepositoryMock = {
-      findById: vi.fn(),
+      getById: vi.fn(),
     } as Partial<IWorkspacesRepository> as Mocked<IWorkspacesRepository>
 
     dataSourceResolverMock = {
@@ -64,11 +65,15 @@ describe('GetCurrentUserService', () => {
       id: 'workspace-123',
       status: 'configured',
 
-      dataSourceConnections: [
+      connections: [
         {
           status: 'connected',
+          generation: 0,
           id: 'conn-abc',
-          dataSourceId: 'plugin-1',
+          addonId: 'plugin-1',
+          connectionProfileId: 'primary',
+          cardinality: 'multi',
+          authorizations: [],
         },
       ],
     } as Partial<Workspace> as Mocked<Workspace>
@@ -83,8 +88,12 @@ describe('GetCurrentUserService', () => {
     // Arrange
     const input = makeInput()
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeAuthMember as any),
     )
@@ -99,7 +108,7 @@ describe('GetCurrentUserService', () => {
     expect(result.isSuccess()).toBe(true)
     expect(result.success).toEqual(fakeMemberDTO)
 
-    expect(workspacesRepositoryMock.findById).toHaveBeenCalledWith(
+    expect(workspacesRepositoryMock.getById).toHaveBeenCalledWith(
       input.workspaceId,
     )
     expect(dataSourceResolverMock.getDataSource).toHaveBeenCalledWith(
@@ -108,14 +117,16 @@ describe('GetCurrentUserService', () => {
     )
     expect(adapterMock.getAuthenticatedMemberData).toHaveBeenCalled()
     expect(adapterMock.membersProvider.findById).toHaveBeenCalledWith(
-      fakeAuthMember.id.toString(),
+      fakeAuthMember.id,
     )
   })
 
   it('should return NotFoundError when workspace is not found', async () => {
     // Arrange
     const input = makeInput()
-    workspacesRepositoryMock.findById.mockResolvedValue(undefined)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(undefined),
+    )
 
     // Act
     const result = await sut.execute(input)
@@ -134,11 +145,11 @@ describe('GetCurrentUserService', () => {
 
     const workspaceWithoutConnection = {
       ...fakeWorkspace,
-      dataSourceConnections: [],
+      connections: [],
     } as unknown as Mocked<Workspace>
 
-    workspacesRepositoryMock.findById.mockResolvedValue(
-      workspaceWithoutConnection,
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(workspaceWithoutConnection),
     )
 
     // Act
@@ -157,8 +168,12 @@ describe('GetCurrentUserService', () => {
     const input = makeInput()
     const authError = AppError.Unauthorized('FALHA_DE_AUTENTICACAO')
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.failure(authError),
     )
@@ -177,8 +192,12 @@ describe('GetCurrentUserService', () => {
     // Arrange
     const input = makeInput()
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeAuthMember as any),
     )
@@ -200,7 +219,7 @@ describe('GetCurrentUserService', () => {
     const input = makeInput()
     const error = new Error('Unexpected adapter failure')
 
-    workspacesRepositoryMock.findById.mockRejectedValue(error)
+    workspacesRepositoryMock.getById.mockRejectedValue(error)
 
     // Act
     const result = await sut.execute(input)
@@ -209,5 +228,81 @@ describe('GetCurrentUserService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure).toBeInstanceOf(AppError)
     expect(result.failure.messageKey).toBe('ERRO_AO_OBTER_USUARIO')
+  })
+
+  it('preserves an alphanumeric providerSubjectId intact when calling findById', async () => {
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
+    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
+      Either.success({
+        id: 'usr_abc-123',
+        firstname: 'Alpha',
+        lastname: 'Numeric',
+      }),
+    )
+    ;(adapterMock.membersProvider.findById as any).mockResolvedValue(
+      Either.success(fakeMemberDTO),
+    )
+
+    const result = await sut.execute(makeInput())
+
+    expect(result.isSuccess()).toBe(true)
+    expect(adapterMock.membersProvider.findById).toHaveBeenCalledWith(
+      'usr_abc-123',
+    )
+  })
+
+  it('preserves a providerSubjectId with leading zeros intact when calling findById', async () => {
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
+    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
+      Either.success({
+        id: '00123',
+        firstname: 'Zero',
+        lastname: 'Leading',
+      }),
+    )
+    ;(adapterMock.membersProvider.findById as any).mockResolvedValue(
+      Either.success(fakeMemberDTO),
+    )
+
+    const result = await sut.execute(makeInput())
+
+    expect(result.isSuccess()).toBe(true)
+    expect(adapterMock.membersProvider.findById).toHaveBeenCalledWith('00123')
+  })
+
+  it('preserves a providerSubjectId exceeding MAX_SAFE_INTEGER intact when calling findById', async () => {
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
+    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
+      Either.success({
+        id: '9007199254740993',
+        firstname: 'Large',
+        lastname: 'Integer',
+      }),
+    )
+    ;(adapterMock.membersProvider.findById as any).mockResolvedValue(
+      Either.success(fakeMemberDTO),
+    )
+
+    const result = await sut.execute(makeInput())
+
+    expect(result.isSuccess()).toBe(true)
+    expect(adapterMock.membersProvider.findById).toHaveBeenCalledWith(
+      '9007199254740993',
+    )
   })
 })

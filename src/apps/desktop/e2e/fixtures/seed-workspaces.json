@@ -1,25 +1,34 @@
-[
+{
+  "schemaVersion": 7,
+  "revision": 0,
+  "lastOperationId": null,
+  "workspaces": [
   {
     "id": "ws-15c9d402-b6da-48ac-9a75-1b948cd0ec92",
     "name": "TESTE",
     "avatarUrl": "",
     "status": "configured",
     "description": "",
-    "dataSourceConnections": [
+    "connections": [
       {
         "id": "mr-tick-datasource-fake-c3f15587",
         "status": "connected",
-        "dataSourceId": "mr-tick-datasource-fake",
-        "config": {
-          "serverUrl": "",
-          "username": "",
-          "password": "",
-          "syncInterval": ""
+        "addonId": "mr-tick-datasource-fake",
+        "connectionProfileId": "fake-main",
+        "cardinality": "multi",
+        "generation": 1,
+        "authorizationId": "seed-auth-mr-tick-datasource-fake-c3f15587",
+        "identity": {
+          "kind": "human",
+          "providerId": "fake",
+          "tenantId": "fake.mr-tick-app.local",
+          "providerSubjectId": "1",
+          "displayName": "Alex Silva"
         },
-        "member": {
-          "id": "1",
-          "name": "Alex Silva",
-          "login": "dev.fake"
+        "config": {
+          "serverUrl": "https://fake.mr-tick-app.local",
+          "username": "Admin",
+          "password": "123"
         }
       }
     ],
@@ -32,8 +41,12 @@
     "avatarUrl": "",
     "status": "configured",
     "description": "Workspace isolado para testes de multi-tenancy",
-    "dataSourceConnections": [],
+    "connections": [],
     "createdAt": "2026-09-20T10:00:00.000Z",
     "updatedAt": "2026-09-20T10:00:00.000Z"
   }
-]
+  ],
+  "workspaceCredentialReferences": [],
+  "connectionReservations": [],
+  "journal": []
+}

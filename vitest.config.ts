@@ -7,6 +7,22 @@ export default defineConfig({
     tsconfigPaths: true,
     alias: {
       '@mr-tick/sdk': path.resolve(import.meta.dirname, './src/apps/sdk/src'),
+      '@mr-tick/application': path.resolve(
+        import.meta.dirname,
+        './src/packages/application/src',
+      ),
+      '@mr-tick/adapters': path.resolve(
+        import.meta.dirname,
+        './src/packages/adapters/src',
+      ),
+      '@mr-tick/shared': path.resolve(
+        import.meta.dirname,
+        './src/packages/shared/src',
+      ),
+      '@mr-tick/domain': path.resolve(
+        import.meta.dirname,
+        './src/packages/domain/src',
+      ),
     },
   },
   test: {

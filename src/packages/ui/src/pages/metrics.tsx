@@ -1436,14 +1436,14 @@ export function Metrics() {
     const connections =
       (
         workspace as {
-          dataSourceConnections?: {
+          connections?: {
             id: string
             name?: string
             provider?: string
             dataSourceId?: string
           }[]
         }
-      )?.dataSourceConnections || []
+      )?.connections || []
     return Array.isArray(connections)
       ? connections.map((c) => ({
           id: c.dataSourceId ?? c.id,

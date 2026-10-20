@@ -54,7 +54,7 @@ export interface LocalEntryFilter {
   taskId?: string
   startDate?: string
   endDate?: string
-  source?: 'manual' | 'timer' | 'ai_suggestion' | 'addon'
+  source?: 'manual' | 'timer' | 'addon'
 }
 export type LocalRuntimeQuery =
   | { action: 'list'; workspaceId: string; filter: LocalEntryFilter }
@@ -68,6 +68,7 @@ export interface LocalRuntimeResult {
   entries: TimeEntryRecordDTO[]
   timer: TimerStateDTO | null
   deleted: boolean
+  pendingWrites: boolean
 }
 export interface LocalRuntimeFailure {
   messageKey: string

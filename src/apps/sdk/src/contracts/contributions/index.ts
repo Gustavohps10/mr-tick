@@ -1,4 +1,5 @@
 export * from './commands'
+export * from './connections'
 export * from './data-sources'
 export * from './IAddonContributionsAPI'
 export * from './menus'

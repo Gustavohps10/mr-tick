@@ -10,12 +10,31 @@ import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import { JSONWorkspacesRepository } from '@mr-tick/adapters/data'
+import {
+  JSONAddonSettingsRepository,
+  SQLiteConnectionLifecycleRepository,
+  SQLiteConnectionLifecycleTransactionBoundary,
+  SQLiteConnectionReservationRepository,
+  SQLiteWorkspaceCredentialReferenceRegistry,
+  SQLiteWorkspacesRepository,
+} from '@mr-tick/adapters/data'
 import {
   HardDiskStorage,
   KeytarCredentialsVault,
 } from '@mr-tick/adapters/tools'
-import { IAddonAccessService } from '@mr-tick/application'
+import {
+  IAddonAccessService,
+  IAddonAuthenticatorRegistry,
+  IAddonConnectionProfilesRegistry,
+  IConnectAddonConnectionUseCase,
+  IConnectionLifecycleCoordinator,
+  ICoreAddonCapabilities,
+  IDataSourceResolver,
+  IDisconnectAddonConnectionUseCase,
+  ILinkConnectionUseCase,
+  IOAuthAttemptCoordinator,
+  IUnlinkConnectionUseCase,
+} from '@mr-tick/application'
 import { IAddonsFacade, ILicensingFacade } from '@mr-tick/application'
 import { ContainerBuilder, PlatformDependencies } from '@mr-tick/IoC'
 import {
@@ -31,11 +50,13 @@ import installExtension, {
   REACT_DEVELOPER_TOOLS,
 } from 'electron-devtools-installer'
 
-import { ElectronHttpClient } from '@/main/adapters/ElectronHttpClient'
+import {
+  DefaultElectronFetchTransport,
+  ElectronHttpClientFactory,
+} from '@/main/adapters/ElectronHttpClient'
 import { ElectronJobEventEmitter } from '@/main/adapters/ElectronJobEventEmitter'
 import { TimerRuntime } from '@/main/adapters/TimerRuntime'
 import {
-  ConnectionHandler,
   LicensingHandler,
   SessionHandler,
   TasksHandler,
@@ -49,6 +70,7 @@ import { WorkspacesHandler } from '@/main/handlers/WorkspacesHandler'
 import { DataSourceResolver } from '@/main/resolvers/data-source-resolver'
 import { openIpcRoutes } from '@/main/routes'
 import { AddonLoader } from '@/main/services/AddonLoader'
+import { DesktopCredentialRecovery } from '@/main/services/DesktopCredentialRecovery'
 import { LocalRuntimeDispatcher } from '@/main/services/LocalRuntimeDispatcher'
 import { UpdaterService } from '@/main/services/UpdaterService'
 import { getSettings } from '@/main/settings'
@@ -78,7 +100,6 @@ export interface NativeOverlay {
 }
 
 export type IHandlersScope = {
-  connectionHandler: typeof ConnectionHandler
   sessionHandler: typeof SessionHandler
   tasksHandler: typeof TasksHandler
   timeEntriesHandler: typeof TimeEntriesHandler
@@ -551,271 +572,383 @@ if (gotTheLock) {
     })
   }
 
-  app.whenReady().then(async () => {
-    handleProtocol()
+  app
+    .whenReady()
+    .then(async () => {
+      handleProtocol()
 
-    const userDataPath = app.getPath('userData')
-    const credentialsVault = new KeytarCredentialsVault()
-    const runtimeWindow = new BrowserWindow({
-      show: false,
-      webPreferences: {
-        preload: join(__dirname, '../preload/index.mjs'),
-        sandbox: false,
-        contextIsolation: true,
-        backgroundThrottling: false,
-      },
-    })
-    runtimeWindow.windowType = 'runtime'
-    const localRuntime = new LocalRuntimeDispatcher(runtimeWindow)
-    const workspacesRepository = new JSONWorkspacesRepository(userDataPath)
-    const nodeFileStorage = new HardDiskStorage(userDataPath, 'mr-tick-app://')
-    const containerBuilder = new ContainerBuilder()
-      .addSecurityDependencies({
-        credentialsVault,
-        fileStorage: nodeFileStorage,
-        licensingApiConfiguration,
-        offlineAuthorizationVerificationConfiguration,
-        addonPackageVerificationConfiguration,
-      })
-      .addInfrastructure()
-      .addApplicationServices()
-    const serviceProvider = containerBuilder.build()
-    const addonAccessService =
-      serviceProvider.resolve<IAddonAccessService>('addonAccessService')
-    const addonLoader = new AddonLoader(
-      credentialsVault,
-      localRuntime,
-      sdkPackage.version,
-      new AddonCoreCapabilities(workspacesRepository, localRuntime),
-      addonAccessService,
-    )
-    globalAddonLoader = addonLoader
-
-    const initialDeepLink = findDeepLinkInArgs(process.argv)
-    if (initialDeepLink) {
-      handleIncomingDeepLink(initialDeepLink)
-    }
-
-    const timerRuntime = new TimerRuntime()
-    timerRuntime.init(addonLoader, (generation) =>
-      localRuntime.acceptsGeneration(generation),
-    )
-
-    const eventEmitter = new ElectronJobEventEmitter(() => mainWindow)
-    const electronHttpClient = new ElectronHttpClient()
-
-    const updaterService = new UpdaterService()
-    if (process.env.NODE_ENV !== 'test') updaterService.init()
-
-    const localDataSourceResolver = new DataSourceResolver(
-      workspacesRepository,
-      credentialsVault,
-      {
-        addonsBasePath: join(__dirname, '../addons/datasource'),
-        isDevelopment: !app.isPackaged,
-        addonLoader,
-      },
-      electronHttpClient,
-    )
-
-    const platformDeps: PlatformDependencies = {
-      jobEmitter: eventEmitter,
-      credentialsVault,
-      workspacesRepository,
-      fileStorage: nodeFileStorage,
-      dataSourceResolver: localDataSourceResolver,
-      httpClient: electronHttpClient,
-      addonReloader: addonLoader,
-    }
-
-    containerBuilder
-      .addPlatformDependencies(platformDeps)
-      .addScoped<IHandlersScope>({
-        connectionHandler: ConnectionHandler,
-        sessionHandler: SessionHandler,
-        tasksHandler: TasksHandler,
-        timeEntriesHandler: TimeEntriesHandler,
-        tokenHandler: TokenHandler,
-        workspacesHandler: WorkspacesHandler,
-        addonsHandler: AddonsHandler,
-        licensingHandler: LicensingHandler,
-        metadataHandler: MetadataHandler,
-        updaterHandler: UpdaterHandler,
-      })
-
-    serviceProvider.include({ addonLoader, updaterService })
-
-    const licensingFacade =
-      serviceProvider.resolve<ILicensingFacade>('licensingFacade')
-    globalLicensingFacade = licensingFacade
-    addonLoader.setLicensingFacade(licensingFacade)
-
-    if (pendingActivationKey) {
-      const keyToActivate = pendingActivationKey
-      pendingActivationKey = null
-      void processActivationDeepLinkKey(keyToActivate)
-    }
-
-    if (process.env.NODE_ENV !== 'test') {
-      const refreshedLicense = await licensingFacade.refreshLicense()
-      if (refreshedLicense.isFailure())
-        console.warn(
-          '[Licensing] Renovação pendente:',
-          refreshedLicense.failure.messageKey,
+      const userDataPath = app.getPath('userData')
+      const credentialsVault = new KeytarCredentialsVault()
+      const workspacesRepository = new SQLiteWorkspacesRepository(userDataPath)
+      const lifecycleRepository = new SQLiteConnectionLifecycleRepository(
+        workspacesRepository.db,
+      )
+      const credentialRegistry = new SQLiteWorkspaceCredentialReferenceRegistry(
+        workspacesRepository.db,
+      )
+      const reservationRepository = new SQLiteConnectionReservationRepository(
+        workspacesRepository.db,
+      )
+      const transactionBoundary =
+        new SQLiteConnectionLifecycleTransactionBoundary(
+          workspacesRepository.db,
         )
-    }
 
-    try {
-      const addonsFacade =
-        serviceProvider.resolve<IAddonsFacade>('addonsFacade')
-      const installedResult = await addonsFacade.listInstalled()
-      if (installedResult.isSuccess() && installedResult.success.length > 0) {
-        await addonLoader.loadInstalledAddons(installedResult.success)
-        console.log(
-          `🧩 [Mr-tick Core] ${installedResult.success.length} addon(s) instalado(s) carregado(s) no boot.`,
+      const credentialRecovery = new DesktopCredentialRecovery(
+        credentialRegistry,
+        lifecycleRepository,
+        reservationRepository,
+        credentialsVault,
+        workspacesRepository,
+        transactionBoundary,
+      )
+      const recoveryResult = await credentialRecovery.execute()
+      if (recoveryResult.isFailure()) {
+        console.error(
+          'Credential recovery failed before desktop startup:',
+          recoveryResult.failure.messageKey,
+        )
+        app.quit()
+        return
+      }
+      const runtimeWindow = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          preload: join(__dirname, '../preload/index.mjs'),
+          sandbox: false,
+          contextIsolation: true,
+          backgroundThrottling: false,
+        },
+      })
+      runtimeWindow.windowType = 'runtime'
+      const localRuntime = new LocalRuntimeDispatcher(runtimeWindow)
+      const nodeFileStorage = new HardDiskStorage(
+        userDataPath,
+        'mr-tick-app://',
+      )
+      const containerBuilder = new ContainerBuilder()
+        .addSecurityDependencies({
+          credentialsVault,
+          fileStorage: nodeFileStorage,
+          licensingApiConfiguration,
+          offlineAuthorizationVerificationConfiguration,
+          addonPackageVerificationConfiguration,
+        })
+        .addInfrastructure()
+        .addApplicationServices()
+      const serviceProvider = containerBuilder.build()
+      serviceProvider.include({
+        pendingWorkGuard: localRuntime,
+      })
+      const addonAccessService =
+        serviceProvider.resolve<IAddonAccessService>('addonAccessService')
+      const oauthAttemptCoordinator =
+        serviceProvider.resolve<IOAuthAttemptCoordinator>(
+          'oauthAttemptCoordinator',
+        )
+      let addonLoader: AddonLoader
+      addonLoader = new AddonLoader(
+        credentialsVault,
+        localRuntime,
+        sdkPackage.version,
+        (addonId: string): ICoreAddonCapabilities =>
+          new AddonCoreCapabilities(
+            workspacesRepository,
+            localRuntime,
+            addonId,
+            serviceProvider.resolve<IConnectionLifecycleCoordinator>(
+              'connectionLifecycleCoordinator',
+            ),
+            serviceProvider.resolve<IDataSourceResolver>('dataSourceResolver'),
+            () => undefined,
+            serviceProvider.resolve<ILinkConnectionUseCase>(
+              'linkConnectionService',
+            ),
+            serviceProvider.resolve<IConnectAddonConnectionUseCase>(
+              'connectAddonConnectionService',
+            ),
+            serviceProvider.resolve<IDisconnectAddonConnectionUseCase>(
+              'disconnectAddonConnectionService',
+            ),
+            serviceProvider.resolve<IUnlinkConnectionUseCase>(
+              'unlinkConnectionService',
+            ),
+            serviceProvider.resolve<IAddonAuthenticatorRegistry>(
+              'authenticatorRegistry',
+            ),
+            serviceProvider.resolve<IAddonConnectionProfilesRegistry>(
+              'profilesResolver',
+            ),
+            oauthAttemptCoordinator,
+            addonLoader.systemEventEmitter,
+          ),
+        addonAccessService,
+        credentialRegistry,
+        new JSONAddonSettingsRepository(userDataPath),
+        serviceProvider.resolve<IAddonAuthenticatorRegistry>(
+          'authenticatorRegistry',
+        ),
+        serviceProvider.resolve<IAddonConnectionProfilesRegistry>(
+          'profilesResolver',
+        ),
+        oauthAttemptCoordinator,
+      )
+      globalAddonLoader = addonLoader
+
+      const initialDeepLink = findDeepLinkInArgs(process.argv)
+      if (initialDeepLink) {
+        handleIncomingDeepLink(initialDeepLink)
+      }
+
+      const timerRuntime = new TimerRuntime()
+      timerRuntime.init(addonLoader, (generation) =>
+        localRuntime.acceptsGeneration(generation),
+      )
+
+      const eventEmitter = new ElectronJobEventEmitter(() => mainWindow)
+      const electronHttpClientFactory = new ElectronHttpClientFactory(
+        {},
+        new DefaultElectronFetchTransport(),
+      )
+      const electronHttpClient = electronHttpClientFactory.createClient({})
+
+      if (!app.isPackaged && process.env.PLAYWRIGHT_TEST === '1') {
+        const { registerElectronHttpTransportTestProbe } =
+          await import('@/main/testing/electron-http-transport-test-probe')
+        registerElectronHttpTransportTestProbe(() => {
+          if (mainWindow === null) return null
+          if (mainWindow.isDestroyed()) return null
+          return mainWindow.webContents
+        })
+      }
+
+      const updaterService = new UpdaterService()
+      if (process.env.NODE_ENV !== 'test') updaterService.init()
+
+      const localDataSourceResolver = new DataSourceResolver(
+        workspacesRepository,
+        credentialsVault,
+        {
+          addonsBasePath: join(__dirname, '../addons/datasource'),
+          isDevelopment: !app.isPackaged,
+          addonLoader,
+        },
+        electronHttpClientFactory,
+      )
+
+      const platformDeps: PlatformDependencies = {
+        jobEmitter: eventEmitter,
+        credentialsVault,
+        workspacesRepository,
+        lifecycleRepository,
+        reservationRepository,
+        credentialRegistry,
+        fileStorage: nodeFileStorage,
+        dataSourceResolver: localDataSourceResolver,
+        httpClient: electronHttpClient,
+        httpClientFactory: electronHttpClientFactory,
+        addonReloader: addonLoader,
+        transactionBoundary,
+        systemEventEmitter: addonLoader.systemEventEmitter,
+      }
+
+      containerBuilder
+        .addPlatformDependencies(platformDeps)
+        .addScoped<IHandlersScope>({
+          sessionHandler: SessionHandler,
+          tasksHandler: TasksHandler,
+          timeEntriesHandler: TimeEntriesHandler,
+          tokenHandler: TokenHandler,
+          workspacesHandler: WorkspacesHandler,
+          addonsHandler: AddonsHandler,
+          licensingHandler: LicensingHandler,
+          metadataHandler: MetadataHandler,
+          updaterHandler: UpdaterHandler,
+        })
+
+      serviceProvider.include({ addonLoader, updaterService })
+
+      const licensingFacade =
+        serviceProvider.resolve<ILicensingFacade>('licensingFacade')
+      globalLicensingFacade = licensingFacade
+      addonLoader.setLicensingFacade(licensingFacade)
+
+      if (pendingActivationKey) {
+        const keyToActivate = pendingActivationKey
+        pendingActivationKey = null
+        void processActivationDeepLinkKey(keyToActivate)
+      }
+
+      if (process.env.NODE_ENV !== 'test') {
+        const refreshedLicense = await licensingFacade.refreshLicense()
+        if (refreshedLicense.isFailure())
+          console.warn(
+            '[Licensing] Renovação pendente:',
+            refreshedLicense.failure.messageKey,
+          )
+      }
+
+      try {
+        const addonsFacade =
+          serviceProvider.resolve<IAddonsFacade>('addonsFacade')
+        const installedResult = await addonsFacade.listInstalled()
+        if (installedResult.isSuccess() && installedResult.success.length > 0) {
+          await addonLoader.loadInstalledAddons(installedResult.success)
+          console.log(
+            `🧩 [Mr-tick Core] ${installedResult.success.length} addon(s) instalado(s) carregado(s) no boot.`,
+          )
+        }
+      } catch (err) {
+        console.error(
+          '❌ [Mr-tick Core] Erro ao carregar addons instalados no boot:',
+          err,
         )
       }
-    } catch (err) {
-      console.error(
-        '❌ [Mr-tick Core] Erro ao carregar addons instalados no boot:',
-        err,
-      )
-    }
 
-    openIpcRoutes(serviceProvider, nativeOverlay)
+      openIpcRoutes(serviceProvider, nativeOverlay)
 
-    electronApp.setAppUserModelId('com.electron')
+      electronApp.setAppUserModelId('com.electron')
 
-    app.on('browser-window-created', (event, browserWindow) => {
-      if (!event) return
-      optimizer.watchWindowShortcuts(browserWindow)
+      app.on('browser-window-created', (event, browserWindow) => {
+        if (!event) return
+        optimizer.watchWindowShortcuts(browserWindow)
 
-      browserWindow.webContents.setWindowOpenHandler((details) => {
-        if (
-          details.url.startsWith('http://') ||
-          details.url.startsWith('https://')
-        ) {
-          shell.openExternal(details.url)
-        }
-        return { action: 'deny' }
-      })
-
-      browserWindow.webContents.on('will-navigate', (navEvent, url) => {
-        if (url.startsWith('http://') || url.startsWith('https://')) {
-          const isDevServer =
-            is.dev &&
-            process.env['ELECTRON_RENDERER_URL'] &&
-            url.startsWith(process.env['ELECTRON_RENDERER_URL'])
-
-          if (!isDevServer) {
-            navEvent.preventDefault()
-            shell.openExternal(url)
+        browserWindow.webContents.setWindowOpenHandler((details) => {
+          if (
+            details.url.startsWith('http://') ||
+            details.url.startsWith('https://')
+          ) {
+            shell.openExternal(details.url)
           }
-        }
-      })
+          return { action: 'deny' }
+        })
 
-      browserWindow.webContents.on(
-        'before-input-event',
-        (inputEvent, input) => {
-          if (!inputEvent) return
-          const f12 = input.key === 'F12'
-          const ctrlShiftI =
-            input.control && input.shift && input.key.toLowerCase() === 'i'
-          const ctrlShiftR =
-            input.control && input.shift && input.key.toLowerCase() === 'r'
-          const ctrlR =
-            input.control && !input.shift && input.key.toLowerCase() === 'r'
-          const f5 = input.key === 'F5'
+        browserWindow.webContents.on('will-navigate', (navEvent, url) => {
+          if (url.startsWith('http://') || url.startsWith('https://')) {
+            const isDevServer =
+              is.dev &&
+              process.env['ELECTRON_RENDERER_URL'] &&
+              url.startsWith(process.env['ELECTRON_RENDERER_URL'])
 
-          if (input.type === 'keyDown') {
-            if (f12 || ctrlShiftI) {
-              browserWindow.webContents.toggleDevTools()
-            }
-            if (ctrlShiftR || ctrlR || f5) {
-              browserWindow.webContents.reloadIgnoringCache()
+            if (!isDevServer) {
+              navEvent.preventDefault()
+              shell.openExternal(url)
             }
           }
+        })
+
+        browserWindow.webContents.on(
+          'before-input-event',
+          (inputEvent, input) => {
+            if (!inputEvent) return
+            const f12 = input.key === 'F12'
+            const ctrlShiftI =
+              input.control && input.shift && input.key.toLowerCase() === 'i'
+            const ctrlShiftR =
+              input.control && input.shift && input.key.toLowerCase() === 'r'
+            const ctrlR =
+              input.control && !input.shift && input.key.toLowerCase() === 'r'
+            const f5 = input.key === 'F5'
+
+            if (input.type === 'keyDown') {
+              if (f12 || ctrlShiftI) {
+                browserWindow.webContents.toggleDevTools()
+              }
+              if (ctrlShiftR || ctrlR || f5) {
+                browserWindow.webContents.reloadIgnoringCache()
+              }
+            }
+          },
+        )
+      })
+
+      if (is.dev) {
+        try {
+          await installExtension(REACT_DEVELOPER_TOOLS, {
+            loadExtensionOptions: { allowFileAccess: true },
+          })
+        } catch (err) {
+          console.error('❌ Erro ao instalar a extensão React DevTools:', err)
+        }
+      }
+
+      const getTargetWorkspaceId = async (): Promise<string | undefined> => {
+        try {
+          const settings = getSettings()
+          if (!settings.lastSelectedWorkspaceId) return undefined
+          const workspaceResult = await workspacesRepository.getById(
+            settings.lastSelectedWorkspaceId,
+          )
+          const workspace = workspaceResult.success
+          if (!workspace || workspace.status !== 'configured') return undefined
+          return workspace.id
+        } catch {
+          return undefined
+        }
+      }
+
+      tray = createTray(
+        () => secondaryWindow,
+        async () => {
+          const targetWsId = await getTargetWorkspaceId()
+          createSecondaryWindow(targetWsId)
         },
       )
-    })
-
-    if (is.dev) {
-      try {
-        await installExtension(REACT_DEVELOPER_TOOLS, {
-          loadExtensionOptions: { allowFileAccess: true },
-        })
-      } catch (err) {
-        console.error('❌ Erro ao instalar a extensão React DevTools:', err)
-      }
-    }
-
-    const getTargetWorkspaceId = async (): Promise<string | undefined> => {
-      try {
-        const settings = getSettings()
-        if (!settings.lastSelectedWorkspaceId) return undefined
-        const workspace = await workspacesRepository.findById(
-          settings.lastSelectedWorkspaceId,
+      if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+        await runtimeWindow.loadURL(
+          `${process.env['ELECTRON_RENDERER_URL']}#/runtime`,
         )
-        if (!workspace || workspace.status !== 'configured') return undefined
-        return workspace.id
-      } catch {
-        return undefined
       }
-    }
-
-    tray = createTray(
-      () => secondaryWindow,
-      async () => {
+      if (!is.dev || !process.env['ELECTRON_RENDERER_URL']) {
+        await runtimeWindow.loadFile(
+          join(__dirname, '../renderer/index.html'),
+          {
+            hash: '/runtime',
+          },
+        )
+      }
+      const runtimeReady = await localRuntime.whenReady()
+      if (!runtimeReady)
+        console.error(
+          '[LocalRuntime] Executor did not become ready before startup deadline',
+        )
+      createWindow()
+      if (
+        process.env.NODE_ENV !== 'test' ||
+        process.env.MR_TICK_OPEN_WIDGET_IN_TEST === 'true'
+      ) {
         const targetWsId = await getTargetWorkspaceId()
         createSecondaryWindow(targetWsId)
-      },
-    )
-    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-      await runtimeWindow.loadURL(
-        `${process.env['ELECTRON_RENDERER_URL']}#/runtime`,
-      )
-    }
-    if (!is.dev || !process.env['ELECTRON_RENDERER_URL']) {
-      await runtimeWindow.loadFile(join(__dirname, '../renderer/index.html'), {
-        hash: '/runtime',
+      }
+
+      app.on('activate', () => {
+        if (!mainWindow || mainWindow.isDestroyed()) createWindow()
       })
-    }
-    const runtimeReady = await localRuntime.whenReady()
-    if (!runtimeReady)
-      console.error(
-        '[LocalRuntime] Executor did not become ready before startup deadline',
-      )
-    createWindow()
-    if (
-      process.env.NODE_ENV !== 'test' ||
-      process.env.MR_TICK_OPEN_WIDGET_IN_TEST === 'true'
-    ) {
-      const targetWsId = await getTargetWorkspaceId()
-      createSecondaryWindow(targetWsId)
-    }
 
-    app.on('activate', () => {
-      if (!mainWindow || mainWindow.isDestroyed()) createWindow()
-    })
-
-    app.on('before-quit', () => {
-      timerRuntime.dispose()
-      updaterService.stopAutoCheck()
-      if (process.platform === 'win32' && nativeOverlay) {
-        try {
-          if (typeof nativeOverlay.cleanupOverlay === 'function') {
-            nativeOverlay.cleanupOverlay()
+      app.on('before-quit', () => {
+        timerRuntime.dispose()
+        updaterService.stopAutoCheck()
+        if (process.platform === 'win32' && nativeOverlay) {
+          try {
+            if (typeof nativeOverlay.cleanupOverlay === 'function') {
+              nativeOverlay.cleanupOverlay()
+            }
+          } catch (err) {
+            console.error(
+              '[Mr-tick Core] Erro ao liberar overlay no quit:',
+              err,
+            )
           }
-        } catch (err) {
-          console.error('[Mr-tick Core] Erro ao liberar overlay no quit:', err)
         }
-      }
-      if (tray) {
-        tray.destroy()
-        tray = null
-      }
+        if (tray) {
+          tray.destroy()
+          tray = null
+        }
+      })
     })
-  })
+    .catch((err) => {
+      console.error('STARTUP_ERROR_CAUGHT:', err)
+    })
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()

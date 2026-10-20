@@ -26,6 +26,7 @@ const result: LocalRuntimeResult = {
   entries: [entry],
   timer: null,
   deleted: false,
+  pendingWrites: false,
 }
 
 class ReceiptRuntime implements ILocalRuntimeAPI {

@@ -1,7 +1,19 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
-import { PagedResultDTO, WorkspaceDTO } from '@/dtos'
+import {
+  PagedResultDTO,
+  PaginationOptionsDTO,
+  WorkspaceDTO,
+  WorkspaceFilterDTO,
+} from '@/dtos'
+
+export interface ListWorkspacesOptions {
+  filter?: WorkspaceFilterDTO
+  pagination?: PaginationOptionsDTO
+}
 
 export interface IListWorkspacesUseCase {
-  execute(): Promise<Either<AppError, PagedResultDTO<WorkspaceDTO>>>
+  execute(
+    options?: ListWorkspacesOptions,
+  ): Promise<Either<AppError, PagedResultDTO<WorkspaceDTO>>>
 }

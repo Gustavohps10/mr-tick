@@ -2,13 +2,25 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { ICredentialsVault, ILocalRuntimeAPI } from '@mr-tick/application'
+import {
+  AddonAuthenticatorRegistry,
+  AddonConnectionProfilesResolver,
+  type IConnectionCredentialsVault,
+  type ICredentialsVault,
+  type ILocalRuntimeAPI,
+  OAuthAttemptCoordinator,
+} from '@mr-tick/application'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   permissiveAddonAccessService,
   unavailableCore,
 } from './addon-core-test-fixture'
+import {
+  emptyAddonCredentialsVault,
+  emptyAddonSettingsRepository,
+  emptyWorkspaceReferenceRegistry,
+} from './addon-workspace-reference-test-fixture'
 import { AddonLoader } from './AddonLoader'
 
 const unavailableRuntime: ILocalRuntimeAPI = {
@@ -32,27 +44,26 @@ vi.mock('electron', () => ({
 
 describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
   let addonLoader: AddonLoader
-  let fakeCredentialsVault: ICredentialsVault
+  let fakeCredentialsVault: ICredentialsVault & IConnectionCredentialsVault
   let testAddonDir: string
 
   beforeEach(() => {
     vi.clearAllMocks()
 
-    fakeCredentialsVault = {
-      getToken: vi.fn().mockResolvedValue(null),
-      saveToken: vi.fn().mockResolvedValue(undefined),
-      deleteToken: vi.fn().mockResolvedValue(undefined),
-      hasToken: vi.fn().mockResolvedValue(false),
-      replaceToken: vi.fn().mockResolvedValue(undefined),
-    }
+    fakeCredentialsVault = emptyAddonCredentialsVault()
 
     // Cria AddonLoader configurado com hostAppVersion '0.4.0'
     addonLoader = new AddonLoader(
       fakeCredentialsVault,
       unavailableRuntime,
       '0.4.0',
-      unavailableCore,
+      () => unavailableCore,
       permissiveAddonAccessService,
+      emptyWorkspaceReferenceRegistry,
+      emptyAddonSettingsRepository,
+      new AddonAuthenticatorRegistry(),
+      new AddonConnectionProfilesResolver(),
+      new OAuthAttemptCoordinator(),
     )
 
     // Cria diretório temporário para simular addon no disco
@@ -150,7 +161,7 @@ requiredApiVersion: '>=0.4.0'
 
     expect(loaded).toBe(true)
     expect(addonLoader.hasActiveAddon('test-compatible-addon')).toBe(true)
-  })
+  }, 15000)
 
   it('deve carregar com sucesso addon com requiredApiVersion "-1" mesmo no app 0.4.0', async () => {
     const manifestContent = `

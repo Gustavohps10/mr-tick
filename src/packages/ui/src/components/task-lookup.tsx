@@ -1,6 +1,5 @@
 'use client'
 
-import { WorkspaceConnectionDTO } from '@mr-tick/application'
 import {
   useInfiniteQuery,
   useQuery,
@@ -165,13 +164,13 @@ export function TaskLookup({
   const { connections: dsConnections } = useDataSourceConnections()
 
   const availableConnections = useMemo(() => {
-    const connections = workspace?.dataSourceConnections ?? []
-    return connections.map((c: WorkspaceConnectionDTO) => {
+    const connections = workspace?.connections ?? []
+    return connections.map((c) => {
       const match = dsConnections?.find((dc) => dc.connectionId === c.id)
       return {
         id: c.id,
-        dataSourceId: c.dataSourceId,
-        label: String(c.config?.name || match?.addon?.name || c.dataSourceId),
+        dataSourceId: c.addonId,
+        label: String(c.config?.name || match?.addon?.name || c.addonId),
         logo: match?.addon?.logo,
       }
     })

@@ -36,7 +36,7 @@ const backgroundWorkspace: WorkspaceViewModel = {
   name: 'Existing Background Workspace',
   description: 'Background description',
   status: 'configured',
-  dataSourceConnections: [],
+  connections: [],
   createdAt: new Date(),
   updatedAt: new Date(),
 }
@@ -114,7 +114,7 @@ describe('NewWorkspaceDialog and StepperForm Isolation', () => {
       name: 'Brand New Workspace',
       description: 'Brand new desc',
       status: 'draft',
-      dataSourceConnections: [],
+      connections: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     }
@@ -162,7 +162,7 @@ describe('NewWorkspaceDialog and StepperForm Isolation', () => {
       name: 'Complete WS Flow',
       description: '',
       status: 'draft',
-      dataSourceConnections: [],
+      connections: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     }
@@ -221,7 +221,7 @@ describe('NewWorkspaceDialog and StepperForm Isolation', () => {
       name: 'My Existing Draft',
       description: 'Draft description',
       status: 'draft',
-      dataSourceConnections: [],
+      connections: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     }

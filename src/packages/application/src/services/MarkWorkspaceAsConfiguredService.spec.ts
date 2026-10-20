@@ -1,5 +1,5 @@
-﻿import { Workspace } from '@mr-tick/domain'
-import { AppError } from '@mr-tick/shared/helpers'
+import { Workspace } from '@mr-tick/domain'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -20,10 +20,11 @@ describe('MarkWorkspaceAsConfiguredService', () => {
     vi.clearAllMocks()
 
     workspacesRepositoryMock = {
-      findById: vi.fn(),
-      update: vi.fn(),
+      getById: vi.fn(),
+      list: vi.fn(),
       create: vi.fn(),
-      delete: vi.fn(),
+      update: vi.fn().mockResolvedValue(Either.success(undefined)),
+      remove: vi.fn(),
     } as unknown as Mocked<IWorkspacesRepository>
 
     fakeWorkspace = {
@@ -37,14 +38,16 @@ describe('MarkWorkspaceAsConfiguredService', () => {
   it('should mark workspace as configured successfully', async () => {
     // Arrange
     const input = makeInput()
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
-    workspacesRepositoryMock.update.mockResolvedValue(undefined)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
 
     // Act
     const result = await sut.execute(input)
 
     // Assert
     expect(result.isSuccess()).toBe(true)
+    expect(workspacesRepositoryMock.getById).toHaveBeenCalledWith('ws-123')
     expect(fakeWorkspace.markAsConfigured).toHaveBeenCalledTimes(1)
     expect(workspacesRepositoryMock.update).toHaveBeenCalledWith(fakeWorkspace)
   })
@@ -52,7 +55,9 @@ describe('MarkWorkspaceAsConfiguredService', () => {
   it('should return ValidationError when workspace does not exist', async () => {
     // Arrange
     const input = makeInput()
-    workspacesRepositoryMock.findById.mockResolvedValue(undefined)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(undefined),
+    )
 
     // Act
     const result = await sut.execute(input)
@@ -64,10 +69,10 @@ describe('MarkWorkspaceAsConfiguredService', () => {
     expect(workspacesRepositoryMock.update).not.toHaveBeenCalled()
   })
 
-  it('should return failure when repository findById throws an exception', async () => {
+  it('should return failure when repository getById throws an exception', async () => {
     // Arrange
     const input = makeInput()
-    workspacesRepositoryMock.findById.mockRejectedValue(new Error('DB Error'))
+    workspacesRepositoryMock.getById.mockRejectedValue(new Error('DB Error'))
 
     // Act & Assert
     await expect(sut.execute(input)).rejects.toThrow('DB Error')

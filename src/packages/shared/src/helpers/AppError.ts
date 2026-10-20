@@ -120,3 +120,76 @@ class HttpError extends AppError {
     super(messageKey, statusCode, details)
   }
 }
+
+export interface TokenRefreshErrorOptions {
+  readonly reauthRequired?: boolean
+  readonly remoteOutcomeUncertain?: boolean
+  readonly details?: FieldErrors
+}
+
+export class TokenRefreshError extends AppError {
+  public readonly reauthRequired: boolean
+  public readonly remoteOutcomeUncertain: boolean
+
+  constructor(
+    messageKey: string,
+    statusCode: number,
+    options?: TokenRefreshErrorOptions,
+  ) {
+    let details: FieldErrors | undefined = undefined
+    let reauth = false
+    let uncertain = false
+    if (options !== undefined) {
+      if (options.details !== undefined) {
+        details = options.details
+      }
+      if (options.reauthRequired === true) {
+        reauth = true
+      }
+      if (options.remoteOutcomeUncertain === true) {
+        uncertain = true
+      }
+    }
+    super(messageKey, statusCode, details)
+    this.reauthRequired = reauth
+    this.remoteOutcomeUncertain = uncertain
+  }
+
+  static reauthRequired(
+    messageKey: string,
+    statusCode = 401,
+    details?: FieldErrors,
+  ): TokenRefreshError {
+    return new TokenRefreshError(messageKey, statusCode, {
+      reauthRequired: true,
+      details,
+    })
+  }
+
+  static remoteOutcomeUncertain(
+    messageKey: string,
+    statusCode = 504,
+    details?: FieldErrors,
+  ): TokenRefreshError {
+    return new TokenRefreshError(messageKey, statusCode, {
+      remoteOutcomeUncertain: true,
+      details,
+    })
+  }
+
+  static transient(
+    messageKey: string,
+    statusCode = 504,
+    details?: FieldErrors,
+  ): TokenRefreshError {
+    return new TokenRefreshError(messageKey, statusCode, { details })
+  }
+
+  static clientError(
+    messageKey: string,
+    statusCode = 401,
+    details?: FieldErrors,
+  ): TokenRefreshError {
+    return new TokenRefreshError(messageKey, statusCode, { details })
+  }
+}

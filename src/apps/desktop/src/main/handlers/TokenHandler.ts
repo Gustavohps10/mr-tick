@@ -1,4 +1,4 @@
-﻿import { ICredentialsVault } from '@mr-tick/application'
+import { ICredentialsVault } from '@mr-tick/application'
 import { IRequest } from '@mr-tick/shared/transport'
 import { ViewModel } from '@mr-tick/shared/view-models'
 
@@ -49,12 +49,17 @@ export class TokenHandler implements HandlerBase<TokenHandler> {
     { body: { service, account } }: IRequest<TokenRequest>,
   ): Promise<ViewModel<string | null>> {
     try {
-      const token = await this.credentialsVault.getToken(service, account)
-      return {
-        statusCode: 200,
-        isSuccess: true,
-        data: token,
-      }
+      const result = await this.credentialsVault.getToken(service, account)
+      if (result.kind === 'unavailable')
+        return {
+          statusCode: 500,
+          isSuccess: false,
+          error: 'Failed to get the token',
+          data: null,
+        }
+      if (result.kind === 'absent')
+        return { statusCode: 200, isSuccess: true, data: null }
+      return { statusCode: 200, isSuccess: true, data: result.token }
     } catch {
       return {
         statusCode: 500,

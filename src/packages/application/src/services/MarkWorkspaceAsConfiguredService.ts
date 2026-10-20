@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import { IWorkspacesRepository } from '@/contracts'
 import {
@@ -12,9 +12,11 @@ export class MarkWorkspaceAsConfiguredService implements IMarkWorkspaceAsConfigu
   public async execute(
     input: MarkWorkspaceAsConfiguredInput,
   ): Promise<Either<AppError, void>> {
-    const workspace = await this.workspacesRepository.findById(
+    const workspaceResult = await this.workspacesRepository.getById(
       input.workspaceId,
     )
+    if (workspaceResult.isFailure()) return workspaceResult.forwardFailure()
+    const workspace = workspaceResult.success
 
     if (!workspace)
       return Either.failure(
@@ -23,7 +25,8 @@ export class MarkWorkspaceAsConfiguredService implements IMarkWorkspaceAsConfigu
 
     workspace.markAsConfigured()
 
-    await this.workspacesRepository.update(workspace)
+    const updateResult = await this.workspacesRepository.update(workspace)
+    if (updateResult.isFailure()) return updateResult.forwardFailure()
 
     return Either.success()
   }

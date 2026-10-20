@@ -73,7 +73,7 @@ describe('TimeEntriesPushService', () => {
   const create = vi.fn<ITimeEntryProvider['create']>()
   const update = vi.fn<ITimeEntryProvider['update']>()
   const remove = vi.fn<ITimeEntryProvider['delete']>()
-  const workspaceLookup = vi.fn<IWorkspacesRepository['findById']>()
+  const workspaceLookup = vi.fn<IWorkspacesRepository['getById']>()
   let provider: ITimeEntryProvider
   let sut: TimeEntriesPushService
   let mutex: TestMutex
@@ -111,19 +111,23 @@ describe('TimeEntriesPushService', () => {
     }
     const workspace = Workspace.create({ name: 'Test workspace' })
     if (workspace.isSuccess())
-      workspaceLookup.mockResolvedValue(workspace.success)
+      workspaceLookup.mockResolvedValue(Either.success(workspace.success))
     const repository: IWorkspacesRepository = {
-      findById: workspaceLookup,
-      findAll: vi.fn(),
+      getById: workspaceLookup,
+      list: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn(),
+      remove: vi.fn(),
     }
     adapter = {
       id: 'redmine',
       timeEntriesProvider: provider,
-      getAuthenticatedMemberData: () => Either.success(member),
-      authenticationStrategy: { authenticate: vi.fn() },
+      getAuthenticatedMemberData: () =>
+        Either.success({
+          id: String(member.id),
+          firstname: member.firstname,
+          lastname: member.lastname,
+        }),
       tasksProvider: {
         pull: vi.fn(),
         findAll: vi.fn(),
@@ -141,11 +145,15 @@ describe('TimeEntriesPushService', () => {
       metadataProvider: { getMetadata: vi.fn() },
     }
     const resolver: IDataSourceResolver = {
-      getDataSource: async () => ({
-        ...adapter,
-        timeEntriesProvider: provider,
-      }),
+      getDataSource: async () =>
+        Either.success({
+          ...adapter,
+          timeEntriesProvider: provider,
+          getAuthenticatedMemberData: () =>
+            adapter.getAuthenticatedMemberData(),
+        }),
       getDataSourcesForWorkspace: vi.fn(),
+      getConnectionProfiles: vi.fn(),
     }
     mutex = new TestMutex()
     sut = new TimeEntriesPushService(repository, resolver, mutex)
@@ -155,7 +163,7 @@ describe('TimeEntriesPushService', () => {
     sut.execute({ ...input, entries: [entry] })
 
   it('rejects a missing workspace before reaching the provider', async () => {
-    workspaceLookup.mockResolvedValue(undefined)
+    workspaceLookup.mockResolvedValue(Either.success(undefined))
     const result = await push(local)
     expect(result.failure.messageKey).toBe('WORKSPACE_NAO_ENCONTRADO')
     expect(create).not.toHaveBeenCalled()
@@ -742,5 +750,56 @@ describe('TimeEntriesPushService', () => {
     expect(result.success[0]?.validationError).toBeUndefined()
     expect(result.success[0]?.comments).toBe(edited.comments)
     expect(result.success[0]?.task.id).toBe('')
+  })
+
+  it('preserves an alphanumeric member id intact in authenticated user', async () => {
+    adapter.getAuthenticatedMemberData = () =>
+      Either.success({
+        id: 'usr_abc-123',
+        firstname: 'Alpha',
+        lastname: 'Numeric',
+      })
+    const entry = { ...local, user: { id: 'local-user' } }
+    const result = await push(entry)
+    expect(result.success[0]?.validationError).toBeUndefined()
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: { id: 'usr_abc-123', name: 'Alpha Numeric' },
+      }),
+    )
+  })
+
+  it('preserves a member id with leading zeros intact in authenticated user', async () => {
+    adapter.getAuthenticatedMemberData = () =>
+      Either.success({
+        id: '00123',
+        firstname: 'Zero',
+        lastname: 'Leading',
+      })
+    const entry = { ...local, user: { id: 'local-user' } }
+    const result = await push(entry)
+    expect(result.success[0]?.validationError).toBeUndefined()
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: { id: '00123', name: 'Zero Leading' },
+      }),
+    )
+  })
+
+  it('preserves a member id exceeding MAX_SAFE_INTEGER intact in authenticated user', async () => {
+    adapter.getAuthenticatedMemberData = () =>
+      Either.success({
+        id: '9007199254740993',
+        firstname: 'Large',
+        lastname: 'Integer',
+      })
+    const entry = { ...local, user: { id: 'local-user' } }
+    const result = await push(entry)
+    expect(result.success[0]?.validationError).toBeUndefined()
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: { id: '9007199254740993', name: 'Large Integer' },
+      }),
+    )
   })
 })

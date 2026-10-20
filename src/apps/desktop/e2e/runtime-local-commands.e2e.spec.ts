@@ -18,12 +18,12 @@ async function requestRuntime(
 }
 
 function fixtureScope() {
-  const workspace = seedWorkspaces.find(
+  const workspace = seedWorkspaces.workspaces.find(
     (candidate) => candidate.name === 'TESTE',
   )
   if (!workspace) throw new Error('CONNECTED_FIXTURE_WORKSPACE_NOT_FOUND')
-  const connection = workspace.dataSourceConnections.find(
-    (candidate) => candidate.dataSourceId === 'mr-tick-datasource-fake',
+  const connection = workspace.connections.find(
+    (candidate) => candidate.addonId === 'mr-tick-datasource-fake',
   )
   if (!connection) throw new Error('FAKE_FIXTURE_CONNECTION_NOT_FOUND')
   return { workspace, connection }
@@ -98,9 +98,9 @@ test.describe('Runtime local - CRUD explícito e replay', () => {
         activityId: activity.id,
         activityName: activity.name,
         connectionInstanceId: connection.id,
-        dataSourceId: connection.dataSourceId,
-        userId: connection.member.id,
-        userName: connection.member.name,
+        dataSourceId: connection.addonId,
+        userId: '1',
+        userName: 'John Doe',
         timeSpentSeconds: 900,
         startDate: '2026-10-08T10:00:00.000Z',
         endDate: '2026-10-08T10:15:00.000Z',

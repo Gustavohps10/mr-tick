@@ -1,4 +1,4 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import {
   IFileManager,
@@ -26,7 +26,10 @@ export class UpdateWorkspaceIdentityService implements IUpdateWorkspaceIdentityU
     let newAvatarPath: string | undefined
 
     try {
-      const workspace = await this.workspacesRepository.findById(workspaceId)
+      const workspaceResult =
+        await this.workspacesRepository.getById(workspaceId)
+      if (workspaceResult.isFailure()) return workspaceResult.forwardFailure()
+      const workspace = workspaceResult.success
 
       if (!workspace) {
         return Either.failure(AppError.NotFound('WORKSPACE_NAO_ENCONTRADO'))
@@ -40,7 +43,8 @@ export class UpdateWorkspaceIdentityService implements IUpdateWorkspaceIdentityU
           await this.fileStorage.delete(oldPath, true)
         }
         newAvatarUrl = undefined
-      } else if (avatarFile) {
+      }
+      if (avatarFile && !removeAvatar) {
         const mimeResult = await this.fileManager.getMimeType(avatarFile)
         if (mimeResult.isFailure()) return mimeResult.forwardFailure()
 
@@ -61,11 +65,19 @@ export class UpdateWorkspaceIdentityService implements IUpdateWorkspaceIdentityU
         return result.forwardFailure()
       }
 
+      let updateResult: Either<AppError, void>
       try {
-        await this.workspacesRepository.update(workspace)
+        updateResult = await this.workspacesRepository.update(workspace)
       } catch (repoError) {
         if (newAvatarPath) await this.fileStorage.delete(newAvatarPath, true)
-        throw repoError
+        return Either.failure(
+          AppError.Internal('ERRO_AO_ATUALIZAR_IDENTIDADE_DO_WORKSPACE'),
+        )
+      }
+
+      if (updateResult.isFailure()) {
+        if (newAvatarPath) await this.fileStorage.delete(newAvatarPath, true)
+        return updateResult.forwardFailure()
       }
 
       return Either.success({
@@ -74,9 +86,7 @@ export class UpdateWorkspaceIdentityService implements IUpdateWorkspaceIdentityU
         status: workspace.status,
         avatarUrl: workspace.avatarUrl,
         description: workspace.description,
-        dataSourceConnections: workspace.dataSourceConnections.map(
-          toWorkspaceConnectionDTO,
-        ),
+        connections: workspace.connections.map(toWorkspaceConnectionDTO),
         createdAt: workspace.createdAt,
         updatedAt: workspace.updatedAt,
       })

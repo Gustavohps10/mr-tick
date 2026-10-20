@@ -4,8 +4,10 @@ import type {
   CoreCacheQuery,
   CoreCacheResponse,
   CoreRuntimeState,
+  IConnectionPendingWorkGuard,
   ICoreCacheTransport,
   ILocalRuntimeAPI,
+  LocalEntryFilter,
   LocalPersistenceCommand,
   LocalPersistenceResponse,
   LocalRuntimeRequest,
@@ -14,6 +16,7 @@ import type {
   LocalSyncResponse,
 } from '@mr-tick/application'
 import { validateCoreCacheQuery } from '@mr-tick/application'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 import { BrowserWindow, ipcMain } from 'electron'
 
 import type {
@@ -47,7 +50,7 @@ function unavailable(messageKey: string): {
 
 /** Routes calls to one executor; a reload invalidates its pending replies. */
 export class LocalRuntimeDispatcher
-  implements ILocalRuntimeAPI, ICoreCacheTransport
+  implements ILocalRuntimeAPI, ICoreCacheTransport, IConnectionPendingWorkGuard
 {
   private readonly corePending = new Map<
     string,
@@ -69,6 +72,7 @@ export class LocalRuntimeDispatcher
   >()
   private readonly readerReleases = new Map<string, PendingReaderRelease>()
   private readonly maintenanceWorkspaces = new Set<string>()
+  private readonly workspaceTails = new Map<string, Promise<void>>()
   private generation = randomUUID()
   private ready = false
   private lastSequence = 0
@@ -90,10 +94,15 @@ export class LocalRuntimeDispatcher
           return unavailable('localRuntime.unauthorizedClient')
         if (input && this.maintenanceWorkspaces.has(input.workspaceId))
           return unavailable('localRuntime.workspaceMaintenance')
-        return this.dispatch(
-          this.persistencePending,
-          'local-runtime:execute-persistence',
-          input,
+        return this.queueWorkspaceRequest(
+          input.workspaceId,
+          () =>
+            this.dispatch(
+              this.persistencePending,
+              'local-runtime:execute-persistence',
+              input,
+            ),
+          () => unavailable('localRuntime.workspaceMaintenance'),
         )
       },
     )
@@ -113,6 +122,8 @@ export class LocalRuntimeDispatcher
             input,
           )
         this.maintenanceWorkspaces.add(input.workspaceId)
+        const workspaceQueue = this.waitForWorkspaceQueue(input.workspaceId)
+        if (workspaceQueue !== undefined) await workspaceQueue
         if (!(await this.releaseReaders(input.workspaceId))) {
           this.maintenanceWorkspaces.delete(input.workspaceId)
           this.resumeReaders(input.workspaceId)
@@ -284,7 +295,18 @@ export class LocalRuntimeDispatcher
       })
     if (this.maintenanceWorkspaces.has(input.workspaceId))
       return Promise.resolve(unavailable('localRuntime.workspaceMaintenance'))
-    return this.dispatch(this.corePending, 'local-runtime:execute-core', input)
+    return this.queueWorkspaceRequest(
+      input.workspaceId,
+      () =>
+        this.dispatch(this.corePending, 'local-runtime:execute-core', input),
+      () => ({
+        ok: false,
+        error: {
+          messageKey: 'localRuntime.workspaceMaintenance',
+          statusCode: 503,
+        },
+      }),
+    )
   }
 
   acceptsGeneration(generation: string): boolean {
@@ -307,7 +329,86 @@ export class LocalRuntimeDispatcher
   request(input: LocalRuntimeRequest): Promise<LocalRuntimeResponse> {
     if (input && this.maintenanceWorkspaces.has(input.workspaceId))
       return Promise.resolve(unavailable('localRuntime.workspaceMaintenance'))
-    return this.dispatch(this.pending, 'local-runtime:execute', input)
+    return this.queueWorkspaceRequest(
+      input.workspaceId,
+      () => this.dispatch(this.pending, 'local-runtime:execute', input),
+      () => unavailable('localRuntime.workspaceMaintenance'),
+    )
+  }
+
+  async withNoPendingWrites<T>(
+    workspaceId: string,
+    connectionInstanceIds: readonly string[],
+    operation: () => Promise<Either<AppError, T>>,
+  ): Promise<Either<AppError, T>> {
+    if (!workspaceId.trim() || connectionInstanceIds.some((id) => !id.trim()))
+      return Either.failure(
+        AppError.ValidationError('CONNECTION_SCOPE_REQUIRED'),
+      )
+    if (this.maintenanceWorkspaces.has(workspaceId))
+      return Either.failure(AppError.Http(409, 'WORKSPACE_MAINTENANCE'))
+    this.maintenanceWorkspaces.add(workspaceId)
+    try {
+      const workspaceQueue = this.waitForWorkspaceQueue(workspaceId)
+      if (workspaceQueue !== undefined) await workspaceQueue
+      let filter: LocalEntryFilter = {}
+      if (connectionInstanceIds.length === 1) {
+        const connectionInstanceId = connectionInstanceIds[0]
+        if (connectionInstanceId === undefined)
+          return Either.failure(
+            AppError.ValidationError('CONNECTION_SCOPE_REQUIRED'),
+          )
+        filter = { connectionInstanceId }
+      }
+      const response = await this.dispatch(
+        this.pending,
+        'local-runtime:execute',
+        {
+          action: 'list',
+          workspaceId,
+          filter,
+        },
+      )
+      if (!response.ok)
+        return Either.failure(
+          AppError.Http(response.error.statusCode, response.error.messageKey),
+        )
+      if (response.value.pendingWrites)
+        return Either.failure(AppError.Http(409, 'CONNECTION_PENDING_WRITES'))
+      return await operation()
+    } finally {
+      this.maintenanceWorkspaces.delete(workspaceId)
+    }
+  }
+
+  private async queueWorkspaceRequest<T>(
+    workspaceId: string,
+    operation: () => Promise<T>,
+    blocked: () => T,
+  ): Promise<T> {
+    if (this.maintenanceWorkspaces.has(workspaceId)) return blocked()
+    const previous = this.workspaceTails.get(workspaceId)
+    let release: () => void = () => undefined
+    const current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const tail = previous === undefined ? current : previous.then(() => current)
+    this.workspaceTails.set(workspaceId, tail)
+    try {
+      if (previous !== undefined) await previous
+      if (this.maintenanceWorkspaces.has(workspaceId)) return blocked()
+      return await operation()
+    } finally {
+      release()
+      if (this.workspaceTails.get(workspaceId) === tail)
+        this.workspaceTails.delete(workspaceId)
+    }
+  }
+
+  private waitForWorkspaceQueue(
+    workspaceId: string,
+  ): Promise<void> | undefined {
+    return this.workspaceTails.get(workspaceId)
   }
 
   private isClient(webContentsId: number): boolean {

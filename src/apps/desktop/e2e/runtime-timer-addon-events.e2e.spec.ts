@@ -4,12 +4,12 @@ import { expect, test } from './fixtures/electron-fixture'
 import { inspectCachedTasks } from './fixtures/runtime-task-cache-probe'
 import seedWorkspaces from './fixtures/seed-workspaces.json' with { type: 'json' }
 
-const probeWorkspace = seedWorkspaces.find(
+const probeWorkspace = seedWorkspaces.workspaces.find(
   (candidate) => candidate.name === 'TESTE',
 )
 if (!probeWorkspace) throw new Error('QUICK_TIMER_FIXTURE_WORKSPACE_NOT_FOUND')
-const probeConnection = probeWorkspace.dataSourceConnections.find(
-  (candidate) => candidate.dataSourceId === 'mr-tick-datasource-fake',
+const probeConnection = probeWorkspace.connections.find(
+  (candidate) => candidate.addonId === 'mr-tick-datasource-fake',
 )
 if (!probeConnection)
   throw new Error('QUICK_TIMER_FIXTURE_CONNECTION_NOT_FOUND')
@@ -57,7 +57,7 @@ async function expectEvent(
 test('timer iniciado pela UI chega ao addon com start, pause, resume e stop sem eventos duplicados', async ({
   page,
 }) => {
-  const workspace = seedWorkspaces.find(
+  const workspace = seedWorkspaces.workspaces.find(
     (candidate) => candidate.name === 'TESTE',
   )
   if (!workspace) throw new Error('TIMER_EVENT_FIXTURE_WORKSPACE_NOT_FOUND')

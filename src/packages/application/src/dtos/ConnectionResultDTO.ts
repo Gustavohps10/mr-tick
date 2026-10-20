@@ -1,5 +1,8 @@
-import { MemberDTO } from '@/dtos/MemberDTO'
+import type { ConnectionIdentity } from '@mr-tick/domain'
+
+import type { MemberDTO } from '@/dtos/MemberDTO'
 
 export interface ConnectionResultDTO {
-  member: MemberDTO
+  identity?: ConnectionIdentity
+  member?: MemberDTO
 }

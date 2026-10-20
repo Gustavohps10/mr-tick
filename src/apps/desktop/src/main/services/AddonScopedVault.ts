@@ -1,4 +1,16 @@
-import type { ICredentialsVault } from '@mr-tick/application'
+import {
+  AddonSettingsSnapshot,
+  CredentialReference,
+  CredentialReferenceFactory,
+  IAddonSettingsRepository,
+  IAddonSettingsVaultGateway,
+  IConnectionCredentialsVault,
+  ICredentialsVault,
+  IWorkspaceCredentialReferenceRegistry,
+  WorkspaceCredentialDeleteReservation,
+  WorkspaceCredentialReferenceInput,
+  WorkspaceCredentialWriteReservation,
+} from '@mr-tick/application'
 import type {
   AddonSettingsValues,
   AddonVaultScope,
@@ -8,17 +20,21 @@ import {
   AppError,
   Either,
   isNonEmptyString,
-  isNumber,
   isRecord,
   isString,
 } from '@mr-tick/shared/helpers'
 
 /** Shared queue prevents settings UI and background addon updates losing each other. */
-export class AddonScopedVault implements IAddonVaultAPI {
+export class AddonScopedVault
+  implements IAddonVaultAPI, IAddonSettingsVaultGateway
+{
   private readonly tails = new Map<string, Promise<void>>()
   constructor(
     private readonly addonId: string,
     private readonly credentialsVault: ICredentialsVault,
+    private readonly connectionCredentialsVault: IConnectionCredentialsVault,
+    private readonly referenceRegistry: IWorkspaceCredentialReferenceRegistry,
+    private readonly settingsRepository: IAddonSettingsRepository,
   ) {}
 
   get(
@@ -30,16 +46,29 @@ export class AddonScopedVault implements IAddonVaultAPI {
         return Either.failure(
           AppError.ValidationError('ADDON_VAULT_KEY_REQUIRED'),
         )
-      const result = await this.read(account)
-      if (result.isFailure()) return result.forwardFailure()
-      if (!Object.hasOwn(result.success, key)) return Either.success(null)
-      const value = result.success[key]
-      if (value === undefined || value === null) return Either.success(null)
-      if (!isString(value))
-        return Either.failure(
-          AppError.ValidationError('ADDON_VAULT_VALUE_NOT_STRING'),
+      const reference = this.secretReference(scope, key)
+      if (reference.isFailure()) return reference.forwardFailure()
+      if (scope.kind !== 'addon') {
+        const resolved = await this.resolveSecretWorkspaceReference(scope, key)
+        if (resolved.isFailure()) return resolved.forwardFailure()
+        if (resolved.success === null) return Either.success(null)
+        const result = await this.credentialsVault.getToken(
+          resolved.success.service,
+          resolved.success.account,
         )
-      return Either.success(value)
+        if (result.kind === 'unavailable')
+          return Either.failure(AppError.Internal('ADDON_VAULT_READ_FAILED'))
+        if (result.kind === 'absent') return Either.success(null)
+        return Either.success(result.token)
+      }
+      const result = await this.credentialsVault.getToken(
+        reference.success.service,
+        reference.success.account,
+      )
+      if (result.kind === 'unavailable')
+        return Either.failure(AppError.Internal('ADDON_VAULT_READ_FAILED'))
+      if (result.kind === 'absent') return Either.success(null)
+      return Either.success(result.token)
     })
   }
   set(
@@ -52,15 +81,19 @@ export class AddonScopedVault implements IAddonVaultAPI {
         return Either.failure(
           AppError.ValidationError('ADDON_VAULT_VALUE_INVALID'),
         )
-      const result = await this.read(account)
-      if (result.isFailure()) return result.forwardFailure()
-      Object.defineProperty(result.success, key, {
+      if (scope.kind !== 'addon')
+        return this.writeWorkspaceSecret(scope, key, value)
+      const reference = this.secretReference(scope, key)
+      if (reference.isFailure()) return reference.forwardFailure()
+      const result = await this.connectionCredentialsVault.writeCredential(
+        reference.success,
         value,
-        enumerable: true,
-        configurable: true,
-        writable: true,
-      })
-      return this.write(account, result.success)
+      )
+      if (result.kind === 'unavailable')
+        return Either.failure(
+          AppError.Internal('ADDON_VAULT_WRITE_UNAVAILABLE'),
+        )
+      return Either.success()
     })
   }
   delete(scope: AddonVaultScope, key: string): Promise<Either<AppError, void>> {
@@ -69,28 +102,92 @@ export class AddonScopedVault implements IAddonVaultAPI {
         return Either.failure(
           AppError.ValidationError('ADDON_VAULT_KEY_REQUIRED'),
         )
-      const result = await this.read(account)
-      if (result.isFailure()) return result.forwardFailure()
-      delete result.success[key]
-      return this.write(account, result.success)
+      if (scope.kind !== 'addon') return this.deleteWorkspaceSecret(scope, key)
+      const reference = this.secretReference(scope, key)
+      if (reference.isFailure()) return reference.forwardFailure()
+      const result = await this.connectionCredentialsVault.removeCredential(
+        reference.success,
+      )
+      if (result.kind === 'unavailable')
+        return Either.failure(AppError.Internal('ADDON_VAULT_CLEANUP_PENDING'))
+      return Either.success()
     })
   }
   getSettings(
     scope: AddonVaultScope,
-  ): Promise<Either<AppError, AddonSettingsValues>> {
-    return this.serial(scope, (account) => this.read(account))
+  ): Promise<Either<AppError, AddonSettingsSnapshot>> {
+    return this.serial(scope, async (account) =>
+      this.settingsRepository.read(this.addonId, account),
+    )
   }
   saveSettings(
     scope: AddonVaultScope,
+    expectedRevision: number,
     settings: AddonSettingsValues,
-  ): Promise<Either<AppError, void>> {
+    editableFieldIds: readonly string[],
+  ): Promise<Either<AppError, AddonSettingsSnapshot>> {
     return this.serial(scope, async (account) => {
-      const parsed = parseSettings(JSON.stringify(settings))
-      if (parsed.isFailure()) return parsed.forwardFailure()
-      const result = await this.read(account)
-      if (result.isFailure()) return result.forwardFailure()
-      return this.write(account, { ...result.success, ...parsed.success })
+      return this.settingsRepository.patch(
+        this.addonId,
+        account,
+        expectedRevision,
+        settings,
+        editableFieldIds,
+      )
     })
+  }
+  rejectInvalidCredentialField(): Either<AppError, void> {
+    return Either.failure(
+      AppError.ValidationError('ADDON_CREDENTIAL_FIELD_INVALID'),
+    )
+  }
+  getCredential(
+    scope: AddonVaultScope,
+    key: string,
+  ): Promise<Either<AppError, string | null>> {
+    return this.get(scope, key)
+  }
+  setCredential(
+    scope: AddonVaultScope,
+    key: string,
+    value: string,
+  ): Promise<Either<AppError, void>> {
+    return this.set(scope, key, value)
+  }
+  deleteCredential(
+    scope: AddonVaultScope,
+    key: string,
+  ): Promise<Either<AppError, void>> {
+    return this.delete(scope, key)
+  }
+  private secretReference(
+    scope: AddonVaultScope,
+    key: string,
+  ): Either<AppError, CredentialReference> {
+    if (!isNonEmptyString(key))
+      return Either.failure(
+        AppError.ValidationError('ADDON_VAULT_KEY_REQUIRED'),
+      )
+    if (scope.kind === 'addon')
+      return Either.success(
+        CredentialReferenceFactory.createAddonSecret(this.addonId, scope, key),
+      )
+    if (
+      (scope.kind === 'workspace' && isNonEmptyString(scope.workspaceId)) ||
+      (scope.kind === 'connection' &&
+        isNonEmptyString(scope.workspaceId) &&
+        isNonEmptyString(scope.connectionInstanceId)) ||
+      (scope.kind === 'capability' &&
+        isNonEmptyString(scope.workspaceId) &&
+        isNonEmptyString(scope.connectionInstanceId) &&
+        isNonEmptyString(scope.capabilityId))
+    )
+      return Either.success(
+        CredentialReferenceFactory.createAddonSecret(this.addonId, scope, key),
+      )
+    return Either.failure(
+      AppError.ValidationError('ADDON_VAULT_SCOPE_REQUIRED'),
+    )
   }
   private serial<T>(
     scope: AddonVaultScope,
@@ -112,39 +209,137 @@ export class AddonScopedVault implements IAddonVaultAPI {
     })
     return result
   }
-  private async read(
-    account: string,
-  ): Promise<Either<AppError, AddonSettingsValues>> {
-    try {
-      const raw = await this.credentialsVault.getToken(this.addonId, account)
-      if (raw === undefined || raw === null) return Either.success({})
-      return parseSettings(raw)
-    } catch (error) {
-      if (error instanceof Error)
-        return Either.failure(AppError.Internal(error.message))
-      return Either.failure(AppError.Internal('ADDON_VAULT_READ_FAILED'))
+  private async resolveSecretWorkspaceReference(
+    scope: Extract<AddonVaultScope, { workspaceId: string }>,
+    fieldId: string,
+  ): Promise<Either<AppError, CredentialReference | null>> {
+    const logical = this.secretReference(scope, fieldId)
+    if (logical.isFailure()) return logical.forwardFailure()
+    const input: WorkspaceCredentialReferenceInput = {
+      ownerId: this.addonId,
+      workspaceId: scope.workspaceId,
+      logicalReferenceId: logical.success.id,
     }
-  }
-  private async write(
-    account: string,
-    values: AddonSettingsValues,
-  ): Promise<Either<AppError, void>> {
-    try {
-      if (Object.keys(values).length === 0) {
-        await this.credentialsVault.deleteToken(this.addonId, account)
-        return Either.success()
-      }
-      await this.credentialsVault.saveToken(
-        this.addonId,
-        account,
-        JSON.stringify(values),
+    const stored =
+      await this.referenceRegistry.getWorkspaceCredentialReference(input)
+    if (stored.isFailure()) return stored.forwardFailure()
+    if (
+      stored.success === undefined ||
+      stored.success.activeReferenceId === null
+    )
+      return Either.success(null)
+    if (stored.success.status !== 'active')
+      return Either.failure(
+        AppError.Http(409, 'ADDON_CREDENTIAL_DELETE_PENDING'),
       )
-      return Either.success()
-    } catch (error) {
-      if (error instanceof Error)
-        return Either.failure(AppError.Internal(error.message))
-      return Either.failure(AppError.Internal('ADDON_VAULT_WRITE_FAILED'))
+    const reference = CredentialReferenceFactory.fromId(
+      stored.success.activeReferenceId,
+    )
+    if (reference === undefined || reference.service !== this.addonId)
+      return Either.failure(
+        AppError.ValidationError('ADDON_CREDENTIAL_REFERENCE_INVALID'),
+      )
+    return Either.success(reference)
+  }
+
+  private async writeWorkspaceSecret(
+    scope: Extract<AddonVaultScope, { workspaceId: string }>,
+    fieldId: string,
+    value: string,
+  ): Promise<Either<AppError, void>> {
+    const logical = this.secretReference(scope, fieldId)
+    if (logical.isFailure()) return logical.forwardFailure()
+    const input: WorkspaceCredentialReferenceInput = {
+      ownerId: this.addonId,
+      workspaceId: scope.workspaceId,
+      logicalReferenceId: logical.success.id,
     }
+    const current =
+      await this.referenceRegistry.getWorkspaceCredentialReference(input)
+    if (current.isFailure()) return current.forwardFailure()
+    if (current.success !== undefined && current.success.status !== 'active')
+      return Either.failure(
+        AppError.Http(409, 'ADDON_CREDENTIAL_WRITE_PENDING'),
+      )
+    const previousReferenceId =
+      current.success === undefined ? null : current.success.activeReferenceId
+    const operationId = crypto.randomUUID()
+    const candidate = CredentialReferenceFactory.createAddonSecretCandidate(
+      this.addonId,
+      scope,
+      fieldId,
+      operationId,
+    )
+    const reservation: WorkspaceCredentialWriteReservation = {
+      ...input,
+      candidateReferenceId: candidate.id,
+      previousReferenceId,
+    }
+    const reserved =
+      await this.referenceRegistry.reserveWorkspaceCredentialWrite(reservation)
+    if (reserved.isFailure()) return reserved.forwardFailure()
+    const written = await this.connectionCredentialsVault.writeCredential(
+      candidate,
+      value,
+    )
+    if (written.kind === 'unavailable')
+      return Either.failure(AppError.Internal('ADDON_VAULT_WRITE_UNAVAILABLE'))
+    const committed =
+      await this.referenceRegistry.commitWorkspaceCredentialWrite(reservation)
+    if (committed.isFailure()) return committed.forwardFailure()
+    const cleaned = await this.cleanupWorkspaceReference(previousReferenceId)
+    if (cleaned.isFailure()) return cleaned.forwardFailure()
+    const finished =
+      await this.referenceRegistry.finishWorkspaceCredentialWrite(reservation)
+    if (finished.isFailure()) return finished.forwardFailure()
+    return Either.success()
+  }
+
+  private async deleteWorkspaceSecret(
+    scope: Extract<AddonVaultScope, { workspaceId: string }>,
+    fieldId: string,
+  ): Promise<Either<AppError, void>> {
+    const logical = this.secretReference(scope, fieldId)
+    if (logical.isFailure()) return logical.forwardFailure()
+    const input: WorkspaceCredentialReferenceInput = {
+      ownerId: this.addonId,
+      workspaceId: scope.workspaceId,
+      logicalReferenceId: logical.success.id,
+    }
+    const current =
+      await this.referenceRegistry.getWorkspaceCredentialReference(input)
+    if (current.isFailure()) return current.forwardFailure()
+    const previousReferenceId =
+      current.success === undefined ? null : current.success.activeReferenceId
+    const reservation: WorkspaceCredentialDeleteReservation = {
+      ...input,
+      previousReferenceId,
+    }
+    const reserved =
+      await this.referenceRegistry.reserveWorkspaceCredentialDelete(reservation)
+    if (reserved.isFailure()) return reserved.forwardFailure()
+    const cleaned = await this.cleanupWorkspaceReference(previousReferenceId)
+    if (cleaned.isFailure()) return cleaned.forwardFailure()
+    const finished =
+      await this.referenceRegistry.finishWorkspaceCredentialDelete(reservation)
+    if (finished.isFailure()) return finished.forwardFailure()
+    return Either.success()
+  }
+
+  private async cleanupWorkspaceReference(
+    referenceId: string | null,
+  ): Promise<Either<AppError, void>> {
+    if (referenceId === null) return Either.success()
+    const reference = CredentialReferenceFactory.fromId(referenceId)
+    if (reference === undefined)
+      return Either.failure(
+        AppError.ValidationError('CREDENTIAL_REFERENCE_INVALID'),
+      )
+    const cleanupResult =
+      await this.connectionCredentialsVault.removeCredential(reference)
+    if (cleanupResult.kind === 'unavailable')
+      return Either.failure(AppError.Internal('ADDON_VAULT_CLEANUP_PENDING'))
+    return Either.success()
   }
 }
 function vaultAccount(scope: AddonVaultScope): Either<AppError, string> {
@@ -152,38 +347,36 @@ function vaultAccount(scope: AddonVaultScope): Either<AppError, string> {
     return Either.failure(
       AppError.ValidationError('ADDON_VAULT_SCOPE_REQUIRED'),
     )
-  if (scope.kind === 'addon') return Either.success('addon_config')
-  if (scope.kind === 'workspace' && isNonEmptyString(scope.workspaceId))
-    return Either.success(`ws_${scope.workspaceId}_config`)
-  return Either.failure(AppError.ValidationError('ADDON_VAULT_SCOPE_REQUIRED'))
-}
-/** Corrupted records must never be silently overwritten or deleted. */
-function parseSettings(raw: string): Either<AppError, AddonSettingsValues> {
-  try {
-    const parsed: object = JSON.parse(raw)
-    if (!isRecord(parsed))
-      return Either.failure(AppError.ValidationError('ADDON_SETTINGS_INVALID'))
-    const values: AddonSettingsValues = {}
-    for (const [key, value] of Object.entries(parsed)) {
-      if (
-        isString(value) ||
-        (isNumber(value) && Number.isFinite(value)) ||
-        value === true ||
-        value === false ||
-        value === null
-      ) {
-        Object.defineProperty(values, key, {
-          value,
-          enumerable: true,
-          configurable: true,
-          writable: true,
-        })
-        continue
-      }
-      return Either.failure(AppError.ValidationError('ADDON_SETTINGS_INVALID'))
-    }
-    return Either.success(values)
-  } catch {
-    return Either.failure(AppError.ValidationError('ADDON_SETTINGS_INVALID'))
+  if (scope.kind === 'addon') return Either.success(JSON.stringify(['addon']))
+  if (
+    scope.kind === 'connection' &&
+    isNonEmptyString(scope.workspaceId) &&
+    isNonEmptyString(scope.connectionInstanceId)
+  ) {
+    return Either.success(
+      JSON.stringify([
+        'connection',
+        scope.workspaceId,
+        scope.connectionInstanceId,
+      ]),
+    )
   }
+  if (
+    scope.kind === 'capability' &&
+    isNonEmptyString(scope.workspaceId) &&
+    isNonEmptyString(scope.connectionInstanceId) &&
+    isNonEmptyString(scope.capabilityId)
+  ) {
+    return Either.success(
+      JSON.stringify([
+        'capability',
+        scope.workspaceId,
+        scope.connectionInstanceId,
+        scope.capabilityId,
+      ]),
+    )
+  }
+  if (scope.kind === 'workspace' && isNonEmptyString(scope.workspaceId))
+    return Either.success(JSON.stringify(['workspace', scope.workspaceId]))
+  return Either.failure(AppError.ValidationError('ADDON_VAULT_SCOPE_REQUIRED'))
 }

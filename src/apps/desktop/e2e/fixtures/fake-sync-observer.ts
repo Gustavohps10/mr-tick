@@ -4,16 +4,18 @@ import { z } from 'zod'
 import { expect } from './electron-fixture'
 import seedWorkspaces from './seed-workspaces.json' with { type: 'json' }
 
-const workspace = seedWorkspaces.find((candidate) => candidate.name === 'TESTE')
+const workspace = seedWorkspaces.workspaces.find(
+  (candidate) => candidate.name === 'TESTE',
+)
 if (!workspace) throw new Error('SYNC_FIXTURE_WORKSPACE_NOT_FOUND')
-const connection = workspace.dataSourceConnections.find(
-  (candidate) => candidate.dataSourceId === 'mr-tick-datasource-fake',
+const connection = workspace.connections.find(
+  (candidate) => candidate.addonId === 'mr-tick-datasource-fake',
 )
 if (!connection) throw new Error('SYNC_FIXTURE_CONNECTION_NOT_FOUND')
 export const fakeSyncScope = {
   workspaceId: workspace.id,
   connectionInstanceId: connection.id,
-  dataSourceId: connection.dataSourceId,
+  dataSourceId: connection.addonId,
 }
 const diagnosticsSchema = z.object({
   pullAttempts: z.number(),

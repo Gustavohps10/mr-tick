@@ -1,28 +1,63 @@
 import type {
+  AddonConnectionAuthenticator,
   CoreCacheQuery,
   CoreCacheValue,
   CoreConnection,
+  CoreConnectionAuthenticationInput,
+  CoreConnectionAuthorizationRequest,
+  CoreConnectionAuthorizationResponse,
+  CoreConnectionCreateInput,
   CoreConnectionScope,
   CoreWorkspace,
+  IAddonAuthenticatorRegistry,
+  IAddonConnectionProfilesResolver,
+  IConnectAddonConnectionUseCase,
+  IConnectionLifecycleCoordinator,
+  ICoreAddonCapabilities,
   ICoreCacheTransport,
+  ICoreConnectionsAPI,
   ICoreReadAPI,
+  IDataSourceResolver,
+  IDisconnectAddonConnectionUseCase,
+  ILinkConnectionUseCase,
+  IOAuthAttemptCoordinator,
+  IUnlinkConnectionUseCase,
   IWorkspacesRepository,
+  WorkspaceConnectionDTO,
 } from '@mr-tick/application'
 import { validateCoreCacheQuery, validateCoreScope } from '@mr-tick/application'
-import type { Workspace } from '@mr-tick/domain'
+import {
+  type ConnectionProfileDescriptor,
+  isValidConnectionProfileDescriptors,
+  type Workspace,
+} from '@mr-tick/domain'
 import { AppError, Either, isNonEmptyString } from '@mr-tick/shared/helpers'
+import type { ISystemEventEmitter } from '@mr-tick/shared/transport'
 
 /** Exposes product capabilities, without repository entities or provider secrets. */
-export class AddonCoreCapabilities implements ICoreReadAPI {
+export class AddonCoreCapabilities implements ICoreAddonCapabilities {
   readonly runtime: ICoreReadAPI['runtime']
   readonly workspaces: ICoreReadAPI['workspaces']
-  readonly connections: ICoreReadAPI['connections']
+  readonly connections: ICoreConnectionsAPI
   readonly tasks: ICoreReadAPI['tasks']
   readonly metadata: ICoreReadAPI['metadata']
 
   constructor(
     private readonly repository: IWorkspacesRepository,
     private readonly transport: ICoreCacheTransport,
+    private readonly addonId: string,
+    private readonly connectionLifecycleCoordinator: IConnectionLifecycleCoordinator,
+    private readonly dataSourceResolver: IDataSourceResolver,
+    private readonly authenticator: () =>
+      AddonConnectionAuthenticator | undefined | null,
+    private readonly linkConnectionService: ILinkConnectionUseCase,
+    private readonly connectConnectionService: IConnectAddonConnectionUseCase,
+    private readonly disconnectConnectionService: IDisconnectAddonConnectionUseCase,
+    private readonly unlinkConnectionService: IUnlinkConnectionUseCase,
+    private readonly authenticatorRegistry: IAddonAuthenticatorRegistry,
+    private readonly profilesResolver: IAddonConnectionProfilesResolver,
+    private readonly oauthAttemptCoordinator: IOAuthAttemptCoordinator,
+    private readonly systemEventEmitter: ISystemEventEmitter,
   ) {
     this.runtime = {
       getState: () => transport.getState(),
@@ -39,6 +74,19 @@ export class AddonCoreCapabilities implements ICoreReadAPI {
     this.connections = {
       list: (workspaceId) => this.listConnections(workspaceId),
       get: (scope) => this.getConnection(scope),
+      create: (input) => this.createConnection(input),
+      createAuthorizationRequest: (scope) =>
+        this.createAuthorizationRequest(scope),
+      completeAuthentication: (scope, response) =>
+        this.completeAuthentication(scope, response),
+      submitCredentials: (scope, input) => this.submitCredentials(scope, input),
+      withCredentials: (scope, operation) =>
+        this.withCredentials(scope, operation),
+      refresh: (scope) => this.refreshConnection(scope),
+      disconnect: (scope) => this.disconnectConnection(scope),
+      archive: (scope) => this.archiveConnection(scope),
+      restore: (scope) => this.restoreConnection(scope),
+      remove: (scope) => this.removeConnection(scope),
     }
     this.tasks = {
       list: async (request) => {
@@ -73,7 +121,9 @@ export class AddonCoreCapabilities implements ICoreReadAPI {
     if (!isNonEmptyString(id))
       return Either.failure(AppError.ValidationError('WORKSPACE_REQUIRED'))
     try {
-      const workspace = await this.repository.findById(id)
+      const workspaceResult = await this.repository.getById(id)
+      if (workspaceResult.isFailure()) return workspaceResult.forwardFailure()
+      const workspace = workspaceResult.success
       if (workspace === undefined)
         return Either.failure(AppError.NotFound('WORKSPACE_NOT_FOUND'))
       return Either.success(workspace)
@@ -85,9 +135,21 @@ export class AddonCoreCapabilities implements ICoreReadAPI {
   }
   private async listWorkspaces(): Promise<Either<AppError, CoreWorkspace[]>> {
     try {
-      const result = await this.repository.findAll()
+      const allItems: Workspace[] = []
+      let page = 1
+      const pageSize = 50
+      let total = 0
+      do {
+        const result = await this.repository.list(undefined, { page, pageSize })
+        if (result.isFailure()) return result.forwardFailure()
+        allItems.push(...result.success.items)
+        total = result.success.total
+        if (result.success.items.length === 0) break
+        page += 1
+      } while (allItems.length < total)
+
       return Either.success(
-        result.items.map(toWorkspace).sort((a, b) => compareIds(a.id, b.id)),
+        allItems.map(toWorkspace).sort((a, b) => compareIds(a.id, b.id)),
       )
     } catch (error) {
       if (error instanceof Error)
@@ -101,13 +163,9 @@ export class AddonCoreCapabilities implements ICoreReadAPI {
     const result = await this.findWorkspace(workspaceId)
     if (result.isFailure()) return result.forwardFailure()
     return Either.success(
-      result.success.dataSourceConnections
-        .map((connection) => ({
-          workspaceId,
-          connectionInstanceId: connection.id,
-          dataSourceId: connection.dataSourceId,
-          status: connection.status,
-        }))
+      result.success.connections
+        .filter((connection) => connection.addonId === this.addonId)
+        .map((connection) => toCoreConnection(workspaceId, connection))
         .sort((a, b) =>
           compareIds(a.connectionInstanceId, b.connectionInstanceId),
         ),
@@ -127,6 +185,556 @@ export class AddonCoreCapabilities implements ICoreReadAPI {
       return Either.failure(AppError.NotFound('CONNECTION_NOT_FOUND'))
     return Either.success(connection)
   }
+  private async createConnection(
+    input: CoreConnectionCreateInput,
+  ): Promise<Either<AppError, CoreConnection>> {
+    if (
+      !isNonEmptyString(input.workspaceId) ||
+      !isNonEmptyString(input.connectionProfileId)
+    )
+      return Either.failure(
+        AppError.ValidationError('CONNECTION_CREATE_INVALID'),
+      )
+    const connectionInstanceId = crypto.randomUUID()
+    const result = await this.linkConnectionService.execute({
+      workspaceId: input.workspaceId,
+      connectionInstanceId,
+      addonId: this.addonId,
+      connectionProfileId: input.connectionProfileId,
+    })
+    if (result.isFailure()) return result.forwardFailure()
+    const connection = result.success.connections.find(
+      (candidate) => candidate.id === connectionInstanceId,
+    )
+    if (connection === undefined)
+      return Either.failure(
+        AppError.Internal('CONNECTION_CREATE_NOT_COMMITTED'),
+      )
+    return Either.success(toCoreConnection(input.workspaceId, connection))
+  }
+  private async createAuthorizationRequest(
+    scope: CoreConnectionScope,
+  ): Promise<Either<AppError, CoreConnectionAuthorizationRequest>> {
+    const valid = validateCoreScope(scope)
+    if (valid.isFailure()) return valid.forwardFailure()
+
+    const workspaceResult = await this.findWorkspace(scope.workspaceId)
+    if (workspaceResult.isFailure()) return workspaceResult.forwardFailure()
+    const connection = workspaceResult.success.connections.find(
+      (item) => item.id === scope.connectionInstanceId,
+    )
+    if (connection === undefined) {
+      return Either.failure(AppError.NotFound('CONNECTION_NOT_FOUND'))
+    }
+
+    const context = await this.connectionAuthenticationContext(scope)
+    if (context.isFailure()) return context.forwardFailure()
+    const authenticator = context.success.authenticator
+    if (authenticator.method !== 'oauth') {
+      return Either.failure(
+        AppError.ValidationError('UNSUPPORTED_AUTHENTICATION_METHOD'),
+      )
+    }
+
+    let role = scope.authorizationRole?.trim()
+    if (role === undefined || role.length === 0) {
+      if (
+        context.success.profile.roles !== undefined &&
+        context.success.profile.roles.length === 1
+      ) {
+        const singleRole = context.success.profile.roles.find((r) =>
+          isNonEmptyString(r.authorizationRole),
+        )
+        if (singleRole !== undefined) {
+          role = singleRole.authorizationRole
+        }
+      }
+    }
+    if (role === undefined || role.length === 0) {
+      return Either.failure(
+        AppError.ValidationError('AUTHORIZATION_ROLE_REQUIRED'),
+      )
+    }
+
+    const existingAuth = connection.authorizations.find(
+      (candidate) => candidate.authorizationRole === role,
+    )
+    const authorizationGeneration =
+      existingAuth !== undefined ? existingAuth.generation : 0
+    const authorizationId = existingAuth?.authorizationId
+
+    let redirectUri = authenticator.redirectUri
+    if (redirectUri === undefined || redirectUri.trim().length === 0) {
+      const envRedirect = process.env.MR_TICK_OAUTH_REDIRECT_URI
+      if (envRedirect !== undefined && envRedirect.trim().length > 0) {
+        redirectUri = envRedirect.trim()
+      }
+    }
+    if (redirectUri === undefined || redirectUri.trim().length === 0) {
+      redirectUri = 'mr-tick-app://oauth/callback'
+    }
+
+    const attemptResult = await this.oauthAttemptCoordinator.startAttempt({
+      addonId: this.addonId,
+      workspaceId: scope.workspaceId,
+      connectionInstanceId: scope.connectionInstanceId,
+      authProfileId: authenticator.authProfileId,
+      authorizationRole: role,
+      generation: connection.generation,
+      authorizationGeneration,
+      authorizationId,
+      redirectUri,
+    })
+    if (attemptResult.isFailure()) return attemptResult.forwardFailure()
+
+    const requestResult = await authenticator.createAuthorizationRequest(
+      {
+        workspaceId: scope.workspaceId,
+        connectionInstanceId: scope.connectionInstanceId,
+        authorizationRole: role,
+      },
+      attemptResult.success,
+    )
+    if (requestResult.isFailure()) {
+      this.oauthAttemptCoordinator.cancelAttempt(attemptResult.success.state)
+      return requestResult.forwardFailure()
+    }
+
+    try {
+      const parsedUrl = new URL(requestResult.success.authUrl)
+      if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+        this.oauthAttemptCoordinator.cancelAttempt(attemptResult.success.state)
+        return Either.failure(
+          AppError.ValidationError('OAUTH_ENDPOINT_PROTOCOL_INVALID'),
+        )
+      }
+      const urlState = parsedUrl.searchParams.get('state')
+      if (urlState === null || urlState !== attemptResult.success.state) {
+        this.oauthAttemptCoordinator.cancelAttempt(attemptResult.success.state)
+        return Either.failure(
+          AppError.ValidationError('OAUTH_STATE_MISMATCH_IN_AUTH_URL'),
+        )
+      }
+      const urlRedirectUri = parsedUrl.searchParams.get('redirect_uri')
+      if (urlRedirectUri === null || urlRedirectUri !== redirectUri) {
+        this.oauthAttemptCoordinator.cancelAttempt(attemptResult.success.state)
+        return Either.failure(
+          AppError.ValidationError('OAUTH_REDIRECT_URI_MISMATCH_IN_AUTH_URL'),
+        )
+      }
+      const urlCodeChallenge = parsedUrl.searchParams.get('code_challenge')
+      if (
+        urlCodeChallenge === null ||
+        urlCodeChallenge !== attemptResult.success.codeChallenge
+      ) {
+        this.oauthAttemptCoordinator.cancelAttempt(attemptResult.success.state)
+        return Either.failure(
+          AppError.ValidationError('OAUTH_CODE_CHALLENGE_MISMATCH_IN_AUTH_URL'),
+        )
+      }
+      const urlChallengeMethod = parsedUrl.searchParams.get(
+        'code_challenge_method',
+      )
+      if (urlChallengeMethod !== 'S256') {
+        this.oauthAttemptCoordinator.cancelAttempt(attemptResult.success.state)
+        return Either.failure(
+          AppError.ValidationError(
+            'OAUTH_CODE_CHALLENGE_METHOD_INVALID_IN_AUTH_URL',
+          ),
+        )
+      }
+    } catch {
+      this.oauthAttemptCoordinator.cancelAttempt(attemptResult.success.state)
+      return Either.failure(AppError.ValidationError('INVALID_OAUTH_AUTH_URL'))
+    }
+
+    return requestResult
+  }
+
+  private async completeAuthentication(
+    scope: CoreConnectionScope,
+    response: CoreConnectionAuthorizationResponse,
+  ): Promise<Either<AppError, CoreConnection>> {
+    const valid = validateCoreScope(scope)
+    if (valid.isFailure()) return valid.forwardFailure()
+    if (!isNonEmptyString(scope.authorizationRole))
+      return Either.failure(
+        AppError.ValidationError('AUTHORIZATION_ROLE_REQUIRED'),
+      )
+
+    const workspaceResult = await this.findWorkspace(scope.workspaceId)
+    if (workspaceResult.isFailure()) return workspaceResult.forwardFailure()
+    const connection = workspaceResult.success.connections.find(
+      (item) => item.id === scope.connectionInstanceId,
+    )
+    if (connection === undefined) {
+      return Either.failure(AppError.NotFound('CONNECTION_NOT_FOUND'))
+    }
+
+    const existingAuth = connection.authorizations.find(
+      (candidate) => candidate.authorizationRole === scope.authorizationRole,
+    )
+    const currentAuthGeneration =
+      existingAuth !== undefined ? existingAuth.generation : 0
+    const authorizationId = existingAuth?.authorizationId
+    const expectedAuthProfileId = existingAuth?.authProfileId
+
+    const consumedResult = await this.oauthAttemptCoordinator.consumeAttempt({
+      state: response.state,
+      addonId: this.addonId,
+      workspaceId: scope.workspaceId,
+      connectionInstanceId: scope.connectionInstanceId,
+      authProfileId: expectedAuthProfileId,
+      authorizationRole: scope.authorizationRole,
+      generation: connection.generation,
+      authorizationGeneration: currentAuthGeneration,
+      authorizationId,
+    })
+    if (consumedResult.isFailure()) return consumedResult.forwardFailure()
+    const consumed = consumedResult.success
+
+    const targetAuthenticator = this.authenticatorRegistry.getAuthenticator(
+      this.addonId,
+      consumed.authProfileId,
+    )
+    if (
+      targetAuthenticator === undefined ||
+      targetAuthenticator.method !== 'oauth'
+    ) {
+      return Either.failure(AppError.ValidationError('AUTHENTICATOR_NOT_FOUND'))
+    }
+
+    const connected = await this.connectConnectionService.execute({
+      workspaceId: scope.workspaceId,
+      connectionInstanceId: scope.connectionInstanceId,
+      addonId: this.addonId,
+      authenticationInput: {
+        method: 'oauth',
+        authorizationRole: scope.authorizationRole,
+        authProfileId: consumed.authProfileId,
+        response: {
+          code: response.code,
+          state: response.state,
+          codeVerifier: consumed.codeVerifier,
+          redirectUri: consumed.redirectUri,
+        },
+        configuration: connection.config ?? {},
+        correlation: {
+          connectionGeneration: consumed.generation,
+          authorizationGeneration: consumed.authorizationGeneration,
+          authorizationId: consumed.authorizationId,
+        },
+      },
+    })
+    if (connected.isFailure()) return connected.forwardFailure()
+    return this.getConnection(scope)
+  }
+
+  private async refreshConnection(
+    scope: CoreConnectionScope & { authorizationRole?: string },
+  ): Promise<Either<AppError, void>> {
+    const valid = validateCoreScope(scope)
+    if (valid.isFailure()) return valid.forwardFailure()
+    return this.connectionLifecycleCoordinator.refresh({
+      addonId: this.addonId,
+      scope,
+    })
+  }
+  private async submitCredentials(
+    scope: CoreConnectionScope,
+    input: CoreConnectionAuthenticationInput,
+  ): Promise<Either<AppError, CoreConnection>> {
+    const valid = validateCoreScope(scope)
+    if (valid.isFailure()) return valid.forwardFailure()
+    if (!isNonEmptyString(input.authProfileId) || input.kind !== 'credentials')
+      return Either.failure(
+        AppError.ValidationError('AUTHENTICATION_INPUT_INVALID'),
+      )
+    const authorizationRole = input.authorizationRole ?? scope.authorizationRole
+    if (!isNonEmptyString(authorizationRole))
+      return Either.failure(
+        AppError.ValidationError('AUTHORIZATION_ROLE_REQUIRED'),
+      )
+    const connected = await this.connectConnectionService.execute({
+      workspaceId: scope.workspaceId,
+      connectionInstanceId: scope.connectionInstanceId,
+      addonId: this.addonId,
+      authenticationInput: {
+        method: 'credentials',
+        authorizationRole,
+        authProfileId: input.authProfileId,
+        credentials: input.credentials,
+        configuration: input.configuration,
+      },
+    })
+    if (connected.isFailure()) return connected.forwardFailure()
+    return this.getConnection(scope)
+  }
+  private async disconnectConnection(
+    scope: CoreConnectionScope,
+  ): Promise<Either<AppError, void>> {
+    const connectionResult = await this.getConnection(scope)
+    if (connectionResult.isFailure()) return connectionResult.forwardFailure()
+    this.oauthAttemptCoordinator.invalidateForConnection(
+      scope.workspaceId,
+      scope.connectionInstanceId,
+    )
+    const result = await this.disconnectConnectionService.execute({
+      workspaceId: scope.workspaceId,
+      connectionInstanceId: scope.connectionInstanceId,
+      addonId: this.addonId,
+    })
+    if (result.isSuccess()) {
+      this.systemEventEmitter.emit('connection:disconnected', {
+        workspaceId: scope.workspaceId,
+        connectionInstanceId: scope.connectionInstanceId,
+      })
+    }
+    return result
+  }
+
+  private async withCredentials(
+    scope: CoreConnectionScope & { authorizationRole?: string },
+    operation: Parameters<ICoreConnectionsAPI['withCredentials']>[1],
+  ): Promise<Either<AppError, void>> {
+    const connectionResult = await this.getConnection(scope)
+    if (connectionResult.isFailure()) return connectionResult.forwardFailure()
+    if (connectionResult.success.status !== 'connected')
+      return Either.failure(AppError.Http(409, 'CONNECTION_NOT_CONNECTED'))
+    const workspaceResult = await this.findWorkspace(scope.workspaceId)
+    if (workspaceResult.isFailure()) return workspaceResult.forwardFailure()
+    const connection = workspaceResult.success.connections.find(
+      (candidate) => candidate.id === scope.connectionInstanceId,
+    )
+    if (connection === undefined)
+      return Either.failure(AppError.NotFound('CONNECTION_NOT_FOUND'))
+
+    let authorizationRole = scope.authorizationRole
+    if (authorizationRole === undefined) {
+      if (connection.authorizations.length === 1) {
+        authorizationRole = connection.authorizations[0].authorizationRole
+      }
+    }
+    if (authorizationRole === undefined) {
+      return Either.failure(
+        AppError.ValidationError('AUTHORIZATION_ROLE_REQUIRED'),
+      )
+    }
+
+    return this.connectionLifecycleCoordinator.withCredentials({
+      addonId: this.addonId,
+      scope: {
+        workspaceId: scope.workspaceId,
+        connectionInstanceId: scope.connectionInstanceId,
+        authorizationRole,
+      },
+      operation,
+    })
+  }
+
+  private async removeConnection(
+    scope: CoreConnectionScope,
+  ): Promise<Either<AppError, void>> {
+    const connectionResult = await this.getConnection(scope)
+    if (connectionResult.isFailure()) return connectionResult.forwardFailure()
+    this.oauthAttemptCoordinator.invalidateForConnection(
+      scope.workspaceId,
+      scope.connectionInstanceId,
+    )
+    const removed = await this.unlinkConnectionService.execute({
+      workspaceId: scope.workspaceId,
+      connectionInstanceId: scope.connectionInstanceId,
+      addonId: this.addonId,
+    })
+    if (removed.isFailure()) return removed.forwardFailure()
+    this.systemEventEmitter.emit('connection:removed', {
+      workspaceId: scope.workspaceId,
+      connectionInstanceId: scope.connectionInstanceId,
+    })
+    return Either.success()
+  }
+
+  private async archiveConnection(
+    scope: CoreConnectionScope,
+  ): Promise<Either<AppError, void>> {
+    const connectionResult = await this.getConnection(scope)
+    if (connectionResult.isFailure()) return connectionResult.forwardFailure()
+    this.oauthAttemptCoordinator.invalidateForConnection(
+      scope.workspaceId,
+      scope.connectionInstanceId,
+    )
+    const result = await this.connectionLifecycleCoordinator.archive({
+      workspaceId: scope.workspaceId,
+      connectionInstanceId: scope.connectionInstanceId,
+      addonId: this.addonId,
+    })
+    if (result.isSuccess()) {
+      this.systemEventEmitter.emit('connection:archived', {
+        workspaceId: scope.workspaceId,
+        connectionInstanceId: scope.connectionInstanceId,
+      })
+    }
+    return result
+  }
+
+  private async restoreConnection(
+    scope: CoreConnectionScope,
+  ): Promise<Either<AppError, CoreConnection>> {
+    const connectionResult = await this.getConnection(scope)
+    if (connectionResult.isFailure()) return connectionResult.forwardFailure()
+    const restored = await this.connectionLifecycleCoordinator.restore({
+      workspaceId: scope.workspaceId,
+      connectionInstanceId: scope.connectionInstanceId,
+      addonId: this.addonId,
+    })
+    if (restored.isFailure()) return restored.forwardFailure()
+    const connection = restored.success.connections.find(
+      (candidate) => candidate.id === scope.connectionInstanceId,
+    )
+    if (connection === undefined)
+      return Either.failure(
+        AppError.Internal('CONNECTION_RESTORE_NOT_COMMITTED'),
+      )
+    return Either.success(toCoreConnection(scope.workspaceId, connection))
+  }
+  private async connectionAuthenticationContext(
+    scope: CoreConnectionScope,
+  ): Promise<
+    Either<
+      AppError,
+      {
+        authenticator: Extract<
+          AddonConnectionAuthenticator,
+          { method: 'oauth' }
+        >
+        profile: ConnectionProfileDescriptor
+      }
+    >
+  > {
+    const valid = validateCoreScope(scope)
+    if (valid.isFailure()) return valid.forwardFailure()
+    const workspaceResult = await this.findWorkspace(scope.workspaceId)
+    if (workspaceResult.isFailure()) return workspaceResult.forwardFailure()
+    const connection = workspaceResult.success.connections.find(
+      (candidate) => candidate.id === scope.connectionInstanceId,
+    )
+    if (connection === undefined)
+      return Either.failure(AppError.NotFound('CONNECTION_NOT_FOUND'))
+    if (connection.addonId !== this.addonId)
+      return Either.failure(
+        AppError.Http(409, 'CONNECTION_PROFILE_OWNERSHIP_CONFLICT'),
+      )
+    const profiles = await this.connectionProfiles()
+    if (profiles.isFailure()) return profiles.forwardFailure()
+    const profile = profiles.success.find(
+      (candidate) =>
+        candidate.connectionProfileId === connection.connectionProfileId &&
+        candidate.cardinality === connection.cardinality,
+    )
+    if (profile === undefined)
+      return Either.failure(
+        AppError.ValidationError('CONNECTION_PROFILE_INVALID'),
+      )
+
+    let oauthAuthenticator:
+      Extract<AddonConnectionAuthenticator, { method: 'oauth' }> | undefined
+    if (this.authenticator) {
+      const legacyAuth = this.authenticator()
+      if (legacyAuth && legacyAuth.method === 'oauth') {
+        oauthAuthenticator = legacyAuth
+      }
+    }
+
+    if (!oauthAuthenticator) {
+      let candidateAuthProfileId: string | undefined
+      if (profile.roles && profile.roles.length > 0) {
+        if (scope.authorizationRole) {
+          const role = profile.roles.find(
+            (candidateRole) =>
+              candidateRole.authorizationRole === scope.authorizationRole,
+          )
+          if (role) {
+            if (role.defaultAuthProfileId) {
+              candidateAuthProfileId = role.defaultAuthProfileId
+            }
+            if (
+              !candidateAuthProfileId &&
+              role.allowedAuthProfileIds.length > 0
+            ) {
+              candidateAuthProfileId = role.allowedAuthProfileIds[0]
+            }
+          }
+        }
+        if (!candidateAuthProfileId && profile.roles.length === 1) {
+          const firstRole = profile.roles[0]
+          if (firstRole.defaultAuthProfileId) {
+            candidateAuthProfileId = firstRole.defaultAuthProfileId
+          }
+          if (
+            !candidateAuthProfileId &&
+            firstRole.allowedAuthProfileIds.length > 0
+          ) {
+            candidateAuthProfileId = firstRole.allowedAuthProfileIds[0]
+          }
+        }
+      }
+      if (candidateAuthProfileId) {
+        const auth = this.authenticatorRegistry.getAuthenticator(
+          this.addonId,
+          candidateAuthProfileId,
+        )
+        if (auth && auth.method === 'oauth') {
+          oauthAuthenticator = auth
+        }
+      }
+    }
+
+    if (!oauthAuthenticator) {
+      const allAuths = this.authenticatorRegistry.getAuthenticatorsForAddon(
+        this.addonId,
+      )
+      const found = allAuths.find(
+        (candidateAuth) => candidateAuth.method === 'oauth',
+      )
+      if (found && found.method === 'oauth') {
+        oauthAuthenticator = found
+      }
+    }
+
+    if (!oauthAuthenticator)
+      return Either.failure(
+        AppError.NotFound('CONNECTION_AUTHENTICATOR_NOT_FOUND'),
+      )
+
+    return Either.success({ authenticator: oauthAuthenticator, profile })
+  }
+  private async connectionProfiles(): Promise<
+    Either<AppError, ConnectionProfileDescriptor[]>
+  > {
+    const fromRegistry = await this.profilesResolver.getConnectionProfiles(
+      this.addonId,
+    )
+    if (fromRegistry.isSuccess() && fromRegistry.success.length > 0) {
+      const profilesList: ConnectionProfileDescriptor[] = [
+        ...fromRegistry.success,
+      ]
+      if (!isValidConnectionProfileDescriptors(profilesList)) {
+        return Either.failure(
+          AppError.ValidationError('CONNECTION_PROFILES_INVALID'),
+        )
+      }
+      return Either.success(profilesList)
+    }
+    const profiles = await this.dataSourceResolver.getConnectionProfiles(
+      this.addonId,
+    )
+    if (profiles.isFailure()) return profiles.forwardFailure()
+    if (!isValidConnectionProfileDescriptors(profiles.success))
+      return Either.failure(
+        AppError.ValidationError('CONNECTION_PROFILES_INVALID'),
+      )
+    return Either.success([...profiles.success])
+  }
   private async query(
     input: CoreCacheQuery,
   ): Promise<Either<AppError, CoreCacheValue>> {
@@ -144,6 +752,35 @@ export class AddonCoreCapabilities implements ICoreReadAPI {
 }
 function toWorkspace(workspace: Workspace): CoreWorkspace {
   return { id: workspace.id, name: workspace.name, status: workspace.status }
+}
+function toCoreConnection(
+  workspaceId: string,
+  connection: Workspace['connections'][number] | WorkspaceConnectionDTO,
+): CoreConnection {
+  let identity: CoreConnection['identity'] = null
+  let avatarUrl: string | null = null
+  if (connection.identity !== undefined) {
+    if (
+      connection.identity.kind !== 'installation' &&
+      connection.identity.avatarUrl !== undefined
+    ) {
+      avatarUrl = connection.identity.avatarUrl
+    }
+    identity = {
+      kind: connection.identity.kind,
+      displayName: connection.identity.displayName,
+      avatarUrl,
+    }
+  }
+  return {
+    workspaceId,
+    connectionInstanceId: connection.id,
+    addonId: connection.addonId,
+    connectionProfileId: connection.connectionProfileId,
+    cardinality: connection.cardinality,
+    status: connection.status,
+    identity,
+  }
 }
 function compareIds(left: string, right: string): number {
   if (left < right) return -1

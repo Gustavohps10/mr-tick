@@ -12,7 +12,7 @@ const template: WorkspaceViewModel = {
   description: '',
   avatarUrl: '',
   status: 'configured',
-  dataSourceConnections: [],
+  connections: [],
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 }

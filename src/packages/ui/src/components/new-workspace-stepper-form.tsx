@@ -80,8 +80,10 @@ const workspaceConnectionMemberSchema = z.object({
 const workspaceConnectionSchema: z.ZodType<WorkspaceConnectionViewModel> =
   z.object({
     id: z.string(),
-    dataSourceId: z.string(),
-    status: z.enum(['connected', 'disabled', 'disconnected']),
+    addonId: z.string(),
+    connectionProfileId: z.string(),
+    cardinality: z.enum(['single', 'multi']),
+    status: z.enum(['connected', 'disabled', 'disconnected', 'archived']),
     member: workspaceConnectionMemberSchema.optional(),
     config: z.record(z.unknown()).optional(),
   })
@@ -91,6 +93,7 @@ const configSchema = z.object({
     .enum(['DEV', 'QA', 'STUDY', 'ANALYST', 'TECHLEAD', 'NONE'])
     .default('DEV'),
   currentConnectionInstanceId: z.string().optional(),
+  currentConnectionProfileId: z.string().optional(),
   dataSourcePlugin: z
     .custom<AddonManifest | AddonManifestViewModel>()
     .optional(),
@@ -612,7 +615,7 @@ export function StepperForm({
       currency: 'BRL',
       sourceType: 'DATASOURCE',
       presetCode: 'DEV',
-      dataSourceInstances: initialDraftWorkspace.dataSourceConnections ?? [],
+      dataSourceInstances: initialDraftWorkspace.connections ?? [],
     })
   }, [initialDraftWorkspace, methods])
 
@@ -637,10 +640,10 @@ export function StepperForm({
 
   const instances = React.useMemo(() => {
     return dataSourceInstances.map((conn) => {
-      const addon = installedPlugins.find((p) => p.id === conn.dataSourceId)
+      const addon = installedPlugins.find((p) => p.id === conn.addonId)
       return {
         connectionId: conn.id,
-        dataSourceId: conn.dataSourceId,
+        dataSourceId: conn.addonId,
         status: conn.status,
         config: conn.config,
         member: conn.member,
@@ -824,14 +827,10 @@ export function StepperForm({
       })
       if (updated.isSuccess && updated.data) {
         setCreatedWorkspace(updated.data)
-        methods.setValue(
-          'dataSourceInstances',
-          updated.data.dataSourceConnections,
-          {
-            shouldValidate: true,
-            shouldDirty: true,
-          },
-        )
+        methods.setValue('dataSourceInstances', updated.data.connections, {
+          shouldValidate: true,
+          shouldDirty: true,
+        })
       }
       toast.success('Integração removida com sucesso')
     } catch {
@@ -860,14 +859,10 @@ export function StepperForm({
       })
       if (updated.isSuccess && updated.data) {
         setCreatedWorkspace(updated.data)
-        methods.setValue(
-          'dataSourceInstances',
-          updated.data.dataSourceConnections,
-          {
-            shouldValidate: true,
-            shouldDirty: true,
-          },
-        )
+        methods.setValue('dataSourceInstances', updated.data.connections, {
+          shouldValidate: true,
+          shouldDirty: true,
+        })
       }
       toast.success('Desconectado com sucesso')
     } catch {
@@ -926,13 +921,26 @@ export function StepperForm({
     if (!currentWorkspaceId) return
 
     try {
+      const profilesResult = await bridge.addons.getConnectionProfiles({
+        body: { addonId: plugin.id },
+      })
+      if (!profilesResult.isSuccess || !profilesResult.data) {
+        toast.error(profilesResult.error ?? 'Perfis de conexão indisponíveis')
+        return
+      }
+      if (profilesResult.data.length !== 1) {
+        toast.error('Use o gerenciador de conexões para selecionar o perfil.')
+        return
+      }
+      const profile = profilesResult.data[0]
       const connectionInstanceId = crypto.randomUUID()
 
       const res = await bridge.workspaces.linkDataSource({
         body: {
           workspaceId: currentWorkspaceId,
-          dataSourceId: plugin.id,
+          addonId: plugin.id,
           connectionInstanceId,
+          connectionProfileId: profile.connectionProfileId,
         },
       })
 
@@ -946,12 +954,16 @@ export function StepperForm({
       }
 
       setCreatedWorkspace(res.data)
-      methods.setValue('dataSourceInstances', res.data.dataSourceConnections, {
+      methods.setValue('dataSourceInstances', res.data.connections, {
         shouldValidate: true,
         shouldDirty: true,
       })
       methods.setValue('dataSourcePlugin', plugin)
       methods.setValue('currentConnectionInstanceId', connectionInstanceId)
+      methods.setValue(
+        'currentConnectionProfileId',
+        profile.connectionProfileId,
+      )
       toast.success(`${plugin.name} vinculado ao workspace.`)
     } catch {
       toast.error('Erro ao vincular fonte de dados.')
@@ -964,13 +976,16 @@ export function StepperForm({
     if (!currentWorkspaceId) return
 
     try {
-      const res = await bridge.workspaces.connectDataSource({
+      const res = await bridge.workspaces.submitCredentials({
         body: {
           workspaceId: currentWorkspaceId,
           connectionInstanceId: instanceData.connectionInstanceId,
-          pluginId: instanceData.pluginId,
-          credentials: instanceData.credentials,
-          configuration: instanceData.configuration,
+          authenticationInput: {
+            kind: 'credentials',
+            authProfileId: instanceData.connectionProfileId,
+            credentials: instanceData.credentials,
+            configuration: instanceData.configuration,
+          },
         },
       })
 
@@ -989,20 +1004,17 @@ export function StepperForm({
       })
       if (updated.isSuccess && updated.data) {
         setCreatedWorkspace(updated.data)
-        methods.setValue(
-          'dataSourceInstances',
-          updated.data.dataSourceConnections,
-          {
-            shouldValidate: true,
-            shouldDirty: true,
-          },
-        )
+        methods.setValue('dataSourceInstances', updated.data.connections, {
+          shouldValidate: true,
+          shouldDirty: true,
+        })
       }
     } catch {
       toast.error('Erro ao validar conexão.')
     }
   }
 
+  const currentConnectionProfileId = methods.watch('currentConnectionProfileId')
   if (isLoadingDraft) return <WorkspaceDialogSkeleton />
 
   return (
@@ -1504,16 +1516,23 @@ export function StepperForm({
                                     Instalar Plugin agora
                                   </Button>
                                 </div>
-                              ) : (
-                                /* O FORMULÁRIO DINÂMICO */
+                              ) : /* O FORMULÁRIO DINÂMICO */
+                              currentConnectionProfileId ? (
                                 <NewDataSourceInstanceForm
                                   connectionInstanceId={methods.getValues(
                                     'currentConnectionInstanceId',
                                   )!}
                                   pluginId={selectedPlugin.id}
+                                  connectionProfileId={
+                                    currentConnectionProfileId
+                                  }
                                   isSubmitting={false} // O controle aqui é local do componente
                                   onSubmit={handleConnectDataSource}
                                 />
+                              ) : (
+                                <p className="text-muted-foreground text-sm">
+                                  Selecione um perfil antes de autenticar.
+                                </p>
                               )}
                             </div>
                           ) : (

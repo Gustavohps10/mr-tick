@@ -6,13 +6,16 @@ import {
   ITaskProvider,
   ITimeEntryProvider,
 } from '@/contracts/data'
-import { IAuthenticationStrategy } from '@/contracts/strategies'
-import { MemberDTO } from '@/dtos'
+/** Minimal member reference derivable from a connection identity. */
+export interface AuthenticatedMember {
+  readonly id: string
+  readonly firstname: string
+  readonly lastname: string
+}
 
 export interface IDataSourceAdapter {
-  getAuthenticatedMemberData(): Either<AppError, MemberDTO>
+  getAuthenticatedMemberData(): Either<AppError, AuthenticatedMember>
   readonly id: string
-  readonly authenticationStrategy: IAuthenticationStrategy
   readonly tasksProvider: ITaskProvider
   readonly timeEntriesProvider: ITimeEntryProvider
   readonly membersProvider: IMemberProvider

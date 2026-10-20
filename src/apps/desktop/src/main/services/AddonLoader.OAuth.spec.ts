@@ -1,4 +1,11 @@
-import { ICredentialsVault, ILocalRuntimeAPI } from '@mr-tick/application'
+import {
+  AddonAuthenticatorRegistry,
+  AddonConnectionProfilesResolver,
+  type IConnectionCredentialsVault,
+  type ICredentialsVault,
+  type ILocalRuntimeAPI,
+  OAuthAttemptCoordinator,
+} from '@mr-tick/application'
 import {
   exchangeAuthorizationCode,
   formatStoredToken,
@@ -12,6 +19,11 @@ import {
   permissiveAddonAccessService,
   unavailableCore,
 } from './addon-core-test-fixture'
+import {
+  emptyAddonCredentialsVault,
+  emptyAddonSettingsRepository,
+  emptyWorkspaceReferenceRegistry,
+} from './addon-workspace-reference-test-fixture'
 import { AddonLoader } from './AddonLoader'
 
 const unavailableRuntime: ILocalRuntimeAPI = {
@@ -32,26 +44,25 @@ vi.mock('electron', () => ({
 
 describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
   let addonLoader: AddonLoader
-  let fakeCredentialsVault: ICredentialsVault
+  let fakeCredentialsVault: ICredentialsVault & IConnectionCredentialsVault
 
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
 
-    fakeCredentialsVault = {
-      getToken: vi.fn().mockResolvedValue(null),
-      saveToken: vi.fn().mockResolvedValue(undefined),
-      deleteToken: vi.fn().mockResolvedValue(undefined),
-      hasToken: vi.fn().mockResolvedValue(false),
-      replaceToken: vi.fn().mockResolvedValue(undefined),
-    }
+    fakeCredentialsVault = emptyAddonCredentialsVault()
 
     addonLoader = new AddonLoader(
       fakeCredentialsVault,
       unavailableRuntime,
       '1.4.0',
-      unavailableCore,
+      () => unavailableCore,
       permissiveAddonAccessService,
+      emptyWorkspaceReferenceRegistry,
+      emptyAddonSettingsRepository,
+      new AddonAuthenticatorRegistry(),
+      new AddonConnectionProfilesResolver(),
+      new OAuthAttemptCoordinator(),
     )
   })
 
@@ -682,46 +693,56 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
 
   describe('8. DataSourceContext OAuth Injection', () => {
     it('injeta oauth no DataSourceContext permitindo que um DataSource autentique via OAuth 2.0 PKCE', async () => {
+      addonLoader.registerManifestCapabilities('oauth-datasource-addon', [
+        {
+          capabilityId: 'oauth-ds',
+          kind: 'dataSource',
+          contractVersion: '1.0.0',
+          required: true,
+          executionPolicy: { kind: 'independent' },
+          authRequirement: {
+            kind: 'required',
+            connectionProfileId: 'oauth-primary',
+            authorizationRole: 'primary',
+          },
+          supportedOperations: ['read', 'write'],
+        },
+      ])
       const addonContext = addonLoader.createContext('oauth-datasource-addon')
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
       let capturedOAuthState = ''
+      let executeOAuthAuth: () => Promise<{
+        credentials: { accessToken: string }
+      }>
       addonContext.contributions.dataSources.register({
         getConnectionSchema: () => [],
+        getConnectionProfiles: () => [
+          {
+            connectionProfileId: 'oauth-primary',
+            cardinality: 'single',
+            default: true,
+          },
+        ],
         createInstance: (dsContext) => {
           expect(dsContext.oauth).toBeDefined()
-          return {
-            authStrategy: {
-              authenticate: async () => {
-                if (!dsContext.oauth) {
-                  throw new Error('oauth ausente no DataSourceContext')
-                }
-                capturedOAuthState = dsContext.oauth.generateState('oauth-ds')
-                const res = await dsContext.oauth.authorize({
-                  authUrl:
-                    'https://provider.example.com/oauth/authorize?client_id=ds-client',
-                  state: capturedOAuthState,
-                })
-                return {
-                  isFailure: () => false,
-                  isSuccess: () => true,
-                  success: {
-                    member: {
-                      id: 1,
-                      firstname: 'OAuth',
-                      lastname: 'User',
-                      login: 'oauth.user',
-                    },
-                    credentials: {
-                      accessToken: `token-for-${res.code}`,
-                    },
-                  },
-                  forwardFailure: () => {
-                    throw new Error('unexpected')
-                  },
-                } as any
+          executeOAuthAuth = async () => {
+            if (!dsContext.oauth) {
+              throw new Error('oauth ausente no DataSourceContext')
+            }
+            capturedOAuthState = dsContext.oauth.generateState('oauth-ds')
+            const res = await dsContext.oauth.authorize({
+              authUrl:
+                'https://provider.example.com/oauth/authorize?client_id=ds-client',
+              state: capturedOAuthState,
+            })
+            return {
+              credentials: {
+                accessToken: `token-for-${res.code}`,
               },
-            },
+            }
+          }
+          return {
             tasksProvider: {} as any,
             timeEntriesProvider: {} as any,
             membersProvider: {} as any,
@@ -733,15 +754,16 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       const registeredDs = addonLoader.getDataSource('oauth-datasource-addon')
       expect(registeredDs).toBeDefined()
 
-      const instance = registeredDs!.createInstance({
+      registeredDs!.createInstance({
         httpClient: {} as any,
         config: { baseUrl: 'https://provider.example.com' },
+        scope: {
+          workspaceId: 'ws-oauth-test',
+          connectionInstanceId: 'conn-oauth-test',
+        },
       })
 
-      const authPromise = instance.authStrategy.authenticate({
-        configuration: { baseUrl: 'https://provider.example.com' },
-        credentials: {},
-      })
+      const authPromise = executeOAuthAuth!()
 
       expect(capturedOAuthState).toMatch(/^oauth-ds_[0-9a-f-]{36}$/)
       addonLoader.handleOAuthCallbackUrl(
@@ -749,12 +771,9 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader', () => {
       )
 
       const authResult = await authPromise
-      expect(authResult.isSuccess()).toBe(true)
-      if (authResult.isSuccess()) {
-        expect(authResult.success.credentials).toEqual({
-          accessToken: 'token-for-ds-oauth-code-777',
-        })
-      }
+      expect(authResult.credentials).toEqual({
+        accessToken: 'token-for-ds-oauth-code-777',
+      })
     })
   })
 })

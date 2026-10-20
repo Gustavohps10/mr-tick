@@ -125,8 +125,8 @@ export function openIpcRoutes(
   IpcHandler.register('WORKSPACES_UNLINK_DATASOURCE', (e, req) =>
     workspacesHandler.unlinkDataSource(e, req),
   )
-  IpcHandler.register('WORKSPACES_CONNECT_DATASOURCE', (e, req) =>
-    workspacesHandler.connectDataSource(e, req),
+  IpcHandler.register('WORKSPACES_SUBMIT_CONNECTION_CREDENTIALS', (e, req) =>
+    workspacesHandler.submitCredentials(e, req),
   )
   IpcHandler.register('WORKSPACES_DISCONNECT_DATASOURCE', (e, req) =>
     workspacesHandler.disconnectDataSource(e, req),
@@ -213,6 +213,9 @@ export function openIpcRoutes(
   )
   IpcHandler.register('ADDON_GET_CONNECTION_SCHEMA', (e, req) =>
     addonsHandler.getConnectionSchema(e, req),
+  )
+  IpcHandler.register('ADDON_GET_CONNECTION_PROFILES', (e, req) =>
+    addonsHandler.getConnectionProfiles(e, req),
   )
   IpcHandler.register('ADDON_GET_MAPPING_FIELDS', (e, req) =>
     addonsHandler.getMappingFields(e, req),

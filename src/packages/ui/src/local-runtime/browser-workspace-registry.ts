@@ -113,7 +113,7 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
     }
     if (response.data === undefined)
       return coreFailure(AppError.NotFound('WORKSPACE_NOT_FOUND'))
-    const connection = response.data.dataSourceConnections.find(
+    const connection = response.data.connections.find(
       (item) => item.id === input.connectionInstanceId,
     )
     if (connection === undefined)
@@ -121,7 +121,7 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
     const executor = this.workspaces.get(input.workspaceId)
     if (executor === undefined)
       return coreFailure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE'))
-    const result = await executor.queryCore(input, connection.dataSourceId)
+    const result = await executor.queryCore(input, connection.addonId)
     if (result.isFailure()) return coreFailure(result.failure)
     const afterRead = this.admissionError(input.workspaceId)
     if (afterRead !== null) return coreFailure(afterRead)
@@ -285,10 +285,10 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
             }
             if (workspace.data === undefined)
               return syncFailure(AppError.NotFound('WORKSPACE_NOT_FOUND'))
-            const connection = workspace.data.dataSourceConnections.find(
+            const connection = workspace.data.connections.find(
               (item) =>
                 item.id === input.connectionInstanceId &&
-                item.dataSourceId === input.dataSourceId,
+                item.addonId === input.dataSourceId,
             )
             if (connection === undefined || connection.status !== 'connected')
               return syncFailure(AppError.Http(409, 'CONNECTION_NOT_CONNECTED'))
@@ -561,7 +561,7 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
     })
     if (!response.isSuccess || response.data === undefined)
       return Either.failure(AppError.NotFound('WORKSPACE_NOT_FOUND'))
-    const connection = response.data.dataSourceConnections.find(
+    const connection = response.data.connections.find(
       (item) => item.id === connectionInstanceId,
     )
     if (connection === undefined)
@@ -570,7 +570,7 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
       )
     if (
       input.payload.dataSourceId !== undefined &&
-      input.payload.dataSourceId !== connection.dataSourceId
+      input.payload.dataSourceId !== connection.addonId
     )
       return Either.failure(
         AppError.ValidationError('DATASOURCE_CONTEXT_MISMATCH'),
@@ -578,7 +578,7 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
     if (input.action === 'update')
       return Either.success({
         ...input,
-        payload: { ...input.payload, dataSourceId: connection.dataSourceId },
+        payload: { ...input.payload, dataSourceId: connection.addonId },
       })
     let userId = input.payload.userId
     let userName = input.payload.userName
@@ -593,7 +593,7 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
         ...input,
         payload: {
           ...input.payload,
-          dataSourceId: connection.dataSourceId,
+          dataSourceId: connection.addonId,
           userId,
           userName,
         },
@@ -602,7 +602,7 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
       ...input,
       payload: {
         ...input.payload,
-        dataSourceId: connection.dataSourceId,
+        dataSourceId: connection.addonId,
         userId,
         userName,
       },
@@ -649,11 +649,11 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
       )
       const recovered = await executor.recover()
       if (recovered.isFailure()) return recovered.forwardFailure()
-      for (const connection of response.data.dataSourceConnections) {
+      for (const connection of response.data.connections) {
         if (connection.status !== 'connected') continue
         await store.getState().connectDataSource({
           connectionInstanceId: connection.id,
-          dataSourceId: connection.dataSourceId,
+          dataSourceId: connection.addonId,
         })
       }
       if (this.stopping)

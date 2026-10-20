@@ -6,12 +6,12 @@ import {
   type AddonSettingsGroup,
   type CommandArgument,
   type CoreRuntimeState,
+  Either,
   type IAddon,
   type IDataSource,
 } from '@mr-tick/sdk'
 import { z } from 'zod'
 
-import { FakeAuthenticationStrategy } from './FakeAuthenticationStrategy'
 import { FAKE_MEMBER, FAKE_METADATA, FAKE_TASKS } from './fakeData'
 import { FakeDatabaseStore } from './FakeDatabaseStore'
 import { FakeMemberProvider } from './FakeMemberProvider'
@@ -57,6 +57,24 @@ const configFields: {
 }
 
 export const FakeDataSource: IDataSource = {
+  getConnectionProfiles: () => [
+    {
+      connectionProfileId: 'fake-main',
+      cardinality: 'multi',
+      default: true,
+      allowedAuthProfileIds: ['fake-main'],
+      defaultAuthProfileId: 'fake-main',
+      roles: [
+        {
+          authorizationRole: 'primary',
+          allowedAuthProfileIds: ['fake-main'],
+          defaultAuthProfileId: 'fake-main',
+          cardinality: 'single',
+          required: true,
+        },
+      ],
+    },
+  ],
   getConnectionSchema: () => [
     {
       id: 'credentials',
@@ -66,7 +84,6 @@ export const FakeDataSource: IDataSource = {
   ],
   getMappingFields: async () => new FakeMetadataProvider().getMappingFields(),
   createInstance: (context) => ({
-    authStrategy: new FakeAuthenticationStrategy(),
     tasksProvider: new FakeTaskProvider(context),
     timeEntriesProvider: new FakeTimeEntryProvider(context),
     membersProvider: new FakeMemberProvider(context),
@@ -96,6 +113,24 @@ export default class FakeDataSourceAddon implements IAddon {
   activate(context: AddonContext): void {
     console.log('🟢 [FakeDataSourceAddon] Registrando FakeDataSource...')
     context.contributions.dataSources.register(FakeDataSource)
+    context.contributions.connections.registerAuthenticator({
+      method: 'credentials',
+      authProfileId: 'fake-main',
+      supportsRefresh: false,
+      supportsRevocation: false,
+      authenticate: async () =>
+        Either.success({
+          kind: 'authorized',
+          identity: {
+            kind: 'human',
+            providerId: 'fake',
+            tenantId: 'fake.mr-tick-app.local',
+            providerSubjectId: String(FAKE_MEMBER.id),
+            displayName: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
+          },
+          credentials: { apiKey: 'fake-api-key' },
+        }),
+    })
 
     context.contributions.themes.register({
       id: 'fake-matrix-theme',
@@ -404,7 +439,7 @@ export default class FakeDataSourceAddon implements IAddon {
             {
               taskId: task.success.taskId,
               connectionInstanceId,
-              dataSourceId: connection.success.dataSourceId,
+              dataSourceId: connection.success.addonId,
               userId: String(FAKE_MEMBER.id),
               userName: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
               activityId: activity.id,
@@ -463,7 +498,7 @@ export default class FakeDataSourceAddon implements IAddon {
               activityId: activity.id,
               activityName: activity.name,
               connectionInstanceId,
-              dataSourceId: connection.success.dataSourceId,
+              dataSourceId: connection.success.addonId,
               userId: String(FAKE_MEMBER.id),
               userName: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
               timeSpentSeconds: 900,
@@ -546,7 +581,7 @@ export default class FakeDataSourceAddon implements IAddon {
               activityId: activity.id,
               activityName: activity.name,
               connectionInstanceId,
-              dataSourceId: connection.success.dataSourceId,
+              dataSourceId: connection.success.addonId,
               userId: String(FAKE_MEMBER.id),
               userName: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
               timeSpentSeconds: 0,
@@ -960,11 +995,11 @@ export default class FakeDataSourceAddon implements IAddon {
           const found =
             connsResult.success.find(
               (c) =>
-                c.dataSourceId === 'mr-tick-datasource-fake' &&
+                c.addonId === 'mr-tick-datasource-fake' &&
                 c.status === 'connected',
             ) ||
             connsResult.success.find(
-              (c) => c.dataSourceId === 'mr-tick-datasource-fake',
+              (c) => c.addonId === 'mr-tick-datasource-fake',
             )
           if (found) targetConnectionId = found.connectionInstanceId
         }
@@ -1017,7 +1052,7 @@ export default class FakeDataSourceAddon implements IAddon {
         {
           taskId: targetTaskId,
           connectionInstanceId: targetConnectionId,
-          dataSourceId: connection.success.dataSourceId,
+          dataSourceId: connection.success.addonId,
           userId: String(FAKE_MEMBER.id),
           userName: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
           activityId: targetActivity.id,

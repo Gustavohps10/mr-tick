@@ -24,6 +24,10 @@ export default defineConfig({
             ],
             dest: 'assets',
           },
+          {
+            src: 'native-prebuilds/*',
+            dest: 'native-prebuilds',
+          },
         ],
       }),
     ],

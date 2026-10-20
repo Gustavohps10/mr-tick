@@ -52,12 +52,12 @@ async function createLocal(
 test('reset espera lease remoto, fecha reader real e reabre CRUD/cache no novo storage', async ({
   page,
 }) => {
-  const workspace = seedWorkspaces.find(
+  const workspace = seedWorkspaces.workspaces.find(
     (candidate) => candidate.name === 'TESTE',
   )
   if (!workspace) throw new Error('RESET_FIXTURE_WORKSPACE_NOT_FOUND')
-  const connection = workspace.dataSourceConnections.find(
-    (candidate) => candidate.dataSourceId === 'mr-tick-datasource-fake',
+  const connection = workspace.connections.find(
+    (candidate) => candidate.addonId === 'mr-tick-datasource-fake',
   )
   if (!connection) throw new Error('RESET_FIXTURE_CONNECTION_NOT_FOUND')
   await page

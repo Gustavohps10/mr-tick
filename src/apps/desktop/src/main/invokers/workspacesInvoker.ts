@@ -11,12 +11,10 @@ export const workspacesInvoker: IWorkspacesAPI = {
     IpcInvoker.invoke('WORKSPACES_LINK_DATASOURCE', request),
   unlinkDataSource: (request) =>
     IpcInvoker.invoke('WORKSPACES_UNLINK_DATASOURCE', request),
-  connectDataSource: (request) =>
-    IpcInvoker.invoke('WORKSPACES_CONNECT_DATASOURCE', request),
+  submitCredentials: (request) =>
+    IpcInvoker.invoke('WORKSPACES_SUBMIT_CONNECTION_CREDENTIALS', request),
   disconnectDataSource: (request) =>
     IpcInvoker.invoke('WORKSPACES_DISCONNECT_DATASOURCE', request),
-  getConnectionMember: (request) =>
-    IpcInvoker.invoke('GET_CURRENT_USER', request),
   markWorkspaceAsConfigured: (request) =>
     IpcInvoker.invoke('WORKSPACES_MARK_AS_CONFIGURED', request),
   updateIdentity: (request) =>

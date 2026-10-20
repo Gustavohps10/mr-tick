@@ -1,24 +1,71 @@
 import { AppError, Either, FieldErrors } from '@mr-tick/shared/helpers'
 import z from 'zod'
 
+import { ConnectionProfileDescriptor } from '@/entities/ConnectionProfileDescriptor'
 import { Entity } from '@/entities/Entity'
 
-type ConnectionMember = {
-  id: string
-  name: string
-  login: string
-  avatarUrl?: string
+export type ConnectionIdentity =
+  | {
+      kind: 'human'
+      providerId: string
+      tenantId: string
+      providerSubjectId: string
+      displayName: string
+      avatarUrl?: string
+    }
+  | {
+      kind: 'bot'
+      providerId: string
+      tenantId: string
+      providerSubjectId: string
+      displayName: string
+      avatarUrl?: string
+    }
+  | {
+      kind: 'installation'
+      providerId: string
+      tenantId: string
+      providerSubjectId: string
+      displayName: string
+    }
+
+export interface ConnectionAuthorizationRecord {
+  readonly authorizationId: string
+  readonly authorizationRole: string
+  readonly authProfileId: string
+  readonly credentialReferenceId?: string
+  readonly identity: ConnectionIdentity
+  readonly generation: number
+  readonly status: 'active' | 'revoked' | 'expired' | 'reauth_required'
+  readonly createdAt: string
+  readonly updatedAt: string
 }
 
 type InternalConnection = {
   id: string
-  dataSourceId: string
-  status: 'connected' | 'disabled' | 'disconnected'
-  member?: ConnectionMember
+  addonId: string
+  connectionProfileId: string
+  cardinality: 'single' | 'multi'
+  status: 'connected' | 'disabled' | 'disconnected' | 'archived'
+  generation: number
+  authorizations: ConnectionAuthorizationRecord[]
+  authorizationId?: string
+  identity?: ConnectionIdentity
   config?: Record<string, string | number | boolean>
 }
 
-export type DataSourceConnection = Readonly<InternalConnection>
+export type DataSourceConnection = Readonly<{
+  id: string
+  addonId: string
+  connectionProfileId: string
+  cardinality: 'single' | 'multi'
+  status: 'connected' | 'disabled' | 'disconnected' | 'archived'
+  generation: number
+  authorizations: readonly ConnectionAuthorizationRecord[]
+  authorizationId?: string
+  identity?: ConnectionIdentity
+  config?: Record<string, string | number | boolean>
+}>
 
 export type WorkspaceStatus = 'draft' | 'configured'
 
@@ -78,10 +125,13 @@ export class Workspace extends Entity {
   private _name: string
   private _description?: string
   private _avatarUrl?: string
-  private _dataSourceConnections: InternalConnection[]
+  private _connections: InternalConnection[]
   private _status: WorkspaceStatus
   private _createdAt: Date
   private _updatedAt: Date
+  private _removedConnectionIds: string[]
+  private _createdConnectionIds: string[]
+  private _revision: number
 
   private constructor(
     id: string,
@@ -101,7 +151,18 @@ export class Workspace extends Entity {
     this._avatarUrl = avatarUrl
     this._createdAt = createdAt
     this._updatedAt = updatedAt
-    this._dataSourceConnections = connections
+    this._removedConnectionIds = []
+    this._createdConnectionIds = []
+    this._revision = 1
+    this._connections = connections.map((conn) => {
+      const auths = Array.isArray(conn.authorizations)
+        ? [...conn.authorizations]
+        : []
+      return {
+        ...conn,
+        authorizations: auths,
+      }
+    })
   }
 
   static create(input: WorkspaceProps): Either<AppError, Workspace> {
@@ -146,14 +207,35 @@ export class Workspace extends Entity {
     return this._avatarUrl
   }
 
-  get dataSourceConnections(): ReadonlyArray<DataSourceConnection> {
-    return this._dataSourceConnections.map((c) =>
-      Object.freeze({
-        ...c,
-        member: c.member ? Object.freeze({ ...c.member }) : undefined,
-        config: c.config ? Object.freeze({ ...c.config }) : undefined,
-      }),
-    )
+  get connections(): ReadonlyArray<DataSourceConnection> {
+    return this._connections.map((c) => {
+      const snapshot: DataSourceConnection = {
+        id: c.id,
+        addonId: c.addonId,
+        connectionProfileId: c.connectionProfileId,
+        cardinality: c.cardinality,
+        status: c.status,
+        generation: c.generation,
+        authorizations: Object.freeze(
+          c.authorizations.map((auth) =>
+            Object.freeze({
+              ...auth,
+              identity: Object.freeze({ ...auth.identity }),
+            }),
+          ),
+        ),
+        identity:
+          c.identity !== undefined
+            ? Object.freeze({ ...c.identity })
+            : undefined,
+        config:
+          c.config !== undefined ? Object.freeze({ ...c.config }) : undefined,
+        ...(c.authorizationId !== undefined
+          ? { authorizationId: c.authorizationId }
+          : {}),
+      }
+      return Object.freeze(snapshot)
+    })
   }
 
   get createdAt(): Date {
@@ -165,9 +247,26 @@ export class Workspace extends Entity {
   get status(): WorkspaceStatus {
     return this._status
   }
+  get revision(): number {
+    return typeof this._revision === 'number' ? this._revision : 1
+  }
+
+  getRemovedConnectionIds(): ReadonlyArray<string> {
+    if (Array.isArray(this._removedConnectionIds)) {
+      return this._removedConnectionIds
+    }
+    return []
+  }
+
+  getCreatedConnectionIds(): ReadonlyArray<string> {
+    if (Array.isArray(this._createdConnectionIds)) {
+      return this._createdConnectionIds
+    }
+    return []
+  }
 
   isLinked(): boolean {
-    return this._dataSourceConnections.length > 0
+    return this._connections.length > 0
   }
 
   updateName(newName: string): Either<AppError, void> {
@@ -242,7 +341,11 @@ export class Workspace extends Entity {
     return Either.success()
   }
 
-  linkDataSource(id: string, dataSourceId: string): Either<AppError, void> {
+  createConnection(
+    id: string,
+    addonId: string,
+    profile: ConnectionProfileDescriptor,
+  ): Either<AppError, void> {
     if (id === 'local') {
       return Either.failure(
         AppError.ValidationError('DATASOURCE_INVALIDO', {
@@ -251,58 +354,206 @@ export class Workspace extends Entity {
       )
     }
 
-    const exists = this._dataSourceConnections.some((c) => c.id === id)
-
-    if (!exists) {
-      this._dataSourceConnections.push({
-        id,
-        dataSourceId,
-        status: 'disconnected',
-      })
-    }
-
-    this.touch()
-    return Either.success()
-  }
-
-  unlinkDataSource(id?: string): Either<AppError, void> {
-    if (id) {
-      this._dataSourceConnections = this._dataSourceConnections.filter(
-        (c) => c.id !== id,
+    const existing = this._connections.find((c) => c.id === id)
+    if (existing) {
+      if (
+        existing.addonId !== addonId ||
+        existing.connectionProfileId !== profile.connectionProfileId ||
+        existing.cardinality !== profile.cardinality
       )
-    } else {
-      this._dataSourceConnections = []
+        return Either.failure(
+          AppError.Http(409, 'CONNECTION_PROFILE_OWNERSHIP_CONFLICT'),
+        )
+      return Either.success()
     }
+
+    const singleProfileOccupied =
+      profile.cardinality === 'single' &&
+      this._connections.some(
+        (connection) =>
+          connection.status !== 'archived' &&
+          connection.addonId === addonId &&
+          connection.connectionProfileId === profile.connectionProfileId,
+      )
+    if (singleProfileOccupied)
+      return Either.failure(
+        AppError.Http(409, 'CONNECTION_CARDINALITY_REACHED'),
+      )
+    if (!Array.isArray(this._createdConnectionIds)) {
+      this._createdConnectionIds = []
+    }
+    this._createdConnectionIds.push(id)
+
+    this._connections.push({
+      id,
+      addonId,
+      connectionProfileId: profile.connectionProfileId,
+      cardinality: profile.cardinality,
+      status: 'disconnected',
+      generation: 0,
+      authorizations: [],
+    })
 
     this.touch()
     return Either.success()
   }
 
-  connectDataSource(
-    id: string,
-    member: ConnectionMember,
-    config: Record<string, string | number | boolean>,
-  ): Either<AppError, void> {
-    const connection = this._dataSourceConnections.find((c) => c.id === id)
+  removeConnection(id?: string): Either<AppError, void> {
+    if (!Array.isArray(this._removedConnectionIds)) {
+      this._removedConnectionIds = []
+    }
+    if (id) {
+      if (Array.isArray(this._createdConnectionIds)) {
+        this._createdConnectionIds = this._createdConnectionIds.filter(
+          (candidate) => candidate !== id,
+        )
+      }
+      this._connections = this._connections.filter((c) => c.id !== id)
+      if (!this._removedConnectionIds.includes(id)) {
+        this._removedConnectionIds.push(id)
+      }
+      this.touch()
+      return Either.success()
+    }
 
-    if (!connection) {
+    this._createdConnectionIds = []
+    for (const connection of this._connections) {
+      if (!this._removedConnectionIds.includes(connection.id)) {
+        this._removedConnectionIds.push(connection.id)
+      }
+    }
+    this._connections = []
+
+    this.touch()
+    return Either.success()
+  }
+
+  connectAuthorization(
+    id: string,
+    authorization: {
+      authorizationRole: string
+      authProfileId: string
+      identity: ConnectionIdentity
+      authorizationId: string
+      credentialReferenceId?: string
+    },
+    config?: Record<string, string | number | boolean>,
+  ): Either<AppError, void> {
+    const connection = this._connections.find((c) => c.id === id)
+    if (connection === undefined) {
       return Either.failure(
         AppError.ValidationError('CONEXAO_NAO_ENCONTRADA', {
           id: [`Conexão ${id} não encontrada.`],
         }),
       )
     }
-
+    if (connection.status === 'archived') {
+      return Either.failure(AppError.ValidationError('CONNECTION_ARCHIVED'))
+    }
+    const targetIdentity: ConnectionIdentity = { ...authorization.identity }
+    const existingIndex = connection.authorizations.findIndex(
+      (a) => a.authorizationRole === authorization.authorizationRole,
+    )
+    if (
+      connection.identity !== undefined &&
+      (authorization.authorizationRole === 'primary' ||
+        connection.authorizations.length === 0) &&
+      !sameConnectionIdentity(connection.identity, targetIdentity)
+    ) {
+      return Either.failure(
+        AppError.ValidationError('CONNECTION_IDENTITY_MISMATCH'),
+      )
+    }
+    const nowIso = new Date().toISOString()
+    if (existingIndex >= 0) {
+      const existingAuth = connection.authorizations[existingIndex]
+      if (!sameConnectionIdentity(existingAuth.identity, targetIdentity)) {
+        return Either.failure(
+          AppError.ValidationError('CONNECTION_IDENTITY_MISMATCH'),
+        )
+      }
+      const updatedAuth: ConnectionAuthorizationRecord = {
+        authorizationId: existingAuth.authorizationId,
+        authorizationRole: existingAuth.authorizationRole,
+        authProfileId: authorization.authProfileId,
+        credentialReferenceId: authorization.credentialReferenceId,
+        identity: targetIdentity,
+        generation: existingAuth.generation + 1,
+        status: 'active',
+        createdAt: existingAuth.createdAt,
+        updatedAt: nowIso,
+      }
+      connection.authorizations[existingIndex] = updatedAuth
+    }
+    if (existingIndex < 0) {
+      const newAuth: ConnectionAuthorizationRecord = {
+        authorizationId: authorization.authorizationId,
+        authorizationRole: authorization.authorizationRole,
+        authProfileId: authorization.authProfileId,
+        credentialReferenceId: authorization.credentialReferenceId,
+        identity: targetIdentity,
+        generation: 1,
+        status: 'active',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      }
+      connection.authorizations.push(newAuth)
+    }
+    const wasConnected = connection.status === 'connected'
     connection.status = 'connected'
-    connection.config = config
-    connection.member = member
-
+    if (
+      authorization.authorizationRole === 'primary' ||
+      connection.identity === undefined
+    ) {
+      connection.authorizationId = authorization.authorizationId
+      connection.identity = targetIdentity
+    }
+    if (!wasConnected) {
+      connection.generation += 1
+    }
+    if (config !== undefined) {
+      connection.config = config
+    }
     this.touch()
     return Either.success()
   }
 
-  disconnectDataSource(id: string): Either<AppError, void> {
-    const connection = this._dataSourceConnections.find((c) => c.id === id)
+  connectNone(
+    id: string,
+    config?: Record<string, string | number | boolean>,
+  ): Either<AppError, void> {
+    const connection = this._connections.find((c) => c.id === id)
+    if (connection === undefined) {
+      return Either.failure(
+        AppError.ValidationError('CONEXAO_NAO_ENCONTRADA', {
+          id: [`Conexão ${id} não encontrada.`],
+        }),
+      )
+    }
+    if (connection.status === 'archived') {
+      return Either.failure(AppError.ValidationError('CONNECTION_ARCHIVED'))
+    }
+    if (connection.authorizations.length > 0) {
+      return Either.failure(
+        AppError.ValidationError(
+          'CANNOT_CONVERT_AUTHORIZED_CONNECTION_TO_ANONYMOUS',
+        ),
+      )
+    }
+    connection.status = 'connected'
+    connection.generation += 1
+    connection.authorizations = []
+    connection.authorizationId = undefined
+    connection.identity = undefined
+    if (config !== undefined) {
+      connection.config = config
+    }
+    this.touch()
+    return Either.success()
+  }
+
+  disconnectConnection(id: string): Either<AppError, void> {
+    const connection = this._connections.find((c) => c.id === id)
 
     if (!connection) {
       return Either.failure(
@@ -313,8 +564,77 @@ export class Workspace extends Entity {
     }
 
     connection.status = 'disconnected'
-    connection.config = undefined
+    connection.authorizationId = undefined
+    connection.authorizations = connection.authorizations.map((auth) => ({
+      ...auth,
+      status: 'revoked',
+      generation: auth.generation + 1,
+      updatedAt: new Date().toISOString(),
+    }))
+    connection.generation += 1
 
+    this.touch()
+    return Either.success()
+  }
+
+  archiveConnection(id: string): Either<AppError, void> {
+    const connection = this._connections.find((item) => item.id === id)
+    if (connection === undefined) {
+      return Either.failure(AppError.NotFound('CONEXAO_NAO_ENCONTRADA'))
+    }
+    connection.status = 'archived'
+    connection.authorizationId = undefined
+    connection.authorizations = connection.authorizations.map((auth) => ({
+      ...auth,
+      status: 'expired',
+      updatedAt: new Date().toISOString(),
+    }))
+    connection.generation += 1
+    this.touch()
+    return Either.success()
+  }
+
+  restoreConnection(id: string): Either<AppError, void> {
+    const connection = this._connections.find((item) => item.id === id)
+    if (connection === undefined) {
+      return Either.failure(AppError.NotFound('CONEXAO_NAO_ENCONTRADA'))
+    }
+    if (connection.status !== 'archived') {
+      return Either.failure(AppError.ValidationError('CONNECTION_NOT_ARCHIVED'))
+    }
+    connection.status = 'disconnected'
+    connection.authorizationId = undefined
+    connection.generation += 1
+    this.touch()
+    return Either.success()
+  }
+
+  markAuthorizationReauthRequired(
+    connectionId: string,
+    authorizationId: string,
+  ): Either<AppError, void> {
+    const connection = this._connections.find((c) => c.id === connectionId)
+    if (connection === undefined) {
+      return Either.failure(AppError.NotFound('CONEXAO_NAO_ENCONTRADA'))
+    }
+    const auth = connection.authorizations.find(
+      (a) => a.authorizationId === authorizationId,
+    )
+    if (auth === undefined) {
+      return Either.failure(AppError.NotFound('AUTHORIZATION_NOT_FOUND'))
+    }
+    if (auth.status === 'revoked' || auth.status === 'expired') {
+      return Either.failure(
+        AppError.ValidationError('AUTHORIZATION_NOT_ACTIVE'),
+      )
+    }
+    const index = connection.authorizations.indexOf(auth)
+    connection.authorizations[index] = {
+      ...auth,
+      status: 'reauth_required',
+      generation: auth.generation + 1,
+      updatedAt: new Date().toISOString(),
+    }
     this.touch()
     return Either.success()
   }
@@ -327,6 +647,16 @@ export class Workspace extends Entity {
   private touch(): void {
     this._updatedAt = new Date()
   }
+}
+
+export function sameConnectionIdentity(
+  left: ConnectionIdentity,
+  right: ConnectionIdentity,
+): boolean {
+  if (left.kind !== right.kind) return false
+  if (left.providerId !== right.providerId) return false
+  if (left.tenantId !== right.tenantId) return false
+  return left.providerSubjectId === right.providerSubjectId
 }
 
 function mapZodErrors(error: z.ZodError): FieldErrors {

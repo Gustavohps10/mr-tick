@@ -13,10 +13,12 @@ export class TaskPullService implements ITaskPullUseCase {
     input: PullTasksInput,
   ): Promise<Either<AppError, TaskDTO[]>> {
     try {
-      const adapter = await this.dataSourceResolver.getDataSource(
+      const adapterResult = await this.dataSourceResolver.getDataSource(
         input.workspaceId,
         input.connectionInstanceId,
       )
+      if (adapterResult.isFailure()) return adapterResult.forwardFailure()
+      const adapter = adapterResult.success
 
       const result = await adapter.getAuthenticatedMemberData()
       if (result.isFailure()) return result.forwardFailure()
@@ -24,7 +26,7 @@ export class TaskPullService implements ITaskPullUseCase {
       const member = result.success
 
       const pullResult = await adapter.tasksProvider.pull(
-        member.id.toString(),
+        member.id,
         input.checkpoint,
         input.batch,
       )

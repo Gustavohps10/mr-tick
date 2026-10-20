@@ -2,8 +2,8 @@
 
 Ao escrever ou modificar código neste projeto, você DEVE seguir rigorosamente estas regras (sem exceções):
 
-1. **Tipagem Estrita Absoluta**: NUNCA utilize `any` ou `unknown`. O projeto adota tipagem forte e precisa em todos os locais.
-2. **Sem Type Casting e Assertions Forçadas**: NÃO utilize gambiarras com type casting (`as`, `satisfies`) nem construções acrobáticas de tipos forçados (ex: `as Parameters<typeof ...>`, `as unknown as ...`). A lógica, interfaces e contratos devem ser exportados e tipados de forma limpa para garantir que os tipos fluam naturalmente sem coerção.
+1. **Tipagem Estrita Absoluta**: NUNCA utilize `any` ou `unknown` em código de produção. O projeto adota tipagem forte e precisa em todos os locais de produção. Em mocks de testes unitários e E2E, o uso de `as unknown as` é permitido para criação de test doubles/mocks parciais sem exigir implementação integral de interfaces extensas.
+2. **Sem Type Casting e Assertions Forçadas**: NÃO utilize gambiarras com type casting (`as`, `satisfies`) nem construções acrobáticas de tipos forçados em código de produção. A lógica, interfaces e contratos de produção devem ser exportados e tipados de forma limpa para garantir que os tipos fluam naturalmente sem coerção. Em mocks de testes unitários e E2E, o uso de `as` é permitido para tipagem de doubles e mocks de teste conforme autorização do usuário.
 3. **Nomenclatura Limpa**: NÃO utilize prefixos em variáveis ou parâmetros (ex: NUNCA use `_` como prefixo, como `_event` ou `_req`). Siga a nomenclatura limpa.
 4. **Sem Timers Artificiais**: NUNCA utilize "gambiarras" com `setTimeout`, delays ou timeouts artificiais para tentar resolver problemas de concorrência ou espera.
 5. **Sem Gambiarras**: O código gerado deve sempre respeitar a arquitetura existente. Se uma tipagem não encaixa, corrija as interfaces em vez de forçar o tipo.
@@ -64,6 +64,67 @@ Ao escrever ou modificar código neste projeto, você DEVE seguir rigorosamente 
   - Produza código TypeScript limpo, conciso e idiomático, confiando nos contratos tipados e evitando validações redundantes ou defensivas especulativas. Utilize a verificação mais simples que preserve a semântica do domínio.
   - NUNCA utilize `typeof` redundante em propriedades que já possuem contrato tipado confiável no TypeScript (ex: `typeof input.maxDevices === 'number'`). Se o campo é opcional, verifique presença com `if (input.maxDevices !== undefined)` para números/booleanos (preservando `0` e `false`), ou `const key = input.encryptedActivationKey?.trim(); if (key) { ... }` para strings úteis.
   - Restrinja `typeof` estritamente a cenários que demandam distinção em runtime: type guards canônicos de baixo nível (`isRecord`, `isString`), narrowing de uniões primitivas genéricas (`string | number`) e tratamento de erros ou dados externos desconhecidos (`unknown`) nas bordas do sistema.
+33. **Proibição Geral de Compatibilidade com Dados e Contratos Legados**:
+  - NUNCA manter compatibilidade com dados, bases, configurações, credenciais ou contratos antigos na máquina do usuário.
+  - O código deve remover suporte legado e implementar diretamente a arquitetura canônica adequada.
+  - A autenticação não precisa devolver `member` se desnecessário.
+  - Os identificadores (IDs) devem seguir estritamente o domínio/provedor sem conversões artificiais string/int motivadas por legado.
+  - O usuário é o único responsável pelo descarte/limpeza de bases antigas; o código não deve executar rotinas de destruição/reset cego de dados do usuário.
+34. **Proibição Terminante de SELECT * e Carregamento Total para Filtragem em Memória**:
+  - É terminantemente PROIBIDO carregar todos os dados ou coleções inteiras na memória (equivalente a `SELECT *`) para posteriormente filtrar, buscar ou projetar dados na camada de aplicação.
+  - Repositórios devem expor APENAS operações básicas, coesas e estritamente tipadas (`getById`, `remove`, `list` com filtros explícitos no contrato e retorno restrito aos campos necessários, com paginação quando aplicável).
+  - São proibidos métodos ad-hoc ou gambiarras criados sob medida para conveniência de consumidores específicos.
+  - A orquestração e regras de negócio devem residir fora do repositório, preservando integralmente a atomicidade, isolamento, journal e rotinas de retry.
+35. **Um Repositório por Classe de Domínio**:
+  - É terminantemente PROIBIDO criar múltiplos repositórios ou classes de repositório paralelas para uma mesma entidade de domínio.
+  - Toda e qualquer estratégia interna de persistência (particionamento, índices, arquivos auxiliares, cache ou sharding) deve ser encapsulada estritamente dentro do repositório canônico existente daquela entidade (ex: `JSONWorkspacesRepository`).
+  - NUNCA crie novos repositórios, aliases paralelos ou camadas desnecessárias para contornar ou alterar estratégias de armazenamento.
+36. **Fluxos distintos para correção de bug e refatoração arquitetural**:
+  - Para bug de comportamento confirmado, registrar o cenário, produzir teste determinístico vermelho pela falha esperada, corrigir na camada responsável, obter verde e revisar. Não confundir falha de infraestrutura com evidência vermelha.
+  - Para refatoração arquitetural aprovada, implementar todo o escopo ponta a ponta, incluindo consumidores e addons afetados, e testar as partes conforme avançar. Os blocos do plano são marcos de organização, não encerramentos independentes. Não exigir vermelho artificial por mudança estrutural.
+  - Somente após a implementação integral da refatoração, executar `yarn typecheck` e `yarn lint:fix` na raiz de `metric`, corrigir os resultados e então solicitar revisão final do Tech Lead. As regras 18 e 23 definem onde executar os comandos, não exigem executá-los após cada bloco parcial.
+  - Se surgir um bug concreto durante a refatoração, tratá-lo separadamente pelo ciclo vermelho → correção → verde. Não marcar a refatoração concluída nem chamar o Tech Lead antes de implementar e validar o conjunto aprovado.
+37. **Responsabilidade Única e Contrato Próprio dos Repositórios**:
+  - Cada repositório implementa somente o contrato de persistência da sua entidade, sem estender contratos de lifecycle, cofre ou registro de credenciais. Herança de `BaseRepository` é permitida quando já integra o padrão do projeto e não mistura responsabilidades.
+  - O repositório de workspace busca, grava, atualiza e remove os seus dados; usa transações e constraints para consistência da própria persistência. Não coordena escrita, limpeza, recuperação ou fases do cofre.
+  - Services de application orquestram os métodos de domínio, o repositório e o cofre por dependências independentes. Se uma operação entre banco e cofre precisar de registro recuperável, persista a operação fora do repositório de workspace com o mínimo de contrato e campos justificados por cenários concretos.
+  - Não crie repositórios paralelos para a mesma entidade, herança artificial, métodos ad-hoc ou protocolo genérico para contornar a separação das camadas.
 
+### Exemplos da regra 37: repositório pequeno, service coordenando o fluxo
 
+**Correto — um contrato por entidade, com operações de persistência somente daquela entidade:**
 
+```ts
+interface IWorkspacesRepository {
+  create(workspace: Workspace): Promise<Either<AppError, void>>
+  getById(id: string): Promise<Either<AppError, Workspace | undefined>>
+  list(filter: WorkspaceFilter, page: Page): Promise<Either<AppError, PagedWorkspaces>>
+  update(workspace: Workspace): Promise<Either<AppError, void>>
+  remove(id: string): Promise<Either<AppError, void>>
+}
+```
+
+Os nomes e tipos acima são ilustrativos: usar os tipos e pastas do projeto; a fronteira de transação deve ser uma capacidade específica da infraestrutura, sem framework genérico. `list` filtra e pagina no banco; não carrega todos os workspaces para filtrar no service. `update` persiste a entidade recebida, sem decidir regras de negócio nem disparar outro componente. O repositório pode executar SQL, mapear linhas, aplicar constraints e participar de uma transação do banco. Ele não abre uma operação de negócio que também governa cofre ou Blob Storage.
+
+**Errado — responsabilidades estranhas ao repositório de workspace:**
+
+```ts
+interface IWorkspacesRepository {
+  beginLifecycle(operation: WorkspaceLifecycleOperation): Promise<void>
+  advanceLifecycle(operationId: string, phase: LifecyclePhase): Promise<void>
+  saveCredential(workspaceId: string, token: string): Promise<void>
+  uploadAvatar(workspaceId: string, bytes: Uint8Array): Promise<void>
+  recoverPendingVaultWrites(): Promise<void>
+}
+```
+
+Esses métodos coordenam processos, segredos ou armazenamento externo; não são `create/get/list/update/remove` de `Workspace`. Também é errado implementar `IWorkspacesRepository` junto com interfaces de cofre, registro de credenciais ou lifecycle na mesma classe. Não criar métodos ad-hoc por consumidor para esconder essa lógica.
+
+**Correto — fluxo no service, usando componentes independentes:**
+
+1. O handler chama o service com dados tipados. O service carrega a entidade pelo repositório e chama seus métodos de domínio para decidir a mudança.
+2. O service delimita a transação de banco por uma capacidade específica da infraestrutura para persistir os metadados pelo repositório. O repositório executa apenas a escrita da entidade nessa transação.
+3. Depois, o service tenta gravar o arquivo no Blob Storage ou a credencial no cofre por outro adapter. Nenhuma transação SQLite torna essa chamada externa atômica.
+4. Se a chamada externa falhar, o service decide e executa a compensação ou recuperação definida para esse caso. O repositório apenas persiste o estado solicitado; eventual registro recuperável da operação externa tem responsabilidade e contrato próprios, fora do repositório de workspace, e só existe quando um cenário concreto o exigir.
+
+Exemplo: alterar o avatar não autoriza `workspaceRepository.uploadAvatar(...)`. O domínio valida a mudança; o service coordena `workspacesRepository.update(...)` e `blobStorage.put(...)`, trata falha entre essas etapas e mantém os metadados coerentes. Seguir rigorosamente as classes, contratos e pastas existentes; não introduzir `BaseRepository`, Unit of Work, saga, framework ou camada nova apenas para acomodar o exemplo. `BaseRepository` é exceção somente se já for padrão real do projeto.

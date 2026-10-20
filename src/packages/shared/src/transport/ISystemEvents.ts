@@ -18,6 +18,31 @@ export interface SystemIdlePayload {
   idleMinutes: number
 }
 
+export interface ConnectionEventPayload {
+  workspaceId: string
+  connectionInstanceId: string
+}
+
+export interface AddonSettingsSavedEventPayload {
+  addonId: string
+  scope:
+    | { kind: 'addon' }
+    | { kind: 'workspace'; workspaceId: string }
+    | {
+        kind: 'connection'
+        workspaceId: string
+        connectionInstanceId: string
+      }
+    | {
+        kind: 'capability'
+        workspaceId: string
+        connectionInstanceId: string
+        capabilityId: string
+      }
+  revision: number
+  values: Record<string, string | number | boolean | null>
+}
+
 export interface ISystemEvents {
   'timer:start': TimerStartPayload
   'timer:pause': TimerPausePayload
@@ -41,4 +66,22 @@ export interface ISystemEvents {
     currentWorkspaceId: string
   }
   'timeEntry:deleted': { workspaceId?: string; id: string }
+  'connection:disconnected': ConnectionEventPayload
+  'connection:archived': ConnectionEventPayload
+  'connection:removed': ConnectionEventPayload
+  'addon:settings:saved': AddonSettingsSavedEventPayload
+}
+
+export interface ISystemEventEmitter {
+  emit<K extends keyof ISystemEvents>(event: K, payload: ISystemEvents[K]): void
+}
+
+export class NoOpSystemEventEmitter implements ISystemEventEmitter {
+  public emit<K extends keyof ISystemEvents>(
+    event: K,
+    payload: ISystemEvents[K],
+  ): void {
+    void event
+    void payload
+  }
 }

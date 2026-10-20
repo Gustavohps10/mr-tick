@@ -40,6 +40,7 @@ export interface AddonSettingsField {
   id: string
   type: AddonSettingsFieldType
   label: string
+  /** Omitted scope is treated as configuration; credentials must opt in explicitly. */
   scope?: AddonSettingsFieldScope
   required?: boolean
   defaultValue?: string | number | boolean | AddonMappingPreset
@@ -61,8 +62,6 @@ export type AddonSettingsTabKind = 'auth' | 'capability'
 
 export type AddonSettingsAuthType = 'credentials' | 'oauth2'
 
-export type AddonSettingsAuthCardinality = 'single' | 'multi'
-
 export interface AddonSettingsGroup {
   id: string
   label: string
@@ -76,7 +75,6 @@ export interface AddonSettingsTab {
   label: string
   description?: string
   kind?: AddonSettingsTabKind
-  cardinality?: AddonSettingsAuthCardinality
   requiresAuth?: boolean
   isAuthenticated?: boolean
   authType?: AddonSettingsAuthType

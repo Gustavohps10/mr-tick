@@ -156,7 +156,13 @@ describe('Timer projection ordering', () => {
     store.getState().setActive(observed)
     acknowledgement.resolve({
       ok: true,
-      value: { entry: null, entries: [], timer: null, deleted: false },
+      value: {
+        entry: null,
+        entries: [],
+        timer: null,
+        deleted: false,
+        pendingWrites: false,
+      },
     })
     await start
     expect(store.getState().active).toEqual(observed)
@@ -182,7 +188,13 @@ describe('Timer projection ordering', () => {
       store.getState().setActive(observed)
       acknowledgement.resolve({
         ok: true,
-        value: { entry: null, entries: [], timer: null, deleted: false },
+        value: {
+          entry: null,
+          entries: [],
+          timer: null,
+          deleted: false,
+          pendingWrites: false,
+        },
       })
       await operation
       expect(store.getState().active).toEqual(observed)
@@ -201,7 +213,13 @@ describe('Timer projection ordering', () => {
     store.getState().setActive(newer)
     acknowledgement.resolve({
       ok: true,
-      value: { entry: null, entries: [], timer: null, deleted: false },
+      value: {
+        entry: null,
+        entries: [],
+        timer: null,
+        deleted: false,
+        pendingWrites: false,
+      },
     })
     await stop
     expect(store.getState().active).toEqual(newer)
@@ -217,7 +235,13 @@ describe('Timer projection ordering', () => {
         })
         return {
           ok: true,
-          value: { entry: null, entries: [], timer: null, deleted: false },
+          value: {
+            entry: null,
+            entries: [],
+            timer: null,
+            deleted: false,
+            pendingWrites: false,
+          },
         }
       }
       if (input.action === 'timerStart') {
@@ -227,7 +251,13 @@ describe('Timer projection ordering', () => {
         })
         return {
           ok: true,
-          value: { entry: null, entries: [], timer: null, deleted: false },
+          value: {
+            entry: null,
+            entries: [],
+            timer: null,
+            deleted: false,
+            pendingWrites: false,
+          },
         }
       }
       return {
@@ -329,7 +359,13 @@ describe('Timer projection ordering', () => {
       }
       acknowledgement.resolve({
         ok: true,
-        value: { entry: null, entries: [], timer: null, deleted: false },
+        value: {
+          entry: null,
+          entries: [],
+          timer: null,
+          deleted: false,
+          pendingWrites: false,
+        },
       })
       await start
       expect(request.mock.calls.map(([input]) => input.action)).toEqual([

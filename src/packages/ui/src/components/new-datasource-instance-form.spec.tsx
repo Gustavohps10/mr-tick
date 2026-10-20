@@ -115,6 +115,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     renderWithClient(
       <NewDataSourceInstanceForm
         pluginId="custom-datasource-addon"
+        connectionProfileId="test-profile"
         connectionInstanceId="conn-instance-test-1"
         onSubmit={handleSubmit}
       />,
@@ -144,6 +145,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     renderWithClient(
       <NewDataSourceInstanceForm
         pluginId="custom-datasource-addon"
+        connectionProfileId="test-profile"
         connectionInstanceId="conn-instance-test-2"
         onSubmit={handleSubmit}
       />,
@@ -191,6 +193,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     renderWithClient(
       <NewDataSourceInstanceForm
         pluginId="custom-datasource-addon"
+        connectionProfileId="test-profile"
         connectionInstanceId="conn-instance-test-3"
         onSubmit={handleSubmit}
       />,
@@ -252,6 +255,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     renderWithClient(
       <NewDataSourceInstanceForm
         pluginId="custom-datasource-addon"
+        connectionProfileId="test-profile"
         connectionInstanceId="conn-instance-test-4"
         isSubmitting={true}
         onSubmit={handleSubmit}
@@ -304,6 +308,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     renderWithClient(
       <NewDataSourceInstanceForm
         pluginId="flat-schema-addon"
+        connectionProfileId="test-profile"
         connectionInstanceId="conn-flat-1"
         onSubmit={handleSubmit}
       />,
@@ -352,6 +357,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     renderWithClient(
       <NewDataSourceInstanceForm
         pluginId="custom-datasource-addon"
+        connectionProfileId="test-profile"
         connectionInstanceId="conn-switch-test"
         onSubmit={handleSubmit}
       />,
@@ -417,6 +423,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     renderWithClient(
       <NewDataSourceInstanceForm
         pluginId="json-mapping-addon"
+        connectionProfileId="test-profile"
         connectionInstanceId="conn-json-1"
         onSubmit={handleSubmit}
       />,
@@ -472,6 +479,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     renderWithClient(
       <NewDataSourceInstanceForm
         pluginId="mapping-addon"
+        connectionProfileId="test-profile"
         connectionInstanceId="conn-mapping-1"
         onSubmit={handleSubmit}
       />,
@@ -541,6 +549,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     renderWithClient(
       <NewDataSourceInstanceForm
         pluginId="dual-auth-addon"
+        connectionProfileId="test-profile"
         connectionInstanceId="conn-oauth-1"
         onSubmit={handleSubmit}
       />,
@@ -561,6 +570,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     await waitFor(() => {
       expect(handleSubmit).toHaveBeenCalledWith({
         pluginId: 'dual-auth-addon',
+        connectionProfileId: 'test-profile',
         connectionInstanceId: 'conn-oauth-1',
         credentials: {},
         configuration: {

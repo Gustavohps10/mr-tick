@@ -1,13 +1,25 @@
-﻿import { AppError, Either } from '@mr-tick/shared/helpers'
+import type { ConnectionIdentity } from '@mr-tick/domain'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 
-import { MemberDTO } from '@/dtos'
+export type { ConnectionIdentity } from '@mr-tick/domain'
+
+export type ConnectionCredentialPayload = Readonly<
+  Record<string, string | number | boolean>
+>
 
 export interface AuthenticationResult {
-  member: MemberDTO
-  credentials: Record<string, unknown>
+  identity: ConnectionIdentity
+  credentials: ConnectionCredentialPayload
 }
 
-export interface IAuthenticationStrategy<AuthCredentials = unknown> {
+export interface DataSourceAuthenticationInput {
+  configuration: ConnectionCredentialPayload
+  credentials: ConnectionCredentialPayload
+}
+
+export interface IAuthenticationStrategy<
+  AuthCredentials = DataSourceAuthenticationInput,
+> {
   authenticate(
     credentials: AuthCredentials,
   ): Promise<Either<AppError, AuthenticationResult>>

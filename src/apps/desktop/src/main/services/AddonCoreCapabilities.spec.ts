@@ -1,10 +1,25 @@
-import type {
-  CoreCacheQuery,
-  CoreCacheResponse,
-  ICoreCacheTransport,
-  IWorkspacesRepository,
+import {
+  AddonAuthenticatorRegistry,
+  type AddonConnectionAuthenticator,
+  type ConnectAddonConnectionInput,
+  type ConnectAddonConnectionResult,
+  type CoreCacheQuery,
+  type CoreCacheResponse,
+  type IAddonConnectionProfilesResolver,
+  type IConnectAddonConnectionUseCase,
+  type IConnectionLifecycleCoordinator,
+  type ICoreCacheTransport,
+  type IDataSourceResolver,
+  type IDisconnectAddonConnectionUseCase,
+  type ILinkConnectionUseCase,
+  type IUnlinkConnectionUseCase,
+  type IWorkspacesRepository,
+  OAuthAttemptCoordinator,
 } from '@mr-tick/application'
+import type { ConnectionProfileDescriptor } from '@mr-tick/domain'
 import { Workspace } from '@mr-tick/domain'
+import { AppError, Either } from '@mr-tick/shared/helpers'
+import { NoOpSystemEventEmitter } from '@mr-tick/shared/transport'
 import { describe, expect, it, vi } from 'vitest'
 
 import { AddonCoreCapabilities } from './AddonCoreCapabilities'
@@ -13,26 +28,47 @@ function fixture() {
   const created = Workspace.create({ name: 'SDK fixture' })
   if (created.isFailure()) return expect.fail(created.failure.messageKey)
   const workspace = created.success
-  workspace.linkDataSource('connection', 'provider')
-  workspace.connectDataSource(
+  workspace.createConnection('connection', 'provider', {
+    connectionProfileId: 'primary',
+    cardinality: 'multi',
+    default: true,
+  })
+  workspace.connectAuthorization(
     'connection',
-    { id: 'member', name: 'Name', login: 'private' },
+    {
+      authorizationRole: 'primary',
+      authProfileId: 'primary',
+      authorizationId: 'authorization-fixture',
+      identity: {
+        kind: 'human',
+        providerId: 'provider',
+        tenantId: 'provider.example',
+        providerSubjectId: 'member',
+        displayName: 'Name Test',
+      },
+    },
     { privateToken: 'secret' },
   )
+  workspace.createConnection('foreign-connection', 'other-addon', {
+    connectionProfileId: 'foreign-profile',
+    cardinality: 'multi',
+    default: false,
+  })
   const repository: IWorkspacesRepository = {
-    findById: async (id) => {
-      if (id === workspace.id) return workspace
-      return undefined
+    getById: async (id) => {
+      if (id === workspace.id) return Either.success(workspace)
+      return Either.success(undefined)
     },
-    findAll: async () => ({
-      items: [workspace],
-      total: 1,
-      page: 1,
-      pageSize: 1,
-    }),
-    create: async () => {},
-    update: async () => {},
-    delete: async () => {},
+    list: async () =>
+      Either.success({
+        items: [workspace],
+        total: 1,
+        page: 1,
+        pageSize: 1,
+      }),
+    create: async () => Either.success(undefined),
+    update: async () => Either.success(undefined),
+    remove: async () => Either.success(undefined),
   }
   const queryCore = vi.fn<
     (query: CoreCacheQuery) => Promise<CoreCacheResponse>
@@ -48,11 +84,184 @@ function fixture() {
       return () => {}
     },
   }
+  const profile: ConnectionProfileDescriptor = {
+    connectionProfileId: 'primary',
+    cardinality: 'multi',
+    default: true,
+    roles: [
+      {
+        authorizationRole: 'primary',
+        allowedAuthProfileIds: ['primary'],
+        defaultAuthProfileId: 'primary',
+      },
+    ],
+  }
+  type OAuthAuthenticator = Extract<
+    AddonConnectionAuthenticator,
+    { method: 'oauth' }
+  >
+  const createLifecycle = vi.fn(
+    async (input: Parameters<IConnectionLifecycleCoordinator['create']>[0]) =>
+      Either.success(workspace),
+  )
+  const completeAuthentication = vi.fn<
+    OAuthAuthenticator['completeAuthentication']
+  >(async () =>
+    Either.success({
+      kind: 'authorized',
+      identity: {
+        kind: 'bot',
+        providerId: 'provider',
+        tenantId: 'provider.example',
+        providerSubjectId: 'bot-1',
+        displayName: 'Watcher',
+      },
+      credentials: { accessToken: 'private-token-sentinel' },
+    }),
+  )
+  const disconnectLifecycle = vi.fn(
+    async (
+      input: Parameters<IConnectionLifecycleCoordinator['disconnect']>[0],
+    ) => Either.success(),
+  )
+  const withCredentialsLifecycle = vi.fn(
+    async (
+      input: Parameters<IConnectionLifecycleCoordinator['withCredentials']>[0],
+    ) => input.operation({ privateToken: 'private-token-sentinel' }),
+  )
+  const authenticator: OAuthAuthenticator = {
+    method: 'oauth',
+    authProfileId: 'primary',
+    supportsRefresh: false,
+    supportsRevocation: false,
+    createAuthorizationRequest: vi.fn(async (_scope, params) =>
+      Either.success({
+        authUrl: `https://provider.example/authorize?state=${params.state}&redirect_uri=${encodeURIComponent(params.redirectUri)}&code_challenge=${params.codeChallenge}&code_challenge_method=${params.codeChallengeMethod}`,
+        timeoutMs: 1000,
+      }),
+    ),
+    completeAuthentication,
+  }
+  const lifecycle: IConnectionLifecycleCoordinator = {
+    create: createLifecycle,
+    connect: async (input) => {
+      if (input.method === 'none') {
+        return Either.success({ kind: 'none' })
+      }
+      const authentication = await input.authenticate()
+      if (authentication.isFailure()) return authentication.forwardFailure()
+      return Either.success({
+        kind: 'identity',
+        identity: authentication.success.identity,
+      })
+    },
+    withCredentials: withCredentialsLifecycle,
+    refresh: async () => Either.success(),
+    disconnect: disconnectLifecycle,
+    archive: async () => Either.success(),
+    restore: async () => Either.success(workspace),
+  }
+  const resolver: IDataSourceResolver = {
+    getConnectionProfiles: async () => Either.success([profile]),
+    getDataSource: vi.fn(async () =>
+      Either.failure(AppError.Internal('UNUSED')),
+    ),
+    getDataSourcesForWorkspace: async () => Either.success([]),
+  }
+  const unlinkService: IUnlinkConnectionUseCase = {
+    execute: vi.fn(async () =>
+      Either.success({
+        id: workspace.id,
+        name: workspace.name,
+        status: workspace.status,
+        connections: [],
+        createdAt: workspace.createdAt,
+        updatedAt: workspace.updatedAt,
+      }),
+    ),
+  }
+  const linkService: ILinkConnectionUseCase = {
+    execute: vi.fn(async (input) => {
+      createLifecycle({
+        workspaceId: input.workspaceId,
+        connectionInstanceId: input.connectionInstanceId,
+        addonId: input.addonId,
+        profile,
+      })
+      return Either.failure(AppError.Internal('CREATE_REJECTED'))
+    }),
+  }
+  const connectService: IConnectAddonConnectionUseCase = {
+    execute: vi.fn(
+      async (
+        input: ConnectAddonConnectionInput,
+      ): Promise<Either<AppError, ConnectAddonConnectionResult>> => {
+        if (input.authenticationInput.method === 'oauth') {
+          const auth = await completeAuthentication(
+            {
+              workspaceId: input.workspaceId,
+              connectionInstanceId: input.connectionInstanceId,
+            },
+            input.authenticationInput.response,
+          )
+          if (auth.isFailure()) return auth.forwardFailure()
+          return Either.success({
+            identity: auth.success.identity,
+          })
+        }
+        if (
+          input.authenticationInput.method === 'credentials' ||
+          input.authenticationInput.method === 'authorized'
+        ) {
+          if (input.authenticationInput.authProfileId !== 'primary') {
+            return Either.failure(
+              AppError.ValidationError('AUTH_PROFILE_NOT_ALLOWED'),
+            )
+          }
+        }
+        return Either.success({})
+      },
+    ),
+  }
+  const disconnectService: IDisconnectAddonConnectionUseCase = {
+    execute: vi.fn(async (input) => {
+      return disconnectLifecycle(input)
+    }),
+  }
+  const authenticatorRegistry = new AddonAuthenticatorRegistry()
+  authenticatorRegistry.register('provider', authenticator)
+  const profilesResolver: IAddonConnectionProfilesResolver = {
+    getConnectionProfiles: async () => Either.success([profile]),
+  }
+  const oauthAttemptCoordinator = new OAuthAttemptCoordinator()
+
   return {
     workspace,
     repository,
+    resolver,
     queryCore,
-    core: new AddonCoreCapabilities(repository, transport),
+    createLifecycle,
+    disconnectLifecycle,
+    withCredentialsLifecycle,
+    completeAuthentication,
+    authenticator,
+    oauthAttemptCoordinator,
+    core: new AddonCoreCapabilities(
+      repository,
+      transport,
+      'provider',
+      lifecycle,
+      resolver,
+      () => authenticator,
+      linkService,
+      connectService,
+      disconnectService,
+      unlinkService,
+      authenticatorRegistry,
+      profilesResolver,
+      oauthAttemptCoordinator,
+      new NoOpSystemEventEmitter(),
+    ),
   }
 }
 describe('Public core read capabilities', () => {
@@ -72,8 +281,15 @@ describe('Public core read capabilities', () => {
       {
         workspaceId: workspace.id,
         connectionInstanceId: 'connection',
-        dataSourceId: 'provider',
+        addonId: 'provider',
+        connectionProfileId: 'primary',
+        cardinality: 'multi',
         status: 'connected',
+        identity: {
+          kind: 'human',
+          displayName: 'Name Test',
+          avatarUrl: null,
+        },
       },
     ])
     expect(core.runtime).not.toHaveProperty('queryCore')
@@ -120,14 +336,261 @@ describe('Public core read capabilities', () => {
       taskId: 'task',
     })
   })
+  it('filters connections by the addon owner bound by the host', async () => {
+    const { core, workspace } = fixture()
+    const listed = await core.connections.list(workspace.id)
+    expect(listed.isSuccess()).toBe(true)
+    if (listed.isFailure()) return expect.fail(listed.failure.messageKey)
+    expect(listed.success.map((connection) => connection.addonId)).toEqual([
+      'provider',
+    ])
+    const foreign = await core.connections.get({
+      workspaceId: workspace.id,
+      connectionInstanceId: 'foreign-connection',
+    })
+    expect(foreign.isFailure()).toBe(true)
+  })
+  it('derives connection ownership from the addon capability', async () => {
+    const { core, createLifecycle, workspace } = fixture()
+    const connectionCapabilityKeys = Object.keys(core.connections)
+    expect(connectionCapabilityKeys).toContain('create')
+    const created = await core.connections.create({
+      workspaceId: workspace.id,
+      connectionProfileId: 'primary',
+    })
+    expect(created.isFailure()).toBe(true)
+    expect(createLifecycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: workspace.id,
+        addonId: 'provider',
+        profile: expect.objectContaining({ connectionProfileId: 'primary' }),
+      }),
+    )
+  })
+  it('completes authentication in the host and returns no credential payload', async () => {
+    const { core, completeAuthentication, workspace } = fixture()
+    const request = await core.connections.createAuthorizationRequest({
+      workspaceId: workspace.id,
+      connectionInstanceId: 'connection',
+    })
+    expect(request.isSuccess()).toBe(true)
+    if (request.isFailure()) return expect.fail(request.failure.messageKey)
+    const url = new URL(request.success.authUrl)
+    const state = url.searchParams.get('state')!
+    const result = await core.connections.completeAuthentication(
+      {
+        workspaceId: workspace.id,
+        connectionInstanceId: 'connection',
+        authorizationRole: 'primary',
+      },
+      { code: 'auth-code', state },
+    )
+    expect(result.isSuccess()).toBe(true)
+    if (result.isFailure()) return expect.fail(result.failure.messageKey)
+    expect(result.success).not.toHaveProperty('credentials')
+    expect(JSON.stringify(result.success)).not.toContain(
+      'private-token-sentinel',
+    )
+    expect(completeAuthentication).toHaveBeenCalledWith(
+      { workspaceId: workspace.id, connectionInstanceId: 'connection' },
+      expect.objectContaining({ code: 'auth-code', state }),
+    )
+  })
+  it('rejects completeAuthentication when authorizationRole is omitted', async () => {
+    const { core, workspace } = fixture()
+    const result = await core.connections.completeAuthentication(
+      { workspaceId: workspace.id, connectionInstanceId: 'connection' },
+      { code: 'auth-code', state: 'state' },
+    )
+    expect(result.isFailure()).toBe(true)
+    expect(result.failure.messageKey).toBe('AUTHORIZATION_ROLE_REQUIRED')
+  })
+  it('runs a credential operation only inside the owner-scoped core capability', async () => {
+    const { core, workspace, withCredentialsLifecycle } = fixture()
+    const operation = vi.fn(async () => Either.success())
+    const result = await core.connections.withCredentials(
+      { workspaceId: workspace.id, connectionInstanceId: 'connection' },
+      operation,
+    )
+
+    expect(result.isSuccess()).toBe(true)
+    expect(operation).toHaveBeenCalledWith({
+      privateToken: 'private-token-sentinel',
+    })
+    expect(withCredentialsLifecycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        addonId: 'provider',
+        scope: {
+          workspaceId: workspace.id,
+          connectionInstanceId: 'connection',
+          authorizationRole: 'primary',
+        },
+      }),
+    )
+    expect(JSON.stringify(result)).not.toContain('private-token-sentinel')
+  })
+  it('denies disconnected and foreign-owned connections before requesting credentials', async () => {
+    const { core, workspace, withCredentialsLifecycle } = fixture()
+    workspace.createConnection('disconnected', 'provider', {
+      connectionProfileId: 'primary',
+      cardinality: 'multi',
+      default: false,
+    })
+    const operation = vi.fn(async () => Either.success())
+
+    const disconnected = await core.connections.withCredentials(
+      {
+        workspaceId: workspace.id,
+        connectionInstanceId: 'disconnected',
+      },
+      operation,
+    )
+    const foreign = await core.connections.withCredentials(
+      {
+        workspaceId: workspace.id,
+        connectionInstanceId: 'foreign-connection',
+      },
+      operation,
+    )
+
+    expect(disconnected.isFailure()).toBe(true)
+    expect(disconnected.isFailure() && disconnected.failure.messageKey).toBe(
+      'CONNECTION_NOT_CONNECTED',
+    )
+    expect(foreign.isFailure()).toBe(true)
+    expect(withCredentialsLifecycle).not.toHaveBeenCalled()
+    expect(operation).not.toHaveBeenCalled()
+  })
+  it('denies cross-addon disconnect before reaching the lifecycle coordinator', async () => {
+    const { core, disconnectLifecycle, workspace } = fixture()
+    const result = await core.connections.disconnect({
+      workspaceId: workspace.id,
+      connectionInstanceId: 'foreign-connection',
+    })
+    expect(result.isFailure()).toBe(true)
+    expect(disconnectLifecycle).not.toHaveBeenCalled()
+  })
+  it('requires the submitted authProfileId to match the persisted connection profile', async () => {
+    const { core, workspace, resolver } = fixture()
+    const result = await core.connections.submitCredentials(
+      { workspaceId: workspace.id, connectionInstanceId: 'connection' },
+      {
+        kind: 'credentials',
+        authProfileId: 'different-profile',
+        credentials: { apiKey: 'new-secret' },
+        configuration: { apiUrl: 'https://provider.example' },
+      },
+    )
+    expect(result.isFailure()).toBe(true)
+    expect(resolver.getDataSource).not.toHaveBeenCalled()
+  })
   it('converts repository read failures at the adapter boundary', async () => {
     const { core, repository } = fixture()
-    vi.spyOn(repository, 'findAll').mockRejectedValue(
+    vi.spyOn(repository, 'list').mockRejectedValue(
       new Error('WORKSPACES_READ_DENIED'),
     )
     const result = await core.workspaces.list()
     expect(result.isFailure()).toBe(true)
     if (result.isSuccess()) return expect.fail('Expected repository failure')
     expect(result.failure.messageKey).toBe('WORKSPACES_READ_DENIED')
+  })
+
+  it('recusa createAuthorizationRequest quando code_challenge esta ausente ou divergente na authUrl e cancela tentativa', async () => {
+    const { core, workspace, authenticator, oauthAttemptCoordinator } =
+      fixture()
+    vi.mocked(authenticator.createAuthorizationRequest).mockImplementationOnce(
+      async (_scope, params) =>
+        Either.success({
+          authUrl: `https://provider.example/authorize?state=${params.state}&redirect_uri=${encodeURIComponent(params.redirectUri)}&code_challenge=tampered-challenge&code_challenge_method=S256`,
+          timeoutMs: 1000,
+        }),
+    )
+
+    const result = await core.connections.createAuthorizationRequest({
+      workspaceId: workspace.id,
+      connectionInstanceId: 'connection',
+      authorizationRole: 'primary',
+    })
+
+    expect(result.isFailure()).toBe(true)
+    if (result.isSuccess())
+      return expect.fail('Esperada falha de code_challenge')
+    expect(result.failure.messageKey).toBe(
+      'OAUTH_CODE_CHALLENGE_MISMATCH_IN_AUTH_URL',
+    )
+    expect(oauthAttemptCoordinator.getActiveAttemptsCount()).toBe(0)
+  })
+
+  it('recusa createAuthorizationRequest quando code_challenge_method nao for S256 e cancela tentativa', async () => {
+    const { core, workspace, authenticator, oauthAttemptCoordinator } =
+      fixture()
+    vi.mocked(authenticator.createAuthorizationRequest).mockImplementationOnce(
+      async (_scope, params) =>
+        Either.success({
+          authUrl: `https://provider.example/authorize?state=${params.state}&redirect_uri=${encodeURIComponent(params.redirectUri)}&code_challenge=${params.codeChallenge}&code_challenge_method=plain`,
+          timeoutMs: 1000,
+        }),
+    )
+
+    const result = await core.connections.createAuthorizationRequest({
+      workspaceId: workspace.id,
+      connectionInstanceId: 'connection',
+      authorizationRole: 'primary',
+    })
+
+    expect(result.isFailure()).toBe(true)
+    if (result.isSuccess()) return expect.fail('Esperada falha de method')
+    expect(result.failure.messageKey).toBe(
+      'OAUTH_CODE_CHALLENGE_METHOD_INVALID_IN_AUTH_URL',
+    )
+    expect(oauthAttemptCoordinator.getActiveAttemptsCount()).toBe(0)
+  })
+
+  it('recusa createAuthorizationRequest quando redirect_uri estiver ausente ou divergente e cancela tentativa', async () => {
+    const { core, workspace, authenticator, oauthAttemptCoordinator } =
+      fixture()
+    vi.mocked(authenticator.createAuthorizationRequest).mockImplementationOnce(
+      async (_scope, params) =>
+        Either.success({
+          authUrl: `https://provider.example/authorize?state=${params.state}&redirect_uri=https://attacker.example/cb&code_challenge=${params.codeChallenge}&code_challenge_method=S256`,
+          timeoutMs: 1000,
+        }),
+    )
+
+    const result = await core.connections.createAuthorizationRequest({
+      workspaceId: workspace.id,
+      connectionInstanceId: 'connection',
+      authorizationRole: 'primary',
+    })
+
+    expect(result.isFailure()).toBe(true)
+    if (result.isSuccess()) return expect.fail('Esperada falha de redirect')
+    expect(result.failure.messageKey).toBe(
+      'OAUTH_REDIRECT_URI_MISMATCH_IN_AUTH_URL',
+    )
+    expect(oauthAttemptCoordinator.getActiveAttemptsCount()).toBe(0)
+  })
+
+  it('recusa createAuthorizationRequest quando protocolo da URL for invalido e cancela tentativa', async () => {
+    const { core, workspace, authenticator, oauthAttemptCoordinator } =
+      fixture()
+    vi.mocked(authenticator.createAuthorizationRequest).mockImplementationOnce(
+      async (_scope, params) =>
+        Either.success({
+          authUrl: `javascript:alert(1)?state=${params.state}&redirect_uri=${encodeURIComponent(params.redirectUri)}&code_challenge=${params.codeChallenge}&code_challenge_method=S256`,
+          timeoutMs: 1000,
+        }),
+    )
+
+    const result = await core.connections.createAuthorizationRequest({
+      workspaceId: workspace.id,
+      connectionInstanceId: 'connection',
+      authorizationRole: 'primary',
+    })
+
+    expect(result.isFailure()).toBe(true)
+    if (result.isSuccess()) return expect.fail('Esperada falha de protocolo')
+    expect(result.failure.messageKey).toBe('OAUTH_ENDPOINT_PROTOCOL_INVALID')
+    expect(oauthAttemptCoordinator.getActiveAttemptsCount()).toBe(0)
   })
 })

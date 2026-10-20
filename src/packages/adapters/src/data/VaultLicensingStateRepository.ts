@@ -30,11 +30,16 @@ export class VaultLicensingStateRepository implements ILicensingStateRepository 
 
   async getInstallationSeed(): Promise<Either<AppError, string | null>> {
     try {
-      const seed = await this.credentialsVault.getToken(
+      const result = await this.credentialsVault.getToken(
         VAULT_SERVICE,
         INSTALLATION_SEED_KEY,
       )
-      if (seed === undefined) return Either.success(null)
+      if (result.kind === 'unavailable')
+        return Either.failure(
+          AppError.Internal('LICENCA_COFRE_LEITURA_IDENTIDADE_FALHOU'),
+        )
+      if (result.kind === 'absent') return Either.success(null)
+      const seed = result.token
       if (seed.trim().length < 16)
         return Either.failure(
           AppError.Unauthorized('LICENCA_IDENTIDADE_LOCAL_INVALIDA'),
@@ -68,9 +73,16 @@ export class VaultLicensingStateRepository implements ILicensingStateRepository 
 
   async readState(): Promise<Either<AppError, StoredLicensingStateDTO | null>> {
     try {
-      const raw = await this.credentialsVault.getToken(VAULT_SERVICE, STATE_KEY)
-      if (raw === undefined) return Either.success(null)
-      const parsed: object = JSON.parse(raw)
+      const result = await this.credentialsVault.getToken(
+        VAULT_SERVICE,
+        STATE_KEY,
+      )
+      if (result.kind === 'unavailable')
+        return Either.failure(
+          AppError.Internal('LICENCA_COFRE_LEITURA_CACHE_FALHOU'),
+        )
+      if (result.kind === 'absent') return Either.success(null)
+      const parsed: object = JSON.parse(result.token)
       if (!isStoredState(parsed))
         return Either.failure(AppError.Unauthorized('LICENCA_CACHE_INVALIDO'))
       return Either.success(parsed)

@@ -1,4 +1,5 @@
 import {
+  AddonCapabilityDescriptor,
   AddonCategory,
   AddonPackage,
   AddonScreenshot,
@@ -45,4 +46,6 @@ export type AddonConfig = {
   changelog?: string[]
   Changelog?: string[]
   packages?: AddonPackage[]
+  capabilities?: AddonCapabilityDescriptor[]
+  Capabilities?: AddonCapabilityDescriptor[]
 }

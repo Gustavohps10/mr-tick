@@ -1,12 +1,13 @@
-﻿import { Workspace } from '@mr-tick/domain'
+import { Workspace } from '@mr-tick/domain'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type {
+import {
   IFileManager,
   IFileStorage,
   IWorkspacesRepository,
+  UpdateWorkspaceIdentityInput,
 } from '@/contracts'
 
 import { UpdateWorkspaceIdentityService } from './UpdateWorkspaceIdentityService'
@@ -18,13 +19,13 @@ describe('UpdateWorkspaceIdentityService', () => {
   let fileManagerMock: Mocked<IFileManager>
   let fakeWorkspace: Mocked<Workspace>
 
-  const fakeDate = new Date('2026-04-18T00:00:00.000Z')
-
-  const makeInput = (overrides = {}) => ({
+  const makeInput = (
+    overrides?: Partial<UpdateWorkspaceIdentityInput>,
+  ): UpdateWorkspaceIdentityInput => ({
     workspaceId: 'ws-123',
-    name: 'New Name',
-    description: 'New Description',
-    avatarFile: Buffer.from('fake-image'),
+    name: 'Updated Name',
+    description: 'Updated Description',
+    avatarFile: Buffer.from('fake-avatar'),
     removeAvatar: false,
     ...overrides,
   })
@@ -32,37 +33,40 @@ describe('UpdateWorkspaceIdentityService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    workspacesRepositoryMock = {
-      findById: vi.fn(),
-      update: vi.fn(),
-      create: vi.fn(),
-      delete: vi.fn(),
-    } as unknown as Mocked<IWorkspacesRepository>
-
-    fileStorageMock = {
-      write: vi.fn(),
-      getPublicUrl: vi.fn(),
-      delete: vi.fn(),
-      read: vi.fn(),
-    } as unknown as Mocked<IFileStorage>
-
-    fileManagerMock = {
-      zip: vi.fn(),
-      unzipInMemory: vi.fn(),
-      getMimeType: vi.fn(),
-    } as unknown as Mocked<IFileManager>
-
     fakeWorkspace = {
       id: 'ws-123',
       name: 'Old Name',
       description: 'Old Description',
-      avatarUrl: 'https://old-avatar.com/img.png',
+      avatarUrl: 'https://storage.com/old.png',
       status: 'configured',
-      dataSourceConnections: [],
-      createdAt: fakeDate,
-      updatedAt: fakeDate,
-      updateIdentity: vi.fn(),
+      connections: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      updateIdentity: vi.fn().mockReturnValue(Either.success()),
     } as unknown as Mocked<Workspace>
+
+    workspacesRepositoryMock = {
+      getById: vi.fn().mockResolvedValue(Either.success(fakeWorkspace)),
+      list: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn().mockResolvedValue(Either.success(undefined)),
+      remove: vi.fn(),
+    } as unknown as Mocked<IWorkspacesRepository>
+
+    fileStorageMock = {
+      write: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+      getPublicUrl: vi.fn().mockReturnValue('https://storage.com/new.png'),
+      read: vi.fn(),
+    } as unknown as Mocked<IFileStorage>
+
+    fileManagerMock = {
+      getMimeType: vi
+        .fn()
+        .mockResolvedValue(Either.success({ mime: 'image/png', ext: 'png' })),
+      zip: vi.fn(),
+      unzipInMemory: vi.fn(),
+    } as unknown as Mocked<IFileManager>
 
     sut = new UpdateWorkspaceIdentityService(
       workspacesRepositoryMock,
@@ -72,7 +76,9 @@ describe('UpdateWorkspaceIdentityService', () => {
   })
 
   it('should return NotFound when workspace does not exist', async () => {
-    workspacesRepositoryMock.findById.mockResolvedValue(null as any)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(undefined),
+    )
 
     const result = await sut.execute(makeInput())
 
@@ -85,7 +91,9 @@ describe('UpdateWorkspaceIdentityService', () => {
   it('should update identity without changing avatar when no file and no removeAvatar', async () => {
     const input = makeInput({ avatarFile: undefined })
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
     fakeWorkspace.updateIdentity.mockReturnValue(Either.success())
 
     const result = await sut.execute(input)
@@ -98,12 +106,15 @@ describe('UpdateWorkspaceIdentityService', () => {
       description: input.description,
       avatarUrl: fakeWorkspace.avatarUrl,
     })
+    expect(workspacesRepositoryMock.update).toHaveBeenCalledWith(fakeWorkspace)
   })
 
   it('should delete old avatar and set avatarUrl to undefined when removeAvatar is true', async () => {
     const input = makeInput({ avatarFile: undefined, removeAvatar: true })
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
     fakeWorkspace.updateIdentity.mockReturnValue(Either.success())
 
     const result = await sut.execute(input)
@@ -116,6 +127,7 @@ describe('UpdateWorkspaceIdentityService', () => {
     expect(fakeWorkspace.updateIdentity).toHaveBeenCalledWith(
       expect.objectContaining({ avatarUrl: undefined }),
     )
+    expect(workspacesRepositoryMock.update).toHaveBeenCalledWith(fakeWorkspace)
   })
 
   it('should not call fileStorage.delete if workspace has no avatar when removeAvatar is true', async () => {
@@ -127,18 +139,23 @@ describe('UpdateWorkspaceIdentityService', () => {
       updateIdentity: vi.fn().mockReturnValue(Either.success()),
     } as unknown as Mocked<Workspace>
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
 
     await sut.execute(input)
 
     expect(fileStorageMock.delete).not.toHaveBeenCalled()
+    expect(workspacesRepositoryMock.update).toHaveBeenCalledWith(fakeWorkspace)
   })
 
   it('should upload new avatar and update identity successfully', async () => {
     const input = makeInput()
     const newPublicUrl = 'https://storage.com/new-avatar.png'
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
     fileManagerMock.getMimeType.mockResolvedValue(
       Either.success({ mime: 'image/png', ext: 'png' }),
     )
@@ -163,7 +180,9 @@ describe('UpdateWorkspaceIdentityService', () => {
   it('should use correct extension from getMimeType', async () => {
     const input = makeInput()
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
     fileManagerMock.getMimeType.mockResolvedValue(
       Either.success({ mime: 'image/webp', ext: 'webp' }),
     )
@@ -183,7 +202,9 @@ describe('UpdateWorkspaceIdentityService', () => {
   it('should return failure if getMimeType fails', async () => {
     const input = makeInput()
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
     fileManagerMock.getMimeType.mockResolvedValue(
       Either.failure(
         AppError.ValidationError('Formato de arquivo não suportado.'),
@@ -201,7 +222,9 @@ describe('UpdateWorkspaceIdentityService', () => {
     const input = makeInput()
     const domainError = AppError.ValidationError('CAMPOS_INVALIDOS')
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
     fileManagerMock.getMimeType.mockResolvedValue(
       Either.success({ mime: 'image/png', ext: 'png' }),
     )
@@ -225,7 +248,9 @@ describe('UpdateWorkspaceIdentityService', () => {
     const input = makeInput({ avatarFile: undefined })
     const domainError = AppError.ValidationError('CAMPOS_INVALIDOS')
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
     fakeWorkspace.updateIdentity.mockReturnValue(Either.failure(domainError))
 
     await sut.execute(input)
@@ -236,7 +261,9 @@ describe('UpdateWorkspaceIdentityService', () => {
   it('should delete uploaded avatar and return failure if repository update throws', async () => {
     const input = makeInput()
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
     fileManagerMock.getMimeType.mockResolvedValue(
       Either.success({ mime: 'image/png', ext: 'png' }),
     )
@@ -256,7 +283,7 @@ describe('UpdateWorkspaceIdentityService', () => {
   })
 
   it('should return Internal error when findById throws', async () => {
-    workspacesRepositoryMock.findById.mockRejectedValue(new Error('Fatal'))
+    workspacesRepositoryMock.getById.mockRejectedValue(new Error('Fatal'))
 
     const result = await sut.execute(makeInput())
 
@@ -270,7 +297,9 @@ describe('UpdateWorkspaceIdentityService', () => {
   it('should return Internal error when fileStorage.write throws', async () => {
     const input = makeInput()
 
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
     fileManagerMock.getMimeType.mockResolvedValue(
       Either.success({ mime: 'image/png', ext: 'png' }),
     )
@@ -281,5 +310,14 @@ describe('UpdateWorkspaceIdentityService', () => {
     expect(result.isFailure()).toBe(true)
     expect(result.failure.statusCode).toBe(500)
     expect(workspacesRepositoryMock.update).not.toHaveBeenCalled()
+  })
+
+  it('updates workspace identity using targeted findById and update adhering to Rule 37', async () => {
+    const input = makeInput({ avatarFile: undefined })
+    const result = await sut.execute(input)
+
+    expect(result.isSuccess()).toBe(true)
+    expect(workspacesRepositoryMock.getById).toHaveBeenCalledWith('ws-123')
+    expect(workspacesRepositoryMock.update).toHaveBeenCalledWith(fakeWorkspace)
   })
 })

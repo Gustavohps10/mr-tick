@@ -3,19 +3,36 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { IAddonAccessService } from '@mr-tick/application'
+import {
+  AddonCapabilityOwnershipValidator,
+  AddonConnectionAuthenticator,
+  AddonSettingsView,
+  CoreAddonScopeOwnershipValidator,
+  GetAddonSettingsService,
+  IAddonAccessService,
+  IAddonAuthenticatorRegistry,
+  IAddonConnectionProfilesRegistry,
+  IAddonSettingsRepository,
+  isFlatSettingsFieldList,
+  SaveAddonSettingsService,
+} from '@mr-tick/application'
 import {
   IAddonReloader,
-  ICoreReadAPI,
+  IConnectionCredentialsVault,
+  ICoreAddonCapabilities,
   ICredentialsVault,
   ILicensingFacade,
   ILocalRuntimeAPI,
+  IOAuthAttemptCoordinator,
+  IWorkspaceCredentialReferenceRegistry,
 } from '@mr-tick/application'
 import {
   AddonActionResponse,
+  AddonCapabilityDescriptor,
   AddonContext,
   AddonRuntimeCapabilities,
-  AddonSettingsField,
+  AddonSettingsApplyHandler,
+  AddonSettingsRegisterOptions,
   AddonSettingsSchema,
   AddonSettingsSchemaProvider,
   AddonSettingsTab,
@@ -30,8 +47,10 @@ import {
   generatePKCE,
   IAddon,
   IAddonCommandsAPI,
+  IAddonConnectionsContributionAPI,
   IAddonDataSourcesAPI,
   IAddonEventsAPI,
+  IAddonManifest,
   IAddonMenusAPI,
   IAddonNotificationsAPI,
   IAddonOAuthAPI,
@@ -44,6 +63,9 @@ import {
   TimerbarMenuItem,
 } from '@mr-tick/sdk'
 import {
+  AppError,
+  compareSemVer,
+  Either,
   hasProperty,
   isApiVersionCompatible,
   isBoolean,
@@ -51,6 +73,7 @@ import {
   isNonEmptyString,
   isRecord,
   isString,
+  parseSemVer,
 } from '@mr-tick/shared/helpers'
 import { ISystemEvents } from '@mr-tick/shared/transport'
 import { BrowserWindow, Notification, shell } from 'electron'
@@ -59,8 +82,14 @@ import yaml from 'js-yaml'
 import { getSettings, saveSettings } from '@/main/settings'
 
 import sdkPkg from '../../../../sdk/package.json'
-import { AddonLifetime } from './AddonLifetime'
+import { AddonBindingLifetime, AddonLifetime } from './AddonLifetime'
 import { AddonScopedVault } from './AddonScopedVault'
+import {
+  GuardedMemberProvider,
+  GuardedMetadataProvider,
+  GuardedTaskProvider,
+  GuardedTimeEntryProvider,
+} from './GuardedDataSourceProviders'
 
 export class MemoryRegistry<T extends { id?: string }> implements IRegistry<T> {
   private items = new Map<string, T>()
@@ -215,6 +244,21 @@ export class AddonEventEmitter implements IAddonEventsAPI {
   }
 }
 
+export function isCapabilityContractCompatible(
+  requiredVersion: string,
+  supportedVersion: string,
+): boolean {
+  const req = parseSemVer(requiredVersion)
+  const sup = parseSemVer(supportedVersion)
+  if (req === null || sup === null) return false
+  if (req.major !== sup.major) return false
+  if (req.major === 0) {
+    if (req.minor !== sup.minor) return false
+    return sup.patch >= req.patch
+  }
+  return compareSemVer(sup, req) >= 0
+}
+
 export class AddonLoader implements IAddonReloader {
   private activeAddons = new Map<string, ActiveAddonInfo>()
   private loadingAddons = new Map<string, Promise<boolean>>()
@@ -226,6 +270,10 @@ export class AddonLoader implements IAddonReloader {
   public readonly sidebarRegistry = new MemoryRegistry<SidebarMenuItem>()
   private addonTimerbarItems = new Map<string, TimerbarMenuItem>()
   private addonSettingsSchemas = new Map<string, AddonSettingsSchemaProvider>()
+  private addonSettingsApplyHandlers = new Map<
+    string,
+    AddonSettingsApplyHandler
+  >()
   public readonly dataSourceRegistry = new MemoryRegistry<
     IDataSource & { id?: string }
   >()
@@ -243,15 +291,72 @@ export class AddonLoader implements IAddonReloader {
     }
   >()
 
+  private readonly getAddonSettingsService: GetAddonSettingsService
+  private readonly saveAddonSettingsService: SaveAddonSettingsService
+
   constructor(
-    private credentialsVault: ICredentialsVault,
+    private credentialsVault: ICredentialsVault & IConnectionCredentialsVault,
     private readonly localRuntime: ILocalRuntimeAPI,
     private readonly hostSdkVersion: string,
-    private readonly core: ICoreReadAPI,
+    private readonly coreForAddon: (addonId: string) => ICoreAddonCapabilities,
     private readonly addonAccessService: IAddonAccessService,
+    private readonly workspaceReferenceRegistry: IWorkspaceCredentialReferenceRegistry,
+    private readonly addonSettingsRepository: IAddonSettingsRepository,
+    private readonly authenticatorRegistry: IAddonAuthenticatorRegistry,
+    private readonly profilesResolver: IAddonConnectionProfilesRegistry,
+    private readonly oauthAttemptCoordinator: IOAuthAttemptCoordinator,
   ) {
+    const capabilityOwnershipValidator = new AddonCapabilityOwnershipValidator(
+      (addonId, capabilityId) => {
+        if (this.disabledCapabilities.has(`${addonId}:${capabilityId}`)) {
+          return undefined
+        }
+        const caps = this.addonCapabilities.get(addonId)
+        if (!caps) return undefined
+        return caps.find((c) => c.capabilityId === capabilityId)
+      },
+    )
+    const ownershipValidator = new CoreAddonScopeOwnershipValidator(
+      (addonId) => this.coreForAddon(addonId).connections,
+      capabilityOwnershipValidator,
+    )
+    this.getAddonSettingsService = new GetAddonSettingsService(
+      (addonId) => this.vaultFor(addonId),
+      ownershipValidator,
+    )
+    this.saveAddonSettingsService = new SaveAddonSettingsService(
+      (addonId) => this.vaultFor(addonId),
+      ownershipValidator,
+    )
     this.registerThemeCommands()
     this.restoreActiveTheme()
+    this.systemEventEmitter.on('connection:disconnected', (payload) => {
+      if (payload && payload.workspaceId && payload.connectionInstanceId) {
+        this.notifyConnectionBindingChanged(
+          payload.workspaceId,
+          payload.connectionInstanceId,
+          'stop',
+        )
+      }
+    })
+    this.systemEventEmitter.on('connection:archived', (payload) => {
+      if (payload && payload.workspaceId && payload.connectionInstanceId) {
+        this.notifyConnectionBindingChanged(
+          payload.workspaceId,
+          payload.connectionInstanceId,
+          'cancel',
+        )
+      }
+    })
+    this.systemEventEmitter.on('connection:removed', (payload) => {
+      if (payload && payload.workspaceId && payload.connectionInstanceId) {
+        this.notifyConnectionBindingChanged(
+          payload.workspaceId,
+          payload.connectionInstanceId,
+          'cancel',
+        )
+      }
+    })
   }
 
   public setLicensingFacade(licensingFacade: ILicensingFacade): void {
@@ -260,6 +365,13 @@ export class AddonLoader implements IAddonReloader {
 
   public getHostSdkVersion(): string {
     return this.hostSdkVersion
+  }
+
+  public getConnectionAuthenticator(
+    addonId: string,
+    authProfileId: string,
+  ): AddonConnectionAuthenticator | undefined {
+    return this.authenticatorRegistry.getAuthenticator(addonId, authProfileId)
   }
 
   private registerThemeCommands(): void {
@@ -377,18 +489,199 @@ export class AddonLoader implements IAddonReloader {
     }
   }
 
+  private readonly supportedContractVersions: Record<string, string> = {
+    dataSource: '1.0.0',
+    watcher: '1.0.0',
+    calendar: '1.0.0',
+    punch: '1.0.0',
+    theme: '1.0.0',
+    custom: '1.0.0',
+  }
+  private readonly addonCapabilities = new Map<
+    string,
+    AddonCapabilityDescriptor[]
+  >()
+  private readonly disabledCapabilities = new Set<string>()
+
+  public notifyConnectionBindingChanged(
+    workspaceId: string,
+    connectionInstanceId: string,
+    action: 'stop' | 'cancel' | 'restart',
+    capabilityId?: string,
+  ): void {
+    for (const lifetime of this.lifetimes.values()) {
+      if (action === 'stop' || action === 'cancel') {
+        lifetime.stopConnectionBindings(workspaceId, connectionInstanceId)
+      }
+      if (action === 'restart') {
+        lifetime
+          .binding(workspaceId, connectionInstanceId, capabilityId)
+          .startNextGeneration()
+      }
+    }
+  }
+
+  public getAddonBindingLifetime(
+    addonId: string,
+    workspaceId: string,
+    connectionInstanceId: string,
+    capabilityId?: string,
+  ): AddonBindingLifetime | undefined {
+    const lifetime = this.lifetimes.get(addonId)
+    if (!lifetime) return undefined
+    return lifetime.binding(workspaceId, connectionInstanceId, capabilityId)
+  }
+
+  public registerManifestCapabilities(
+    addonId: string,
+    capabilities?: AddonCapabilityDescriptor[],
+  ): Either<AppError, void> {
+    if (!capabilities || capabilities.length === 0) {
+      return Either.success()
+    }
+    const seenIds = new Set<string>()
+    let dataSourceCount = 0
+    const pendingDisabled = new Set<string>()
+    for (const cap of capabilities) {
+      if (seenIds.has(cap.capabilityId)) {
+        return Either.failure(
+          AppError.ValidationError(
+            `CAPABILITY_DUPLICATE_ID:${cap.capabilityId}`,
+          ),
+        )
+      }
+      seenIds.add(cap.capabilityId)
+      if (cap.kind === 'dataSource') {
+        dataSourceCount += 1
+      }
+      const supported = this.supportedContractVersions[cap.kind]
+      if (supported === undefined) {
+        return Either.failure(
+          AppError.ValidationError(`CAPABILITY_UNKNOWN_KIND:${cap.kind}`),
+        )
+      }
+      const isCompatible = isCapabilityContractCompatible(
+        cap.contractVersion,
+        supported,
+      )
+      if (!isCompatible) {
+        if (cap.required) {
+          return Either.failure(
+            AppError.ValidationError(
+              `CAPABILITY_CONTRACT_INCOMPATIBLE:${cap.capabilityId}`,
+            ),
+          )
+        }
+        pendingDisabled.add(`${addonId}:${cap.capabilityId}`)
+      }
+    }
+    if (dataSourceCount > 1) {
+      return Either.failure(
+        AppError.ValidationError('MULTIPLE_DATASOURCES_NOT_ALLOWED'),
+      )
+    }
+    for (const key of Array.from(this.disabledCapabilities)) {
+      if (key.startsWith(`${addonId}:`)) {
+        this.disabledCapabilities.delete(key)
+      }
+    }
+    for (const key of pendingDisabled) {
+      this.disabledCapabilities.add(key)
+    }
+    this.addonCapabilities.set(addonId, capabilities)
+    return Either.success()
+  }
+
+  public isOperationSupported(
+    addonId: string,
+    capabilityId: string,
+    operation: string,
+  ): boolean {
+    if (this.disabledCapabilities.has(`${addonId}:${capabilityId}`)) {
+      return false
+    }
+    const caps = this.addonCapabilities.get(addonId)
+    if (caps === undefined) return false
+    const cap = caps.find((c) => c.capabilityId === capabilityId)
+    if (cap === undefined) return false
+    if (
+      !Array.isArray(cap.supportedOperations) ||
+      cap.supportedOperations.length === 0
+    ) {
+      return false
+    }
+    if (cap.supportedOperations.includes(operation)) {
+      return true
+    }
+    if (
+      (operation === 'pull' ||
+        operation === 'findAll' ||
+        operation === 'findById' ||
+        operation === 'findByMemberId' ||
+        operation === 'getCurrentUser' ||
+        operation === 'findByCredentials' ||
+        operation === 'getMetadata' ||
+        operation === 'getMappingFields') &&
+      cap.supportedOperations.includes('read')
+    ) {
+      return true
+    }
+    if (
+      (operation === 'create' ||
+        operation === 'update' ||
+        operation === 'delete' ||
+        operation === 'updateConditional') &&
+      cap.supportedOperations.includes('write')
+    ) {
+      return true
+    }
+    return false
+  }
+
   private readonly addonVaults = new Map<string, AddonScopedVault>()
   private readonly lifetimes = new Map<string, AddonLifetime>()
-
   private vaultFor(addonId: string): AddonScopedVault {
     const existing = this.addonVaults.get(addonId)
     if (existing !== undefined) return existing
-    const vault = new AddonScopedVault(addonId, this.credentialsVault)
+    const vault = new AddonScopedVault(
+      addonId,
+      this.credentialsVault,
+      this.credentialsVault,
+      this.workspaceReferenceRegistry,
+      this.addonSettingsRepository,
+    )
     this.addonVaults.set(addonId, vault)
     return vault
   }
 
   private activeWorkspaceId: string | null = null
+  private readonly appliedSettingsRevisions = new Map<string, number>()
+  private readonly latestStartedSettingsRevisions = new Map<string, number>()
+
+  public getAppliedSettingsRevision(
+    addonId: string,
+    scope: AddonVaultScope,
+  ): number | undefined {
+    return this.appliedSettingsRevisions.get(
+      this.buildSettingsRevisionKey(addonId, scope),
+    )
+  }
+
+  private buildSettingsRevisionKey(
+    addonId: string,
+    scope: AddonVaultScope,
+  ): string {
+    if (scope.kind === 'addon') {
+      return `${addonId}:addon`
+    }
+    if (scope.kind === 'workspace') {
+      return `${addonId}:workspace:${scope.workspaceId}`
+    }
+    if (scope.kind === 'connection') {
+      return `${addonId}:connection:${scope.workspaceId}:${scope.connectionInstanceId}`
+    }
+    return `${addonId}:capability:${scope.workspaceId}:${scope.connectionInstanceId}:${scope.capabilityId}`
+  }
 
   public setActiveWorkspace(workspaceId: string): void {
     if (workspaceId && workspaceId !== this.activeWorkspaceId) {
@@ -399,6 +692,24 @@ export class AddonLoader implements IAddonReloader {
       if (previousWorkspaceId) {
         prevDisplay = previousWorkspaceId
         prevValue = previousWorkspaceId
+      }
+      for (const [addonId, caps] of this.addonCapabilities.entries()) {
+        const enabledCaps = caps.filter(
+          (cap) =>
+            !this.disabledCapabilities.has(`${addonId}:${cap.capabilityId}`),
+        )
+        const lifetime = this.lifetimes.get(addonId)
+        for (const cap of enabledCaps) {
+          if (
+            cap.executionPolicy.kind === 'activeWorkspace' &&
+            previousWorkspaceId
+          ) {
+            lifetime?.stopWorkspaceCapabilityBindings(
+              previousWorkspaceId,
+              cap.capabilityId,
+            )
+          }
+        }
       }
       console.log(
         `[AddonLoader] 🔄 Workspace alterado de "${prevDisplay}" para "${workspaceId}"`,
@@ -512,6 +823,7 @@ export class AddonLoader implements IAddonReloader {
   }
 
   public createContext(addonId: string): AddonContext {
+    const addonCore = this.coreForAddon(addonId)
     const lifetime = new AddonLifetime()
     this.lifetimes.get(addonId)?.dispose()
     this.lifetimes.set(addonId, lifetime)
@@ -564,10 +876,19 @@ export class AddonLoader implements IAddonReloader {
     const oauth = this.createOAuthAPI(addonId)
 
     const settingsRegistry: IAddonSettingsAPI = {
-      register: (schema: AddonSettingsSchemaProvider) => {
+      register: (
+        schema: AddonSettingsSchemaProvider,
+        options?: AddonSettingsRegisterOptions,
+      ) => {
         if (!lifetime.isActive()) return
         this.addonSettingsSchemas.set(addonId, schema)
-        lifetime.track(() => this.addonSettingsSchemas.delete(addonId))
+        if (options?.onApply !== undefined) {
+          this.addonSettingsApplyHandlers.set(addonId, options.onApply)
+        }
+        lifetime.track(() => {
+          this.addonSettingsSchemas.delete(addonId)
+          this.addonSettingsApplyHandlers.delete(addonId)
+        })
       },
       getSchema: (context) => {
         const item = this.addonSettingsSchemas.get(addonId)
@@ -580,25 +901,194 @@ export class AddonLoader implements IAddonReloader {
     const dataSourceRegistryProxy: IAddonDataSourcesAPI = {
       register: (item: IDataSource) => {
         if (!lifetime.isActive()) return
+        const dsCap = this.addonCapabilities
+          .get(addonId)
+          ?.find((c) => c.kind === 'dataSource')
+        if (
+          dsCap === undefined ||
+          this.disabledCapabilities.has(`${addonId}:${dsCap.capabilityId}`)
+        ) {
+          return
+        }
         const itemWithId: IDataSource & { id: string } = {
           id: addonId,
+          getConnectionProfiles: () => item.getConnectionProfiles(),
           getConnectionSchema: () => item.getConnectionSchema(),
-          createInstance: (context) =>
-            item.createInstance({
+          createInstance: (context) => {
+            const isScopeValid = Boolean(
+              context.scope &&
+              isNonEmptyString(context.scope.workspaceId) &&
+              isNonEmptyString(context.scope.connectionInstanceId),
+            )
+            let workspaceId = ''
+            let connectionInstanceId = ''
+            if (context.scope && isScopeValid) {
+              workspaceId = context.scope.workspaceId
+              connectionInstanceId = context.scope.connectionInstanceId
+            }
+            const binding = lifetime.binding(
+              workspaceId,
+              connectionInstanceId,
+              dsCap.capabilityId,
+            )
+            const capturedGen = binding.getGeneration()
+            const isOpSupported = (operation: string): boolean => {
+              return this.isOperationSupported(
+                addonId,
+                dsCap.capabilityId,
+                operation,
+              )
+            }
+            const rawInstance = item.createInstance({
               ...context,
               oauth: context.oauth ?? oauth,
-            }),
+            })
+            return {
+              tasksProvider: new GuardedTaskProvider(
+                rawInstance.tasksProvider,
+                binding,
+                capturedGen,
+                isOpSupported,
+                isScopeValid,
+              ),
+              timeEntriesProvider: new GuardedTimeEntryProvider(
+                rawInstance.timeEntriesProvider,
+                binding,
+                capturedGen,
+                isOpSupported,
+                isScopeValid,
+              ),
+              membersProvider: new GuardedMemberProvider(
+                rawInstance.membersProvider,
+                binding,
+                capturedGen,
+                isOpSupported,
+                isScopeValid,
+              ),
+              metadataProvider: new GuardedMetadataProvider(
+                rawInstance.metadataProvider,
+                binding,
+                capturedGen,
+                isOpSupported,
+                isScopeValid,
+              ),
+            }
+          },
         }
-        if (item.getMappingFields !== undefined)
-          itemWithId.getMappingFields = item.getMappingFields.bind(item)
+        if (item.getStaticMappingFields !== undefined) {
+          const rawGetStaticMappingFields =
+            item.getStaticMappingFields.bind(item)
+          itemWithId.getStaticMappingFields = () => {
+            if (
+              !this.isOperationSupported(
+                addonId,
+                dsCap.capabilityId,
+                'getMappingFields',
+              )
+            ) {
+              return []
+            }
+            return rawGetStaticMappingFields()
+          }
+        }
+        if (item.getMappingFields !== undefined) {
+          const rawGetMappingFields = item.getMappingFields.bind(item)
+          itemWithId.getMappingFields = async (scope: {
+            workspaceId: string
+            connectionInstanceId: string
+          }) => {
+            if (
+              !scope ||
+              !isNonEmptyString(scope.workspaceId) ||
+              !isNonEmptyString(scope.connectionInstanceId)
+            ) {
+              return Either.failure(
+                AppError.ValidationError('CONNECTION_SCOPE_REQUIRED'),
+              )
+            }
+            if (
+              !this.isOperationSupported(
+                addonId,
+                dsCap.capabilityId,
+                'getMappingFields',
+              )
+            ) {
+              return Either.failure(
+                AppError.Http(403, 'OPERATION_NOT_SUPPORTED'),
+              )
+            }
+            const binding = lifetime.findScopedBinding(
+              scope.workspaceId,
+              scope.connectionInstanceId,
+              dsCap.capabilityId,
+            )
+            if (binding === undefined || !binding.isActive()) {
+              return Either.failure(
+                AppError.Unauthorized('CONNECTION_DISCONNECTED_OR_CHANGED'),
+              )
+            }
+            const gen = binding.getGeneration()
+            if (!binding.isCurrentGeneration(gen)) {
+              return Either.failure(
+                AppError.Unauthorized('CONNECTION_DISCONNECTED_OR_CHANGED'),
+              )
+            }
+            const res = await rawGetMappingFields(scope)
+            if (!binding.isCurrentGeneration(gen)) {
+              return Either.failure(
+                AppError.Unauthorized('CONNECTION_DISCONNECTED_OR_CHANGED'),
+              )
+            }
+            return res
+          }
+        }
         this.dataSourceRegistry.register(itemWithId)
-        lifetime.track(() => this.dataSourceRegistry.unregister(addonId))
+        this.profilesResolver.registerProfiles(
+          addonId,
+          item.getConnectionProfiles(),
+        )
+        lifetime.track(() => {
+          this.dataSourceRegistry.unregister(addonId)
+          this.profilesResolver.unregisterProfiles(addonId)
+        })
       },
       unregister: (id: string) => {
-        if (lifetime.isActive() && id === addonId)
+        if (lifetime.isActive() && id === addonId) {
           this.dataSourceRegistry.unregister(addonId)
+          this.profilesResolver.unregisterProfiles(addonId)
+        }
       },
       getItems: () => this.dataSourceRegistry.getItems(),
+    }
+
+    const connectionContributions: IAddonConnectionsContributionAPI = {
+      registerProfiles: (profiles) => {
+        if (!lifetime.isActive()) return
+        this.profilesResolver.registerProfiles(addonId, profiles)
+        lifetime.track(() => {
+          this.profilesResolver.unregisterProfiles(addonId)
+        })
+      },
+      unregisterProfiles: () => {
+        if (lifetime.isActive()) {
+          this.profilesResolver.unregisterProfiles(addonId)
+        }
+      },
+      registerAuthenticator: (authenticator) => {
+        if (!lifetime.isActive()) return
+        this.authenticatorRegistry.register(addonId, authenticator)
+        lifetime.track(() => {
+          this.authenticatorRegistry.unregister(
+            addonId,
+            authenticator.authProfileId,
+          )
+        })
+      },
+      unregisterAuthenticator: (authProfileId: string) => {
+        if (lifetime.isActive()) {
+          this.authenticatorRegistry.unregister(addonId, authProfileId)
+        }
+      },
     }
 
     const scopedCommands: IAddonCommandsAPI = {
@@ -628,11 +1118,11 @@ export class AddonLoader implements IAddonReloader {
 
     return {
       core: {
-        runtime: lifetime.availability(this.core.runtime),
-        workspaces: this.core.workspaces,
-        connections: this.core.connections,
-        tasks: this.core.tasks,
-        metadata: this.core.metadata,
+        runtime: lifetime.availability(addonCore.runtime),
+        workspaces: addonCore.workspaces,
+        connections: addonCore.connections,
+        tasks: addonCore.tasks,
+        metadata: addonCore.metadata,
         timer,
         timeEntries,
       },
@@ -641,6 +1131,7 @@ export class AddonLoader implements IAddonReloader {
         menus: menusRegistry,
         settings: settingsRegistry,
         dataSources: dataSourceRegistryProxy,
+        connections: connectionContributions,
         themes: lifetime.registry(addonId, this.themesRegistry),
       },
       host: {
@@ -734,7 +1225,20 @@ export class AddonLoader implements IAddonReloader {
   public async activateAddon(
     addonId: string,
     addonInstance: IAddon,
+    manifest?: IAddonManifest,
   ): Promise<boolean> {
+    if (manifest && manifest.capabilities) {
+      const capResult = this.registerManifestCapabilities(
+        addonId,
+        manifest.capabilities,
+      )
+      if (capResult.isFailure()) {
+        console.error(
+          `[AddonLoader] Addon ${addonId} recusado por capacidade incompatível: ${capResult.failure.messageKey}`,
+        )
+        return false
+      }
+    }
     if (this.activeAddons.has(addonId)) await this.deactivateAddon(addonId)
     const context = this.createContext(addonId)
     try {
@@ -765,6 +1269,13 @@ export class AddonLoader implements IAddonReloader {
 
   public async deactivateAddon(addonId: string): Promise<void> {
     this.timerControlLock.release(addonId)
+    this.oauthAttemptCoordinator.invalidateForAddon(addonId)
+    this.addonCapabilities.delete(addonId)
+    for (const key of Array.from(this.disabledCapabilities)) {
+      if (key.startsWith(`${addonId}:`)) {
+        this.disabledCapabilities.delete(key)
+      }
+    }
     for (const [state, req] of this.pendingOAuthRequests.entries()) {
       if (req.addonId === addonId) {
         clearTimeout(req.timeoutId)
@@ -880,6 +1391,7 @@ export class AddonLoader implements IAddonReloader {
 
       let metaName: string | undefined
       let metaIconUrl: string | undefined
+      let parsedCapabilities: AddonCapabilityDescriptor[] | undefined
       const manifestPathYaml = join(addonFolderPath, 'manifest.yaml')
       const manifestPathYml = join(addonFolderPath, 'manifest.yml')
       const manifestPathJson = join(addonFolderPath, 'manifest.json')
@@ -890,6 +1402,7 @@ export class AddonLoader implements IAddonReloader {
           if (isRecord(parsed)) {
             if (isString(parsed.name)) metaName = parsed.name
             if (isString(parsed.iconUrl)) metaIconUrl = parsed.iconUrl
+            parsedCapabilities = parseDiskManifestCapabilities(parsed)
           }
         }
         if (!metaName && existsSync(manifestPathYml)) {
@@ -897,15 +1410,15 @@ export class AddonLoader implements IAddonReloader {
           if (isRecord(parsed)) {
             if (isString(parsed.name)) metaName = parsed.name
             if (isString(parsed.iconUrl)) metaIconUrl = parsed.iconUrl
+            parsedCapabilities = parseDiskManifestCapabilities(parsed)
           }
         }
         if (!metaName && existsSync(manifestPathJson)) {
-          const raw: unknown = JSON.parse(
-            readFileSync(manifestPathJson, 'utf-8'),
-          )
-          if (isRecord(raw)) {
-            if (isString(raw.name)) metaName = raw.name
-            if (isString(raw.iconUrl)) metaIconUrl = raw.iconUrl
+          const parsed = yaml.load(readFileSync(manifestPathJson, 'utf-8'))
+          if (isRecord(parsed)) {
+            if (isString(parsed.name)) metaName = parsed.name
+            if (isString(parsed.iconUrl)) metaIconUrl = parsed.iconUrl
+            parsedCapabilities = parseDiskManifestCapabilities(parsed)
           }
         }
       } catch {
@@ -929,6 +1442,24 @@ export class AddonLoader implements IAddonReloader {
         })
       }
 
+      let diskManifest: IAddonManifest | undefined
+      if (parsedCapabilities !== undefined) {
+        let manifestName = addonId
+        if (metaName) {
+          manifestName = metaName
+        }
+        diskManifest = {
+          id: addonId,
+          name: manifestName,
+          version: '1.0.0',
+          categories: [],
+          author: '',
+          shortDescription: '',
+          description: '',
+          capabilities: parsedCapabilities,
+        }
+      }
+
       const loadedModule: object = await import(fileUrl)
       let exportedCandidate: object | Function = loadedModule
       if (isRecord(loadedModule) && hasProperty(loadedModule, 'default')) {
@@ -940,11 +1471,15 @@ export class AddonLoader implements IAddonReloader {
 
       if (isAddonConstructor(exportedCandidate)) {
         const addonInstance = new exportedCandidate()
-        return await this.activateAddon(addonId, addonInstance)
+        return await this.activateAddon(addonId, addonInstance, diskManifest)
       }
 
       if (isAddonInstance(exportedCandidate)) {
-        return await this.activateAddon(addonId, exportedCandidate)
+        return await this.activateAddon(
+          addonId,
+          exportedCandidate,
+          diskManifest,
+        )
       }
 
       console.warn(
@@ -997,14 +1532,11 @@ export class AddonLoader implements IAddonReloader {
 
     let schema: AddonSettingsSchema = []
 
-    let resolvedScope = scope
-    if (!resolvedScope && this.activeWorkspaceId) {
-      resolvedScope = { kind: 'workspace', workspaceId: this.activeWorkspaceId }
+    const resolvedScope = scope
+    let resolvedWorkspaceId: string | undefined = undefined
+    if (resolvedScope?.kind === 'workspace') {
+      resolvedWorkspaceId = resolvedScope.workspaceId
     }
-    const resolvedWorkspaceId =
-      resolvedScope?.kind === 'workspace'
-        ? resolvedScope.workspaceId
-        : this.activeWorkspaceId || undefined
 
     const provider = this.addonSettingsSchemas.get(addonId)
     if (Array.isArray(provider)) {
@@ -1048,22 +1580,206 @@ export class AddonLoader implements IAddonReloader {
         ]
       }
 
+      if (!isFlatSettingsFieldList(schema)) {
+        const filteredTabs = schema.filter(
+          (tab) => !this.disabledCapabilities.has(`${addonId}:${tab.id}`),
+        )
+        return [instancesTab, ...filteredTabs]
+      }
+
       return [instancesTab, ...schema]
+    }
+
+    if (Array.isArray(schema) && !isFlatSettingsFieldList(schema)) {
+      return schema.filter(
+        (tab) => !this.disabledCapabilities.has(`${addonId}:${tab.id}`),
+      )
     }
 
     return schema
   }
 
-  public getAddonSettings(addonId: string, scope: AddonVaultScope) {
-    return this.vaultFor(addonId).getSettings(scope)
-  }
-
-  public saveAddonSettings(
+  private validateAddonSettingsScope(
     addonId: string,
     scope: AddonVaultScope,
+  ): Either<AppError, void> {
+    if (scope.kind === 'capability') {
+      return Either.success()
+    }
+    const caps = this.addonCapabilities.get(addonId)
+    if (!caps || caps.length === 0) {
+      return Either.success()
+    }
+    const enabledWithSettingsScope = caps.filter(
+      (cap) =>
+        !this.disabledCapabilities.has(`${addonId}:${cap.capabilityId}`) &&
+        cap.settingsSchemaScope !== undefined,
+    )
+    if (enabledWithSettingsScope.length === 0) {
+      return Either.success()
+    }
+    const matchesDeclaredScope = enabledWithSettingsScope.some(
+      (cap) => cap.settingsSchemaScope === scope.kind,
+    )
+    if (!matchesDeclaredScope) {
+      return Either.failure(
+        AppError.ValidationError('CAPABILITY_SETTINGS_SCOPE_MISMATCH'),
+      )
+    }
+    return Either.success()
+  }
+
+  public async getAddonSettings(
+    addonId: string,
+    scope: AddonVaultScope,
+  ): Promise<Either<AppError, AddonSettingsView>> {
+    const scopeValidation = this.validateAddonSettingsScope(addonId, scope)
+    if (scopeValidation.isFailure()) {
+      return scopeValidation.forwardFailure()
+    }
+    const schema = await this.getSettingsSchema(addonId, scope)
+    return this.getAddonSettingsService.execute({ addonId, scope, schema })
+  }
+
+  private resolveSettingsScopeBinding(
+    addonId: string,
+    scope: AddonVaultScope,
+  ): AddonBindingLifetime | undefined {
+    const lifetime = this.lifetimes.get(addonId)
+    if (!lifetime) return undefined
+    if (scope.kind === 'capability') {
+      return lifetime.binding(
+        scope.workspaceId,
+        scope.connectionInstanceId,
+        scope.capabilityId,
+      )
+    }
+    if (scope.kind === 'connection') {
+      return lifetime.binding(scope.workspaceId, scope.connectionInstanceId)
+    }
+    if (scope.kind === 'workspace') {
+      return lifetime.getBinding(`workspace:${scope.workspaceId}`)
+    }
+    return lifetime.getBinding('addon')
+  }
+
+  public async saveAddonSettings(
+    addonId: string,
+    scope: AddonVaultScope,
+    expectedRevision: number,
     settings: AddonSettingsValues,
-  ) {
-    return this.vaultFor(addonId).saveSettings(scope, settings)
+    credentials?: Record<string, string | null>,
+  ): Promise<Either<AppError, AddonSettingsView>> {
+    const scopeValidation = this.validateAddonSettingsScope(addonId, scope)
+    if (scopeValidation.isFailure()) {
+      return scopeValidation.forwardFailure()
+    }
+    const schema = await this.getSettingsSchema(addonId, scope)
+    const result = await this.saveAddonSettingsService.execute({
+      addonId,
+      scope,
+      expectedRevision,
+      schema,
+      patch: settings,
+      credentials,
+    })
+
+    let persistedRevision: number | undefined
+    let persistedValues: AddonSettingsValues | undefined
+
+    if (result.isSuccess()) {
+      persistedRevision = result.success.revision
+      persistedValues = result.success.values
+    }
+    if (
+      result.isFailure() &&
+      result.failure.statusCode === 207 &&
+      result.failure.messageKey === 'ADDON_CREDENTIAL_PARTIAL_FAILURE'
+    ) {
+      const snapshotRes = await this.vaultFor(addonId).getSettings(scope)
+      if (snapshotRes.isSuccess()) {
+        persistedRevision = snapshotRes.success.revision
+        persistedValues = snapshotRes.success.values
+      }
+    }
+
+    if (persistedRevision === undefined || persistedValues === undefined) {
+      return result
+    }
+
+    const revKey = this.buildSettingsRevisionKey(addonId, scope)
+    const prevStartedRev = this.latestStartedSettingsRevisions.get(revKey)
+    if (prevStartedRev !== undefined && persistedRevision <= prevStartedRev) {
+      return result
+    }
+    this.latestStartedSettingsRevisions.set(revKey, persistedRevision)
+
+    const binding = this.resolveSettingsScopeBinding(addonId, scope)
+    const applyHandler = this.addonSettingsApplyHandlers.get(addonId)
+
+    if (applyHandler !== undefined && binding !== undefined) {
+      const capturedGen = binding.startNextGeneration()
+      const applyResult = await applyHandler({
+        scope,
+        revision: persistedRevision,
+        values: persistedValues,
+        events: binding.eventsForGeneration(
+          this.systemEventEmitter,
+          capturedGen,
+        ),
+        track: (cleanup) => binding.trackForGeneration(capturedGen, cleanup),
+      })
+
+      const latestStartedAfterAwait =
+        this.latestStartedSettingsRevisions.get(revKey)
+      const currentAppliedAfterAwait = this.appliedSettingsRevisions.get(revKey)
+      const isSuperseded =
+        (latestStartedAfterAwait !== undefined &&
+          latestStartedAfterAwait > persistedRevision) ||
+        (currentAppliedAfterAwait !== undefined &&
+          currentAppliedAfterAwait >= persistedRevision)
+
+      if (isSuperseded) {
+        if (result.isFailure()) {
+          return result
+        }
+        if (applyResult.isFailure()) {
+          return applyResult.forwardFailure()
+        }
+        return result
+      }
+
+      if (!binding.isCurrentGeneration(capturedGen)) {
+        binding.stopIfGeneration(capturedGen)
+        if (result.isFailure()) {
+          return result
+        }
+        return Either.failure(
+          AppError.Unauthorized('CONNECTION_DISCONNECTED_OR_CHANGED'),
+        )
+      }
+
+      if (applyResult.isFailure()) {
+        binding.stopIfGeneration(capturedGen)
+        if (result.isFailure()) {
+          return result
+        }
+        return applyResult.forwardFailure()
+      }
+    }
+
+    const latestApplied = this.appliedSettingsRevisions.get(revKey)
+    if (latestApplied === undefined || persistedRevision > latestApplied) {
+      this.appliedSettingsRevisions.set(revKey, persistedRevision)
+      this.systemEventEmitter.emit('addon:settings:saved', {
+        addonId,
+        scope,
+        revision: persistedRevision,
+        values: persistedValues,
+      })
+    }
+
+    return result
   }
 
   public async executeAction(
@@ -1086,9 +1802,7 @@ export class AddonLoader implements IAddonReloader {
       }
       const effectiveWorkspaceId =
         workspaceId ||
-        (scope?.kind === 'workspace' ? scope.workspaceId : undefined) ||
-        this.activeWorkspaceId ||
-        undefined
+        (scope?.kind === 'workspace' ? scope.workspaceId : undefined)
 
       if (effectiveWorkspaceId && !commandPayload.workspaceId) {
         commandPayload.workspaceId = effectiveWorkspaceId
@@ -1258,18 +1972,115 @@ function isAddonInstance(candidate: object | Function): candidate is IAddon {
   )
 }
 
-function isFlatSettingsFieldList(
-  schema: AddonSettingsSchema,
-): schema is AddonSettingsField[] {
-  const first = schema[0]
-  if (!first) return false
-  return hasProperty(first, 'type')
-}
-
 function extractStringMap(data: object): Record<string, string> {
   const result: Record<string, string> = {}
   for (const [key, value] of Object.entries(data)) {
     if (isString(value)) result[key] = value
   }
   return result
+}
+
+function isValidCapabilityKind(
+  val: string,
+): val is AddonCapabilityDescriptor['kind'] {
+  return (
+    val === 'dataSource' ||
+    val === 'watcher' ||
+    val === 'calendar' ||
+    val === 'punch' ||
+    val === 'theme' ||
+    val === 'custom'
+  )
+}
+
+function isValidSettingsSchemaScope(
+  val: string,
+): val is NonNullable<AddonCapabilityDescriptor['settingsSchemaScope']> {
+  return (
+    val === 'workspace' ||
+    val === 'connection' ||
+    val === 'capability' ||
+    val === 'addon'
+  )
+}
+
+function parseDiskManifestCapabilities(
+  parsed: object,
+): AddonCapabilityDescriptor[] | undefined {
+  if (
+    !hasProperty(parsed, 'capabilities') ||
+    !Array.isArray(parsed.capabilities)
+  )
+    return undefined
+  const descriptors: AddonCapabilityDescriptor[] = []
+  for (const rawCap of parsed.capabilities) {
+    if (!isRecord(rawCap)) continue
+    if (!isNonEmptyString(rawCap.capabilityId)) continue
+    if (!isString(rawCap.kind) || !isValidCapabilityKind(rawCap.kind)) continue
+    if (!isNonEmptyString(rawCap.contractVersion)) continue
+    const required = isBoolean(rawCap.required) ? rawCap.required : true
+
+    let executionPolicy: AddonCapabilityDescriptor['executionPolicy'] = {
+      kind: 'independent',
+    }
+    if (isRecord(rawCap.executionPolicy)) {
+      if (rawCap.executionPolicy.kind === 'activeWorkspace') {
+        const exclusivity =
+          rawCap.executionPolicy.exclusivity === 'exclusiveSocket'
+            ? 'exclusiveSocket'
+            : rawCap.executionPolicy.exclusivity === 'none'
+              ? 'none'
+              : undefined
+        executionPolicy = {
+          kind: 'activeWorkspace',
+          exclusivity,
+        }
+      }
+    }
+
+    let authRequirement: AddonCapabilityDescriptor['authRequirement'] = {
+      kind: 'none',
+    }
+    if (
+      isRecord(rawCap.authRequirement) &&
+      rawCap.authRequirement.kind === 'required' &&
+      isNonEmptyString(rawCap.authRequirement.connectionProfileId) &&
+      isNonEmptyString(rawCap.authRequirement.authorizationRole)
+    ) {
+      authRequirement = {
+        kind: 'required',
+        connectionProfileId: rawCap.authRequirement.connectionProfileId,
+        authorizationRole: rawCap.authRequirement.authorizationRole,
+      }
+    }
+
+    const supportedOperations: string[] = []
+    if (Array.isArray(rawCap.supportedOperations)) {
+      for (const op of rawCap.supportedOperations) {
+        if (isNonEmptyString(op)) {
+          supportedOperations.push(op)
+        }
+      }
+    }
+
+    let settingsSchemaScope: AddonCapabilityDescriptor['settingsSchemaScope']
+    if (
+      isString(rawCap.settingsSchemaScope) &&
+      isValidSettingsSchemaScope(rawCap.settingsSchemaScope)
+    ) {
+      settingsSchemaScope = rawCap.settingsSchemaScope
+    }
+
+    descriptors.push({
+      capabilityId: rawCap.capabilityId,
+      kind: rawCap.kind,
+      contractVersion: rawCap.contractVersion,
+      required,
+      executionPolicy,
+      authRequirement,
+      supportedOperations,
+      settingsSchemaScope,
+    })
+  }
+  return descriptors
 }

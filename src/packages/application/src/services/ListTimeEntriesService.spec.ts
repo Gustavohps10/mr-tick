@@ -70,7 +70,9 @@ describe('ListTimeEntriesService', () => {
     const input = makeInput()
     const fakeResult = makePagedResult()
 
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
@@ -102,7 +104,9 @@ describe('ListTimeEntriesService', () => {
     const input = makeInput()
     const authError = AppError.Unauthorized('FALHA_DE_AUTENTICACAO')
 
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.failure(authError),
     )
@@ -140,7 +144,9 @@ describe('ListTimeEntriesService', () => {
     // Arrange
     const input = makeInput()
 
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
@@ -159,5 +165,83 @@ describe('ListTimeEntriesService', () => {
 
     expect(dataSourceResolverMock.getDataSource).toHaveBeenCalledOnce()
     expect(timeEntriesProviderMock.findByMemberId).toHaveBeenCalledOnce()
+  })
+
+  it('preserves an alphanumeric member id intact when calling findByMemberId', async () => {
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
+    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
+      Either.success({
+        id: 'usr_abc-123',
+        firstname: 'Alpha',
+        lastname: 'Numeric',
+      }),
+    )
+    timeEntriesProviderMock.findByMemberId.mockResolvedValue(
+      Either.success(makePagedResult()),
+    )
+
+    const input = makeInput()
+    const result = await sut.execute(input)
+
+    expect(result.isSuccess()).toBe(true)
+    expect(timeEntriesProviderMock.findByMemberId).toHaveBeenCalledWith(
+      'usr_abc-123',
+      input.startDate,
+      input.endDate,
+    )
+  })
+
+  it('preserves a member id with leading zeros intact when calling findByMemberId', async () => {
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
+    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
+      Either.success({
+        id: '00123',
+        firstname: 'Zero',
+        lastname: 'Leading',
+      }),
+    )
+    timeEntriesProviderMock.findByMemberId.mockResolvedValue(
+      Either.success(makePagedResult()),
+    )
+
+    const input = makeInput()
+    const result = await sut.execute(input)
+
+    expect(result.isSuccess()).toBe(true)
+    expect(timeEntriesProviderMock.findByMemberId).toHaveBeenCalledWith(
+      '00123',
+      input.startDate,
+      input.endDate,
+    )
+  })
+
+  it('preserves a member id exceeding MAX_SAFE_INTEGER intact when calling findByMemberId', async () => {
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
+    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
+      Either.success({
+        id: '9007199254740993',
+        firstname: 'Large',
+        lastname: 'Integer',
+      }),
+    )
+    timeEntriesProviderMock.findByMemberId.mockResolvedValue(
+      Either.success(makePagedResult()),
+    )
+
+    const input = makeInput()
+    const result = await sut.execute(input)
+
+    expect(result.isSuccess()).toBe(true)
+    expect(timeEntriesProviderMock.findByMemberId).toHaveBeenCalledWith(
+      '9007199254740993',
+      input.startDate,
+      input.endDate,
+    )
   })
 })

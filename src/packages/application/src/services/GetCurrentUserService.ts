@@ -18,14 +18,16 @@ export class GetCurrentUserService implements IGetCurrentUserUseCase {
     input: GetCurrentUserInput,
   ): Promise<Either<AppError, MemberDTO>> {
     try {
-      const workspace = await this.workspacesRepository.findById(
+      const workspaceResult = await this.workspacesRepository.getById(
         input.workspaceId,
       )
+      if (workspaceResult.isFailure()) return workspaceResult.forwardFailure()
+      const workspace = workspaceResult.success
 
       if (!workspace)
         return Either.failure(AppError.NotFound('WORKSPACE_NAO_ENCONTRADO'))
 
-      const connection = workspace.dataSourceConnections.find(
+      const connection = workspace.connections.find(
         (c) => c.id === input.connectionInstanceId,
       )
 
@@ -34,18 +36,18 @@ export class GetCurrentUserService implements IGetCurrentUserUseCase {
           AppError.NotFound('CONEXAO_NAO_ENCONTRADA_OU_INVALIDA'),
         )
 
-      const adapter = await this.dataSourceResolver.getDataSource(
+      const adapterResult = await this.dataSourceResolver.getDataSource(
         input.workspaceId,
         connection.id,
       )
+      if (adapterResult.isFailure()) return adapterResult.forwardFailure()
+      const adapter = adapterResult.success
 
       const result = await adapter.getAuthenticatedMemberData()
       if (result.isFailure()) return result.forwardFailure()
 
-      const member = result.success
-
       const userResult = await adapter.membersProvider.findById(
-        member.id.toString(),
+        result.success.id,
       )
       if (userResult.isFailure()) return userResult.forwardFailure()
 

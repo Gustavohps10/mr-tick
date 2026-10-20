@@ -80,7 +80,9 @@ describe('TaskPullService', () => {
     // Arrange
     const input = makeInput()
 
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
@@ -106,7 +108,9 @@ describe('TaskPullService', () => {
     const input = makeInput()
     const authError = AppError.Unauthorized('FALHA_DE_AUTENTICACAO')
 
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.failure(authError),
     )
@@ -141,7 +145,9 @@ describe('TaskPullService', () => {
   it('should return unexpected error when the adapter fails to pull tasks (throws)', async () => {
     // Arrange
     const input = makeInput()
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )

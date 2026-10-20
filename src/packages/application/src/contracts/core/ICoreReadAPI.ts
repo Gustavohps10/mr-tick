@@ -1,4 +1,4 @@
-import type { ICoreConnectionsAPI } from './ICoreConnectionsAPI'
+import type { ICoreConnectionsReadAPI } from './ICoreConnectionsAPI'
 import type { ICoreMetadataAPI } from './ICoreMetadataAPI'
 import type { ICoreRuntimeAPI } from './ICoreRuntimeAPI'
 import type { ICoreTasksAPI } from './ICoreTasksAPI'
@@ -8,7 +8,7 @@ import type { ICoreWorkspacesAPI } from './ICoreWorkspacesAPI'
 export interface ICoreReadAPI {
   readonly runtime: ICoreRuntimeAPI
   readonly workspaces: ICoreWorkspacesAPI
-  readonly connections: ICoreConnectionsAPI
+  readonly connections: ICoreConnectionsReadAPI
   readonly tasks: ICoreTasksAPI
   readonly metadata: ICoreMetadataAPI
 }

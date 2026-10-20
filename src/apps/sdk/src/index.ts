@@ -11,6 +11,7 @@ export { createTimeEntrySnapshotPage } from './utils/createTimeEntrySnapshotPage
 export * from './utils/MarkupConverter'
 export * from './utils/pkce'
 export type {
+  AddonConnectionAuthenticator,
   AddonSidebarMenuItem,
   AddonTimerbarActionItem,
   AddonTimerbarMenuItem,
@@ -20,7 +21,9 @@ export type {
   AuthenticationResult,
   CreatedTaskResult,
   CreatedTimeEntryResult,
-  IAuthenticationStrategy,
+  IHttpClient,
+  IHttpClientConfig,
+  IHttpClientFactory,
   IMemberProvider,
   IMetadataProvider,
   ITaskProvider,
@@ -28,6 +31,9 @@ export type {
   MemberDTO,
   MetadataDTO,
   MetadataItem,
+  OAuthAuthorizationParameters,
+  OAuthRenewalResult,
+  OAuthTokenExchangeParameters,
   PagedResultDTO,
   PaginationOptionsDTO,
   Participants,
@@ -40,6 +46,12 @@ export type {
   UpdatedTimeEntryResult,
   WorkspaceDTO,
 } from '@mr-tick/application'
-export { AppError, Either } from '@mr-tick/shared/helpers'
+export type { ConnectionProfileDescriptor } from '@mr-tick/domain'
+export {
+  AppError,
+  Either,
+  TokenRefreshError,
+  type TokenRefreshErrorOptions,
+} from '@mr-tick/shared/helpers'
 export type { IHeaders, IRequest } from '@mr-tick/shared/transport'
 export * from '@mr-tick/shared/view-models'

@@ -368,10 +368,22 @@ export function resultFor(record: LocalTimeEntrySnapshot): LocalRuntimeResult {
   let timer: TimerStateDTO | null = null
   if (record.timeStatus === 'running' || record.timeStatus === 'paused')
     timer = timerState(record)
-  return { entry: toPublicRecord(record), entries: [], timer, deleted: false }
+  return {
+    entry: toPublicRecord(record),
+    entries: [],
+    timer,
+    deleted: false,
+    pendingWrites: false,
+  }
 }
 export function emptyResult(): LocalRuntimeResult {
-  return { entry: null, entries: [], timer: null, deleted: false }
+  return {
+    entry: null,
+    entries: [],
+    timer: null,
+    deleted: false,
+    pendingWrites: false,
+  }
 }
 
 export function timeEntryPauseSeconds(

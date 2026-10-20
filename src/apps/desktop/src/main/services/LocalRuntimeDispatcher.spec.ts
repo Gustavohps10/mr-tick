@@ -8,6 +8,7 @@ import type {
   LocalSyncRequest,
   LocalSyncResponse,
 } from '@mr-tick/application'
+import { Either } from '@mr-tick/shared/helpers'
 import { BrowserWindow } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -203,6 +204,176 @@ afterEach(() => {
 })
 
 describe('LocalRuntimeDispatcher maintenance ownership', () => {
+  it('fails closed when the runtime cannot report persisted sync status', async () => {
+    const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+    let archiveStarted = false
+
+    const result = await dispatcher.withNoPendingWrites(
+      'ws-1',
+      ['connection-a'],
+      async () => {
+        archiveStarted = true
+        return Either.success(undefined)
+      },
+    )
+
+    expect(result.isFailure()).toBe(true)
+    expect(result.isFailure() && result.failure.statusCode).toBe(503)
+    expect(archiveStarted).toBe(false)
+  })
+
+  it('blocks archive when persisted records for the connection have pending sync status', async () => {
+    const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+    await ready(dispatcher)
+    let archiveStarted = false
+    const archive = dispatcher.withNoPendingWrites(
+      'ws-1',
+      ['connection-a'],
+      async () => {
+        archiveStarted = true
+        return Either.success(undefined)
+      },
+    )
+    await Promise.resolve()
+    const query = world.runtime.webContents.messages.find(
+      (item) => item.channel === 'local-runtime:execute',
+    )
+    if (
+      query === undefined ||
+      query.packet.requestId === undefined ||
+      query.packet.generation === undefined
+    )
+      return expect.fail('Expected persisted pending-write query')
+    expect(query.packet.input).toMatchObject({
+      action: 'list',
+      workspaceId: 'ws-1',
+      filter: { connectionInstanceId: 'connection-a' },
+    })
+    emit('local-runtime:reply', world.runtime.webContents, {
+      requestId: query.packet.requestId,
+      generation: query.packet.generation,
+      response: {
+        ok: true,
+        value: {
+          entry: null,
+          entries: [],
+          timer: null,
+          deleted: false,
+          pendingWrites: true,
+        },
+      },
+      channel: '',
+      data: { requestId: '', workspaceId: '' },
+    })
+
+    const result = await archive
+
+    expect(result.isFailure()).toBe(true)
+    expect(result.isFailure() && result.failure.messageKey).toBe(
+      'CONNECTION_PENDING_WRITES',
+    )
+    expect(archiveStarted).toBe(false)
+  })
+
+  it('fences runtime, persistence and sync writes for the whole archive operation', async () => {
+    const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+    await ready(dispatcher)
+    let signalArchiveStarted: (() => void) | undefined
+    const archiveStarted = new Promise<void>((resolve) => {
+      signalArchiveStarted = resolve
+    })
+    let releaseArchive: (() => void) | undefined
+    const archiveGate = new Promise<void>((resolve) => {
+      releaseArchive = resolve
+    })
+    const archive = dispatcher.withNoPendingWrites(
+      'ws-1',
+      ['connection-a'],
+      async () => {
+        if (signalArchiveStarted) signalArchiveStarted()
+        await archiveGate
+        return Either.success(undefined)
+      },
+    )
+    await Promise.resolve()
+    const query = world.runtime.webContents.messages.find(
+      (item) => item.channel === 'local-runtime:execute',
+    )
+    if (
+      query === undefined ||
+      query.packet.requestId === undefined ||
+      query.packet.generation === undefined
+    )
+      return expect.fail('Expected persisted pending-write query')
+    emit('local-runtime:reply', world.runtime.webContents, {
+      requestId: query.packet.requestId,
+      generation: query.packet.generation,
+      response: {
+        ok: true,
+        value: {
+          entry: null,
+          entries: [],
+          timer: null,
+          deleted: false,
+          pendingWrites: false,
+        },
+      },
+      channel: '',
+      data: { requestId: '', workspaceId: '' },
+    })
+    await archiveStarted
+
+    expect(
+      resultError(
+        await dispatcher.request({
+          action: 'create',
+          workspaceId: 'ws-1',
+          commandId: 'during-archive',
+          entryId: 'entry-a',
+          payload: { taskId: 'task-a', timeSpentSeconds: 60 },
+        }),
+      ),
+    ).toBe('localRuntime.workspaceMaintenance')
+    expect(
+      resultError(
+        await route('local-runtime:persistence')(
+          { sender: world.main.webContents },
+          {
+            action: 'deleteRecord',
+            workspaceId: 'ws-1',
+            commandId: 'during-archive-persistence',
+            entryId: 'entry-a',
+          },
+        ),
+      ),
+    ).toBe('localRuntime.workspaceMaintenance')
+    expect(
+      resultError(
+        await route('local-runtime:sync')(
+          { sender: world.main.webContents },
+          {
+            action: 'forceSync',
+            workspaceId: 'ws-1',
+            connectionInstanceId: 'connection-a',
+          },
+        ),
+      ),
+    ).toBe('localRuntime.workspaceMaintenance')
+    expect(
+      world.runtime.webContents.messages.some(
+        (item) => item.channel === 'local-runtime:execute-persistence',
+      ),
+    ).toBe(false)
+    expect(
+      world.runtime.webContents.messages.some(
+        (item) => item.channel === 'local-runtime:execute-sync',
+      ),
+    ).toBe(false)
+    if (releaseArchive) releaseArchive()
+    const result = await archive
+    expect(result.isSuccess()).toBe(true)
+  })
+
   it('rejects public and private CRUD from reader release until owner reset completes', async () => {
     vi.useFakeTimers()
     const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
@@ -376,7 +547,13 @@ describe('LocalRuntimeDispatcher maintenance ownership', () => {
       generation: message.packet.generation,
       response: {
         ok: true,
-        value: { entry: null, entries: [], timer: null, deleted: false },
+        value: {
+          entry: null,
+          entries: [],
+          timer: null,
+          deleted: false,
+          pendingWrites: false,
+        },
       },
       channel: '',
       data: { requestId: '', workspaceId: '' },
@@ -487,4 +664,48 @@ it('invalidates outstanding core reads when the owner closes and ignores obsolet
     data: { requestId: '', workspaceId: '' },
   })
   expect(dispatcher.getState()).toBe('closed')
+})
+
+it('blocks lifecycle mutation when the selected connection has local pending writes', async () => {
+  const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+  await ready(dispatcher)
+  const operation = vi.fn(async () => Either.success(undefined))
+  const guarded = dispatcher.withNoPendingWrites(
+    'ws-1',
+    ['connection-pending'],
+    operation,
+  )
+  const packet = world.runtime.webContents.messages.find(
+    (item) => item.channel === 'local-runtime:execute',
+  )?.packet
+  if (
+    packet === undefined ||
+    packet.requestId === undefined ||
+    packet.generation === undefined
+  )
+    return expect.fail('Missing pending work query')
+  expect(packet.input).toEqual({
+    action: 'list',
+    workspaceId: 'ws-1',
+    filter: { connectionInstanceId: 'connection-pending' },
+  })
+  emit('local-runtime:reply', world.runtime.webContents, {
+    requestId: packet.requestId,
+    generation: packet.generation,
+    response: {
+      ok: true,
+      value: {
+        entry: null,
+        entries: [],
+        timer: null,
+        deleted: false,
+        pendingWrites: true,
+      },
+    },
+    channel: '',
+    data: { requestId: '', workspaceId: '' },
+  })
+  const result = await guarded
+  expect(result.isFailure()).toBe(true)
+  expect(operation).not.toHaveBeenCalled()
 })

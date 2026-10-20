@@ -10,12 +10,15 @@ import {
   createBrowserLocalRuntime,
 } from './browser-workspace-registry'
 
-function bridgeFor(workspaceId: string) {
+function bridgeFor(
+  workspaceId: string,
+  connections: WorkspaceViewModel['connections'] = [],
+) {
   const workspace: WorkspaceViewModel = {
     id: workspaceId,
     name: 'Lifecycle fixture',
     status: 'configured',
-    dataSourceConnections: [],
+    connections,
     createdAt: new Date(),
     updatedAt: new Date(),
   }
@@ -84,7 +87,7 @@ describe('Browser workspace owner lifecycle', () => {
   it('does not initialize storage or contact a provider during a cache query', async () => {
     const workspaceId = crypto.randomUUID()
     const { bridge, workspace } = bridgeFor(workspaceId)
-    workspace.dataSourceConnections.push({
+    workspace.connections.push({
       id: 'connection',
       dataSourceId: 'source',
       status: 'disconnected',
@@ -167,6 +170,62 @@ describe('Browser workspace owner lifecycle', () => {
           'new-entry',
         ])
       expect(list.ok).toBe(true)
+    } finally {
+      await owner.close()
+    }
+  })
+
+  it('reports unsynchronized writes scoped to the selected connection', async () => {
+    const workspaceId = crypto.randomUUID()
+    const { bridge } = bridgeFor(workspaceId, [
+      {
+        id: 'connection-pending',
+        addonId: 'provider',
+        connectionProfileId: 'primary',
+        cardinality: 'single',
+        status: 'connected',
+      },
+    ])
+    const owner = createBrowserLocalRuntime(bridge, options, {
+      committed: vi.fn(),
+    })
+    try {
+      const created = await owner.runtime.request({
+        action: 'create',
+        workspaceId,
+        commandId: 'pending-connection-write',
+        entryId: 'pending-entry',
+        payload: {
+          taskId: '42',
+          timeSpentSeconds: 60,
+          connectionInstanceId: 'connection-pending',
+          dataSourceId: 'provider',
+          userId: 'member-7',
+          activityId: 'activity-1',
+        },
+      })
+      expect(created.ok).toBe(true)
+
+      const pending = await owner.runtime.request({
+        action: 'list',
+        workspaceId,
+        filter: { connectionInstanceId: 'connection-pending' },
+      })
+      expect(pending.ok).toBe(true)
+      if (pending.ok) {
+        expect(pending.value.entries.map((entry) => entry.id)).toEqual([
+          'pending-entry',
+        ])
+        expect(pending.value.pendingWrites).toBe(true)
+      }
+
+      const unrelated = await owner.runtime.request({
+        action: 'list',
+        workspaceId,
+        filter: { connectionInstanceId: 'another-connection' },
+      })
+      expect(unrelated.ok).toBe(true)
+      if (unrelated.ok) expect(unrelated.value.pendingWrites).toBe(false)
     } finally {
       await owner.close()
     }

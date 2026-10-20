@@ -2,12 +2,14 @@ import type { AddonVaultScope } from '@mr-tick/application'
 import {
   AddonManifest,
   FileData,
+  IAddonConnectionProfilesResolver,
   IAddonsFacade,
-  IDataSourceResolver,
+  IGetMappingFieldsUseCase,
   IImportAddonUseCase,
   IUpdateAddonUseCase,
   type MappingFieldDefinition,
 } from '@mr-tick/application'
+import { type ConnectionProfileDescriptor } from '@mr-tick/domain'
 import {
   AddonActionResponse,
   AddonSettingsSchema,
@@ -43,8 +45,9 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     private readonly updateAddonService: IUpdateAddonUseCase,
     private readonly addonsFacade: IAddonsFacade,
     private readonly jobEmitter: IEventEmitter<IJobEvents>,
-    private readonly dataSourceResolver: IDataSourceResolver,
+    private readonly getMappingFieldsService: IGetMappingFieldsUseCase,
     private readonly addonLoader: AddonLoader,
+    private readonly profilesResolver: IAddonConnectionProfilesResolver,
   ) {}
 
   public async getSidebarMenus(): Promise<ViewModel<SidebarMenuItem[]>> {
@@ -230,6 +233,23 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     }
   }
 
+  public async getConnectionProfiles(
+    event: IpcMainInvokeEvent,
+    { body }: IRequest<{ addonId: string }>,
+  ): Promise<ViewModel<readonly ConnectionProfileDescriptor[]>> {
+    if (!event || !body?.addonId) {
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'ADDON_ID_REQUIRED',
+      }
+    }
+    const result = await this.profilesResolver.getConnectionProfiles(
+      body.addonId,
+    )
+    return createResponseViewModel(result)
+  }
+
   public async getMappingFields(
     event: IpcMainInvokeEvent,
     {
@@ -240,75 +260,32 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       connectionInstanceId?: string
     }>,
   ): Promise<ViewModel<MappingFieldDefinition[]>> {
-    if (!event || !this.addonLoader)
-      return { isSuccess: true, statusCode: 200, data: [] }
-
-    try {
-      if (body?.addonId && !this.addonLoader.hasActiveAddon(body.addonId)) {
-        const installedResult = await this.addonsFacade.getInstalledById(
-          body.addonId,
-        )
-        if (installedResult.isSuccess() && installedResult.success.path) {
-          await this.addonLoader.loadAndActivateFromDisk(
-            body.addonId,
-            installedResult.success.path,
-          )
-        }
+    if (!event || !body?.addonId) {
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'ADDON_ID_REQUIRED',
       }
-
-      if (body?.workspaceId && body?.connectionInstanceId) {
-        const adapter = await this.dataSourceResolver.getDataSource(
-          body.workspaceId,
-          body.connectionInstanceId,
-        )
-        const provider = adapter.metadataProvider
-        if (provider?.getMappingFields) {
-          const result = await provider.getMappingFields()
-          if (result.isSuccess())
-            return { isSuccess: true, statusCode: 200, data: result.success }
-          return {
-            isSuccess: false,
-            statusCode: result.failure.statusCode,
-            error: result.failure.messageKey,
-          }
-        }
-        return { isSuccess: true, statusCode: 200, data: [] }
-      }
-
-      const ds = this.addonLoader.getDataSource(body.addonId)
-      if (!ds) return { isSuccess: true, statusCode: 200, data: [] }
-
-      if (ds.getMappingFields) {
-        const mappingResult = await ds.getMappingFields()
-        if (Array.isArray(mappingResult))
-          return { isSuccess: true, statusCode: 200, data: mappingResult }
-        if (mappingResult.isSuccess())
-          return {
-            isSuccess: true,
-            statusCode: 200,
-            data: mappingResult.success,
-          }
-        return {
-          isSuccess: false,
-          statusCode: mappingResult.failure.statusCode,
-          error: mappingResult.failure.messageKey,
-        }
-      }
-
-      return { isSuccess: true, statusCode: 200, data: [] }
-    } catch (e) {
-      let error = 'FAILED_TO_GET_MAPPING_FIELDS'
-      if (e instanceof Error) {
-        error = e.message
-      }
-      return { isSuccess: false, statusCode: 500, error }
     }
+    if (!body.workspaceId || !body.connectionInstanceId) {
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'CONNECTION_SCOPE_REQUIRED',
+      }
+    }
+
+    const result = await this.getMappingFieldsService.execute({
+      workspaceId: body.workspaceId,
+      connectionInstanceId: body.connectionInstanceId,
+    })
+    return createResponseViewModel(result)
   }
 
   public async getSettings(
     event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string; scope: AddonVaultScope }>,
-  ): Promise<ViewModel<Record<string, string | number | boolean | null>>> {
+  ): Promise<ViewModel<import('@mr-tick/application').AddonSettingsView>> {
     if (!event || !this.addonLoader)
       return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
     const result = await this.addonLoader.getAddonSettings(
@@ -331,15 +308,19 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     }: IRequest<{
       addonId: string
       scope: AddonVaultScope
-      settings: Record<string, string | number | boolean | null>
+      expectedRevision: number
+      patch: Record<string, string | number | boolean | null>
+      credentials?: Record<string, string | null>
     }>,
-  ): Promise<ViewModel<void>> {
+  ): Promise<ViewModel<import('@mr-tick/application').AddonSettingsView>> {
     if (!event || !this.addonLoader)
       return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
     const result = await this.addonLoader.saveAddonSettings(
       body.addonId,
       body.scope,
-      body.settings,
+      body.expectedRevision,
+      body.patch,
+      body.credentials,
     )
     if (result.isFailure())
       return {
@@ -347,7 +328,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         statusCode: result.failure.statusCode,
         error: result.failure.messageKey,
       }
-    return { isSuccess: true, statusCode: 200 }
+    return { isSuccess: true, statusCode: 200, data: result.success }
   }
 
   public async executeAction(

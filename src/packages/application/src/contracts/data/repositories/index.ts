@@ -1,4 +1,7 @@
+export * from './IConnectionLifecycleRepository'
+export * from './IConnectionReservationRepository'
 export * from './IRepositoryBase'
 export * from './ITaskRepository'
 export * from './ITimeEntryRepository'
+export * from './IWorkspaceCredentialReferenceRegistry'
 export * from './IWorkspacesRepository'

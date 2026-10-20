@@ -13,7 +13,7 @@ const renamedActivitySchema = z.object({
 test('menu aberto mantém identidade quando metadata da atividade muda sem alterar o apontamento', async ({
   page,
 }) => {
-  const workspace = seedWorkspaces.find(
+  const workspace = seedWorkspaces.workspaces.find(
     (candidate) => candidate.name === 'TESTE',
   )
   if (!workspace) throw new Error('CELL_LIFECYCLE_WORKSPACE_NOT_FOUND')
@@ -102,7 +102,7 @@ test('menu aberto mantém identidade quando metadata da atividade muda sem alter
 test('comentário em edição mantém foco e texto durante atualização de metadata da atividade', async ({
   page,
 }) => {
-  const workspace = seedWorkspaces.find(
+  const workspace = seedWorkspaces.workspaces.find(
     (candidate) => candidate.name === 'TESTE',
   )
   if (!workspace) throw new Error('CELL_LIFECYCLE_WORKSPACE_NOT_FOUND')

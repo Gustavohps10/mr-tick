@@ -39,13 +39,14 @@ export interface DataSourceConnectionsContextType {
 
   connections: AddonConnectionView[]
 
-  workspaceConnections: WorkspaceViewModel['dataSourceConnections']
+  workspaceConnections: WorkspaceViewModel['connections']
 
   installedPlugins: AddonManifestViewModel[]
 
   link: (params: {
     connectionInstanceId: ConnectionInstanceId
     pluginId: string
+    connectionProfileId: string
   }) => Promise<ViewModel<WorkspaceViewModel> | undefined>
 
   unlink: (
@@ -55,6 +56,7 @@ export interface DataSourceConnectionsContextType {
   connect: (params: {
     connectionInstanceId: ConnectionInstanceId
     pluginId: string
+    connectionProfileId: string
     credentials: Record<string, string | number | boolean>
     configuration: Record<string, string | number | boolean>
   }) => Promise<ViewModel<ConnectionResultViewModel> | undefined>
@@ -84,7 +86,7 @@ export function DataSourceConnectionsProvider({
   const queryClient = useQueryClient()
 
   const workspaceId = workspace?.id
-  const workspaceConnections = workspace?.dataSourceConnections ?? []
+  const workspaceConnections = workspace?.connections ?? []
 
   const { data: installedPlugins = [] } = useQuery({
     queryKey: ['plugins', 'installed'],
@@ -97,11 +99,11 @@ export function DataSourceConnectionsProvider({
 
   const connections = useMemo<AddonConnectionView[]>(() => {
     return workspaceConnections.map((conn) => {
-      const addon = installedPlugins.find((a) => a.id === conn.dataSourceId)
+      const addon = installedPlugins.find((a) => a.id === conn.addonId)
 
       return {
         connectionId: conn.id,
-        dataSourceId: conn.dataSourceId,
+        dataSourceId: conn.addonId,
         status: conn.status,
         config: conn.config,
         member: conn.member,
@@ -129,48 +131,29 @@ export function DataSourceConnectionsProvider({
 
   const link = useCallback(
     async ({
-      connectionInstanceId,
       pluginId,
+      connectionInstanceId,
+      connectionProfileId,
     }: {
-      connectionInstanceId: ConnectionInstanceId
       pluginId: string
+      connectionInstanceId: ConnectionInstanceId
+      connectionProfileId: string
     }) => {
       if (!workspaceId) return
 
       const res = await bridge.workspaces.linkDataSource({
         body: {
           workspaceId,
-          dataSourceId: pluginId,
+          addonId: pluginId,
           connectionInstanceId,
+          connectionProfileId,
         },
       })
 
-      if (res.isSuccess) {
-        queryClient.setQueryData<WorkspaceViewModel>(
-          ['workspace', workspaceId],
-          (prev) => {
-            if (!prev) return prev
-
-            const exists = prev.dataSourceConnections.some(
-              (c) => c.id === connectionInstanceId,
-            )
-
-            if (exists) return prev
-
-            return {
-              ...prev,
-              dataSourceConnections: [
-                ...prev.dataSourceConnections,
-                {
-                  id: connectionInstanceId,
-                  dataSourceId: pluginId,
-                  status: 'disconnected',
-                },
-              ],
-            }
-          },
-        )
-      }
+      if (res.isSuccess)
+        await queryClient.invalidateQueries({
+          queryKey: ['workspace', workspaceId],
+        })
 
       return res
     },
@@ -196,10 +179,8 @@ export function DataSourceConnectionsProvider({
 
             return {
               ...prev,
-              dataSourceConnections: connectionInstanceId
-                ? prev.dataSourceConnections.filter(
-                    (c) => c.id !== connectionInstanceId,
-                  )
+              connections: connectionInstanceId
+                ? prev.connections.filter((c) => c.id !== connectionInstanceId)
                 : [],
             }
           },
@@ -214,24 +195,27 @@ export function DataSourceConnectionsProvider({
   const connect = useCallback(
     async ({
       connectionInstanceId,
-      pluginId,
+      connectionProfileId,
       credentials,
       configuration,
     }: {
       connectionInstanceId: ConnectionInstanceId
-      pluginId: string
+      connectionProfileId: string
       credentials: Record<string, string | number | boolean>
       configuration: Record<string, string | number | boolean>
     }) => {
       if (!workspaceId) return
 
-      const res = await bridge.workspaces.connectDataSource({
+      const res = await bridge.workspaces.submitCredentials({
         body: {
           workspaceId,
           connectionInstanceId,
-          pluginId,
-          credentials,
-          configuration,
+          authenticationInput: {
+            kind: 'credentials',
+            authProfileId: connectionProfileId,
+            credentials,
+            configuration,
+          },
         },
       })
 
@@ -243,7 +227,7 @@ export function DataSourceConnectionsProvider({
 
             return {
               ...prev,
-              dataSourceConnections: prev.dataSourceConnections.map((c) =>
+              connections: prev.connections.map((c) =>
                 c.id === connectionInstanceId
                   ? {
                       ...c,
@@ -287,7 +271,7 @@ export function DataSourceConnectionsProvider({
 
             return {
               ...prev,
-              dataSourceConnections: prev.dataSourceConnections.map((c) =>
+              connections: prev.connections.map((c) =>
                 c.id === connectionInstanceId
                   ? {
                       ...c,

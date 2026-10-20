@@ -81,7 +81,9 @@ describe('MetadataPullService', () => {
     // Arrange
     const input = makeInput()
 
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )
@@ -113,7 +115,9 @@ describe('MetadataPullService', () => {
     const input = makeInput()
     const authError = AppError.Unauthorized('FALHA_DE_AUTENTICACAO')
 
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.failure(authError),
     )
@@ -146,7 +150,9 @@ describe('MetadataPullService', () => {
   it('should return unexpected error when the adapter fails to pull metadata (throws)', async () => {
     // Arrange
     const input = makeInput()
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )

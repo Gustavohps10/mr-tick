@@ -1,5 +1,5 @@
-﻿import { Workspace } from '@mr-tick/domain'
-import { AppError } from '@mr-tick/shared/helpers'
+import { Workspace } from '@mr-tick/domain'
+import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { Mocked } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -24,13 +24,13 @@ describe('GetWorkspaceService', () => {
     vi.clearAllMocks()
 
     workspacesRepositoryMock = {
-      findById: vi.fn(),
+      getById: vi.fn(),
     } as Partial<IWorkspacesRepository> as Mocked<IWorkspacesRepository>
 
     fakeWorkspace = {
       id: 'workspace-123',
       name: 'Mr-tick Workspace',
-      dataSourceConnections: [],
+      connections: [],
       createdAt: fakeDate,
       updatedAt: fakeDate,
     } as Partial<Workspace> as Mocked<Workspace>
@@ -41,21 +41,23 @@ describe('GetWorkspaceService', () => {
   it('should return a WorkspaceDTO successfully when the workspace exists', async () => {
     // Arrange
     const input = makeInput()
-    workspacesRepositoryMock.findById.mockResolvedValue(fakeWorkspace)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(fakeWorkspace),
+    )
 
     // Act
     const result = await sut.execute(input)
 
     // Assert
     expect(result.isSuccess()).toBe(true)
-    expect(workspacesRepositoryMock.findById).toHaveBeenCalledWith(
+    expect(workspacesRepositoryMock.getById).toHaveBeenCalledWith(
       input.workspaceId,
     )
 
     expect(result.success).toEqual({
       id: fakeWorkspace.id,
       name: fakeWorkspace.name,
-      dataSourceConnections: [],
+      connections: [],
       createdAt: fakeWorkspace.createdAt,
       updatedAt: fakeWorkspace.updatedAt,
     })
@@ -64,7 +66,9 @@ describe('GetWorkspaceService', () => {
   it('should return NotFoundError when the workspace does not exist', async () => {
     // Arrange
     const input = makeInput()
-    workspacesRepositoryMock.findById.mockResolvedValue(undefined)
+    workspacesRepositoryMock.getById.mockResolvedValue(
+      Either.success(undefined),
+    )
 
     // Act
     const result = await sut.execute(input)

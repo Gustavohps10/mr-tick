@@ -1,14 +1,24 @@
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import {
+  SQLiteConnectionReservationRepository,
+  SQLiteWorkspacesRepository,
+} from '@mr-tick/adapters/data'
+import { KeytarCredentialsVault } from '@mr-tick/adapters/tools'
+import { CredentialReferenceFactory } from '@mr-tick/application'
+import { Workspace } from '@mr-tick/domain'
 import {
   _electron as electronLauncher,
   type ElectronApplication,
@@ -16,6 +26,8 @@ import {
   type Page,
   test as baseTest,
 } from '@playwright/test'
+
+import seedWorkspaces from './seed-workspaces.json' with { type: 'json' }
 
 const currentFilePath = fileURLToPath(import.meta.url)
 const currentDir = dirname(currentFilePath)
@@ -42,17 +54,134 @@ function cleanDirectoryIfExists(dirPath: string): void {
 function cleanTestStorage(userDataPath: string): void {
   cleanDirectoryIfExists(join(userDataPath, 'IndexedDB'))
   cleanDirectoryIfExists(join(userDataPath, 'Local Storage'))
+  cleanDirectoryIfExists(join(userDataPath, 'addons'))
+  cleanDirectoryIfExists(join(userDataPath, 'linked-audit-source'))
+  cleanDirectoryIfExists(join(userDataPath, 'addon-settings'))
+  for (const name of ['workspaces.sqlite', 'workspaces.sqlite3']) {
+    for (const ext of ['', '-wal', '-shm', '-journal']) {
+      const file = join(userDataPath, `${name}${ext}`)
+      if (existsSync(file)) {
+        try {
+          rmSync(file, { force: true })
+        } catch {
+          // Silencia se arquivo estiver em uso
+        }
+      }
+    }
+  }
 }
 
-function ensureSeedWorkspaces(userDataPath: string): void {
+async function ensureSeedWorkspaces(userDataPath: string): Promise<void> {
   const targetWorkspacesFile = join(userDataPath, 'workspaces.json')
 
   mkdirSync(userDataPath, { recursive: true })
   const seedPath = resolve(currentDir, 'seed-workspaces.json')
   copyFileSync(seedPath, targetWorkspacesFile)
+
+  const repo = new SQLiteWorkspacesRepository(userDataPath)
+  const reservationRepo = new SQLiteConnectionReservationRepository(
+    userDataPath,
+  )
+  const vault = new KeytarCredentialsVault()
+  for (const rawWs of seedWorkspaces.workspaces) {
+    const ws = Workspace.hydrate({
+      id: rawWs.id,
+      name: rawWs.name,
+      description: rawWs.description || undefined,
+      avatarUrl: rawWs.avatarUrl || undefined,
+      status: rawWs.status === 'configured' ? 'configured' : 'draft',
+      connections: rawWs.connections.map((c) => ({
+        id: c.id,
+        status:
+          c.status === 'connected'
+            ? 'connected'
+            : c.status === 'archived'
+              ? 'archived'
+              : 'disconnected',
+        addonId: c.addonId,
+        connectionProfileId: c.connectionProfileId,
+        cardinality: c.cardinality === 'single' ? 'single' : 'multi',
+        generation: c.generation,
+        authorizations:
+          c.status === 'connected'
+            ? [
+                {
+                  authorizationId: `seed-auth-${c.id}`,
+                  authorizationRole: 'primary',
+                  authProfileId: c.connectionProfileId,
+                  credentialReferenceId: CredentialReferenceFactory.create({
+                    ownerId: c.addonId,
+                    workspaceId: rawWs.id,
+                    connectionId: c.id,
+                    authorizationId: `seed-auth-${c.id}`,
+                  }).id,
+                  identity: {
+                    kind: 'human',
+                    providerId: 'fake',
+                    tenantId: 'fake.mr-tick-app.local',
+                    providerSubjectId: '1',
+                    displayName: 'Alex Silva',
+                  },
+                  generation: 1,
+                  status: 'active',
+                  createdAt: rawWs.createdAt,
+                  updatedAt: rawWs.updatedAt,
+                },
+              ]
+            : [],
+        ...(c.status === 'connected'
+          ? {
+              authorizationId: `seed-auth-${c.id}`,
+              identity: {
+                kind: 'human',
+                providerId: 'fake',
+                tenantId: 'fake.mr-tick-app.local',
+                providerSubjectId: '1',
+                displayName: 'Alex Silva',
+              },
+              config: c.config,
+            }
+          : {}),
+      })),
+      createdAt: new Date(rawWs.createdAt),
+      updatedAt: new Date(rawWs.updatedAt),
+    })
+    for (const c of rawWs.connections) {
+      await reservationRepo.reserveConnectionSlot({
+        reservationId: `seed-reservation-${c.id}`,
+        workspaceId: rawWs.id,
+        addonId: c.addonId,
+        connectionProfileId: c.connectionProfileId,
+        connectionId: c.id,
+        cardinality: c.cardinality === 'single' ? 'single' : 'multi',
+        default: true,
+      })
+      if (c.status === 'connected') {
+        await vault.writeCredential(
+          CredentialReferenceFactory.create({
+            ownerId: c.addonId,
+            workspaceId: rawWs.id,
+            connectionId: c.id,
+            authorizationId: `seed-auth-${c.id}`,
+          }),
+          JSON.stringify({ apiKey: 'fake-api-key' }),
+        )
+      }
+    }
+    const createRes = await repo.create(ws)
+    if (createRes.isFailure()) {
+      console.error('SEED_WORKSPACE_CREATE_FAILED:', createRes.failure)
+    }
+  }
+  await reservationRepo.close()
+  await repo.close()
 }
 
-function ensureTestAddon(userDataPath: string): void {
+function ensureTestAddon(
+  userDataPath: string,
+  includePendingWorkArchiveProbe: boolean,
+  includeSingleCardinalityProbe: boolean,
+): void {
   const addonsDir = join(userDataPath, 'addons')
   const targetAddonDir = join(addonsDir, 'mr-tick-datasource-fake')
   const sourceAddonDir = resolve(
@@ -63,6 +192,68 @@ function ensureTestAddon(userDataPath: string): void {
   if (!existsSync(sourceAddonDir)) return
 
   mkdirSync(addonsDir, { recursive: true })
+
+  if (includePendingWorkArchiveProbe) {
+    const probeAddonId = 'connection-pending-work-probe'
+    const probeAddonDir = join(addonsDir, probeAddonId)
+    const probeDistDir = join(probeAddonDir, 'dist')
+    const manifest = readFileSync(join(sourceAddonDir, 'manifest.yaml'), 'utf8')
+    const bundle = readFileSync(
+      join(sourceAddonDir, 'dist', 'index.js'),
+      'utf8',
+    )
+    const addonIdLine = 'id: mr-tick-datasource-fake'
+    const registrationAnchor =
+      'console.log("\\u{1F7E2} [FakeDataSourceAddon] Registrando FakeDataSource...");'
+    const probeCommand = `\n    context.contributions.commands.register("pending-work:archive-connection", async (scope) => {\n      const result = await context.core.connections.archive(scope);\n      if (result.isFailure()) return { ok: false, error: result.failure.messageKey, statusCode: result.failure.statusCode };\n      return { ok: true };\n    });`
+    if (!manifest.includes(addonIdLine) || !bundle.includes(registrationAnchor))
+      throw new Error('PENDING_WORK_ARCHIVE_PROBE_ANCHOR_MISSING')
+    cleanDirectoryIfExists(probeAddonDir)
+    cpSync(sourceAddonDir, probeAddonDir, { recursive: true })
+    writeFileSync(
+      join(probeAddonDir, 'manifest.yaml'),
+      manifest.replace(addonIdLine, `id: ${probeAddonId}`),
+    )
+    writeFileSync(
+      join(probeDistDir, 'index.js'),
+      bundle.replace(
+        registrationAnchor,
+        `${registrationAnchor}${probeCommand}`,
+      ),
+    )
+  }
+
+  if (includeSingleCardinalityProbe) {
+    const probeAddonId = 'connection-cardinality-e2e'
+    const probeProfileId = 'single-primary'
+    const probeAddonDir = join(addonsDir, probeAddonId)
+    const probeDistDir = join(probeAddonDir, 'dist')
+    const manifest = readFileSync(join(sourceAddonDir, 'manifest.yaml'), 'utf8')
+    const bundle = readFileSync(
+      join(sourceAddonDir, 'dist', 'index.js'),
+      'utf8',
+    )
+    const addonIdLine = 'id: mr-tick-datasource-fake'
+    const originalProfile =
+      'connectionProfileId: "fake-main",\n      cardinality: "multi",\n      default: true'
+    const targetProfile = `connectionProfileId: "${probeProfileId}",\n      cardinality: "single",\n      default: true`
+    if (!manifest.includes(addonIdLine) || !bundle.includes(originalProfile))
+      throw new Error('SINGLE_CARDINALITY_PROBE_ANCHOR_MISSING')
+    cleanDirectoryIfExists(probeAddonDir)
+    cpSync(sourceAddonDir, probeAddonDir, { recursive: true })
+    writeFileSync(
+      join(probeAddonDir, 'manifest.yaml'),
+      manifest.replace(addonIdLine, `id: ${probeAddonId}`),
+    )
+    writeFileSync(
+      join(probeAddonDir, 'package.json'),
+      JSON.stringify({ name: probeAddonId, version: '1.0.0', type: 'module' }),
+    )
+    writeFileSync(
+      join(probeDistDir, 'index.js'),
+      bundle.replace(originalProfile, targetProfile),
+    )
+  }
 
   if (existsSync(targetAddonDir)) {
     try {
@@ -87,6 +278,8 @@ interface ElectronTestFixtures {
   electronNodeEnv: string
   runtimeProbeWorkspaceId: string
   runtimeProbeConnectionId: string
+  pendingWorkArchiveProbe: boolean
+  singleCardinalityProbe: boolean
 }
 
 async function findMainWindow(
@@ -107,15 +300,27 @@ export const test = baseTest.extend<ElectronTestFixtures>({
   electronNodeEnv: ['test', { option: true }],
   runtimeProbeWorkspaceId: ['', { option: true }],
   runtimeProbeConnectionId: ['', { option: true }],
+  pendingWorkArchiveProbe: [false, { option: true }],
+  singleCardinalityProbe: [false, { option: true }],
   electronApp: async (
-    { electronNodeEnv, runtimeProbeWorkspaceId, runtimeProbeConnectionId },
+    {
+      electronNodeEnv,
+      runtimeProbeWorkspaceId,
+      runtimeProbeConnectionId,
+      pendingWorkArchiveProbe,
+      singleCardinalityProbe,
+    },
     use,
     testInfo,
   ) => {
     const userDataPath = getElectronUserDataPath(testInfo.workerIndex)
     cleanTestStorage(userDataPath)
-    ensureSeedWorkspaces(userDataPath)
-    ensureTestAddon(userDataPath)
+    await ensureSeedWorkspaces(userDataPath)
+    ensureTestAddon(
+      userDataPath,
+      pendingWorkArchiveProbe,
+      singleCardinalityProbe,
+    )
 
     const isVerbose = process.env.E2E_VERBOSE === 'true'
     const logs: string[] = []

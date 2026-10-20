@@ -1,12 +1,12 @@
 import type {
   DataSourceContext,
-  IAuthenticationStrategy,
   IMemberProvider,
   IMetadataProvider,
   ITaskProvider,
   ITimeEntryProvider,
   MappingFieldDefinition,
 } from '@mr-tick/application'
+import type { ConnectionProfileDescriptor } from '@mr-tick/domain'
 import type { AppError, Either } from '@mr-tick/shared/helpers'
 
 import type { AddonSettingsSchema } from './contracts/contributions/settings'
@@ -14,7 +14,6 @@ import type { AddonSettingsSchema } from './contracts/contributions/settings'
 export type { DataSourceContext, MappingFieldDefinition }
 
 export interface IDataSourceInstance {
-  readonly authStrategy: IAuthenticationStrategy
   readonly tasksProvider: ITaskProvider
   readonly timeEntriesProvider: ITimeEntryProvider
   readonly membersProvider: IMemberProvider
@@ -22,9 +21,12 @@ export interface IDataSourceInstance {
 }
 
 export interface IDataSource {
+  getConnectionProfiles(): ConnectionProfileDescriptor[]
   getConnectionSchema(): AddonSettingsSchema
   createInstance(context: DataSourceContext): IDataSourceInstance
-  getMappingFields?():
-    | Promise<Either<AppError, MappingFieldDefinition[]>>
-    | MappingFieldDefinition[]
+  getStaticMappingFields?(): MappingFieldDefinition[]
+  getMappingFields?(scope: {
+    workspaceId: string
+    connectionInstanceId: string
+  }): Promise<Either<AppError, MappingFieldDefinition[]>>
 }

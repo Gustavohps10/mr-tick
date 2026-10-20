@@ -1,1 +1,3 @@
-export * from './credentials-vault-keys'
+export * from './addon-settings-schema'
+export * from './credential-reference'
+export * from './projectAddonSettings'

@@ -1,19 +1,122 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { Workspace } from './Workspace'
+import { ConnectionIdentity, Workspace } from './Workspace'
+
+function multiProfile(profileId: string): {
+  connectionProfileId: string
+  cardinality: 'multi'
+  default: boolean
+} {
+  return {
+    connectionProfileId: profileId,
+    cardinality: 'multi',
+    default: true,
+  }
+}
+
+function singleProfile(profileId: string): {
+  connectionProfileId: string
+  cardinality: 'single'
+  default: boolean
+} {
+  return {
+    connectionProfileId: profileId,
+    cardinality: 'single',
+    default: true,
+  }
+}
+
+const memberIdentity: ConnectionIdentity = {
+  kind: 'human',
+  providerId: 'jira',
+  tenantId: 'jira.example.test',
+  providerSubjectId: 'user-1',
+  displayName: 'Alex Example',
+}
 
 describe('Workspace Entity', () => {
+  it('archives and restores a connection without changing its profile or ID', () => {
+    const workspace = Workspace.create({ name: 'Discord Workspace' }).success
+    const linked = workspace.createConnection(
+      'connection-1',
+      'discord-addon',
+      singleProfile('discord-watcher'),
+    )
+    expect(linked.isSuccess()).toBe(true)
+    const connected = workspace.connectAuthorization('connection-1', {
+      authorizationRole: 'watcher',
+      authProfileId: 'discord-auth',
+      identity: {
+        kind: 'bot',
+        providerId: 'discord',
+        tenantId: 'discord-guild-1',
+        providerSubjectId: 'discord-user-1',
+        displayName: 'Discord User',
+      },
+      authorizationId: 'authorization-1',
+    })
+    expect(connected.isSuccess()).toBe(true)
+
+    const archived = workspace.archiveConnection('connection-1')
+    expect(archived.isSuccess()).toBe(true)
+    expect(workspace.connections[0].status).toBe('archived')
+    expect(
+      workspace
+        .connectAuthorization('connection-1', {
+          authorizationRole: 'watcher',
+          authProfileId: 'discord-auth',
+          identity: {
+            kind: 'bot',
+            providerId: 'discord',
+            tenantId: 'discord-guild-1',
+            providerSubjectId: 'discord-user-2',
+            displayName: 'Late callback',
+          },
+          authorizationId: 'authorization-2',
+        })
+        .isFailure(),
+    ).toBe(true)
+
+    const restored = workspace.restoreConnection('connection-1')
+    expect(restored.isSuccess()).toBe(true)
+    expect(workspace.connections[0]).toMatchObject({
+      id: 'connection-1',
+      addonId: 'discord-addon',
+      connectionProfileId: 'discord-watcher',
+      cardinality: 'single',
+      status: 'disconnected',
+      generation: 3,
+    })
+    expect(workspace.connections[0].identity).toEqual({
+      kind: 'bot',
+      providerId: 'discord',
+      tenantId: 'discord-guild-1',
+      providerSubjectId: 'discord-user-1',
+      displayName: 'Discord User',
+    })
+    expect(workspace.connections[0].authorizationId).toBeUndefined()
+    expect(
+      workspace
+        .connectAuthorization('connection-1', {
+          authorizationRole: 'watcher',
+          authProfileId: 'discord-auth',
+          identity: {
+            kind: 'bot',
+            providerId: 'discord',
+            tenantId: 'discord-guild-1',
+            providerSubjectId: 'discord-other-user',
+            displayName: 'Different User',
+          },
+          authorizationId: 'authorization-3',
+        })
+        .isFailure(),
+    ).toBe(true)
+  })
+
   const LOCAL_AVATAR_URL =
     'mr-tick-app://C:\\Users\\Gustavo\\AppData\\Roaming\\mr-tick\\workspaces\\avatars\\ws-9ef4bd92-e595-478f-b150-976d5c38372a.png'
 
   const BLOB_URL = 'blob:http://localhost:3000/mock-uuid'
-
-  const MEMBER = {
-    id: 'member-1',
-    name: 'Gustavo',
-    login: 'gustavo',
-    avatarUrl: 'https://avatar.com/user.png',
-  }
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -50,7 +153,7 @@ describe('Workspace Entity', () => {
       expect(workspace.status).toBe('draft')
       expect(workspace.createdAt).toEqual(now)
       expect(workspace.updatedAt).toEqual(now)
-      expect(workspace.dataSourceConnections).toEqual([])
+      expect(workspace.connections).toEqual([])
     })
 
     it('should trim incoming values on creation', () => {
@@ -284,116 +387,417 @@ describe('Workspace Entity', () => {
     })
 
     it('should link a data source', () => {
-      const result = workspace.linkDataSource('conn-1', 'jira')
+      const result = workspace.createConnection(
+        'conn-1',
+        'jira',
+        multiProfile('jira-main'),
+      )
 
       expect(result.isSuccess()).toBe(true)
 
-      expect(workspace.dataSourceConnections).toHaveLength(1)
-      expect(workspace.dataSourceConnections[0]).toEqual({
+      expect(workspace.connections).toHaveLength(1)
+      expect(workspace.connections[0]).toEqual({
         id: 'conn-1',
-        dataSourceId: 'jira',
+        addonId: 'jira',
+        connectionProfileId: 'jira-main',
+        cardinality: 'multi',
         status: 'disconnected',
+        authorizationId: undefined,
+        generation: 0,
+        config: undefined,
+        authorizations: [],
+        identity: undefined,
       })
 
       expect(workspace.isLinked()).toBe(true)
     })
 
     it('should fail when trying to link local datasource', () => {
-      const result = workspace.linkDataSource('local', 'local')
+      const result = workspace.createConnection(
+        'local',
+        'local',
+        multiProfile('local'),
+      )
 
       expect(result.isFailure()).toBe(true)
       expect(result.failure.messageKey).toBe('DATASOURCE_INVALIDO')
     })
 
     it('should not duplicate existing connection id', () => {
-      workspace.linkDataSource('conn-1', 'jira')
-      workspace.linkDataSource('conn-1', 'trello')
+      workspace.createConnection('conn-1', 'jira', multiProfile('jira-main'))
+      workspace.createConnection(
+        'conn-1',
+        'trello',
+        multiProfile('trello-main'),
+      )
 
-      expect(workspace.dataSourceConnections).toHaveLength(1)
-      expect(workspace.dataSourceConnections[0].dataSourceId).toBe('jira')
+      expect(workspace.connections).toHaveLength(1)
+      expect(workspace.connections[0].addonId).toBe('jira')
+    })
+
+    it('keeps a disconnected single-profile connection in the occupied slot', () => {
+      const profile = singleProfile('primary')
+      const first = workspace.createConnection('first', 'addon', profile)
+      const second = workspace.createConnection('second', 'addon', profile)
+      expect(first.isSuccess()).toBe(true)
+      expect(second.isFailure()).toBe(true)
+      expect(second.failure.messageKey).toBe('CONNECTION_CARDINALITY_REACHED')
     })
 
     it('should connect an existing data source', () => {
-      workspace.linkDataSource('conn-1', 'jira')
+      workspace.createConnection('conn-1', 'jira', multiProfile('jira-main'))
 
       const config = {
         token: 'abc',
       }
 
-      const result = workspace.connectDataSource('conn-1', MEMBER, config)
+      const result = workspace.connectAuthorization(
+        'conn-1',
+        {
+          authorizationRole: 'primary',
+          authProfileId: 'jira-main',
+          identity: memberIdentity,
+          authorizationId: 'authorization-1',
+        },
+        config,
+      )
 
       expect(result.isSuccess()).toBe(true)
 
-      const connection = workspace.dataSourceConnections[0]
+      const connection = workspace.connections[0]
 
       expect(connection.status).toBe('connected')
-      expect(connection.member).toEqual(MEMBER)
+      expect(connection.identity).toEqual(memberIdentity)
       expect(connection.config).toEqual(config)
     })
 
+    it('preserves the prior authorization when a different provider tenant reconnects', () => {
+      workspace.createConnection(
+        'conn-identity',
+        'jira',
+        multiProfile('jira-main'),
+      )
+      const originalIdentity: ConnectionIdentity = {
+        kind: 'human',
+        providerId: 'jira',
+        tenantId: 'tenant-a',
+        providerSubjectId: 'user-1',
+        displayName: 'Alex',
+      }
+      workspace.connectAuthorization(
+        'conn-identity',
+        {
+          authorizationRole: 'primary',
+          authProfileId: 'jira-main',
+          identity: originalIdentity,
+          authorizationId: 'authorization-old',
+        },
+        { token: 'old-token' },
+      )
+
+      const result = workspace.connectAuthorization(
+        'conn-identity',
+        {
+          authorizationRole: 'primary',
+          authProfileId: 'jira-main',
+          identity: {
+            ...originalIdentity,
+            tenantId: 'tenant-b',
+            providerSubjectId: 'user-2',
+          },
+          authorizationId: 'authorization-new',
+        },
+        { token: 'new-token' },
+      )
+
+      expect(result.isFailure()).toBe(true)
+      expect(result.failure.messageKey).toBe('CONNECTION_IDENTITY_MISMATCH')
+      expect(workspace.connections[0].authorizationId).toBe('authorization-old')
+      expect(workspace.connections[0].identity).toEqual(originalIdentity)
+      expect(workspace.connections[0].config).toEqual({ token: 'old-token' })
+    })
+
     it('should fail when connecting a missing data source', () => {
-      const result = workspace.connectDataSource('missing', MEMBER, {
-        token: 'abc',
-      })
+      const result = workspace.connectAuthorization(
+        'missing',
+        {
+          authorizationRole: 'primary',
+          authProfileId: 'jira-main',
+          identity: memberIdentity,
+          authorizationId: 'authorization-1',
+        },
+        {
+          token: 'abc',
+        },
+      )
 
       expect(result.isFailure()).toBe(true)
       expect(result.failure.messageKey).toBe('CONEXAO_NAO_ENCONTRADA')
     })
 
-    it('should disconnect a data source and preserve member', () => {
-      workspace.linkDataSource('conn-1', 'jira')
+    it('should disconnect a data source and preserve identity', () => {
+      workspace.createConnection('conn-1', 'jira', multiProfile('jira-main'))
 
-      workspace.connectDataSource('conn-1', MEMBER, { token: 'abc' })
+      workspace.connectAuthorization(
+        'conn-1',
+        {
+          authorizationRole: 'primary',
+          authProfileId: 'jira-main',
+          identity: memberIdentity,
+          authorizationId: 'authorization-1',
+        },
+        { token: 'abc' },
+      )
 
-      const result = workspace.disconnectDataSource('conn-1')
+      const result = workspace.disconnectConnection('conn-1')
 
       expect(result.isSuccess()).toBe(true)
 
-      const connection = workspace.dataSourceConnections[0]
+      const connection = workspace.connections[0]
 
       expect(connection.status).toBe('disconnected')
-      expect(connection.config).toBeUndefined()
-      expect(connection.member).toEqual(MEMBER)
+      expect(connection.config).toEqual({ token: 'abc' })
+      expect(connection.identity).toEqual(memberIdentity)
+
+      const reconnected = workspace.connectAuthorization(
+        'conn-1',
+        {
+          authorizationRole: 'primary',
+          authProfileId: 'jira-main',
+          identity: memberIdentity,
+          authorizationId: 'authorization-2',
+        },
+        { token: 'new-token' },
+      )
+      expect(reconnected.isSuccess()).toBe(true)
+      expect(workspace.connections[0].status).toBe('connected')
+      expect(workspace.connections[0].identity).toEqual(memberIdentity)
     })
 
     it('should fail to disconnect non-existent connection', () => {
-      const result = workspace.disconnectDataSource('ghost-id')
+      const result = workspace.disconnectConnection('ghost-id')
 
       expect(result.isFailure()).toBe(true)
       expect(result.failure.messageKey).toBe('CONEXAO_NAO_ENCONTRADA')
     })
 
-    it('should unlink a specific connection', () => {
-      workspace.linkDataSource('conn-1', 'jira')
-      workspace.linkDataSource('conn-2', 'trello')
+    it('archives preserving non-secret configuration and historical principal', () => {
+      workspace.createConnection(
+        'conn-archive',
+        'jira',
+        multiProfile('jira-main'),
+      )
+      const nonSecretConfig = {
+        baseUrl: 'https://jira.example.test',
+        projectKey: 'MR',
+      }
+      workspace.connectAuthorization(
+        'conn-archive',
+        {
+          authorizationRole: 'primary',
+          authProfileId: 'jira-main',
+          identity: memberIdentity,
+          authorizationId: 'authorization-archive',
+        },
+        nonSecretConfig,
+      )
 
-      const result = workspace.unlinkDataSource('conn-1')
+      const result = workspace.archiveConnection('conn-archive')
+
+      expect(result.isSuccess()).toBe(true)
+      expect(workspace.connections[0]).toMatchObject({
+        id: 'conn-archive',
+        connectionProfileId: 'jira-main',
+        cardinality: 'multi',
+        status: 'archived',
+        generation: 2,
+        identity: memberIdentity,
+        config: nonSecretConfig,
+      })
+      expect(workspace.connections[0]).not.toHaveProperty('authorizationId')
+    })
+
+    it('releases a single-profile slot when the connection is archived', () => {
+      workspace.createConnection(
+        'single-archived',
+        'jira',
+        singleProfile('jira-single'),
+      )
+      expect(workspace.archiveConnection('single-archived').isSuccess()).toBe(
+        true,
+      )
+
+      const replacement = workspace.createConnection(
+        'single-replacement',
+        'jira',
+        singleProfile('jira-single'),
+      )
+
+      expect(replacement.isSuccess()).toBe(true)
+    })
+
+    it('restores archived principal and non-secret configuration while requiring authentication', () => {
+      workspace.createConnection(
+        'conn-restore',
+        'jira',
+        multiProfile('jira-main'),
+      )
+      const nonSecretConfig = {
+        baseUrl: 'https://jira.example.test',
+        projectKey: 'MR',
+      }
+      workspace.connectAuthorization(
+        'conn-restore',
+        {
+          authorizationRole: 'primary',
+          authProfileId: 'jira-main',
+          identity: memberIdentity,
+          authorizationId: 'authorization-archive',
+        },
+        nonSecretConfig,
+      )
+      workspace.archiveConnection('conn-restore')
+
+      const result = workspace.restoreConnection('conn-restore')
+
+      expect(result.isSuccess()).toBe(true)
+      expect(workspace.connections[0]).toMatchObject({
+        id: 'conn-restore',
+        connectionProfileId: 'jira-main',
+        cardinality: 'multi',
+        status: 'disconnected',
+        generation: 3,
+        identity: memberIdentity,
+        config: nonSecretConfig,
+      })
+      expect(workspace.connections[0]).not.toHaveProperty('authorizationId')
+      expect(
+        workspace
+          .connectAuthorization(
+            'conn-restore',
+            {
+              authorizationRole: 'primary',
+              authProfileId: 'jira-main',
+              identity: {
+                ...memberIdentity,
+                providerSubjectId: 'different-user',
+              },
+              authorizationId: 'authorization-new',
+            },
+            nonSecretConfig,
+          )
+          .isFailure(),
+      ).toBe(true)
+    })
+
+    it('should unlink a specific connection', () => {
+      workspace.createConnection('conn-1', 'jira', multiProfile('jira-main'))
+      workspace.createConnection(
+        'conn-2',
+        'trello',
+        multiProfile('trello-main'),
+      )
+
+      const result = workspace.removeConnection('conn-1')
 
       expect(result.isSuccess()).toBe(true)
 
-      expect(workspace.dataSourceConnections).toHaveLength(1)
-      expect(workspace.dataSourceConnections[0].id).toBe('conn-2')
+      expect(workspace.connections).toHaveLength(1)
+      expect(workspace.connections[0].id).toBe('conn-2')
     })
 
     it('should unlink all connections', () => {
-      workspace.linkDataSource('conn-1', 'jira')
-      workspace.linkDataSource('conn-2', 'trello')
+      workspace.createConnection('conn-1', 'jira', multiProfile('jira-main'))
+      workspace.createConnection(
+        'conn-2',
+        'trello',
+        multiProfile('trello-main'),
+      )
 
-      const result = workspace.unlinkDataSource()
+      const result = workspace.removeConnection()
 
       expect(result.isSuccess()).toBe(true)
-      expect(workspace.dataSourceConnections).toHaveLength(0)
+      expect(workspace.connections).toHaveLength(0)
     })
 
     it('should expose frozen connection snapshots', () => {
-      workspace.linkDataSource('conn-1', 'jira')
-      workspace.connectDataSource('conn-1', MEMBER, { token: 'abc' })
+      workspace.createConnection('conn-1', 'jira', multiProfile('jira-main'))
+      workspace.connectAuthorization(
+        'conn-1',
+        {
+          authorizationRole: 'primary',
+          authProfileId: 'jira-main',
+          identity: memberIdentity,
+          authorizationId: 'authorization-1',
+        },
+        { token: 'abc' },
+      )
 
-      const connection = workspace.dataSourceConnections[0]
+      const connection = workspace.connections[0]
 
       expect(Object.isFrozen(connection)).toBe(true)
-      expect(Object.isFrozen(connection.member!)).toBe(true)
+      expect(Object.isFrozen(connection.identity!)).toBe(true)
       expect(Object.isFrozen(connection.config!)).toBe(true)
+    })
+
+    it('keeps the primary principal when another role authorizes a different identity', () => {
+      workspace.createConnection('conn-1', 'jira', multiProfile('jira-main'))
+      workspace.connectAuthorization(
+        'conn-1',
+        {
+          authorizationRole: 'primary',
+          authProfileId: 'jira-main',
+          identity: memberIdentity,
+          authorizationId: 'authorization-primary',
+        },
+        { token: 'abc' },
+      )
+      const otherIdentity: ConnectionIdentity = {
+        ...memberIdentity,
+        providerSubjectId: 'user-2',
+        displayName: 'Other Person',
+      }
+
+      const result = workspace.connectAuthorization('conn-1', {
+        authorizationRole: 'secondary',
+        authProfileId: 'jira-main',
+        identity: otherIdentity,
+        authorizationId: 'authorization-secondary',
+        credentialReferenceId: 'reference-secondary',
+      })
+
+      expect(result.isSuccess()).toBe(true)
+      const connection = workspace.connections[0]
+      expect(connection.identity).toEqual(memberIdentity)
+      expect(connection.authorizationId).toBe('authorization-primary')
+    })
+
+    it('updates authorization when the primary role is reauthorized with matching identity', () => {
+      workspace.createConnection('conn-1', 'jira', multiProfile('jira-main'))
+      workspace.connectAuthorization(
+        'conn-1',
+        {
+          authorizationRole: 'primary',
+          authProfileId: 'jira-main',
+          identity: memberIdentity,
+          authorizationId: 'authorization-1',
+        },
+        { token: 'abc' },
+      )
+
+      const result = workspace.connectAuthorization('conn-1', {
+        authorizationRole: 'primary',
+        authProfileId: 'jira-main',
+        identity: { ...memberIdentity, displayName: 'Alex Renamed' },
+        authorizationId: 'authorization-2',
+        credentialReferenceId: 'reference-2',
+      })
+
+      expect(result.isSuccess()).toBe(true)
+      expect(workspace.connections[0].identity?.displayName).toBe(
+        'Alex Renamed',
+      )
+      expect(workspace.connections[0].authorizationId).toBe('authorization-2')
     })
   })
 

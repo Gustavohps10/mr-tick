@@ -1,25 +1,23 @@
 import {
   CreateWorkspaceInput,
   DeleteWorkspaceInput,
-  IConnectDataSourceUseCase,
+  IConnectAddonConnectionUseCase,
   ICreateWorkspaceUseCase,
   IDeleteWorkspaceUseCase,
-  IDisconnectDataSourceUseCase,
-  IGetCurrentUserUseCase,
+  IDisconnectAddonConnectionUseCase,
   IGetWorkspaceUseCase,
-  ILinkDataSourceUseCase,
+  ILinkConnectionUseCase,
   IListWorkspacesUseCase,
   IMarkWorkspaceAsConfiguredUseCase,
-  IUnlinkDataSourceUseCase,
+  IUnlinkConnectionUseCase,
   IUpdateWorkspaceIdentityUseCase,
   MarkWorkspaceAsConfiguredInput,
   UpdateWorkspaceIdentityInput,
 } from '@mr-tick/application'
 import { createResponseViewModel } from '@mr-tick/shared/helpers'
-import { IRequest } from '@mr-tick/shared/transport'
+import type { IRequest, ISystemEventEmitter } from '@mr-tick/shared/transport'
 import {
   ConnectionResultViewModel,
-  MemberViewModel,
   PaginatedViewModel,
   ViewModel,
   WorkspaceViewModel,
@@ -34,8 +32,9 @@ export interface GetWorkspaceByIdRequest {
 
 export interface LinkDataSourceRequest {
   workspaceId: string
-  dataSourceId: string
+  addonId: string
   connectionInstanceId: string
+  connectionProfileId: string
 }
 
 export interface UnlinkDataSourceRequest {
@@ -45,18 +44,17 @@ export interface UnlinkDataSourceRequest {
 
 export interface ConnectDataSourceRequest {
   workspaceId: string
-  pluginId: string
   connectionInstanceId: string
-  credentials: Record<string, string | number | boolean>
-  configuration: Record<string, string | number | boolean>
+  authenticationInput: {
+    kind: 'credentials'
+    authorizationRole?: string
+    authProfileId: string
+    credentials: Readonly<Record<string, string | number | boolean>>
+    configuration: Readonly<Record<string, string | number | boolean>>
+  }
 }
 
 export interface DisconnectDataSourceRequest {
-  workspaceId: string
-  connectionInstanceId: string
-}
-
-export interface GetConnectionMemberRequest {
   workspaceId: string
   connectionInstanceId: string
 }
@@ -66,18 +64,18 @@ export class WorkspacesHandler implements HandlerBase<WorkspacesHandler> {
     private readonly createWorkspaceService: ICreateWorkspaceUseCase,
     private readonly listWorkspacesService: IListWorkspacesUseCase,
     private readonly getWorkspaceService: IGetWorkspaceUseCase,
-    private readonly linkDataSourceService: ILinkDataSourceUseCase,
-    private readonly unlinkDataSourceService: IUnlinkDataSourceUseCase,
-    private readonly connectDataSourceService: IConnectDataSourceUseCase,
-    private readonly disconnectDataSourceService: IDisconnectDataSourceUseCase,
-    private readonly getCurrentUserService: IGetCurrentUserUseCase,
+    private readonly linkConnectionService: ILinkConnectionUseCase,
+    private readonly unlinkConnectionService: IUnlinkConnectionUseCase,
+    private readonly connectAddonConnectionService: IConnectAddonConnectionUseCase,
+    private readonly disconnectAddonConnectionService: IDisconnectAddonConnectionUseCase,
     private readonly markWorkspaceAsConfiguredService: IMarkWorkspaceAsConfiguredUseCase,
     private readonly updateWorkspaceIdentityService: IUpdateWorkspaceIdentityUseCase,
     private readonly deleteWorkspaceService: IDeleteWorkspaceUseCase,
+    private readonly systemEventEmitter: ISystemEventEmitter,
   ) {}
 
   public async markWorkspaceAsConfigured(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body: { workspaceId } }: IRequest<MarkWorkspaceAsConfiguredInput>,
   ): Promise<ViewModel> {
     const result = await this.markWorkspaceAsConfiguredService.execute({
@@ -88,7 +86,7 @@ export class WorkspacesHandler implements HandlerBase<WorkspacesHandler> {
   }
 
   public async create(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body: { name, avatarFile, description } }: IRequest<CreateWorkspaceInput>,
   ): Promise<ViewModel<WorkspaceViewModel>> {
     const result = await this.createWorkspaceService.execute({
@@ -116,7 +114,7 @@ export class WorkspacesHandler implements HandlerBase<WorkspacesHandler> {
   }
 
   public async getById(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<GetWorkspaceByIdRequest>,
   ): Promise<ViewModel<WorkspaceViewModel>> {
     const result = await this.getWorkspaceService.execute(body)
@@ -125,52 +123,77 @@ export class WorkspacesHandler implements HandlerBase<WorkspacesHandler> {
   }
 
   public async linkDataSource(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<LinkDataSourceRequest>,
   ): Promise<ViewModel<WorkspaceViewModel>> {
-    const result = await this.linkDataSourceService.execute(body)
+    const result = await this.linkConnectionService.execute(body)
 
     return createResponseViewModel(result)
   }
 
   public async unlinkDataSource(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<UnlinkDataSourceRequest>,
   ): Promise<ViewModel<WorkspaceViewModel>> {
-    const result = await this.unlinkDataSourceService.execute(body)
+    const result = await this.unlinkConnectionService.execute({
+      workspaceId: body.workspaceId,
+      connectionInstanceId: body.connectionInstanceId,
+    })
+    if (result.isSuccess()) {
+      this.systemEventEmitter.emit('connection:removed', {
+        workspaceId: body.workspaceId,
+        connectionInstanceId: body.connectionInstanceId,
+      })
+    }
 
     return createResponseViewModel(result)
   }
 
-  public async connectDataSource(
-    _event: IpcMainInvokeEvent,
+  public async submitCredentials(
+    event: IpcMainInvokeEvent,
     { body }: IRequest<ConnectDataSourceRequest>,
   ): Promise<ViewModel<ConnectionResultViewModel>> {
-    const result = await this.connectDataSourceService.execute(body)
+    const authorizationRole = body.authenticationInput.authorizationRole
+    if (authorizationRole === undefined) {
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'AUTHORIZATION_ROLE_REQUIRED',
+      }
+    }
+
+    const result = await this.connectAddonConnectionService.execute({
+      workspaceId: body.workspaceId,
+      connectionInstanceId: body.connectionInstanceId,
+      authenticationInput: {
+        method: 'authorized',
+        authorizationRole,
+        authProfileId: body.authenticationInput.authProfileId,
+        credentials: body.authenticationInput.credentials,
+        configuration: body.authenticationInput.configuration,
+      },
+    })
 
     return createResponseViewModel(result)
   }
 
   public async disconnectDataSource(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<DisconnectDataSourceRequest>,
   ): Promise<ViewModel<void>> {
-    const result = await this.disconnectDataSourceService.execute(body)
-
-    return createResponseViewModel(result)
-  }
-
-  public async getConnectionMember(
-    _event: IpcMainInvokeEvent,
-    { body }: IRequest<GetConnectionMemberRequest>,
-  ): Promise<ViewModel<MemberViewModel | null>> {
-    const result = await this.getCurrentUserService.execute(body)
+    const result = await this.disconnectAddonConnectionService.execute(body)
+    if (result.isSuccess()) {
+      this.systemEventEmitter.emit('connection:disconnected', {
+        workspaceId: body.workspaceId,
+        connectionInstanceId: body.connectionInstanceId,
+      })
+    }
 
     return createResponseViewModel(result)
   }
 
   public async updateIdentity(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<UpdateWorkspaceIdentityInput>,
   ): Promise<ViewModel<WorkspaceViewModel>> {
     const result = await this.updateWorkspaceIdentityService.execute(body)
@@ -179,7 +202,7 @@ export class WorkspacesHandler implements HandlerBase<WorkspacesHandler> {
   }
 
   public async delete(
-    _event: IpcMainInvokeEvent,
+    event: IpcMainInvokeEvent,
     { body }: IRequest<DeleteWorkspaceInput>,
   ): Promise<ViewModel<void>> {
     const result = await this.deleteWorkspaceService.execute(body)

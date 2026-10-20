@@ -20,6 +20,8 @@ extraResources:
     to: native-prebuilds/window_overlay.node
   - from: native-prebuilds/updater.exe
     to: native-prebuilds/updater.exe
+  - from: native-prebuilds/better_sqlite3_electron.node
+    to: native-prebuilds/better_sqlite3_electron.node
 asarUnpack:
   - resources/**
 protocols:

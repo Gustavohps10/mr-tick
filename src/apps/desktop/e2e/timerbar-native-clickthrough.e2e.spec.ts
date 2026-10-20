@@ -8,12 +8,14 @@ import { expect, test } from './fixtures/electron-fixture'
 import { NativeHarnessClient } from './harness/native-harness-client'
 
 const currentDir = dirname(fileURLToPath(import.meta.url))
-const seedWorkspaces: Array<{
-  id: string
-  name: string
-  status: string
-  dataSourceConnections: Array<{ dataSourceId: string }>
-}> = JSON.parse(
+const seedWorkspaces: {
+  workspaces: Array<{
+    id: string
+    name: string
+    status: string
+    connections: Array<{ addonId: string }>
+  }>
+} = JSON.parse(
   readFileSync(resolve(currentDir, 'fixtures/seed-workspaces.json'), 'utf-8'),
 )
 
@@ -24,9 +26,9 @@ async function openWorkspace(page: Page): Promise<void> {
     return
   }
 
-  const fakeWorkspace = seedWorkspaces.find((workspace) =>
-    workspace.dataSourceConnections.some(
-      (connection) => connection.dataSourceId === 'mr-tick-datasource-fake',
+  const fakeWorkspace = seedWorkspaces.workspaces.find((workspace) =>
+    workspace.connections.some(
+      (connection) => connection.addonId === 'mr-tick-datasource-fake',
     ),
   )
   expect(fakeWorkspace).toBeDefined()

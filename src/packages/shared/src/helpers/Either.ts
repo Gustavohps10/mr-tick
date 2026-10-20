@@ -69,9 +69,13 @@ class EitherValue<Failure, Success> implements Either<Failure, Success> {
 }
 
 function success(): Either<never, void>
-function success<Success>(value: Success): Either<never, Success>
-function success<Success>(value?: Success): Either<never, Success | void> {
-  return new EitherValue<never, Success | void>({ kind: 'success', value })
+function success<Success, Failure = never>(
+  value: Success,
+): Either<Failure, Success>
+function success<Success, Failure = never>(
+  value?: Success,
+): Either<Failure, Success | void> {
+  return new EitherValue<Failure, Success | void>({ kind: 'success', value })
 }
 
 function failure<Failure, Success = never>(

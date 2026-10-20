@@ -62,7 +62,7 @@ function workspace(id: string): WorkspaceViewModel {
     id,
     name: id,
     status: 'configured',
-    dataSourceConnections: [],
+    connections: [],
     createdAt: new Date(),
     updatedAt: new Date(),
   }

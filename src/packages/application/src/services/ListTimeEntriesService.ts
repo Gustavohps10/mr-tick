@@ -16,10 +16,12 @@ export class ListTimeEntriesService implements IListTimeEntriesUseCase {
     input: ListTimeEntriesInput,
   ): Promise<Either<AppError, PagedResultDTO<TimeEntryDTO>>> {
     try {
-      const adapter = await this.dataSourceResolver.getDataSource(
+      const adapterResult = await this.dataSourceResolver.getDataSource(
         input.workspaceId,
         input.connectionInstanceId,
       )
+      if (adapterResult.isFailure()) return adapterResult.forwardFailure()
+      const adapter = adapterResult.success
 
       const result = await adapter.getAuthenticatedMemberData()
       if (result.isFailure()) return result.forwardFailure()
@@ -35,7 +37,7 @@ export class ListTimeEntriesService implements IListTimeEntriesUseCase {
 
       const timeEntriesResult =
         await adapter.timeEntriesProvider.findByMemberId(
-          member.id.toString(),
+          member.id,
           startDate,
           endDate,
         )

@@ -1,3 +1,4 @@
+export * from './ConnectionProfileDescriptor'
 export * from './Entity'
 export * from './Member'
 export * from './Task'

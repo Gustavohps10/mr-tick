@@ -2,11 +2,14 @@ import {
   AddonSettingsField,
   AddonSettingsSchema,
   AddonSettingsValues,
+  AddonSettingsView,
   AddonVaultScope,
+  rebaseAddonSettings,
 } from '@mr-tick/application'
 import type {
   AddonManifestViewModel,
   AddonSettingsTab,
+  ConnectionProfileDescriptor,
   WorkspaceViewModel,
 } from '@mr-tick/sdk'
 import { isString } from '@mr-tick/shared/helpers'
@@ -18,7 +21,7 @@ import {
   Plus,
   SlidersHorizontal,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { MappingConfigModal } from '@/components/mapping-config-modal'
@@ -40,17 +43,26 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDataSourceConnections } from '@/contexts/DataSourceConnectionsContext'
+import { WorkspaceContext } from '@/contexts/WorkspaceContext'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib/utils'
-import { ConnectionCard } from '@/pages/addons/components/addon-list'
-import type { AddonConnection, ConnectionStatus } from '@/pages/addons/types'
 
 import { AddonFieldRenderer } from './addon-field-renderer'
 import { AddonThemeSettingsPanel } from './addon-theme-settings-panel'
 import { addonMatchesCategory } from './addons-manager-view'
+import {
+  AddonConnection,
+  ConnectionCard,
+  ConnectionStatus,
+} from './connection-card'
 import { WorkspaceGroupedDataSourceManager } from './workspace-grouped-datasource-manager'
 
-const emptySettings: AddonSettingsValues = {}
+const emptySettings: AddonSettingsView = {
+  schemaVersion: 1,
+  revision: 0,
+  values: {},
+  credentialStates: {},
+}
 
 export interface AddonSettingsRendererProps {
   addonId: string
@@ -98,6 +110,16 @@ function resolveConnectionUrl(
 function resolveConnectionStatus(status?: string): ConnectionStatus {
   if (status === 'connected') return 'connected'
   return 'disconnected'
+}
+
+function resolveProfileSelectionValue(
+  profiles: ConnectionProfileDescriptor[],
+  selectedProfileId: string | null,
+): string {
+  if (selectedProfileId !== null) return selectedProfileId
+  const defaultProfile = profiles.find((profile) => profile.default)
+  if (!defaultProfile) return ''
+  return defaultProfile.connectionProfileId
 }
 
 export function AddonSettingsRenderer({
@@ -154,6 +176,8 @@ function WorkspaceSubSidebarSettingsManager({
   hideHeader?: boolean
 }) {
   const bridge = useHostBridge()
+  const workspaceContext = useContext(WorkspaceContext)
+  const activeRouteWorkspaceId = workspaceContext?.workspace?.id
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('')
 
   const { data: workspaces = [], isLoading: isLoadingWorkspaces } = useQuery<
@@ -193,8 +217,14 @@ function WorkspaceSubSidebarSettingsManager({
       const match = workspaces.find((ws) => ws.id === selectedWorkspaceId)
       if (match) return match
     }
+    if (activeRouteWorkspaceId) {
+      const currentMatch = workspaces.find(
+        (ws) => ws.id === activeRouteWorkspaceId,
+      )
+      if (currentMatch) return currentMatch
+    }
     return firstWorkspace(workspaces)
-  }, [workspaces, selectedWorkspaceId])
+  }, [workspaces, selectedWorkspaceId, activeRouteWorkspaceId])
 
   if (isLoadingWorkspaces) {
     return (
@@ -223,8 +253,8 @@ function WorkspaceSubSidebarSettingsManager({
           Nenhum workspace encontrado
         </h3>
         <p className="text-muted-foreground mt-1 max-w-sm text-xs">
-          As conexões e capacidades pertencem aos Workspaces. Crie ou abra um
-          workspace para configurar esta extensão.
+          As conexÃµes e capacidades pertencem aos Workspaces. Crie ou abra um
+          workspace para configurar esta extensÃ£o.
         </p>
       </div>
     )
@@ -398,6 +428,15 @@ function ScopedAddonSettingsRenderer({
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
   const workspaceId = scope.kind === 'workspace' ? scope.workspaceId : undefined
+  const settingsQueryKey = ['addon-settings', addonId, scope]
+  const pendingRebasePatch = useRef<AddonSettingsValues | null>(null)
+
+  const loadSettings = async () => {
+    const res = await bridge.addons.getSettings({ body: { addonId, scope } })
+    if (!res.isSuccess) throw new Error(res.error)
+    if (res.data === undefined) return emptySettings
+    return res.data
+  }
 
   const { data: schema, isLoading: isLoadingSchema } = useQuery({
     queryKey: ['addon-schema', addonId, scope],
@@ -413,44 +452,181 @@ function ScopedAddonSettingsRenderer({
   const { data: savedSettings = emptySettings, isLoading: isLoadingSettings } =
     useQuery({
       queryKey: ['addon-settings', addonId, scope],
-      queryFn: async () => {
-        const res = await bridge.addons.getSettings({
-          body: { addonId, scope },
-        })
-        if (!res.isSuccess) throw new Error(res.error)
-        if (res.data === undefined) return emptySettings
-        return res.data
-      },
+      queryFn: loadSettings,
     })
 
+  const currentScopeStr = JSON.stringify(scope)
+  const lastScopeStr = useRef(currentScopeStr)
+  const draftsByScope = useRef<
+    Record<
+      string,
+      {
+        formValues: Record<string, string | number | boolean | null>
+        credentialValues: Record<string, string>
+      }
+    >
+  >({})
   const [formValues, setFormValues] = useState<
     Record<string, string | number | boolean | null>
   >({})
+  const [credentialValues, setCredentialValues] = useState<
+    Record<string, string>
+  >({})
 
   useEffect(() => {
-    if (savedSettings) {
-      setFormValues({ ...savedSettings })
+    if (lastScopeStr.current !== currentScopeStr) {
+      draftsByScope.current[lastScopeStr.current] = {
+        formValues,
+        credentialValues,
+      }
+      lastScopeStr.current = currentScopeStr
+      pendingRebasePatch.current = null
+      const existingDraft = draftsByScope.current[currentScopeStr]
+      if (existingDraft !== undefined) {
+        setFormValues({ ...existingDraft.formValues })
+        setCredentialValues({ ...existingDraft.credentialValues })
+        return
+      }
+      setFormValues(savedSettings ? { ...savedSettings.values } : {})
+      setCredentialValues({})
+      return
     }
-  }, [savedSettings])
+    if (savedSettings) {
+      const existingDraft = draftsByScope.current[currentScopeStr]
+      if (existingDraft !== undefined) {
+        return
+      }
+      const pendingPatch = pendingRebasePatch.current
+      let nextValues = { ...savedSettings.values }
+      if (pendingPatch !== null) {
+        nextValues = rebaseAddonSettings(nextValues, pendingPatch)
+        pendingRebasePatch.current = null
+      }
+      setFormValues(nextValues)
+      setCredentialValues({})
+    }
+  }, [savedSettings, currentScopeStr])
+
+  type SettingsSaveFailureReason =
+    | { kind: 'conflict'; statusCode: 409; messageKey: string }
+    | { kind: 'credential_partial'; fieldId: string; error: string }
+    | { kind: 'generic'; error: string }
+
+  function resolveSettingsSaveErrorMessage(
+    reason: SettingsSaveFailureReason,
+  ): string {
+    if (reason.kind === 'generic') {
+      return reason.error
+    }
+    return reason.kind
+  }
+
+  class SettingsSaveError extends Error {
+    constructor(public readonly reason: SettingsSaveFailureReason) {
+      super(resolveSettingsSaveErrorMessage(reason))
+    }
+  }
 
   const saveMutation = useMutation({
     mutationFn: async (input: {
       scope: AddonVaultScope
-      values: AddonSettingsValues
+      expectedRevision: number
+      patch: AddonSettingsValues
+      credentials: Record<string, string>
     }) => {
+      const submittedCredentials: Record<string, string | null> = {}
+      for (const [fieldId, value] of Object.entries(input.credentials)) {
+        let submittedValue: string | null = value
+        if (value.length === 0) {
+          submittedValue = null
+        }
+        submittedCredentials[fieldId] = submittedValue
+      }
+
       const res = await bridge.addons.saveSettings({
-        body: { addonId, scope: input.scope, settings: input.values },
+        body: {
+          addonId,
+          scope: input.scope,
+          expectedRevision: input.expectedRevision,
+          patch: input.patch,
+          credentials: submittedCredentials,
+        },
       })
-      if (!res.isSuccess) throw new Error(res.error)
+      if (!res.isSuccess) {
+        if (res.statusCode === 409) {
+          let conflictMessage = 'REVISION_CONFLICT'
+          if (res.error !== undefined && res.error.length > 0) {
+            conflictMessage = res.error
+          }
+          throw new SettingsSaveError({
+            kind: 'conflict',
+            statusCode: 409,
+            messageKey: conflictMessage,
+          })
+        }
+        if (
+          res.statusCode === 207 ||
+          res.error === 'ADDON_CREDENTIAL_PARTIAL_FAILURE'
+        ) {
+          let partialError = 'ADDON_CREDENTIAL_PARTIAL_FAILURE'
+          if (res.error !== undefined && res.error.length > 0) {
+            partialError = res.error
+          }
+          throw new SettingsSaveError({
+            kind: 'credential_partial',
+            fieldId: '',
+            error: partialError,
+          })
+        }
+        let genericError = 'FAILED_TO_SAVE_SETTINGS'
+        if (res.error !== undefined && res.error.length > 0) {
+          genericError = res.error
+        }
+        throw new SettingsSaveError({
+          kind: 'generic',
+          error: genericError,
+        })
+      }
       return res
     },
     onSuccess: (result, input) => {
       toast.success('Configurações salvas com sucesso!')
+      delete draftsByScope.current[JSON.stringify(input.scope)]
       queryClient.invalidateQueries({
         queryKey: ['addon-settings', addonId, input.scope],
       })
     },
-    onError: (err: Error) => {
+    onError: async (err: Error, input) => {
+      if (err instanceof SettingsSaveError && err.reason.kind === 'conflict') {
+        pendingRebasePatch.current = input.patch
+        await queryClient.invalidateQueries({ queryKey: settingsQueryKey })
+        const latest = await queryClient.fetchQuery({
+          queryKey: settingsQueryKey,
+          queryFn: loadSettings,
+        })
+        const rebased = rebaseAddonSettings(latest.values, input.patch)
+        setFormValues(rebased)
+        toast.error(
+          'As configurações mudaram. Seus campos foram reaplicados sobre a revisão atual; revise e salve novamente.',
+        )
+        return
+      }
+      if (
+        err instanceof SettingsSaveError &&
+        err.reason.kind === 'credential_partial'
+      ) {
+        setCredentialValues({})
+        await queryClient.invalidateQueries({ queryKey: settingsQueryKey })
+        const latest = await queryClient.fetchQuery({
+          queryKey: settingsQueryKey,
+          queryFn: loadSettings,
+        })
+        setFormValues({ ...latest.values })
+        toast.error(
+          'As configurações foram salvas, mas uma credencial falhou. O estado foi recarregado; confira os indicadores antes de tentar novamente.',
+        )
+        return
+      }
       toast.error(err.message)
     },
   })
@@ -459,6 +635,14 @@ function ScopedAddonSettingsRenderer({
     fieldId: string,
     value: string | number | boolean | null,
   ) => {
+    const field = findSettingsField(schema || [], fieldId)
+    if (field?.scope === 'credential') {
+      setCredentialValues((previous) => ({
+        ...previous,
+        [fieldId]: isString(value) ? value : '',
+      }))
+      return
+    }
     setFormValues((prev) => ({
       ...prev,
       [fieldId]: value,
@@ -466,12 +650,31 @@ function ScopedAddonSettingsRenderer({
   }
 
   const handleReset = () => {
-    setFormValues({ ...savedSettings })
-    toast.info('Alterações descartadas.')
+    setFormValues({ ...savedSettings.values })
+    setCredentialValues({})
+    toast.info('AlteraÃ§Ãµes descartadas.')
   }
 
   const handleSave = () => {
-    saveMutation.mutate({ scope, values: formValues })
+    const patch: AddonSettingsValues = {}
+    for (const [fieldId, value] of Object.entries(formValues)) {
+      if (savedSettings.values[fieldId] !== value) patch[fieldId] = value
+    }
+    saveMutation.mutate({
+      scope,
+      expectedRevision: savedSettings.revision,
+      patch,
+      credentials: credentialValues,
+    })
+  }
+
+  const fieldValue = (field: AddonSettingsField) => {
+    if (field.scope === 'credential') {
+      const pendingValue = credentialValues[field.id]
+      if (pendingValue === undefined) return ''
+      return pendingValue
+    }
+    return formValues[field.id]
   }
 
   const { data: installedList = [] } = useQuery({
@@ -488,13 +691,27 @@ function ScopedAddonSettingsRenderer({
   const isDataSource = currentAddon
     ? addonMatchesCategory(currentAddon, 'dataSource')
     : false
+  const { data: connectionProfiles = [] } = useQuery<
+    ConnectionProfileDescriptor[]
+  >({
+    queryKey: ['addon-connection-profiles', addonId],
+    queryFn: async () => {
+      const result = await bridge.addons.getConnectionProfiles({
+        body: { addonId },
+      })
+      if (!result.isSuccess || !result.data)
+        throw new Error(result.error ?? 'CONNECTION_PROFILES_UNAVAILABLE')
+      return result.data
+    },
+    enabled: isDataSource,
+  })
 
   if (isLoadingSchema || isLoadingSettings) {
     if (hideWhenEmpty) return null
     return (
       <div
         className="flex flex-1 flex-col gap-4 p-6"
-        aria-label="Carregando configurações"
+        aria-label="Carregando configuraÃ§Ãµes"
       >
         <Skeleton className="h-6 w-48" />
         <Skeleton className="h-10 w-full" />
@@ -516,10 +733,10 @@ function ScopedAddonSettingsRenderer({
         <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center p-8 text-center text-sm">
           <Check className="mb-2 size-8 text-emerald-500/80" />
           <span className="text-foreground font-semibold">
-            Autenticação Automática
+            AutenticaÃ§Ã£o AutomÃ¡tica
           </span>
           <p className="mt-1 max-w-sm text-xs">
-            Esta extensão não requer credenciais manuais neste workspace.
+            Esta extensÃ£o nÃ£o requer credenciais manuais neste workspace.
           </p>
         </div>
       )
@@ -543,15 +760,18 @@ function ScopedAddonSettingsRenderer({
                       </p>
                     )}
                   </div>
-                  <Badge
-                    variant="outline"
-                    className="font-mono text-[10px]"
-                    data-testid={`addon-auth-cardinality-${authTab.cardinality ?? 'single'}`}
-                  >
-                    {authTab.cardinality === 'multi'
-                      ? 'Múltiplas contas (1:N)'
-                      : 'Conta única (1:1)'}
-                  </Badge>
+                  <div className="flex flex-wrap gap-1">
+                    {connectionProfiles.map((profile) => (
+                      <Badge
+                        key={profile.connectionProfileId}
+                        variant="outline"
+                        className="font-mono text-[10px]"
+                        data-testid={`addon-auth-cardinality-${profile.cardinality}`}
+                      >
+                        {profile.connectionProfileId}: {profile.cardinality}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
 
                 {authTab.groups
@@ -572,7 +792,11 @@ function ScopedAddonSettingsRenderer({
                               field={field}
                               addonId={addonId}
                               workspaceId={workspaceId}
-                              value={formValues[field.id]}
+                              value={fieldValue(field)}
+                              credentialConfigured={
+                                savedSettings.credentialStates[field.id] ===
+                                'configured'
+                              }
                               onChange={handleFieldChange}
                             />
                           ))}
@@ -585,7 +809,11 @@ function ScopedAddonSettingsRenderer({
                           field={field}
                           addonId={addonId}
                           workspaceId={workspaceId}
-                          value={formValues[field.id]}
+                          value={fieldValue(field)}
+                          credentialConfigured={
+                            savedSettings.credentialStates[field.id] ===
+                            'configured'
+                          }
                           onChange={handleFieldChange}
                         />
                       </div>
@@ -620,9 +848,9 @@ function ScopedAddonSettingsRenderer({
     return (
       <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center p-8 text-center text-sm">
         <Check className="mb-2 size-8 text-emerald-500/80" />
-        <span className="text-foreground font-semibold">Módulo Ativo</span>
+        <span className="text-foreground font-semibold">MÃ³dulo Ativo</span>
         <p className="mt-1 max-w-sm text-xs">
-          Esta extensão está ativa e operando em segundo plano.
+          Esta extensÃ£o estÃ¡ ativa e operando em segundo plano.
         </p>
       </div>
     )
@@ -667,7 +895,7 @@ function ScopedAddonSettingsRenderer({
         <div className="border-b p-4">
           <h2 className="text-lg font-semibold">{headerTitle}</h2>
           <p className="text-muted-foreground text-sm">
-            Configure os parâmetros deste addon
+            Configure os parÃ¢metros deste addon
           </p>
         </div>
       )}
@@ -705,8 +933,8 @@ function ScopedAddonSettingsRenderer({
                     data-testid="addon-capability-auth-required-banner"
                     className="border-border/70 bg-muted/30 text-muted-foreground rounded-md border border-dashed px-3.5 py-2.5 text-xs"
                   >
-                    Conecte uma conta na aba <strong>Autenticação</strong> deste
-                    Workspace para habilitar e configurar esta capacidade.
+                    Conecte uma conta na aba <strong>AutenticaÃ§Ã£o</strong>{' '}
+                    deste Workspace para habilitar e configurar esta capacidade.
                   </div>
                 )}
 
@@ -737,7 +965,11 @@ function ScopedAddonSettingsRenderer({
                                 field={field}
                                 addonId={addonId}
                                 workspaceId={workspaceId}
-                                value={formValues[field.id]}
+                                value={fieldValue(field)}
+                                credentialConfigured={
+                                  savedSettings.credentialStates[field.id] ===
+                                  'configured'
+                                }
                                 onChange={handleFieldChange}
                                 disabled={isAuthLocked}
                               />
@@ -751,7 +983,11 @@ function ScopedAddonSettingsRenderer({
                             field={field}
                             addonId={addonId}
                             workspaceId={workspaceId}
-                            value={formValues[field.id]}
+                            value={fieldValue(field)}
+                            credentialConfigured={
+                              savedSettings.credentialStates[field.id] ===
+                              'configured'
+                            }
                             onChange={handleFieldChange}
                             disabled={isAuthLocked}
                           />
@@ -786,6 +1022,7 @@ function ScopedAddonSettingsRenderer({
 }
 
 function DataSourceInstancesManager({ addonId }: { addonId: string }) {
+  const bridge = useHostBridge()
   const queryClient = useQueryClient()
   const connectionsCtx = useDataSourceConnections()
   const {
@@ -800,7 +1037,32 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
   const [connectionTargetId, setConnectionTargetId] = useState<string | null>(
     null,
   )
+  const [connectionTargetProfileId, setConnectionTargetProfileId] = useState<
+    string | null
+  >(null)
   const [mappingTargetId, setMappingTargetId] = useState<string | null>(null)
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
+    null,
+  )
+  const { data: connectionProfiles = [] } = useQuery<
+    ConnectionProfileDescriptor[]
+  >({
+    queryKey: ['addons', addonId, 'connection-profiles'],
+    queryFn: async () => {
+      const result = await bridge.addons.getConnectionProfiles({
+        body: { addonId },
+      })
+      if (!result.isSuccess || !result.data)
+        throw new Error(result.error ?? 'CONNECTION_PROFILES_UNAVAILABLE')
+      return result.data
+    },
+  })
+  const selectedProfile = connectionProfiles.find(
+    (profile) => profile.connectionProfileId === selectedProfileId,
+  )
+  const onlyProfile = connectionProfiles.find(() => true)
+  const profileForNewConnection =
+    connectionProfiles.length === 1 ? onlyProfile : selectedProfile
 
   const unlinkMutation = useMutation({
     mutationFn: (connectionInstanceId: string) =>
@@ -814,6 +1076,7 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
       connect({
         connectionInstanceId: data.connectionInstanceId,
         pluginId: data.pluginId,
+        connectionProfileId: data.connectionProfileId,
         credentials: data.credentials,
         configuration: data.configuration,
       }),
@@ -825,7 +1088,14 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
         return
       }
       queryClient.invalidateQueries({ queryKey: ['workspace'] })
-      toast.success(`${res.data.member.login} conectado`)
+      let label = 'Instância'
+      if (res.data.identity && res.data.identity.displayName) {
+        label = res.data.identity.displayName
+      }
+      if (label === 'Instância' && res.data.member && res.data.member.login) {
+        label = res.data.member.login
+      }
+      toast.success(`${label} conectado`)
       setConnectionDialogOpen(false)
       setConnectionTargetId(null)
     },
@@ -833,14 +1103,24 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
   })
 
   const handleAddConnection = async () => {
+    if (!profileForNewConnection) {
+      toast.error('Selecione o perfil de conexÃ£o no gerenciador de conexÃµes.')
+      return
+    }
     const unique = crypto.randomUUID().slice(0, 8)
     const newId = `${addonId}-${unique}`
     try {
-      await link({
+      const result = await link({
         pluginId: addonId,
         connectionInstanceId: newId,
+        connectionProfileId: profileForNewConnection.connectionProfileId,
       })
+      if (!result?.isSuccess) {
+        toast.error(result?.error ?? 'Falha ao vincular DataSource')
+        return
+      }
       setConnectionTargetId(newId)
+      setConnectionTargetProfileId(profileForNewConnection.connectionProfileId)
       setConnectionDialogOpen(true)
     } catch {
       // Handled in onError
@@ -855,6 +1135,9 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
       url: resolveConnectionUrl(c.config),
       status: resolveConnectionStatus(c.status),
     }))
+  const connectionTargetProfile = connectionProfiles.find(
+    (profile) => profile.connectionProfileId === connectionTargetProfileId,
+  )
 
   return (
     <div
@@ -863,9 +1146,9 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
     >
       <div className="flex items-center justify-between border-b pb-2">
         <div>
-          <h3 className="text-sm font-medium">Instâncias Conectadas</h3>
+          <h3 className="text-sm font-medium">InstÃ¢ncias Conectadas</h3>
           <p className="text-muted-foreground mt-1 text-xs">
-            Gerencie múltiplas conexões para este DataSource.
+            Gerencie mÃºltiplas conexÃµes para este DataSource.
           </p>
         </div>
         <Button
@@ -875,9 +1158,35 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
           className="gap-1.5"
         >
           <Plus className="h-4 w-4" />
-          Nova Instância
+          Nova InstÃ¢ncia
         </Button>
       </div>
+      {connectionProfiles.length > 1 && (
+        <label className="flex max-w-sm flex-col gap-2 text-xs">
+          <span>Perfil de conexão</span>
+          <select
+            aria-label="Perfil de conexão"
+            value={resolveProfileSelectionValue(
+              connectionProfiles,
+              selectedProfileId,
+            )}
+            onChange={(event) =>
+              setSelectedProfileId(event.currentTarget.value)
+            }
+            className="border-border bg-background rounded-md border px-3 py-2"
+          >
+            <option value="">Selecione um perfil</option>
+            {connectionProfiles.map((profile) => (
+              <option
+                key={profile.connectionProfileId}
+                value={profile.connectionProfileId}
+              >
+                {profile.connectionProfileId}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="space-y-3">
         {myConnections.length > 0 ? (
           myConnections.map((conn) => (
@@ -886,6 +1195,14 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
                 connection={conn}
                 onOpenSettings={(c) => {
                   setConnectionTargetId(c.id)
+                  const linkedConnection =
+                    connectionsCtx.workspaceConnections.find(
+                      (connection) => connection.id === c.id,
+                    )
+                  if (linkedConnection)
+                    setConnectionTargetProfileId(
+                      linkedConnection.connectionProfileId,
+                    )
                   setConnectionDialogOpen(true)
                 }}
                 onDisconnect={(c) => disconnect(c.id)}
@@ -910,7 +1227,7 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
           ))
         ) : (
           <div className="text-muted-foreground border-border/50 bg-muted/20 rounded-lg border border-dashed py-8 text-center text-sm">
-            Nenhuma instância conectada.
+            Nenhuma instÃ¢ncia conectada.
           </div>
         )}
       </div>
@@ -934,16 +1251,19 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
       >
         <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Conectar Instância</DialogTitle>
+            <DialogTitle>Conectar InstÃ¢ncia</DialogTitle>
             <DialogDescription>
-              Preencha as configurações de conexão para esta instância.
+              Preencha as configuraÃ§Ãµes de conexÃ£o para esta instÃ¢ncia.
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto py-2 pr-1">
-            {connectionTargetId && (
+            {connectionTargetId && connectionTargetProfile && (
               <NewDataSourceInstanceForm
                 pluginId={addonId}
                 connectionInstanceId={connectionTargetId}
+                connectionProfileId={
+                  connectionTargetProfile.connectionProfileId
+                }
                 isSubmitting={connectMutation.isPending}
                 onSubmit={(data) => connectMutation.mutate(data)}
               />
@@ -962,6 +1282,7 @@ function FieldRenderer({
   value,
   onChange,
   disabled,
+  credentialConfigured,
 }: {
   field: AddonSettingsField
   addonId: string
@@ -969,6 +1290,7 @@ function FieldRenderer({
   value: string | number | boolean | null | undefined
   onChange: (fieldId: string, value: string | number | boolean | null) => void
   disabled?: boolean
+  credentialConfigured: boolean
 }) {
   return (
     <AddonFieldRenderer
@@ -978,6 +1300,7 @@ function FieldRenderer({
       value={value}
       onChange={onChange}
       disabled={disabled}
+      credentialConfigured={credentialConfigured}
       renderDataSourceInstances={(id) => (
         <DataSourceInstancesManager addonId={id} />
       )}
@@ -1003,6 +1326,26 @@ function settingsTabs(schema: AddonSettingsSchema): AddonSettingsTab[] {
   }
   if (fields.length > 0) tabs.push({ id: 'general', label: 'Geral', fields })
   return tabs
+}
+
+function findSettingsField(
+  schema: AddonSettingsSchema,
+  fieldId: string,
+): AddonSettingsField | undefined {
+  for (const item of schema) {
+    if (isSettingsField(item) && item.id === fieldId) return item
+    if (!isSettingsField(item)) {
+      const direct = item.fields?.find((field) => field.id === fieldId)
+      if (direct !== undefined) return direct
+      if (item.groups !== undefined) {
+        for (const group of item.groups) {
+          const grouped = group.fields.find((field) => field.id === fieldId)
+          if (grouped !== undefined) return grouped
+        }
+      }
+    }
+  }
+  return undefined
 }
 function initialSettingsTab(tabs: AddonSettingsTab[]): string | undefined {
   for (const tab of tabs) return tab.id

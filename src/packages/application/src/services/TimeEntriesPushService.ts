@@ -24,21 +24,25 @@ export class TimeEntriesPushService implements ITimeEntriesPushUseCase {
   public async execute(
     input: PushTimeEntriesInput,
   ): Promise<Either<AppError, SyncTimeEntryDTO[]>> {
-    const workspace = await this.workspacesRepository.findById(
+    const workspaceResult = await this.workspacesRepository.getById(
       input.workspaceId,
     )
+    if (workspaceResult.isFailure()) return workspaceResult.forwardFailure()
+    const workspace = workspaceResult.success
     if (!workspace)
       return Either.failure(AppError.Unauthorized('WORKSPACE_NAO_ENCONTRADO'))
 
-    const adapter = await this.dataSourceResolver.getDataSource(
+    const adapterResult = await this.dataSourceResolver.getDataSource(
       input.workspaceId,
       input.connectionInstanceId,
     )
+    if (adapterResult.isFailure()) return adapterResult.forwardFailure()
+    const adapter = adapterResult.success
     const auth = adapter.getAuthenticatedMemberData()
     if (auth.isFailure()) return auth.forwardFailure()
 
     const authenticatedUser = {
-      id: String(auth.success.id),
+      id: auth.success.id,
       name: `${auth.success.firstname} ${auth.success.lastname}`.trim(),
     }
     const results: SyncTimeEntryDTO[] = []

@@ -92,7 +92,7 @@ async function connectSecondFakeConnection(page: Page) {
     workspaceId,
   )
   expect(workspace.isSuccess).toBe(true)
-  const source = workspace.data?.dataSourceConnections.find(
+  const source = workspace.data?.connections.find(
     (connection) => connection.status === 'connected',
   )
   expect(source).toBeDefined()
@@ -105,19 +105,24 @@ async function connectSecondFakeConnection(page: Page) {
     (body) => window.api.workspaces.linkDataSource({ body }),
     {
       workspaceId,
-      dataSourceId: source.dataSourceId,
+      addonId: source.addonId,
+      connectionProfileId: source.connectionProfileId,
       connectionInstanceId,
     },
   )
   expect(linked.isSuccess).toBe(true)
   const connected = await page.evaluate(
-    (body) => window.api.workspaces.connectDataSource({ body }),
+    (body) => window.api.workspaces.submitCredentials({ body }),
     {
       workspaceId,
-      pluginId: source.dataSourceId,
       connectionInstanceId,
-      credentials: configuration,
-      configuration,
+      authenticationInput: {
+        kind: 'credentials',
+        authorizationRole: 'primary',
+        authProfileId: 'fake-main',
+        credentials: configuration,
+        configuration,
+      },
     },
   )
   expect(connected.isSuccess).toBe(true)
@@ -729,7 +734,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
       expect(entry).toBeDefined()
       if (entry === undefined) throw new Error('FIXTURE_EDITED_ENTRY_REQUIRED')
       entryId = entry.id
-      const originalConnection = workspace.data?.dataSourceConnections.find(
+      const originalConnection = workspace.data?.connections.find(
         (connection) =>
           connection.id === entry.connectionInstanceId &&
           connection.status === 'connected',
@@ -738,7 +743,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
         throw new Error('FIXTURE_ORIGINAL_CONNECTION_REQUIRED')
       originalConnectionId = originalConnection.id
       expect(
-        workspace.data?.dataSourceConnections.filter(
+        workspace.data?.connections.filter(
           (connection) => connection.status === 'connected',
         ).length,
       ).toBeGreaterThanOrEqual(2)

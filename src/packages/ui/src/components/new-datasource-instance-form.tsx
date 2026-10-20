@@ -20,6 +20,7 @@ export type FieldPrimitiveValue = string | number | boolean
 export interface DataSourceInstanceFormData {
   pluginId: string
   connectionInstanceId: string
+  connectionProfileId: string
   credentials: Record<string, FieldPrimitiveValue>
   configuration: Record<string, FieldPrimitiveValue>
 }
@@ -27,6 +28,7 @@ export interface DataSourceInstanceFormData {
 interface NewDataSourceInstanceFormProps {
   pluginId: string
   connectionInstanceId: string
+  connectionProfileId: string
   onSubmit: (data: DataSourceInstanceFormData) => void
   isSubmitting?: boolean
   submitLabel?: string
@@ -36,6 +38,7 @@ interface NewDataSourceInstanceFormProps {
 export function NewDataSourceInstanceForm({
   pluginId,
   connectionInstanceId,
+  connectionProfileId,
   onSubmit,
   isSubmitting = false,
   hideSubmitButton = false,
@@ -217,6 +220,7 @@ export function NewDataSourceInstanceForm({
     onSubmit({
       pluginId: String(rawPluginId),
       connectionInstanceId: String(rawConnectionInstanceId),
+      connectionProfileId,
       credentials,
       configuration,
     })

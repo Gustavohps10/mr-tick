@@ -104,7 +104,7 @@ test.describe('E2E - Edição de Duração e Horários (TE-05)', () => {
       expect(workspace.isSuccess).toBe(true)
       expect(workspace.data).toBeDefined()
       if (!workspace.data) return
-      const connections = workspace.data.dataSourceConnections.filter(
+      const connections = workspace.data.connections.filter(
         (connection) => connection.status === 'connected',
       )
       expect(connections).toHaveLength(1)

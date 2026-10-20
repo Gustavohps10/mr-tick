@@ -7,7 +7,7 @@ import {
   Ed25519OfflineAuthorizationVerifier,
   JwtService,
 } from '@mr-tick/adapters/auth'
-import { IHttpClient } from '@mr-tick/adapters/contracts'
+import { IHttpClient, IHttpClientFactory } from '@mr-tick/adapters/contracts'
 import {
   VaultAddonConsentRepository,
   VaultLicensingStateRepository,
@@ -18,35 +18,48 @@ import { LicensingHttpClient } from '@mr-tick/adapters/http'
 import { FileManager, KeyedMutex } from '@mr-tick/adapters/tools'
 import { AddonAccessService } from '@mr-tick/application'
 import {
-  ConnectDataSourceService,
+  AddonAuthenticatorRegistry,
+  AddonConnectionProfilesResolver,
+  ConnectAddonConnectionService,
+  ConnectionLifecycleCoordinator,
   CreateWorkspaceService,
   DeleteWorkspaceService,
-  DisconnectDataSourceService,
+  DisconnectAddonConnectionService,
   GetCurrentUserService,
+  GetMappingFieldsService,
   GetWorkspaceService,
   IAddonReloader,
+  IConnectionLifecycleRepository,
+  IConnectionLifecycleTransactionBoundary,
+  IConnectionReservationRepository,
   ICredentialsVault,
   IDataSourceResolver,
   IFileStorage,
   ImportAddonService,
   IServiceProvider,
+  IWorkspaceCredentialReferenceRegistry,
   IWorkspacesRepository,
   LicensingService,
-  LinkDataSourceService,
+  LinkConnectionService,
   ListTaskService,
   ListTimeEntriesService,
   ListWorkspacesService,
   MarkWorkspaceAsConfiguredService,
   MetadataPullService,
+  OAuthAttemptCoordinator,
   TaskPullService,
   TimeEntriesPullService,
   TimeEntriesPushService,
-  UnlinkDataSourceService,
+  UnlinkConnectionService,
   UpdateAddonService,
   UpdateWorkspaceIdentityService,
 } from '@mr-tick/application'
 import { isRecord } from '@mr-tick/shared/helpers'
-import { IEventEmitter, IJobEvents } from '@mr-tick/shared/transport'
+import {
+  IEventEmitter,
+  IJobEvents,
+  ISystemEventEmitter,
+} from '@mr-tick/shared/transport'
 import {
   asClass,
   asValue,
@@ -98,10 +111,16 @@ export interface PlatformDependencies {
   jobEmitter: IEventEmitter<IJobEvents>
   credentialsVault: ICredentialsVault
   workspacesRepository: IWorkspacesRepository
+  lifecycleRepository: IConnectionLifecycleRepository
+  reservationRepository: IConnectionReservationRepository
+  credentialRegistry: IWorkspaceCredentialReferenceRegistry
   dataSourceResolver: IDataSourceResolver
   fileStorage: IFileStorage
   httpClient: IHttpClient
+  httpClientFactory: IHttpClientFactory
   addonReloader: IAddonReloader
+  transactionBoundary: IConnectionLifecycleTransactionBoundary
+  systemEventEmitter: ISystemEventEmitter
 }
 
 /**
@@ -149,10 +168,16 @@ export class ContainerBuilder {
       jobEmitter: asValue(deps.jobEmitter),
       credentialsVault: asValue(deps.credentialsVault),
       workspacesRepository: asValue(deps.workspacesRepository),
+      lifecycleRepository: asValue(deps.lifecycleRepository),
+      reservationRepository: asValue(deps.reservationRepository),
+      credentialRegistry: asValue(deps.credentialRegistry),
       dataSourceResolver: asValue(deps.dataSourceResolver),
       fileStorage: asValue(deps.fileStorage),
       httpClient: asValue(deps.httpClient),
+      httpClientFactory: asValue(deps.httpClientFactory),
       addonReloader: asValue(deps.addonReloader),
+      transactionBoundary: asValue(deps.transactionBoundary),
+      systemEventEmitter: asValue(deps.systemEventEmitter),
     })
     return this
   }
@@ -168,15 +193,24 @@ export class ContainerBuilder {
       getCurrentUserService: asClass(GetCurrentUserService).scoped(),
       createWorkspaceService: asClass(CreateWorkspaceService).scoped(),
       listWorkspacesService: asClass(ListWorkspacesService).scoped(),
-      linkDataSourceService: asClass(LinkDataSourceService).scoped(),
-      unlinkDataSourceService: asClass(UnlinkDataSourceService).scoped(),
-      connectDataSourceService: asClass(ConnectDataSourceService).scoped(),
+      linkConnectionService: asClass(LinkConnectionService).scoped(),
+      connectionLifecycleCoordinator: asClass(
+        ConnectionLifecycleCoordinator,
+      ).scoped(),
+      unlinkConnectionService: asClass(UnlinkConnectionService).scoped(),
+      authenticatorRegistry: asClass(AddonAuthenticatorRegistry).singleton(),
+      profilesResolver: asClass(AddonConnectionProfilesResolver).singleton(),
+      oauthAttemptCoordinator: asClass(OAuthAttemptCoordinator).singleton(),
+      connectAddonConnectionService: asClass(
+        ConnectAddonConnectionService,
+      ).scoped(),
       markWorkspaceAsConfiguredService: asClass(
         MarkWorkspaceAsConfiguredService,
       ).scoped(),
-      disconnectDataSourceService: asClass(
-        DisconnectDataSourceService,
+      disconnectAddonConnectionService: asClass(
+        DisconnectAddonConnectionService,
       ).scoped(),
+      getMappingFieldsService: asClass(GetMappingFieldsService).scoped(),
       getWorkspaceService: asClass(GetWorkspaceService).scoped(),
       updateWorkspaceIdentityService: asClass(
         UpdateWorkspaceIdentityService,

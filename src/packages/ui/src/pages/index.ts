@@ -1,5 +1,4 @@
 export * from './activities'
-export * from './addons'
 export * from './error'
 export * from './home'
 export * from './metrics'

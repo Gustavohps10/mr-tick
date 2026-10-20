@@ -1,4 +1,4 @@
-﻿import { Workspace } from '@mr-tick/domain'
+import { Workspace } from '@mr-tick/domain'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import {
@@ -47,11 +47,19 @@ export class CreateWorkspaceService implements ICreateWorkspaceUseCase {
         }
       }
 
+      let createResult: Either<AppError, void>
       try {
-        await this.workspacesRepository.create(workspace)
+        createResult = await this.workspacesRepository.create(workspace)
       } catch (repoError) {
         if (avatarPath) await this.fileStorage.delete(avatarPath, true)
-        throw repoError
+        return Either.failure(
+          AppError.Internal('ALGO DEU ERRADO AO CRIAR WORKSPACE'),
+        )
+      }
+
+      if (createResult.isFailure()) {
+        if (avatarPath) await this.fileStorage.delete(avatarPath, true)
+        return createResult.forwardFailure()
       }
 
       return Either.success({
@@ -60,9 +68,7 @@ export class CreateWorkspaceService implements ICreateWorkspaceUseCase {
         status: workspace.status,
         avatarUrl: workspace.avatarUrl,
         description: workspace.description,
-        dataSourceConnections: workspace.dataSourceConnections.map(
-          toWorkspaceConnectionDTO,
-        ),
+        connections: workspace.connections.map(toWorkspaceConnectionDTO),
         createdAt: workspace.createdAt,
         updatedAt: workspace.updatedAt,
       })

@@ -9,8 +9,10 @@ export interface WorkspaceConnectionMemberViewModel {
 
 export interface WorkspaceConnectionViewModel {
   id: string
-  dataSourceId: string
-  status: 'connected' | 'disabled' | 'disconnected'
+  addonId: string
+  connectionProfileId: string
+  cardinality: 'single' | 'multi'
+  status: 'connected' | 'disabled' | 'disconnected' | 'archived'
   member?: WorkspaceConnectionMemberViewModel
   config?: Record<string, unknown>
 }
@@ -21,7 +23,7 @@ export interface WorkspaceViewModel {
   status: WorkspaceStatus
   description?: string
   avatarUrl?: string
-  dataSourceConnections: WorkspaceConnectionViewModel[]
+  connections: WorkspaceConnectionViewModel[]
   createdAt: Date
   updatedAt: Date
 }

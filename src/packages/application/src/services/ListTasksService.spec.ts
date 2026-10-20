@@ -96,7 +96,9 @@ describe('ListTasksService', () => {
     // Arrange
     const input = makeInput()
 
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
 
     // ADICIONADO: garantindo que a autenticação passe
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
@@ -126,7 +128,9 @@ describe('ListTasksService', () => {
     const input = makeInput()
     const authError = AppError.Unauthorized('FALHA_DE_AUTENTICACAO')
 
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     // Simulando falha na autenticação
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.failure(authError),
@@ -165,7 +169,9 @@ describe('ListTasksService', () => {
     const input = makeInput()
     const error = new Error('API Rate Limit Exceeded')
 
-    dataSourceResolverMock.getDataSource.mockResolvedValue(adapterMock)
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
     adapterMock.getAuthenticatedMemberData.mockResolvedValue(
       Either.success(fakeMember as any),
     )

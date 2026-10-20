@@ -7,19 +7,23 @@ import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures/electron-fixture'
 
 const currentDir = dirname(fileURLToPath(import.meta.url))
-const seedWorkspaces: Array<{
-  id: string
-  name: string
-  status: string
-  dataSourceConnections: Array<{ id: string; dataSourceId: string }>
-}> = JSON.parse(
+const seedWorkspaces: {
+  workspaces: Array<{
+    id: string
+    name: string
+    status: string
+    connections: Array<{ id: string; addonId: string }>
+  }>
+} = JSON.parse(
   readFileSync(resolve(currentDir, 'fixtures/seed-workspaces.json'), 'utf-8'),
 )
 
-const workspace = seedWorkspaces.find((candidate) => candidate.name === 'TESTE')
+const workspace = seedWorkspaces.workspaces.find(
+  (candidate) => candidate.name === 'TESTE',
+)
 if (!workspace) throw new Error('SDK_FIXTURE_WORKSPACE_NOT_FOUND')
-const connection = workspace.dataSourceConnections.find(
-  (candidate) => candidate.dataSourceId === 'mr-tick-datasource-fake',
+const connection = workspace.connections.find(
+  (candidate) => candidate.addonId === 'mr-tick-datasource-fake',
 )
 if (!connection) throw new Error('SDK_FIXTURE_CONNECTION_NOT_FOUND')
 

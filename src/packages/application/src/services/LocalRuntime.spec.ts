@@ -15,6 +15,7 @@ const emptyResult: LocalRuntimeResult = {
   entries: [],
   timer: null,
   deleted: false,
+  pendingWrites: false,
 }
 
 class TestExecutor implements ILocalWorkspaceExecutor {

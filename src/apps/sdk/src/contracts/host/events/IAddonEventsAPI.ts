@@ -9,5 +9,6 @@ export type AddonSystemEvents = Pick<
   | 'timer:stop'
   | 'timer:update'
   | 'workspace:changed'
+  | 'addon:settings:saved'
 >
 export interface IAddonEventsAPI extends IEventsAPI<AddonSystemEvents> {}

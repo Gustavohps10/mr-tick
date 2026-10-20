@@ -4,10 +4,12 @@ import { CORE_SDK_PROBE_TASK_ID } from '../../../dev-addons/datasource-fake/src/
 import { expect, test } from './fixtures/electron-fixture'
 import seedWorkspaces from './fixtures/seed-workspaces.json' with { type: 'json' }
 
-const workspace = seedWorkspaces.find((candidate) => candidate.name === 'TESTE')
+const workspace = seedWorkspaces.workspaces.find(
+  (candidate) => candidate.name === 'TESTE',
+)
 if (!workspace) throw new Error('SDK_FIXTURE_WORKSPACE_NOT_FOUND')
-const connection = workspace.dataSourceConnections.find(
-  (candidate) => candidate.dataSourceId === 'mr-tick-datasource-fake',
+const connection = workspace.connections.find(
+  (candidate) => candidate.addonId === 'mr-tick-datasource-fake',
 )
 if (!connection) throw new Error('SDK_FIXTURE_CONNECTION_NOT_FOUND')
 
@@ -51,7 +53,7 @@ test('addon SDK grava no workspace explícito e reutiliza operação após reloa
   const created = await probe(page, 'fake-db:runtime-create-entry')
   expect(created).toContain('"ok":true')
   expect(created).toContain('"comments":"SDK runtime proof"')
-  expect(created).toContain(`"dataSourceId":"${connection.dataSourceId}"`)
+  expect(created).toContain(`"dataSourceId":"${connection.addonId}"`)
   expect(created).toContain(`"connectionInstanceId":"${connection.id}"`)
   const read = await probe(page, 'fake-db:runtime-get-entry')
   expect(read).toContain('"ok":true')
@@ -119,7 +121,7 @@ test('addon SDK grava no workspace explícito e reutiliza operação após reloa
     afterReload.value.entries.filter((candidate) => candidate.id === entry.id),
   ).toHaveLength(1)
 
-  const isolatedWorkspace = seedWorkspaces.find(
+  const isolatedWorkspace = seedWorkspaces.workspaces.find(
     (candidate) => candidate.name === 'WORKSPACE ISOLADO',
   )
   if (!isolatedWorkspace) throw new Error('SDK_ISOLATED_WORKSPACE_NOT_FOUND')
@@ -196,7 +198,7 @@ test('addon SDK consulta contexto local e cria sugestão usando contratos públi
     expect.objectContaining({
       status: 'suggestion',
       connectionInstanceId: connection.id,
-      addonSource: expect.objectContaining({ id: connection.dataSourceId }),
+      addonSource: expect.objectContaining({ id: connection.addonId }),
     }),
   ])
 })

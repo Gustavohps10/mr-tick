@@ -45,7 +45,8 @@ export const IpcChannels = {
 
   WORKSPACES_LINK_DATASOURCE: 'workspaces:link-datasource',
   WORKSPACES_UNLINK_DATASOURCE: 'workspaces:unlink-datasource',
-  WORKSPACES_CONNECT_DATASOURCE: 'workspaces:connect-datasource',
+  WORKSPACES_SUBMIT_CONNECTION_CREDENTIALS:
+    'workspaces:submit-connection-credentials',
   WORKSPACES_DISCONNECT_DATASOURCE: 'workspaces:disconnect-datasource',
   WORKSPACES_MARK_AS_CONFIGURED: 'workspaces:mark-as-configured',
   WORKSPACES_UPDATE_IDENTITY: 'workspaces:update-identity',
@@ -68,9 +69,11 @@ export const IpcChannels = {
   ADDONS_DISMISS_TOAST: 'addons:dismiss-toast',
   ADDON_GET_SCHEMA: 'addon:get-schema',
   ADDON_GET_CONNECTION_SCHEMA: 'addon:get-connection-schema',
+  ADDON_GET_CONNECTION_PROFILES: 'addon:get-connection-profiles',
   ADDON_GET_MAPPING_FIELDS: 'addon:get-mapping-fields',
   ADDON_GET_SETTINGS: 'addon:get-settings',
   ADDON_SAVE_SETTINGS: 'addon:save-settings',
+  ADDON_SAVE_CREDENTIAL: 'addon:save-credential',
   ADDON_EXECUTE_ACTION: 'addon:execute-action',
   ADDONS_SET_ACTIVE_WORKSPACE: 'addons:set-active-workspace',
   ADDONS_GET_ACTIVE_THEME: 'addons:get-active-theme',

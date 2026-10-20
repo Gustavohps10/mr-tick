@@ -39,8 +39,44 @@ test.describe('E2E - Configuração de Mapeamento Pós-Autenticação em Instân
     )
     await expect(configureFakeAddonBtn).toBeVisible({ timeout: 10000 })
     await configureFakeAddonBtn.click()
+    const profiles = await page.evaluate(() =>
+      window.api.addons.getConnectionProfiles({
+        body: { addonId: 'mr-tick-datasource-fake' },
+      }),
+    )
+    expect(profiles).toMatchObject({
+      isSuccess: true,
+      data: [
+        {
+          connectionProfileId: 'fake-main',
+          cardinality: 'multi',
+          default: true,
+        },
+      ],
+    })
 
     // 5. Navega para a capacidade Fonte De Dados onde os mapeamentos de campos são configurados
+    await page.locator('[data-testid="addon-capability-tab-auth"]').click()
+    const isolatedWorkspaceTab = page.locator(
+      '[data-testid="addon-workspace-tab-ws-isolated-9999-8888-777766665555"]',
+    )
+    await isolatedWorkspaceTab.click()
+    const addInstance = page.locator(
+      '[data-testid="add-instance-btn-ws-isolated-9999-8888-777766665555"]',
+    )
+    await expect(addInstance).toBeVisible({ timeout: 10000 })
+    await addInstance.click()
+    const connectSubmitBtn = page.locator(
+      '[data-testid="datasource-instance-connect-btn"]',
+    )
+    await expect(connectSubmitBtn).toBeVisible({ timeout: 10000 })
+    await connectSubmitBtn.click()
+    await expect(
+      page.getByTestId('connection-member-login').first(),
+    ).toBeVisible({
+      timeout: 15000,
+    })
+
     const dsCapabilityTab = page.locator(
       '[data-testid="addon-capability-tab-dataSource"]',
     )
@@ -48,9 +84,9 @@ test.describe('E2E - Configuração de Mapeamento Pós-Autenticação em Instân
     await dsCapabilityTab.click()
 
     // 6. Valida que o botão "Configurar Mapeamento" por instância conectada está visível
-    const perInstanceMappingBtn = page.locator(
-      '[data-testid="configure-mapping-instance-btn-mr-tick-datasource-fake-c3f15587"]',
-    )
+    const perInstanceMappingBtn = page
+      .locator('[data-testid^="configure-mapping-instance-btn-"]')
+      .first()
     await expect(perInstanceMappingBtn).toBeVisible({ timeout: 10000 })
 
     // 7. Clica no botão "Configurar Mapeamento" da instância conectada
@@ -168,15 +204,36 @@ test.describe('E2E - Configuração de Mapeamento Pós-Autenticação em Instân
     await configureFakeAddonBtn.click()
 
     // 3. Navega para a capacidade Fonte De Dados e abre o modal de mapeamento
+    await page.locator('[data-testid="addon-capability-tab-auth"]').click()
+    const isolatedWorkspaceTab = page.locator(
+      '[data-testid="addon-workspace-tab-ws-isolated-9999-8888-777766665555"]',
+    )
+    await isolatedWorkspaceTab.click()
+    const addInstance = page.locator(
+      '[data-testid="add-instance-btn-ws-isolated-9999-8888-777766665555"]',
+    )
+    await expect(addInstance).toBeVisible({ timeout: 10000 })
+    await addInstance.click()
+    const connectSubmitBtn = page.locator(
+      '[data-testid="datasource-instance-connect-btn"]',
+    )
+    await expect(connectSubmitBtn).toBeVisible({ timeout: 10000 })
+    await connectSubmitBtn.click()
+    await expect(
+      page.getByTestId('connection-member-login').first(),
+    ).toBeVisible({
+      timeout: 15000,
+    })
+
     const dsCapabilityTab = page.locator(
       '[data-testid="addon-capability-tab-dataSource"]',
     )
     await expect(dsCapabilityTab).toBeVisible({ timeout: 10000 })
     await dsCapabilityTab.click()
 
-    const perInstanceMappingBtn = page.locator(
-      '[data-testid="configure-mapping-instance-btn-mr-tick-datasource-fake-c3f15587"]',
-    )
+    const perInstanceMappingBtn = page
+      .locator('[data-testid^="configure-mapping-instance-btn-"]')
+      .first()
     await expect(perInstanceMappingBtn).toBeVisible({ timeout: 10000 })
     await perInstanceMappingBtn.click()
 

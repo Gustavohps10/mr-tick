@@ -43,6 +43,7 @@ export interface AddonFieldRendererProps {
   renderDataSourceInstances?: (addonId: string) => ReactNode
   workspaceId?: string
   connectionInstanceId?: string
+  credentialConfigured?: boolean
 }
 
 export function AddonFieldRenderer({
@@ -54,6 +55,7 @@ export function AddonFieldRenderer({
   renderDataSourceInstances,
   workspaceId,
   connectionInstanceId,
+  credentialConfigured = false,
 }: AddonFieldRendererProps) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
@@ -63,7 +65,10 @@ export function AddonFieldRenderer({
     result?: AddonActionResponse
   }>({ isOpen: false, isLoading: false })
 
-  const fieldValue = value !== undefined ? value : field.defaultValue
+  let fieldValue:
+    string | number | boolean | null | AddonMappingPreset | undefined = value
+  if (fieldValue === undefined && field.scope !== 'credential')
+    fieldValue = field.defaultValue
 
   if (field.type === 'datasource-instances') {
     if (renderDataSourceInstances) return renderDataSourceInstances(addonId)
@@ -411,7 +416,11 @@ export function AddonFieldRenderer({
           }
           onChange(field.id, val)
         }}
-        placeholder={field.placeholder}
+        placeholder={
+          field.scope === 'credential' && credentialConfigured
+            ? 'Credencial configurada; deixe em branco para manter'
+            : field.placeholder
+        }
         data-testid={`addon-field-input-${field.id}`}
       />
       {field.description && (
