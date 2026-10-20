@@ -2,7 +2,7 @@ import type {
   LocalConflictSelection,
   LocalTimeEntrySnapshot,
   TimeEntryRemoteState,
-} from '../contracts/local-runtime'
+} from '@/contracts/local-runtime'
 
 export function hasUnconfirmedRemoteOperation(
   document: LocalTimeEntrySnapshot,

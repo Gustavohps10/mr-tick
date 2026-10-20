@@ -5,8 +5,9 @@ import type {
   LocalRuntimeCommand,
   LocalRuntimeResult,
   LocalTimeEntrySnapshot,
-} from '../contracts/local-runtime'
-import type { TimeEntryRecordDTO, TimerStateDTO } from '../dtos'
+} from '@/contracts/local-runtime'
+import type { TimeEntryRecordDTO, TimerStateDTO } from '@/dtos'
+
 import {
   applyTimeEntryEdit,
   authorizeTimeEntryRecreation,

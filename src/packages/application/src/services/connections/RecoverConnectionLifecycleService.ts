@@ -8,8 +8,8 @@ import {
   IWorkspacesRepository,
   WorkspaceJournalEntry,
   WorkspaceRefreshJournalEntry,
-} from '../contracts'
-import { CredentialReferenceFactory } from '../utils/credential-reference'
+} from '@/contracts'
+import { CredentialReferenceFactory } from '@/utils/credential-reference'
 
 export class RecoverConnectionLifecycleService {
   constructor(

@@ -16,7 +16,7 @@ import type {
   LocalRuntimeRequest,
   LocalRuntimeResponse,
   LocalRuntimeResult,
-} from '../contracts/local-runtime'
+} from '@/contracts/local-runtime'
 
 export class LocalRuntime implements ILocalRuntimeAPI {
   private readonly executors = new Map<string, ILocalWorkspaceExecutor>()

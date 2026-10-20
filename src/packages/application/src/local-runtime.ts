@@ -1,8 +1,8 @@
 export * from './contracts/local-runtime'
 export type { TimeEntryRecordDTO, TimerStateDTO } from './dtos'
-export * from './services/local-runtime-rules'
-export * from './services/local-time-entry-identity'
+export * from './services/local-runtime/local-runtime-rules'
+export * from './services/local-runtime/local-time-entry-identity'
 export {
   LocalRuntime,
   validateLocalRuntimeRequest,
-} from './services/LocalRuntime'
+} from './services/local-runtime/LocalRuntime'

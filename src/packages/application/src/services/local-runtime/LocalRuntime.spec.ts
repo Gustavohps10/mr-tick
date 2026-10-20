@@ -7,7 +7,8 @@ import type {
   ILocalWorkspaceFactory,
   LocalRuntimeCommand,
   LocalRuntimeResult,
-} from '../contracts/local-runtime'
+} from '@/contracts/local-runtime'
+
 import { LocalRuntime, validateLocalRuntimeRequest } from './LocalRuntime'
 
 const emptyResult: LocalRuntimeResult = {

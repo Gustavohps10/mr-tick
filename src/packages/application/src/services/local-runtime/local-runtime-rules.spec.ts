@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import type {
   LocalRuntimeCommand,
   LocalTimeEntrySnapshot,
-} from '../contracts/local-runtime'
+} from '@/contracts/local-runtime'
+
 import {
   planLocalRuntimeCommand,
   timeEntryPauseSeconds,
