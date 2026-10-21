@@ -191,10 +191,6 @@ export function TaskPopover({
     if (trackerContext?.selectedConnectionId) {
       return trackerContext.selectedConnectionId
     }
-    if (syncConnections.length === 1) {
-      const single = syncConnections[0]
-      if (single) return single.connectionId
-    }
     return ''
   }, [
     propSelectedConnectionId,
@@ -653,21 +649,22 @@ export function TaskPopover({
               </Select>
 
               <Select
-                value={selectedConnectionId}
-                onValueChange={setSelectedConnectionId}
+                value={selectedConnectionId ? selectedConnectionId : 'none'}
+                onValueChange={(val) =>
+                  setSelectedConnectionId(val === 'none' ? '' : val)
+                }
               >
                 <SelectTrigger className="border-input bg-background hover:bg-accent hover:text-accent-foreground flex !h-7 !w-7 shrink-0 items-center justify-center rounded-md border !p-0 shadow-sm transition-colors focus:ring-1 [&>svg]:hidden">
                   <SelectValue>
                     {(() => {
-                      const conn =
-                        syncConnections.find(
-                          (connItem) =>
-                            connItem.connectionId === selectedConnectionId ||
-                            connItem.dataSourceId === selectedConnectionId,
-                        ) ||
-                        (syncConnections.length === 1
-                          ? syncConnections[0]
-                          : undefined)
+                      if (!selectedConnectionId) {
+                        return <span className="text-xs">💻</span>
+                      }
+                      const conn = syncConnections.find(
+                        (connItem) =>
+                          connItem.connectionId === selectedConnectionId ||
+                          connItem.dataSourceId === selectedConnectionId,
+                      )
                       const logoUrl = conn?.addon?.logo
                       if (logoUrl) {
                         return (
@@ -678,11 +675,19 @@ export function TaskPopover({
                           />
                         )
                       }
-                      return <span className="text-xs">📦</span>
+                      return <span className="text-xs">💻</span>
                     })()}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent align="end" className="min-w-[170px]">
+                  <SelectItem value="none" className="py-1.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">💻</span>
+                      <span className="truncate font-medium">
+                        Local (Sem conexão)
+                      </span>
+                    </div>
+                  </SelectItem>
                   {syncConnections.map((connItem) => {
                     const itemLogo = connItem.addon?.logo
                     return (
@@ -749,15 +754,12 @@ export function TaskPopover({
                 placeholder="Buscar ou digitar ID..."
                 className="flex-1"
                 sourceIcon={(() => {
-                  const activeConn =
-                    syncConnections.find(
-                      (connItem) =>
-                        connItem.connectionId === selectedConnectionId ||
-                        connItem.dataSourceId === selectedConnectionId,
-                    ) ||
-                    (syncConnections.length === 1
-                      ? syncConnections[0]
-                      : undefined)
+                  if (!selectedConnectionId) return undefined
+                  const activeConn = syncConnections.find(
+                    (connItem) =>
+                      connItem.connectionId === selectedConnectionId ||
+                      connItem.dataSourceId === selectedConnectionId,
+                  )
                   const logoUrl = activeConn?.addon?.logo
                   if (logoUrl) {
                     return (

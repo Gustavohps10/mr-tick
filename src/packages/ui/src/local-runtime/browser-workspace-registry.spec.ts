@@ -432,4 +432,134 @@ describe('Browser workspace owner lifecycle', () => {
       await registry.close()
     }
   })
+  it('allows timerStart without connection, starting a local-first timer', async () => {
+    const workspaceId = crypto.randomUUID()
+    const { bridge } = bridgeFor(workspaceId)
+    const registry = new BrowserWorkspaceRegistry(bridge, options)
+    const opened = await registry.open(workspaceId)
+    expect(opened.isSuccess()).toBe(true)
+    if (opened.isFailure()) return expect.fail('Failed to open workspace')
+    const executor = opened.success
+    try {
+      const res = await executor.execute({
+        action: 'timerStart',
+        workspaceId,
+        commandId: crypto.randomUUID(),
+        entryId: crypto.randomUUID(),
+        payload: {
+          mode: 'countup',
+          timeSpentSeconds: 0,
+          taskId: '',
+        },
+      })
+      expect(res.isSuccess()).toBe(true)
+      if (res.isSuccess()) {
+        expect(res.success.timer).not.toBeNull()
+        expect(res.success.timer?.status).toBe('running')
+        expect(res.success.entry?.connectionInstanceId).toBe('')
+        expect(res.success.entry?.status).toBe('running')
+      }
+    } finally {
+      await executor.close()
+      await registry.close()
+    }
+  })
+
+  it('allows timerStart on connection without authenticated user, starting local-first timer without USER_CONTEXT_REQUIRED', async () => {
+    const workspaceId = crypto.randomUUID()
+    const connectionId = 'conn-unauth'
+    const { bridge } = bridgeFor(workspaceId, [
+      {
+        id: connectionId,
+        addonId: 'redmine',
+        connectionProfileId: 'redmine-instance',
+        cardinality: 'multi',
+        status: 'connected',
+      },
+    ])
+    const registry = new BrowserWorkspaceRegistry(bridge, options)
+    const opened = await registry.open(workspaceId)
+    expect(opened.isSuccess()).toBe(true)
+    if (opened.isFailure()) return expect.fail('Failed to open workspace')
+    const executor = opened.success
+    try {
+      const res = await executor.execute({
+        action: 'timerStart',
+        workspaceId,
+        commandId: crypto.randomUUID(),
+        entryId: crypto.randomUUID(),
+        payload: {
+          mode: 'countup',
+          timeSpentSeconds: 0,
+          taskId: '',
+          connectionInstanceId: connectionId,
+        },
+      })
+      expect(res.isSuccess()).toBe(true)
+      if (res.isSuccess()) {
+        expect(res.success.timer).not.toBeNull()
+        expect(res.success.timer?.status).toBe('running')
+        expect(res.success.entry?.connectionInstanceId).toBe('')
+        expect(res.success.entry?.status).toBe('running')
+      }
+    } finally {
+      await executor.close()
+      await registry.close()
+    }
+  })
+
+  it('binds connection.identity on timerStart when connection has authenticated identity', async () => {
+    const workspaceId = crypto.randomUUID()
+    const connectionId = 'conn-auth'
+    const entryId = crypto.randomUUID()
+    const { bridge } = bridgeFor(workspaceId, [
+      {
+        id: connectionId,
+        addonId: 'redmine',
+        connectionProfileId: 'redmine-instance',
+        cardinality: 'multi',
+        status: 'connected',
+        identity: {
+          kind: 'human',
+          providerId: 'redmine',
+          tenantId: 'https://redmine.org',
+          providerSubjectId: 'user-42',
+          displayName: 'John Doe',
+        },
+      },
+    ])
+    const registry = new BrowserWorkspaceRegistry(bridge, options)
+    const opened = await registry.open(workspaceId)
+    expect(opened.isSuccess()).toBe(true)
+    if (opened.isFailure()) return expect.fail('Failed to open workspace')
+    const executor = opened.success
+    try {
+      const res = await executor.execute({
+        action: 'timerStart',
+        workspaceId,
+        commandId: crypto.randomUUID(),
+        entryId,
+        payload: {
+          mode: 'countup',
+          timeSpentSeconds: 0,
+          taskId: '123',
+          connectionInstanceId: connectionId,
+        },
+      })
+      expect(res.isSuccess()).toBe(true)
+      if (res.isSuccess()) {
+        expect(res.success.timer).not.toBeNull()
+        expect(res.success.timer?.status).toBe('running')
+        expect(res.success.entry?.connectionInstanceId).toBe(connectionId)
+        expect(res.success.entry?.dataSourceId).toBe('redmine')
+        const db = executor.store.getState().db
+        const doc = await db?.timeEntries.findOne(entryId).exec()
+        expect(doc?.user.id).toBe('user-42')
+        expect(doc?.user.name).toBe('John Doe')
+      }
+    } finally {
+      await executor.close()
+      await registry.close()
+    }
+  })
 })

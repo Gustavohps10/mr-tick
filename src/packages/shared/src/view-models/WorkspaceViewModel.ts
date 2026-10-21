@@ -1,5 +1,14 @@
 export type WorkspaceStatus = 'draft' | 'configured'
 
+export interface WorkspaceConnectionIdentityViewModel {
+  kind: 'human' | 'bot' | 'installation'
+  providerId: string
+  tenantId: string
+  providerSubjectId: string
+  displayName: string
+  avatarUrl?: string
+}
+
 export interface WorkspaceConnectionMemberViewModel {
   id: string
   name: string
@@ -13,6 +22,7 @@ export interface WorkspaceConnectionViewModel {
   connectionProfileId: string
   cardinality: 'single' | 'multi'
   status: 'connected' | 'disabled' | 'disconnected' | 'archived'
+  identity?: WorkspaceConnectionIdentityViewModel
   member?: WorkspaceConnectionMemberViewModel
   config?: Record<string, unknown>
 }

@@ -27,6 +27,7 @@ export interface AddonConnectionView {
   status: WorkspaceConnectionViewModel['status']
   config?: Record<string, unknown>
 
+  identity?: WorkspaceConnectionViewModel['identity']
   member?: WorkspaceConnectionViewModel['member']
 
   addon?: AddonManifestViewModel
@@ -106,6 +107,7 @@ export function DataSourceConnectionsProvider({
         dataSourceId: conn.addonId,
         status: conn.status,
         config: conn.config,
+        identity: conn.identity,
         member: conn.member,
         addon,
       }

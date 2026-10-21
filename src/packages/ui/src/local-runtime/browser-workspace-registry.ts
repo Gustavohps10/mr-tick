@@ -583,10 +583,29 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
     let userId = input.payload.userId
     let userName = input.payload.userName
     if (userId === undefined) {
-      if (connection.member === undefined)
+      if (connection.identity !== undefined) {
+        userId = connection.identity.providerSubjectId
+        userName = connection.identity.displayName
+      }
+      if (userId === undefined && connection.member !== undefined) {
+        userId = connection.member.id
+        userName = connection.member.name
+      }
+      if (userId === undefined) {
+        if (input.action === 'timerStart') {
+          return Either.success({
+            ...input,
+            payload: {
+              ...input.payload,
+              connectionInstanceId: '',
+              dataSourceId: '',
+              userId: '',
+              userName: '',
+            },
+          })
+        }
         return Either.failure(AppError.ValidationError('USER_CONTEXT_REQUIRED'))
-      userId = connection.member.id
-      userName = connection.member.name
+      }
     }
     if (input.action === 'timerStart')
       return Either.success({

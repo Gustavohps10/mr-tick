@@ -240,12 +240,6 @@ export const UltimateTimeTracker = ({
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>('')
   const syncConnections = useConnectionsWithSync()
 
-  useEffect(() => {
-    if (!selectedConnectionId && syncConnections.length > 0) {
-      setSelectedConnectionId(syncConnections[0].connectionId)
-    }
-  }, [syncConnections, selectedConnectionId])
-
   const [isEditingVertical, setIsEditingVertical] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -1118,24 +1112,38 @@ export const UltimateTimeTracker = ({
     }
 
     const mode = timerDirection === 'up' ? 'countup' : 'countdown'
-    const connectionInstanceId =
-      selectedTask?.connectionInstanceId || selectedConnectionId || ''
-    const dataSourceId =
-      selectedTask?.dataSourceId ||
-      syncConnections.find((c) => c.connectionId === connectionInstanceId)
-        ?.dataSourceId ||
-      ''
-
+    let connectionInstanceId = selectedConnectionId
+    if (selectedTask?.connectionInstanceId) {
+      connectionInstanceId = selectedTask.connectionInstanceId
+    }
+    let dataSourceId = ''
+    if (selectedTask?.dataSourceId) {
+      dataSourceId = selectedTask.dataSourceId
+    }
+    if (!dataSourceId && connectionInstanceId) {
+      const matched = syncConnections.find(
+        (c) => c.connectionId === connectionInstanceId,
+      )
+      if (matched) {
+        dataSourceId = matched.dataSourceId
+      }
+    }
     const currentActivity = activities.find((a) => a.id === selectedActivity)
     const currentConnection = syncConnections.find(
       (c) => c.connectionId === connectionInstanceId,
     )
-    const authUserId = currentConnection?.member?.id
-      ? String(currentConnection.member.id)
-      : undefined
-    const authUserName = currentConnection?.member?.name
-      ? String(currentConnection.member.name)
-      : undefined
+    let authUserId: string | undefined = undefined
+    let authUserName: string | undefined = undefined
+    if (currentConnection) {
+      if (currentConnection.identity) {
+        authUserId = currentConnection.identity.providerSubjectId
+        authUserName = currentConnection.identity.displayName
+      }
+      if (!authUserId && currentConnection.member) {
+        authUserId = String(currentConnection.member.id)
+        authUserName = String(currentConnection.member.name)
+      }
+    }
 
     await createNewTimeEntry(db, {
       taskId,
@@ -1193,24 +1201,38 @@ export const UltimateTimeTracker = ({
     }
     setTimerError(null)
 
-    const connectionInstanceId =
-      selectedTask?.connectionInstanceId || selectedConnectionId || ''
-    const dataSourceId =
-      selectedTask?.dataSourceId ||
-      syncConnections.find((c) => c.connectionId === connectionInstanceId)
-        ?.dataSourceId ||
-      ''
-
+    let connectionInstanceId = selectedConnectionId
+    if (selectedTask?.connectionInstanceId) {
+      connectionInstanceId = selectedTask.connectionInstanceId
+    }
+    let dataSourceId = ''
+    if (selectedTask?.dataSourceId) {
+      dataSourceId = selectedTask.dataSourceId
+    }
+    if (!dataSourceId && connectionInstanceId) {
+      const matched = syncConnections.find(
+        (c) => c.connectionId === connectionInstanceId,
+      )
+      if (matched) {
+        dataSourceId = matched.dataSourceId
+      }
+    }
     const currentActivity = activities.find((a) => a.id === selectedActivity)
     const currentConnection = syncConnections.find(
       (c) => c.connectionId === connectionInstanceId,
     )
-    const authUserId = currentConnection?.member?.id
-      ? String(currentConnection.member.id)
-      : undefined
-    const authUserName = currentConnection?.member?.name
-      ? String(currentConnection.member.name)
-      : undefined
+    let authUserId: string | undefined = undefined
+    let authUserName: string | undefined = undefined
+    if (currentConnection) {
+      if (currentConnection.identity) {
+        authUserId = currentConnection.identity.providerSubjectId
+        authUserName = currentConnection.identity.displayName
+      }
+      if (!authUserId && currentConnection.member) {
+        authUserId = String(currentConnection.member.id)
+        authUserName = String(currentConnection.member.name)
+      }
+    }
 
     await createNewTimeEntry(db, {
       taskId,
