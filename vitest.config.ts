@@ -2,6 +2,11 @@ import path from 'node:path'
 
 import { configDefaults, defineConfig } from 'vitest/config'
 
+// Previne erro 'Electron failed to install correctly' quando ELECTRON_SKIP_BINARY_DOWNLOAD=1 é usado no CI/Linux
+if (!process.env.ELECTRON_OVERRIDE_DIST_PATH) {
+  process.env.ELECTRON_OVERRIDE_DIST_PATH = process.cwd()
+}
+
 export default defineConfig({
   resolve: {
     tsconfigPaths: true,

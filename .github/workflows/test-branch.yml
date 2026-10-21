@@ -19,7 +19,10 @@ jobs:
     name: Test & Typecheck
     runs-on: ubuntu-latest
     env:
+      # Pula o download do binário desktop pesado no runner Linux de testes
       ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      # Previne que o Node.js lance erro ao avaliar 'electron' em testes unitários headless
+      ELECTRON_OVERRIDE_DIST_PATH: /tmp
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
