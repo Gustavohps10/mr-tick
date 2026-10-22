@@ -1,134 +1,29 @@
 ---
-title: Motor de Sincronização & Domínio
-description: Como funciona o motor de replicação HTTP (Pull & Push), gestão de conexões em Workspaces e ciclo de vida de apontamentos.
+title: "Sincronização"
+description: Entenda como tarefas e apontamentos são sincronizados e como lidar com falhas.
+icon: RefreshCw
 ---
 
-# Motor de Sincronização & Domínio
+O Mr. Tick mantém os apontamentos no dispositivo e os sincroniza com a ferramenta conectada. O addon fornece o código que lê e grava nesse serviço externo. O aplicativo coordena as alterações pendentes e a recuperação após falhas.
 
-O **Mr-tick** utiliza um motor de sincronização agnóstico baseado em **HTTP Replication (Pull & Push de Deltas)**. Em vez de abrir conexões contínuas em tempo real (como WebSockets persistentes) ou fazer polling agressivo contra APIs de terceiros, o Mr-tick sincroniza dados de forma estruturada, eficiente e resiliente a falhas de rede.
+O executor local cuida das alterações de timer e apontamentos; a interface lê os dados salvos. Consultar tarefas por `core.tasks` ou metadados por `core.metadata` não inicia uma nova requisição ao serviço externo.
 
----
+## Recebendo dados (`pull`)
 
-## 🔄 Como Funciona a Replicação HTTP
+Para tarefas, `pull` retorna `Either<AppError, TaskDTO[]>`. Para apontamentos, retorna `Either<AppError, TimeEntryPullPageDTO>` com `items`, `checkpoint`, `hasMore` e `snapshotId`. Dependendo do serviço externo, a integração pode receber apenas as mudanças ou precisar consultar uma cópia completa dos dados, dividida em páginas.
 
-A sincronização entre o Mr-tick e qualquer servidor ou ferramenta de gestão (Redmine, Jira, YouTrack, etc.) é dividida em dois ciclos bem definidos: **Fase de Pull** e **Fase de Push**.
+Valide cada resposta HTTP antes de convertê-la para os tipos do SDK. Não trate uma consulta incompleta ou inconsistente como uma cópia completa dos dados. Preserve os identificadores originais do serviço externo e mantenha os identificadores internos do Mr. Tick dentro do aplicativo.
 
-```text
-       ┌──────────────────────────────┐
-       │     Banco Local (Mr-tick)     │
-       └──────┬────────────────▲──────┘
-              │                │
-       [1] Pull (Download)     │ [2] Push (Upload)
-       Tarefas, Categorias,    │ Novos Apontamentos,
-       Metadados & Checkpoints │ Edições e Exclusões
-              │                │
-              ▼                │
-       ┌───────────────────────┴──────┐
-       │   Servidor Remoto (API)      │
-       └──────────────────────────────┘
-```
+## Enviando alterações e recuperando falhas
 
----
+`create` e `update` retornam os identificadores confirmados pelo serviço externo e podem incluir o apontamento salvo em `entry`. Quando esse campo não vier, o aplicativo pode consultar o registro novamente. Se essa consulta falhar após uma atualização confirmada, não repita a atualização apenas por causa da falha de leitura.
 
-## 1. Fase de Pull (Download de Dados & Deltas)
+Informe se o serviço consegue evitar criações duplicadas ao repetir uma solicitação: `native` quando ele oferece essa garantia, `reconcilable` quando é possível procurar o resultado de uma tentativa incerta, ou `none` quando não há esse suporte. Procurar um registro após uma falha ajuda na recuperação, mas não garante que ele seja criado uma única vez.
 
-A fase de Pull traz do servidor remoto apenas os dados que foram criados ou atualizados desde a última sincronização.
+Exponha `updateConditional` somente se o servidor conseguir conferir o estado esperado e salvar a alteração como uma única operação. Detectar um conflito no aplicativo não impede, por si só, que duas alterações concorrentes se sobrescrevam no servidor.
 
-### Serviços Executores:
+## Operações locais dos addons
 
-- **`TaskPullService`**: Baixa a lista de tarefas/issues atribuídas ao membro autenticado.
-- **`TimeEntriesPullService`**: Baixa os lançamentos de horas já registrados no servidor.
-- **`MetadataPullService`**: Baixa metadados essenciais como atividades permitidas, categorias e projetos.
+`core.timer` e `core.timeEntries` exigem workspace e identidade de operação explícitos. Reutilize os mesmos IDs de comando/apontamento e conteúdo idêntico ao repetir uma operação. Sucesso local não comprova que o servidor remoto aceitou o apontamento.
 
-### O Conceito de `checkpoint` e `batch`:
-
-Para não sobrecarregar as APIs externas nem baixar todo o histórico repetidamente:
-
-- O Mr-tick envia um parâmetro `checkpoint` (que pode ser um timestamp ISO 8601 ou cursor).
-- A API do DataSource responde com as alterações posteriores ao `checkpoint` limitadas pelo tamanho do `batch` (ex: 50 itens por página).
-- Quando o lote é processado com sucesso, o Mr-tick armazena o novo `checkpoint` localmente.
-
-```typescript
-// Exemplo conceitual do método pull na interface de consulta
-public async pull(memberId: string, checkpoint?: string, batch: number = 50): Promise<TaskDTO[]> {
-  const url = checkpoint
-    ? `/api/tasks?updated_after=${checkpoint}&limit=${batch}`
-    : `/api/tasks?limit=${batch}`
-
-  const response = await httpClient.get(url)
-  return response.data.map(mapToTaskDTO)
-}
-```
-
----
-
-## 2. Fase de Push (Upload de Apontamentos & Detecção de Conflitos)
-
-A fase de Push envia os lançamentos de tempo locais (criados, editados ou excluídos) para o provedor remoto através do **`TimeEntriesPushService`**.
-
-### Fluxo de Processamento de Lotes:
-
-Cada item do lote (`SyncTimeEntryDTO`) passa por uma pipeline rigorosa:
-
-1. **Validação de Documento**:
-   - O documento deve possuir `id` e `updatedAt` válidos.
-2. **Tratamento de Exclusão (`_deleted: true`)**:
-   - Se o apontamento foi excluído no Mr-tick local, ele chama `timeEntryRepository.delete(id)` no servidor remoto e marca como sincronizado (`syncedAt: new Date()`).
-3. **Detecção de Conflitos (Optimistic Concurrency Control)**:
-   - Se o registro já existe no servidor remoto, o Mr-tick compara o `updatedAt` do servidor com o `assumedMasterState.updatedAt` enviado pelo cliente local.
-   - **Sem Conflito:** Se forem compatíveis, os horários e comentários são atualizados remotamente e confirmados com `syncedAt`.
-   - **Com Conflito:** Se o registro remoto tiver sido modificado no servidor por outra pessoa após a última leitura local, o item é marcado como `conflicted: true` contendo `{ server: existing, local: entry }` para resolução segura sem perda de dados.
-4. **Criação de Novos Apontamentos**:
-   - Se o registro não existe remotamente, a entidade `TimeEntry` é validada e persistida através de `timeEntryRepository.create()`.
-
----
-
-## 🏢 Workspaces & Conexões de DataSources
-
-No Mr-tick, todo o contexto de dados pertence a um **Workspace** (espaço de trabalho).
-
-### O Papel do Workspace:
-
-- O Workspace atua como o isolamento de _tenant_ (ex: "Empresa A", "Empresa B", "Consultoria Freelance").
-- Cada Workspace possui seu próprio conjunto de tarefas, histórico de apontamentos e configurações de preferências.
-
-### Estrutura de Conexões (`DataSourceConnection`):
-
-Um mesmo Workspace pode possuir múltiplas conexões com ferramentas externas:
-
-```typescript
-type DataSourceConnection = {
-  id: string // Identificador da conexão (ex: "conn-jira-prod")
-  dataSourceId: string // ID do plugin (ex: "jira-datasource")
-  status: 'connected' | 'disabled' | 'disconnected'
-  member?: {
-    // Dados do usuário autenticado nessa ferramenta
-    id: string
-    name: string
-    login: string
-    avatarUrl?: string
-  }
-  config?: Record<string, unknown> // Configurações específicas (ex: baseUrl, tenant)
-}
-```
-
-O **`IDataSourceResolver`** é o serviço responsável por receber o `workspaceId` e o `connectionInstanceId`, instanciar o adaptador correto em tempo de execução e injetar as credenciais seguras.
-
----
-
-## ⏱️ Entidades de Domínio: Apontamentos e Tarefas
-
-A camada `@mr-tick/domain` garante a consistência absoluta dos dados de tempo:
-
-### Entidade `TimeEntry` (Apontamento de Horas)
-
-Regras de validação obrigatórias:
-
-- **Cálculo de Horas (`timeSpent`)**: Se `startDate` e `endDate` forem fornecidos, o tempo em segundos é validado contra o intervalo real das datas. Não são permitidas datas de término anteriores ao início.
-- **Comentários**: Campo opcional limitado a 255 caracteres com sanitização de espaços em branco.
-- **Atividade & Tarefa**: Todo apontamento exige um vínculo com uma tarefa e uma atividade (categoria de trabalho, ex: "Desenvolvimento", "Reunião", "Code Review").
-
-### Entidade `Task` (Tarefa)
-
-- Possui título (mínimo de 3 caracteres), descrição, `workspaceId` e referências opcionais a IDs externos (`externalId`, `externalType`).
-- **Tarefa de Contingência (`createFallback`)**: Quando o usuário inicia o cronômetro sem selecionar uma tarefa previamente, o Mr-tick cria automaticamente uma _General Task_ de contingência para que nenhum segundo trabalhado seja perdido.
+Consulte [datasources](/pt-br/docs/capabilities/datasources), [conexões](/pt-br/docs/apis/connections) e [cofre/eventos](/pt-br/docs/apis/vault-and-events).

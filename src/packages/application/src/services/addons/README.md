@@ -6,7 +6,7 @@ Gerencia o catálogo, a governança, as configurações declaradas e o licenciam
 
 - **Gerenciamento do Pacote:** Importação (instalação de arquivo/pacote), atualização de versão e verificação de integridade do manifesto.
 - **Acesso e Licenciamento:** Validação de tier (Free vs Plus) e políticas de acesso aos recursos estendidos dos addons.
-- **Configurações Declaráveis (Settings):** Leitura e salvamento seguro de configurações parametrizadas pelo manifesto do addon (ex: temas, flags, opções de tela).
+- **Configurações Declaráveis (Settings):** Leitura e salvamento seguro de configurações declaradas em runtime pelo schema de settings do addon (ex: temas, flags, opções de tela).
 
 ## 📦 Serviços Contidos
 

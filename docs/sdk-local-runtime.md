@@ -1,6 +1,6 @@
 # SDK e runtime local
 
-O SDK compartilha contratos por capacidade com Application. O host fornece a implementação de `AddonContext.timeEntries` e `AddonContext.timer`, encaminhando comandos ao executor do workspace. A API do datasource remoto continua separada: pull/push acessa o provedor; a capacidade local preserva registros, sugestões, timer e estados de sincronização.
+O SDK compartilha contratos por capacidade com Application. O host fornece a implementação de `AddonContext.core.timeEntries` e `AddonContext.core.timer`, encaminhando comandos ao executor do workspace. A API do datasource remoto continua separada: pull/push acessa o provedor; a capacidade local preserva registros, sugestões, timer e estados de sincronização.
 
 ## Mudança de contrato
 

@@ -28,7 +28,7 @@ Engine de produtividade e rastreamento de tempo local-first para desenvolvedores
 O **Mr. Tick** é um aplicativo desktop focado em produtividade e apontamento de horas sem fricção, projetado para desenvolvedores que não querem perder tempo preenchendo planilhas ou alternando abas de navegadores.
 
 - ⏱️ **Timer Ágil & Widget Flutuante:** Acompanhe o tempo em tempo real com um mini-player compacto e atalhos rápidos de teclado.
-- 🔒 **100% Local-First (Zero-Cloud):** Seus dados ficam salvos na sua própria máquina. Nenhuma informação pessoal ou corporativa trafega para servidores de terceiros.
+- 🔒 **100% Local-First (Zero-Cloud):** Seus dados ficam salvos na sua própria máquina. Integrações consultam os provedores configurados pelo usuário; sincronização remota depende da conexão escolhida.
 - 📶 **Operação Offline:** Funciona perfeitamente sem internet. Suas tarefas e apontamentos são salvos localmente e sincronizados de forma transparente quando você se reconectar.
 - 🧩 **Ecossistema Expansível:** Conecte ferramentas como Redmine, Jira, rastreadores de janelas e temas através de plugins via SDK.
 
@@ -59,9 +59,10 @@ yarn dev:desktop
 
 ## 📚 Documentação & Recursos
 
-- 📖 **[Documentação Completa de Addons & SDK](src/apps/landing-page/content/docs)**: Guias passo a passo para criar novos conectores de tarefas, watchers e temas visuais.
+- 📖 **[Documentação do SDK](src/apps/landing-page/content/docs)**: Guias passo a passo para criar novos conectores de tarefas, watchers e temas visuais.
+- 🔐 **[Contratos atuais de SDK e autenticação](docs/sdk.md)**: Capabilities, contribuições, conexões e providers.
 - 🗺️ **[Roadmap do Projeto](docs/ROADMAP.md)**: Próximas fases e visão de evolução do Mr. Tick.
-- 🔌 **[Plugin de Exemplo (Redmine)](https://github.com/Gustavohps10/mr-tick-redmine)**: Implementação oficial de conector para Redmine.
+- 🔌 **[Plugin de Exemplo (Redmine)](https://github.com/Gustavohps10/redmine-plugin)**: Implementação oficial de conector para Redmine.
 
 ---
 

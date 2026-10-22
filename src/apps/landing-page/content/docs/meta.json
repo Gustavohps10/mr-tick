@@ -1,13 +1,13 @@
 {
-  "title": "Documentation",
+  "title": "SDK",
   "pages": [
-    "---Getting Started---",
+    "---Getting started---",
     "index",
-    "sync-engine",
     "quickstart",
-    "---Extensions---",
-    "categories",
-    "---APIs & Security---",
-    "apis"
+    "---Addon contracts---",
+    "capabilities",
+    "apis",
+    "---Execution---",
+    "sync-engine"
   ]
 }

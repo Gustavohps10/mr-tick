@@ -1,5 +1,7 @@
 # Mr-tick
 
+> Referência de requisitos e evolução. Para contratos executáveis atuais de SDK, autenticação e manifesto, consulte o [índice técnico](../README.md), o [guia de addons](../sdk.md) e a [ADR-008](../adr/008-addon-capabilities-canon.md). Fluxos antigos de timer não substituem a autoridade do runtime descrita em [SDK e runtime local](../sdk-local-runtime.md).
+
 ## Sistema de Rastreamento e Visualização de Produtividade
 
 **Versão:** 1.4
@@ -15,7 +17,7 @@
 | 1.0    | Gustavo Henrique | Versão Inicial consolidada (ADR-001 + Core Sync)                                                     | 07/03/2026 |
 | 1.1    | Gustavo Henrique | Arquitetura do Timer Service, Schema de TimeEntries, Journal e timerConfig                           | 10/05/2026 |
 | 1.2    | Gustavo Henrique | Revisão arquitetural: camadas Domain/Application/Main/Renderer, modelo operacional do timer          | 10/05/2026 |
-| 1.3    | Gustavo Henrique | Simplificação: SDK de Addons Multicapacidade, Política Zero-Cloud e Modelo Offline-First             | 24/08/2026 |
+| 1.3    | Gustavo Henrique | Simplificação: SDK, Política Zero-Cloud e Modelo Offline-First             | 24/08/2026 |
 | 1.4    | Gustavo Henrique | Consolidação Open-Source (Apache 2.0), Core Gratuito e Extensível, Modelos Reconciliados e Roadmap  | 05/10/2026 |
 
 ---
@@ -26,7 +28,7 @@
 
 O **Mr-tick** é um sistema desktop extensível e focado em produtividade para desenvolvedores e equipes de tecnologia.
 
-O sistema atua como um **hub local e agnóstico** que se conecta diretamente a ferramentas de gestão externas (Redmine, Jira, etc.) através de um **SDK de Addons Multicapacidade**, gerenciando o tempo investido com operação **100% offline-first e privacidade absoluta (Zero-Cloud)**.
+O sistema atua como um **hub local e agnóstico** que se conecta diretamente a ferramentas de gestão externas (Redmine, Jira, etc.) através de um **SDK**, gerenciando o tempo investido com operação **100% offline-first e privacidade absoluta (Zero-Cloud)**.
 
 ## 1.2 Política de Privacidade Estrita (Zero-Cloud Data Policy)
 
@@ -54,12 +56,12 @@ O **Mr-tick Core** é 100% gratuito, de código aberto e extensível:
 - **Multi-Workspace & Múltiplas Conexões:** Conectar simultaneamente múltiplos DataSources (ex: Jira + Redmine + GitHub) sem travas artificiais.
 - **Timer de Alta Precisão:** Executado no processo principal (Main Process) do Electron, imune a congelamentos da UI.
 - **Widget Flutuante:** Suporte nativo a click-through, visualização compacta e atalhos globais.
-- **Extensibilidade Aberta (SDK de Addons):** Qualquer desenvolvedor pode criar e conectar plugins de DataSources, Watchers e Temas.
+- **Extensibilidade Aberta (SDK):** Qualquer desenvolvedor pode criar e conectar plugins de DataSources, Watchers e Temas.
 - **Pacote de Automações Locais:** Watchers para detecção de janelas ativas, git branches e integrações de produtividade.
 
 ---
 
-# 3. Ecossistema e SDK de Addons
+# 3. Ecossistema e SDK
 
 O Mr-tick possui uma arquitetura orientada a **Addons Multicapacidade**. Um único pacote de addon pode fornecer simultaneamente:
 
@@ -89,7 +91,7 @@ O Mr-tick possui uma arquitetura orientada a **Addons Multicapacidade**. Um úni
 | ID    | Descrição                                                         | Prioridade | Depende De   |
 | ----- | ----------------------------------------------------------------- | ---------- | ------------ |
 | RF001 | Gestão de Workspaces locais independentes                         | Alta       | —            |
-| RF002 | Gerenciador e SDK de Addons Multicapacidade                       | Alta       | —            |
+| RF002 | Gerenciador e SDK                       | Alta       | —            |
 | RF003 | Configuração de conexões externas diretas                         | Alta       | RF002        |
 | RF004 | Motor de sincronização Pull/Push direto com DataSources           | Alta       | RF003        |
 | RF005 | Conversão de metadados para padrão interno agnóstico              | Alta       | RF004        |

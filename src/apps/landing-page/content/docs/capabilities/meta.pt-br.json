@@ -1,5 +1,5 @@
 {
-  "title": "Addon Categories",
+  "title": "Capacidades de addons",
   "defaultOpen": true,
   "pages": [
     "index",
@@ -8,5 +8,6 @@
     "calendars",
     "themes",
     "punch"
-  ]
+  ],
+  "icon": "Blocks"
 }

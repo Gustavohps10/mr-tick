@@ -1,65 +1,34 @@
 ---
-title: Vault, Events & Context
-description: Explicit scopes, local Core queries, and addon lifecycle.
+title: Vault, settings and events
+description: Save settings, protect private values and respond to app events.
+icon: Vault
 ---
 
-# Vault, Events, and Context
+An addon may need to remember preferences, store a private value or react when the timer starts. This guide explains where to keep each kind of information and how to receive these notifications.
 
-An addon imports contracts from `@mr-tick/sdk`. The host provides product capabilities; it does not expose HostBridge or RxDB documents.
+The application manages credentials used to connect external accounts through `core.connections`. Use `host.vault` for other private addon values and for reading saved settings; do not create another store for the same account tokens.
 
-## Vault with Explicit Scope
+## Explicit scopes
 
-The vault uses the operating system keychain and belongs to the addon. Choose the scope on each call: `{ kind: 'workspace', workspaceId }` or `{ kind: 'addon' }`. UI navigation does not change the target. `get`, `set`, and `delete` return `Either<AppError, T>`.
+- `{ kind: 'addon' }`
+- `{ kind: 'workspace', workspaceId }`
+- `{ kind: 'connection', workspaceId, connectionInstanceId }`
+- `{ kind: 'capability', workspaceId, connectionInstanceId, capabilityId }`
 
-```ts
-const scope: AddonVaultScope = { kind: 'workspace', workspaceId }
-const result = await context.host.vault.set(scope, 'channelId', channelId)
-if (result.isFailure()) return result.forwardFailure()
-const channel = await context.host.vault.get(scope, 'channelId')
-if (channel.isFailure()) return channel.forwardFailure()
-```
+`get(scope, key)`, `set(scope, key, value)` and `delete(scope, key)` return `Either`. A missing private string is `null`. Access to connection/capability scopes is validated by the host. The capability-scoped vault address is not a per-capability manifest descriptor. UI navigation never supplies an implicit target.
 
-Existing workspace settings are preserved. Invalid data returns a failure without automatic overwriting.
+## Declarative settings
 
-## Core Queries
+Register schemas through `contributions.settings.register(schema, { onApply })`. Non-secret settings have a revisioned snapshot; read it with `host.vault.getSettings(scope)`. `onApply` receives scope, revision, values, events and `track` for cleanup. Do not read normal settings from an arbitrary private vault key.
 
-- `core.workspaces.list()` and `get(workspaceId)` return identity, name, and state.
-- `core.connections.list(workspaceId)` and `get(scope)` return identity, datasource, and state, without credentials.
-- `core.tasks.get({ workspaceId, connectionInstanceId, taskId })` uses the original source ID.
-- `core.tasks.list({ workspaceId, connectionInstanceId, limit, search? })` reads up to 100 tasks in ascending ID order.
-- `core.metadata.get(scope)` reads activities and other locally available metadata.
+## Runtime and cleanup
 
-All queries return `Either`. Reading does not call a remote provider, open storage, or start synchronization. An unavailable cache returns 503; a missing task returns 404. Dates are ISO 8601 strings. A successful local write does not confirm remote acceptance.
+Register providers and return from `activate`; waiting for ready there can block bootstrap. `core.runtime.onStateChanged` immediately reports the current state, then transitions among `starting`, `ready`, `restarting`, `closed`. Readiness does not mean remote pull has completed.
 
-## Readiness and Deactivation
+The host cleans up contributions and tracked listeners on deactivation or failed activation. Close owned sockets, clients and jobs yourself. Switching workspace does not deactivate the addon.
 
-```ts
-activate(context: AddonContext): void {
-  context.core.runtime.onStateChanged((state) => {
-    console.log('Core:', state)
-  })
-  // Registre providers agora e retorne, sem aguardar ready.
-}
-```
+## Guaranteed events
 
-States: `starting`, `ready`, `restarting`, `closed`. A listener immediately receives the current state. `ready` does not mean that pull has finished. After recovery, query the state again; when retrying a write, keep the same operation IDs.
+`timer:start`, `timer:pause`, `timer:resume`, `timer:stop`, `timer:update`, `workspace:changed`.
 
-The host cleans up contributions and listeners during deactivation or partially failed activation. The addon closes its own sockets and clients in `deactivate`. Switching workspaces does not automatically deactivate an addon.
-
-## Guaranteed Events
-
-```ts
-context.host.events.on('timer:start', (data) => console.log(data.taskId))
-context.host.events.on('timer:stop', (data) => console.log(data.currentSeconds))
-context.host.events.on('workspace:changed', (data) => console.log(data.currentWorkspaceId))
-```
-
-`timer:pause`, `timer:resume`, and `timer:update` are also available. These are transient projections, without replay or a guarantee of one tick per second. Time-entry and idle events are not part of the guaranteed contract.
-
-## Timer, Suggestions, and Notifications
-
-Use `timer.getActiveEntry(workspaceId)` and timer methods with a workspace and `LocalOperationIdentity`. `timeEntries.create` / `createSuggestion` receive `(workspaceId, input, operation)`, duration in seconds, and ISO dates. Reuse `commandId` and `entryId` only to retry the same operation.
-
-`notifications.info`, `success`, `warning`, `error`, `loading`, and `dismiss` remain available for toasts.
-
-Current addons run trusted code in the main process. These capabilities do not provide sandboxing or granular authorization.
+These are transient projections without replay or guaranteed per-second ticks. Idle and arbitrary time-entry events are not guaranteed SDK APIs. Use `context.core.timer` and `context.core.timeEntries` for reads and writes with explicit workspace and operation IDs. For connection authentication, see [connections](/docs/apis/connections).

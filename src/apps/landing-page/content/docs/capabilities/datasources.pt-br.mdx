@@ -1,0 +1,51 @@
+---
+title: "DataSources"
+description: Conecte ferramentas externas para consultar tarefas e sincronizar apontamentos.
+icon: Database
+---
+
+Um **datasource** conecta o Mr. Tick a uma ferramenta que fornece tarefas e recebe apontamentos. Ele traduz as informações dessa ferramenta para o formato que o aplicativo entende.
+
+Declare `capabilities: [dataSource]` nesse tipo de integração. Apenas conectar uma conta não torna o addon um datasource: um observador de atividade pode precisar de uma conta sem fornecer tarefas.
+
+## Implementação
+
+`IDataSource` fornece `getConnectionProfiles()`, `getConnectionSchema()` e `createInstance(context)`. Sua instância contém somente `tasksProvider`, `timeEntriesProvider`, `membersProvider` e `metadataProvider`. A autenticação é registrada separadamente:
+
+```ts
+import type {
+  AddonContext,
+  AddonConnectionAuthenticator,
+  IDataSource,
+} from '@mr-tick/sdk'
+
+export function registerDataSource(
+  context: AddonContext,
+  dataSource: IDataSource,
+  authenticator: AddonConnectionAuthenticator,
+): void {
+  context.contributions.dataSources.register(dataSource)
+
+  context.contributions.connections.registerAuthenticator(authenticator)
+}
+```
+
+Crie cada conjunto de providers a partir de seu `DataSourceContext`: escopo, configuração, credenciais e cliente HTTP. Não compartilhe configuração HTTP mutável entre conexões. Nenhuma estratégia de autenticação ou método de health pertence a `IDataSourceInstance`.
+
+| Operação                         | Resultado dentro de `Promise<Either<AppError, T>>`                              |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| `pull` de tarefas                | `TaskDTO[]`                                                                     |
+| `pull` de apontamentos           | `TimeEntryPullPageDTO`                                                          |
+| `findById` de tarefa/apontamento | DTO ou `null`                                                                   |
+| `create` / `update`              | Resultado com ID remoto confirmado; apontamentos podem incluir `entry` canônico |
+| `delete`                         | `void`                                                                          |
+
+O pull de apontamentos retorna `items`, `checkpoint`, `hasMore` e `snapshotId`; um array não basta. `createTimeEntrySnapshotPage` pagina um snapshot completo e validado. Detecte paginação remota incompleta/inconsistente antes de informar sucesso.
+
+Anuncie `timeEntryCreateIdempotency` conforme garantias do backend: `native`, `reconcilable` ou `none`. Exponha `updateConditional` somente quando o servidor compara o estado esperado e grava atomicamente; GET seguido de PUT não fornece essa garantia.
+
+Toda requisição de `IHttpClient` exige `responseValidator`, uma função que confere os dados recebidos antes de usá-los. Converter JSON ou informar um tipo TypeScript não faz essa validação. Considere campos nulos ou omitidos que o serviço permita e preserve seus códigos de resposta e mensagens. Use os tipos públicos do SDK para comunicar os resultados ao aplicativo.
+
+Consulte [conexões](/pt-br/docs/apis/connections), [OAuth PKCE](/pt-br/docs/apis/oauth-pkce) e [cofre e eventos](/pt-br/docs/apis/vault-and-events).
+
+Implementação de referência: [addon Redmine](https://github.com/Gustavohps10/redmine-plugin), incluindo testes HTTP e de integração Docker.

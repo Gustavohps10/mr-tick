@@ -1,0 +1,23 @@
+---
+title: "Punch integrations"
+description: Learn how to start integrating attendance tracking services.
+icon: Clock
+---
+
+`punch` is a canonical capability, not a dedicated provider API or a promise of a built-in calendar/attendance UI.
+
+```yaml
+id: example-addon
+name: Example Addon
+version: 0.1.0
+author: Example
+shortDescription: SDK example
+description: Example using the published SDK
+capabilities:
+  - punch
+requiredApiVersion: '>=0.10.0'
+```
+
+Implement provider-specific HTTP and authentication inside the addon. Existing extension points include connection authenticators, commands, menus, settings and local suggestions. External event/attendance record types belong to the addon. Explicit user decisions and operation identities are required when converting these records to local time entries.
+
+See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).

@@ -1,154 +1,59 @@
 ---
-title: OAuth 2.0 PKCE Authentication
-description: Authenticate users securely with PKCE (RFC 7636), cryptographic State, and deep linking (mr-tick-app://).
+title: "OAuth 2.0 with PKCE"
+description: Authorize accounts in the browser and complete the connection in the app.
+icon: KeyRound
 ---
 
-# OAuth 2.0 PKCE Authentication
+For workspace connections, register an `AddonConnectionAuthenticator` with `method: oauth`. The core owns PKCE, state, attempt lifetime and credential persistence. Do not create a second independent login flow for the same connection.
 
-> The complete example below uses the old vault contract. In the current SDK, pass `AddonVaultScope` explicitly and handle the returned `Either`, as described in [Vault and Events](/docs/apis/vault-and-events). Use addon-wide scope only when the account is shared across workspaces.
+| Environment | Provider HTTP redirect                  | Landing page opens          |
+| ----------- | --------------------------------------- | --------------------------- |
+| Development | `http://localhost:3000/oauth/callback`  | `electron://oauth/callback` |
+| Production  | `https://mistertick.com/oauth/callback` | `mr-tick://oauth/callback`  |
 
-Mr. Tick provides a native, standardized **OAuth 2.0 with PKCE (Proof Key for Code Exchange — RFC 7636)** API through `context.host.oauth`.
+These are the current Discord/desktop bridge routes. Register HTTP URLs at the provider, not desktop deep links. Use the same `redirectUri` when exchanging the code. The internal `mr-tick-app://` resource/activation protocol is not the OAuth callback.
 
-This flow removes the need to embed `CLIENT_SECRET` in addons or open local HTTP servers on the user's computer.
+1. Register the profile and OAuth authenticator, including its HTTP `redirectUri`.
+2. `core.connections.createAuthorizationRequest(scope)` supplies state, S256 challenge and redirect URI to the authenticator.
+3. The authenticator returns `authUrl` and `timeoutMs`.
+4. The provider redirects through the HTTP landing page; the host binds the desktop callback to the active attempt.
+5. `completeAuthentication` receives code, verifier, state and redirect URI. Validate the provider response and return identity plus credentials.
+6. The core persists credentials and completes the lifecycle.
 
----
+The following factory implements only the authorization-request method. Token exchange, identity discovery and refresh are provider-specific:
 
-## 🔄 Authentication Flow in 5 Steps
+```ts
+import { Either, type AddonConnectionAuthenticator } from '@mr-tick/sdk'
 
-```text
-1. Addon (Desktop)
-   │ context.host.oauth.generatePKCE() → generates codeVerifier + codeChallenge (SHA-256)
-   │ context.host.oauth.generateState('discord') → generates secure state (UUID)
-   │ context.host.oauth.authorize({ authUrl, state })
-   ▼
-2. User's Web Browser
-   │ Opens the OAuth provider's consent screen      (Discord, Google, Jira, etc.)
-   ▼
-3. Web Redirect
-   │ The provider redirects to the landing page:
-   │ https://mistertick.com/oauth/callback?code=AUTH_CODE&state=STATE
-   ▼
-4. Operating System Deep Link
-   │ The landing page opens the secure protocol:
-   │ mr-tick-app://oauth/callback?code=AUTH_CODE&state=STATE
-   ▼
-5. Addon (Desktop)
-   │ AddonLoader validates state, prevents replay, and resolves the authorization code
-   │ The addon performs a secure exchange (POST /token with code_verifier, without a secret)
-   │ Stores the structured token in secure storage (Keytar)
-```
+type OAuthAuthenticator = Extract<
+  AddonConnectionAuthenticator,
+  { method: 'oauth' }
+>
 
----
+export function createAuthorizationRequest(
+  clientId: string,
+): OAuthAuthenticator['createAuthorizationRequest'] {
+  return async (scope, parameters) => {
+    void scope
 
-## 🛡️ Why PKCE Protects Desktop Apps
+    const url = new URL('https://provider.example/oauth/authorize')
 
-1. **No Exposed Secrets**: Since addon code runs on the user's device, an embedded `CLIENT_SECRET` could be extracted. PKCE replaces the secret with a unique cryptographic challenge generated at runtime (`code_challenge` / `code_verifier`).
-2. **Protection Against Deep Link Interception**: Even if a malicious application captures a deep link containing the `code` and `state`, it **cannot** obtain the access token without the `code_verifier`, which stays in Mr. Tick's memory.
-3. **CSRF and Replay Prevention**: The `state` is generated with `crypto.randomUUID()`, strictly validated in the callback, and consumed once. Repeated use is rejected.
+    url.search = new URLSearchParams({
+      client_id: clientId,
+      response_type: 'code',
+      redirect_uri: parameters.redirectUri,
+      state: parameters.state,
+      code_challenge: parameters.codeChallenge,
+      code_challenge_method: parameters.codeChallengeMethod,
+    }).toString()
 
----
-
-## 💻 Complete Implementation Example
-
-```typescript
-import type { AddonActionResponse, AddonContext, IAddon } from '@mr-tick/sdk'
-
-export default class DiscordOAuthAddon implements IAddon {
-  public async activate(context: AddonContext): Promise<void> {
-    context.contributions.commands.register('login', async (): Promise<AddonActionResponse> => {
-      await this.handleLogin(context)
-      return {
-        isSuccess: true,
-        display: {
-          title: 'Conectado ao Discord',
-          message: 'Autenticação OAuth realizada com sucesso.',
-        },
-      }
-    })
-  }
-
-  public async deactivate(): Promise<void> {
-    console.log('[DiscordOAuthAddon] Desativado.')
-  }
-
-  public async handleLogin(context: AddonContext): Promise<void> {
-    // 1. Gera par PKCE (RFC 7636) e state criptográfico
-    const { codeVerifier, codeChallenge } = context.host.oauth.generatePKCE()
-    const state = context.host.oauth.generateState('discord')
-
-    const CLIENT_ID = '1372352088457220126' // Client ID Público
-    const defaultRedirectUri =
-      process.env.NODE_ENV === 'development'
-        ? 'http://localhost:3000/oauth/callback'
-        : 'https://mistertick.com/oauth/callback'
-    const REDIRECT_URI =
-      process.env.MR_TICK_OAUTH_REDIRECT_URI || defaultRedirectUri
-
-    const authUrl =
-      `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}` +
-      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-      `&response_type=code&scope=identify%20rpc` +
-      `&code_challenge=${codeChallenge}&code_challenge_method=S256&state=${state}`
-
-    console.log('[OAuth] Abrindo navegador para autorização...')
-
-    // 2. Dispara a autorização e aguarda o Deep Link (com timeout de segurança)
-    const result = await context.host.oauth.authorize({
-      authUrl,
-      state,
-      timeoutMs: 120000, // 2 minutos
-    })
-
-    if (!result.code) {
-      throw new Error('Código de autorização não recebido.')
-    }
-
-    console.log('[OAuth] Código recebido via Deep Link. Trocando pelo Token...')
-
-    // 3. Troca do Authorization Code pelo Access Token via PKCE
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      grant_type: 'authorization_code',
-      code: result.code,
-      code_verifier: codeVerifier, // Prova de posse do desafio original
-      redirect_uri: REDIRECT_URI,
-    })
-
-    const response = await fetch('https://discord.com/api/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params,
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(
-        `Falha na autenticação: ${errorData.error_description || errorData.error || response.status}`,
-      )
-    }
-
-    const tokenPayload = await response.json()
-    if (!tokenPayload.access_token) {
-      throw new Error('access_token não retornado pelo provedor OAuth.')
-    }
-
-    // 4. Normalização e persistência estruturada no Storage Criptografado
-    const storedToken = {
-      accessToken: tokenPayload.access_token,
-      refreshToken: tokenPayload.refresh_token,
-      tokenType: tokenPayload.token_type || 'Bearer',
-      expiresAt: tokenPayload.expires_in
-        ? new Date(Date.now() + tokenPayload.expires_in * 1000).toISOString()
-        : undefined,
-      scope: tokenPayload.scope,
-    }
-
-    await context.host.vault.set('tokenData', JSON.stringify(storedToken))
-    await context.host.vault.set('accessToken', storedToken.accessToken)
-
-    console.log(
-      '[OAuth] Autenticação concluída e token armazenado com sucesso!',
-    )
+    return Either.success({ authUrl: url.toString(), timeoutMs: 120000 })
   }
 }
 ```
+
+The state is bound to the attempt and cannot authorize another connection or revive an expired attempt. Do not embed client secrets in public clients. Validate token payloads at the transport boundary and preserve functional errors.
+
+`context.host.oauth` still offers low-level `generatePKCE`, `generateState` and `authorize` browser helpers. `authorize` returns `Promise<OAuthResult>` and does not independently persist a core connection. Connection authentication uses the lifecycle above.
+
+See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).

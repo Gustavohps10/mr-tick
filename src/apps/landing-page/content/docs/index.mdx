@@ -1,69 +1,39 @@
 ---
-title: Overview and Architecture
-description: Explore the philosophy, layered architecture, and security principles of the Mr. Tick ecosystem.
+title: "SDK"
+description: Learn how the SDK helps you build integrations, actions and themes for Mr. Tick.
+icon: BookOpen
 ---
 
-# Overview and Architecture
+The SDK is a set of tools for creating extensions for Mr. Tick. It lets you add integrations, actions and visual customizations without changing the application itself.
 
-**Mr. Tick** was designed with a **decentralized, decoupled, provider-agnostic architecture**.
+These extensions are called **addons**. Each addon brings a feature that users can install according to their needs, such as connecting a work management tool or suggesting time entries after a meeting.
 
-The main application (_Core Desktop_) contains no business rules tied to specific tools such as Jira, Redmine, YouTrack, Discord, Google, or Microsoft. Extensibility, task synchronization, activity monitoring, and visual themes are exposed through standardized extensions using **`@mr-tick/sdk`**.
+## What can you extend?
 
----
+- **Connect work tools:** bring tasks into Mr. Tick and send time entries to the original system. The Redmine addon is one example.
+- **Create activity observers:** detect voice calls or other activities and offer time-entry suggestions, as the Discord addon does.
+- **Add actions and shortcuts:** register commands and items in the sidebar or timer bar.
+- **Customize the interface:** create themes with your own colors and visual identity.
+- **Work with the timer and time entries:** query information, control the timer and create local entries or suggestions.
 
-## 🏛️ Layered Architecture
+An addon can combine these features. A calendar or attendance integration can use the same extension points, but the SDK does not include a ready-made integration or dedicated screen for every external service.
 
-The Mr. Tick ecosystem separates layers with clearly defined responsibilities:
+## How does it work?
 
-```text
-┌────────────────────────────────────────────────────────┐
-│                   Mr-tick Core Desktop                  │
-│  (Windows, Native Timers , Keytar Vault, AddonLoader)  │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-┌──────────────────────────▼─────────────────────────────┐
-│                 Application & Domain Engine            │
-│    (@mr-tick/domain  &  @mr-tick/application)    │
-│  (Workspaces, TimeEntries, Tasks, HTTP Sync Engine)    │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-┌──────────────────────────▼─────────────────────────────┐
-│                   Official Mr-tick SDK                   │
-│                  (@mr-tick/sdk)                     │
-│    (IAddon, AddonContext, IAddonOAuthAPI, Vault, Events)  │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-        ┌──────────────────┼──────────────────┐
-        │                  │                  │
- ┌──────▼──────┐    ┌──────▼──────┐    ┌──────▼──────┐
- │ DataSources │    │  Watchers   │    │  Calendars  │ ...
- └─────────────┘    └─────────────┘    └─────────────┘
-```
+Your addon describes the features it offers and registers them with Mr. Tick. The application provides access to its supported functions and handles the connection with the interface. You implement the behavior specific to your integration.
 
-### 1. Core Desktop (Electron / Node.js)
+The SDK also provides the contracts for account connections, settings, private storage and application events. These help each addon use the correct account and workspace.
 
-Manages application lifecycle, windows, global shortcuts, encrypted persistence in the native operating system keychain (Windows Credential Manager / macOS Keychain through Keytar), and isolated addon initialization through `AddonLoader`.
+## Where to start
 
-### 2. Domain & Application Layer (`@mr-tick/domain` / `@mr-tick/application`)
+1. Follow the [quickstart](/docs/quickstart) to create, build and package a small addon.
+2. Choose its [capabilities](/docs/capabilities), which describe the features it offers.
+3. If it connects an external account, read [connections and authentication](/docs/apis/connections) and [OAuth PKCE](/docs/apis/oauth-pkce).
+4. Use [settings, private storage and events](/docs/apis/vault-and-events) as needed.
+5. For task and time-entry integrations, read [datasources](/docs/capabilities/datasources) and [synchronization](/docs/sync-engine).
 
-Contains pure business rules:
+## Developing with the SDK
 
-- **Rich Entities**: `Workspace`, `Task`, and `TimeEntry` ensure data integrity with Zod and functional error handling (`Either` / `Result`).
-- **Use Cases**: Workspace creation, DataSource connection and disconnection, and the **HTTP Synchronization Engine** (Pull & Push of deltas).
+Install the published `@mr-tick/sdk` package in your project. You do not need the private packages used to build Mr. Tick. The guides explain the types and methods when they are needed for implementation.
 
-### 3. Mr. Tick SDK (`@mr-tick/sdk`)
-
-The entry point for developers. It provides strict TypeScript types, cryptographic utilities (PKCE RFC 7636 and State generation), and safe abstractions for storage, real-time events, timers, and notifications.
-
-### 4. Deep Link Bridge (`mr-tick-app://`)
-
-A universal bridge for web flows such as OAuth 2.0. The intermediate landing page receives external-provider callbacks and securely returns their parameters to the desktop application through `mr-tick-app://oauth/callback`.
-
----
-
-## 🛡️ Fundamental Security Principles
-
-1. **Zero Secrets**: Addons run as public clients on the desktop. No secret key (`CLIENT_SECRET`) is embedded or required in addon code. Authentication uses **OAuth 2.0 with PKCE**.
-2. **Workspace Isolation (Multi-Tenant)**: Credentials, access tokens, and settings persisted through `context.host.vault` are isolated by addon and the explicit scope passed to each call, independently of the active workspace.
-3. **Immutability and Conflict Prevention**: The synchronization engine uses _Optimistic Concurrency Control_ with `assumedMasterState` to detect concurrent changes without silently overwriting data.
-4. **Safe Event Communication**: Addons react asynchronously to operating system and timer events (`onTimerStart`, `onTimerStop`, `onIdleDetected`) without blocking.
+Addons execute code inside the application. Install extensions from authors you trust: the SDK does not provide a sandbox that contains malicious addon code. Saving an entry locally also does not mean an external service has already accepted it.

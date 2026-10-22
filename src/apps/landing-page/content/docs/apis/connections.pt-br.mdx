@@ -1,0 +1,114 @@
+---
+title: "Conexões e autenticação"
+description: Conecte contas externas e mantenha a identidade e as credenciais de cada conta separadas.
+icon: Cable
+---
+
+Use uma **conexão** quando o addon precisar acessar uma conta externa. Por exemplo, o usuário pode conectar dois servidores Redmine ou autorizar o Discord em um workspace. O addon fornece a integração; cada conexão mantém a conta escolhida e suas credenciais separadas.
+
+Conectar uma conta é independente de sincronizar tarefas. Um observador de atividade pode autenticar sem se tornar um datasource.
+
+## Registro
+
+```ts
+import type { AddonContext } from '@mr-tick/sdk'
+
+export function registerProfiles(context: AddonContext): void {
+  context.contributions.connections.registerProfiles([
+    {
+      connectionProfileId: 'example-account',
+      cardinality: 'multi',
+      default: true,
+      allowedAuthProfileIds: ['example-token'],
+      defaultAuthProfileId: 'example-token',
+    },
+  ])
+}
+```
+
+`connectionProfileId` identifica um modelo de conexão; `authProfileId` identifica uma implementação de autenticação. Perfis podem declarar autenticadores permitidos, padrão e papéis de autorização. `single` limita um perfil dentro de um workspace; `multi` permite instâncias distintas.
+
+Integrações de tarefas expõem perfis com `getConnectionProfiles()`, publicados quando a integração é registrada. Outros addons usam `contributions.connections.registerProfiles`. Registre os perfis e autenticadores durante a execução do addon; eles não são declarados no manifesto.
+
+## Autenticador de credenciais
+
+O exemplo cria um autenticador para um serviço cujo endereço `/me` retorna `id` e `name` como textos não vazios. As funções de validação conferem os campos de entrada e a resposta HTTP; depois disso, a autenticação usa os valores já tipados. Passe um cliente HTTP que devolva falhas como `Either`.
+
+```ts
+import {
+  AppError,
+  Either,
+  type AddonConnectionAuthenticator,
+  type IHttpClient,
+  type JsonValue,
+} from '@mr-tick/sdk'
+
+type Account = { id: string; name: string }
+
+function isNonEmptyString(value: JsonValue | undefined): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function isAccount(value: JsonValue): value is Account {
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    return false
+
+  return isNonEmptyString(value.id) && isNonEmptyString(value.name)
+}
+
+export function createAuthenticator(
+  http: IHttpClient,
+): AddonConnectionAuthenticator {
+  return {
+    method: 'credentials',
+    authProfileId: 'example-token',
+    supportsRefresh: false,
+    supportsRevocation: false,
+    async authenticate(credentials, configuration) {
+      const apiUrl = configuration.apiUrl
+      const apiToken = credentials.apiToken
+
+      if (!isNonEmptyString(apiUrl))
+        return Either.failure(AppError.ValidationError('API_URL_REQUIRED'))
+
+      if (!isNonEmptyString(apiToken))
+        return Either.failure(AppError.ValidationError('API_TOKEN_REQUIRED'))
+
+      const client = http.withConfig({
+        baseURL: apiUrl,
+        headers: { Authorization: 'Bearer ' + apiToken },
+      })
+
+      const account = await client.get<Account>('/me', {
+        responseValidator: isAccount,
+      })
+
+      if (account.isFailure()) return account.forwardFailure()
+
+      return Either.success({
+        kind: 'authorized',
+        identity: {
+          kind: 'human',
+          providerId: 'example',
+          tenantId: apiUrl,
+          providerSubjectId: account.success.id,
+          displayName: account.success.name,
+        },
+        credentials: { apiToken },
+      })
+    },
+  }
+}
+```
+
+Registre o autenticador retornado com `registerAuthenticator`. A autenticação retorna `kind: authorized`, a identidade da conta e suas credenciais. Use o identificador original da conta no serviço externo, sem convertê-lo para um identificador local.
+
+## Gerenciando a conexão
+
+`core.connections` expõe `create`, `submitCredentials`, `createAuthorizationRequest`, `completeAuthentication`, `refresh`, `disconnect`, `archive`, `restore` e `remove`. Use `workspaceId`, `connectionInstanceId` e, quando necessário, `authorizationRole` explícitos. Trate resultados `Either<AppError, T>`.
+
+`list` e `get` retornam informações da conexão sem revelar credenciais. `withCredentials(scope, operation)` disponibiliza as credenciais somente à função informada pelo addon. O aplicativo salva essas credenciais e coordena sua renovação. Não copie tokens para configurações globais do workspace, não os envie à interface e não os registre em logs. Se o armazenamento seguro estiver indisponível, trate essa falha separadamente da ausência de uma credencial.
+
+Autenticadores OAuth com renovação implementam `refreshToken` retornando `Either<TokenRefreshError, OAuthRenewalResult>`. Anuncie revogação remota somente com `supportsRevocation: true` e `revokeToken` funcional.
+
+Para autorizar uma conta pelo navegador, consulte [OAuth PKCE](/pt-br/docs/apis/oauth-pkce). Para outros dados do addon, veja [configurações, armazenamento privado e eventos](/pt-br/docs/apis/vault-and-events).

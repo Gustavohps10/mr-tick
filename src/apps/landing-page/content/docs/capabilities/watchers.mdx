@@ -1,0 +1,46 @@
+---
+title: "Watchers and suggestions"
+description: Observe activity and turn events into time-entry suggestions.
+icon: Activity
+---
+
+Declare `capabilities: [watcher]`. Observe provider events, local sockets or external processes inside the addon. Authenticate with the connection contribution API; do not register a datasource just to hold credentials.
+
+```yaml
+id: example-addon
+name: Example Addon
+version: 0.1.0
+author: Example
+shortDescription: SDK example
+description: Example using the published SDK
+capabilities:
+  - watcher
+requiredApiVersion: '>=0.10.0'
+```
+
+```ts
+import type {
+  AddonContext,
+  LocalEntryInput,
+  LocalOperationIdentity,
+} from '@mr-tick/sdk'
+
+export function suggest(
+  context: AddonContext,
+  workspaceId: string,
+  input: LocalEntryInput,
+  operation: LocalOperationIdentity,
+) {
+  return context.core.timeEntries.createSuggestion(
+    workspaceId,
+    input,
+    operation,
+  )
+}
+```
+
+Choose workspace, source connection, task and activity explicitly. `LocalEntryInput` uses seconds and ISO dates. Allocate operation IDs before the write and reuse them only for retries with identical content. Success means a local suggestion, not remote confirmation.
+
+Guaranteed events: `timer:start`, `timer:pause`, `timer:resume`, `timer:stop`, `timer:update`, `workspace:changed`. No idle subscription API is guaranteed. Register listeners and return from activation; close owned resources in deactivation. Workspace changes do not deactivate the addon.
+
+See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).

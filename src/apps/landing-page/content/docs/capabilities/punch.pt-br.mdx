@@ -1,0 +1,23 @@
+---
+title: "Integrações de ponto"
+description: Entenda como iniciar uma integração com serviços de registro de ponto.
+icon: Clock
+---
+
+`punch` é uma capacidade canônica, não uma API de provider dedicada nem uma promessa de UI nativa de calendário/jornada.
+
+```yaml
+id: example-addon
+name: Example Addon
+version: 0.1.0
+author: Example
+shortDescription: SDK example
+description: Example using the published SDK
+capabilities:
+  - punch
+requiredApiVersion: '>=0.10.0'
+```
+
+Implemente HTTP e autenticação específicos do provedor dentro do addon. Os pontos de extensão existentes incluem autenticadores de conexão, comandos, menus, settings e sugestões locais. Tipos de eventos/registros de jornada externos pertencem ao addon. Decisões explícitas do usuário e identidades de operação são necessárias ao converter esses registros em apontamentos locais.
+
+Consulte [conexões](/pt-br/docs/apis/connections), [OAuth PKCE](/pt-br/docs/apis/oauth-pkce) e [cofre e eventos](/pt-br/docs/apis/vault-and-events).

@@ -1,69 +1,39 @@
 ---
-title: Visão Geral e Arquitetura
-description: Conheça a filosofia, a estrutura em camadas e os princípios de segurança do ecossistema Mr-tick.
+title: "SDK"
+description: Entenda como o SDK permite criar integrações, ações e temas para o Mr. Tick.
+icon: BookOpen
 ---
 
-# Visão Geral e Arquitetura
+O SDK é um conjunto de ferramentas para criar extensões para o Mr. Tick. Com ele, você pode adicionar integrações, ações e personalizações visuais sem precisar alterar o aplicativo.
 
-O **Mr-tick** foi projetado com uma arquitetura **100% descentralizada, desacoplada e agnóstica**.
+Essas extensões são chamadas de **addons**. Cada addon oferece uma funcionalidade que o usuário pode instalar conforme sua necessidade, como conectar uma ferramenta de trabalho ou sugerir apontamentos após uma reunião.
 
-O aplicativo principal (_Core Desktop_) não possui regras de negócio vinculadas a ferramentas específicas (como Jira, Redmine, YouTrack, Discord, Google ou Microsoft). Todo o poder de expansão, sincronização de tarefas, monitoramento de atividades e temas visuais é exposto através de extensões padronizadas via **`@mr-tick/sdk`**.
+## O que você pode estender?
 
----
+- **Conectar ferramentas de trabalho:** trazer tarefas para o Mr. Tick e enviar apontamentos para o sistema de origem. O addon do Redmine é um exemplo.
+- **Criar observadores de atividade:** detectar chamadas de voz ou outras atividades e oferecer sugestões de apontamento, como faz o addon do Discord.
+- **Adicionar ações e atalhos:** registrar comandos e itens nos menus laterais ou na barra do timer.
+- **Personalizar a interface:** criar temas com suas próprias cores e identidade visual.
+- **Usar o timer e os apontamentos:** consultar informações, controlar o timer e criar registros ou sugestões locais.
 
-## 🏛️ Arquitetura em Camadas
+Um addon pode combinar essas funcionalidades. Integrações de calendário ou ponto podem usar os mesmos pontos de extensão, mas o SDK não inclui uma integração pronta ou uma tela específica para cada serviço externo.
 
-O ecossistema do Mr-tick é composto por camadas com responsabilidades estritas e bem delimitadas:
+## Como funciona?
 
-```text
-┌────────────────────────────────────────────────────────┐
-│                   Mr-tick Core Desktop                  │
-│  (Janelas, Timers Nativos, Keytar Vault, AddonLoader)  │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-┌──────────────────────────▼─────────────────────────────┐
-│                 Motor de Aplicação & Domínio           │
-│    (@mr-tick/domain  &  @mr-tick/application)    │
-│  (Workspaces, TimeEntries, Tasks, HTTP Sync Engine)    │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-┌──────────────────────────▼─────────────────────────────┐
-│                   Mr-tick SDK Oficial                   │
-│                  (@mr-tick/sdk)                     │
-│    (IAddon, AddonContext, IAddonOAuthAPI, Vault, Events)  │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-        ┌──────────────────┼──────────────────┐
-        │                  │                  │
- ┌──────▼──────┐    ┌──────▼──────┐    ┌──────▼──────┐
- │ DataSources │    │  Watchers   │    │  Calendars  │ ...
- └─────────────┘    └─────────────┘    └─────────────┘
-```
+Seu addon descreve as funcionalidades que oferece e as registra no Mr. Tick. O aplicativo disponibiliza suas funções suportadas e cuida da ligação com a interface. Você implementa o comportamento específico da sua integração.
 
-### 1. Core Desktop (Electron / Node.js)
+O SDK também fornece os contratos para conexão de contas, configurações, armazenamento privado e eventos do aplicativo. Eles ajudam cada addon a usar a conta e o workspace corretos.
 
-Responsável pelo ciclo de vida do aplicativo, janelas, atalhos globais, persistência criptografada no chaveiro nativo do sistema operacional (Windows Credential Manager / macOS Keychain via Keytar) e inicialização isolada dos addons através do `AddonLoader`.
+## Por onde começar
 
-### 2. Camada de Domínio & Aplicação (`@mr-tick/domain` / `@mr-tick/application`)
+1. Siga o [guia rápido](/pt-br/docs/quickstart) para criar, compilar e empacotar um addon pequeno.
+2. Escolha suas [capabilities](/pt-br/docs/capabilities), que descrevem as funcionalidades oferecidas.
+3. Se ele conectar uma conta externa, leia [conexões e autenticação](/pt-br/docs/apis/connections) e [OAuth PKCE](/pt-br/docs/apis/oauth-pkce).
+4. Use [configurações, armazenamento privado e eventos](/pt-br/docs/apis/vault-and-events) conforme necessário.
+5. Para integrar tarefas e apontamentos, consulte [datasources](/pt-br/docs/capabilities/datasources) e [sincronização](/pt-br/docs/sync-engine).
 
-Contém as regras de negócio puras:
+## Desenvolvendo com o SDK
 
-- **Entidades Ricas**: `Workspace`, `Task` e `TimeEntry`, garantindo integridade de dados via Zod e tratamento funcional de erros (`Either` / `Result`).
-- **Casos de Uso**: Criação de Workspaces, conexão e desconexão de DataSources, e o **Motor de Sincronização HTTP** (Pull & Push de deltas).
+Instale o pacote publicado `@mr-tick/sdk` no seu projeto. Você não precisa dos pacotes privados usados para construir o Mr. Tick. Os guias apresentam os tipos e métodos quando eles forem necessários para a implementação.
 
-### 3. Mr-tick SDK (`@mr-tick/sdk`)
-
-O ponto de contato para desenvolvedores. Fornece tipagens estritas de TypeScript, utilitários criptográficos (PKCE RFC 7636, geração de State), e abstrações seguras de storage, eventos em tempo real, timer e notificações.
-
-### 4. Ponte de Deep Link (`mr-tick-app://`)
-
-Uma ponte universal para fluxos web (como OAuth 2.0). A Landing Page intermediária recebe o retorno de provedores externos e despacha com segurança os parâmetros de volta ao aplicativo desktop através do protocolo `mr-tick-app://oauth/callback`.
-
----
-
-## 🛡️ Princípios Fundamentais de Segurança
-
-1. **Zero Secrets**: Addons rodam como clientes públicos em ambiente desktop. Nenhuma chave secreta (`CLIENT_SECRET`) é embutida ou exigida no código do addon. Todo fluxo de autenticação utiliza a especificação **OAuth 2.0 com PKCE**.
-2. **Isolamento por Workspace (Multi-Tenant)**: Todas as credenciais, tokens de acesso e configurações persistidas via `context.host.vault` são isoladas pelo addon e pelo escopo explícito informado na chamada, sem depender do workspace ativo.
-3. **Imutabilidade e Prevenção de Conflitos**: O motor de sincronização utiliza _Optimistic Concurrency Control_ com `assumedMasterState`, detectando alterações concorrentes sem sobrescrever dados silenciosamente.
-4. **Comunicação Segura por Eventos**: Addons reagem a eventos do sistema operacional e do cronômetro (`onTimerStart`, `onTimerStop`, `onIdleDetected`) de forma assíncrona e não bloqueante.
+Addons executam código dentro do aplicativo. Instale extensões de autores em quem você confia: o SDK não isola esse código para impedir ações maliciosas. Salvar um apontamento localmente também não significa que um serviço externo já o aceitou.

@@ -21,7 +21,7 @@ Gerencia o ciclo de vida completo de **Contas e Conexões Externas**, garantindo
 | `ConnectionLifecycleCoordinator` | Coordenador central de estado de conexão, refresh e health checks |
 | `OAuthAttemptCoordinator` | Gerencia tentativas OAuth com PKCE, state único e timeout determinístico |
 | `AddonAuthenticatorRegistry` | Registro em memória dos autenticadores providos pelos addons |
-| `AddonConnectionProfilesResolver` | Resolve os perfis de conexão declarados no manifesto do addon |
+| `AddonConnectionProfilesResolver` | Resolve os perfis registrados em runtime pelo datasource ou pelas contribuições de conexão do addon |
 | `GetMappingFieldsService` | Resolve campos mapeáveis (ex: status, tipos de tarefa) da conexão |
 | `RecoverConnectionLifecycleService` | Recupera intenções de ciclo de vida pendentes após reinício abrupto |
 | `RecoverAddonWorkspaceCredentialWritesService` | Recupera escritas pendentes de credenciais |

@@ -12,6 +12,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.3.1",
     "@mr-tick/application": "workspace:*",
     "@mr-tick/ui": "workspace:*",
     "@tailwindcss/typography": "^0.5.16",
@@ -19,6 +20,7 @@
     "fumadocs-core": "^16.15.0",
     "fumadocs-mdx": "^15.3.1",
     "fumadocs-ui": "^16.15.0",
+    "lucide-react": "^0.548.0",
     "motion": "^13.1.1",
     "next": "16.2.1",
     "next-intl": "^4.14.9",
@@ -30,7 +32,8 @@
     "semver": "^7.7.1",
     "tailwind-merge": "^3.0.1",
     "tailwindcss": "^4.1.11",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

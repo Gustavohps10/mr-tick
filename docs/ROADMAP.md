@@ -8,7 +8,7 @@ Este documento consolida a evolução de produto, arquitetura e marcos técnicos
 O Mr. Tick é o **cockpit de produtividade e time tracking local-first** para desenvolvedores e equipes técnicas:
 - **Zero Context-Switching:** Centraliza tarefas de múltiplos gerenciadores (Redmine, Jira, GitHub Issues) e calendário em uma timeline rápida e unificada.
 - **100% Offline-First:** Toda a persistência é local (RxDB), permitindo resposta instantânea com zero latência mesmo com APIs externas lentas ou indisponíveis.
-- **Extensibilidade Aberta (SDK de Addons):** Qualquer desenvolvedor pode plugar novas fontes de dados, watchers de atividade, temas e comandos.
+- **Extensibilidade Aberta (SDK):** Qualquer desenvolvedor pode plugar novas fontes de dados, watchers de atividade, temas e comandos.
 
 ---
 

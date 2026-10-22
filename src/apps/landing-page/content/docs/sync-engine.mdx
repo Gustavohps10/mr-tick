@@ -1,134 +1,27 @@
 ---
-title: Synchronization Engine & Domain
-description: HTTP replication (Pull & Push), workspace connections, and the time-entry lifecycle.
+title: "Synchronization and provider contracts"
+description: Understand how tasks and time entries synchronize and how to handle failures.
+icon: RefreshCw
 ---
 
-# Synchronization Engine & Domain
+Mr. Tick keeps time entries on the device and synchronizes them with the connected tool. An addon supplies the code that reads and writes that external service. The application coordinates pending changes and recovery after failures.
 
-**Mr. Tick** uses a provider-agnostic synchronization engine based on **HTTP Replication (Pull & Push of Deltas)**. Rather than opening persistent connections such as WebSockets or aggressively polling third-party APIs, it synchronizes data in a structured, efficient way that tolerates network failures.
+The local executor handles timer and time-entry changes; the interface reads saved data. Reading tasks through `core.tasks` or metadata through `core.metadata` does not start a new request to the external service.
 
----
+## Pull
 
-## 🔄 How HTTP Replication Works
+Task pull returns `Either<AppError, TaskDTO[]>`. Time-entry pull returns `Either<AppError, TimeEntryPullPageDTO>` with `items`, `checkpoint`, `hasMore`, `snapshotId`. Providers may use delta feeds or complete paginated snapshots, according to the backend. Do not claim every provider reads only deltas.
 
-Synchronization between Mr. Tick and a server or management tool (Redmine, Jira, YouTrack, etc.) has two distinct cycles: **Pull** and **Push**.
+Validate every HTTP response before mapping provider DTOs. Reject incomplete or inconsistent snapshots; preserve provider IDs rather than leaking local composite keys.
 
-```text
-       ┌──────────────────────────────┐
-       │     Local DB (Mr-tick)        │
-       └──────┬────────────────▲──────┘
-              │                │
-       [1] Pull (Download)     │ [2] Push (Upload)
-       Tasks, Categories,      │ New Time Entries,
-       Metadata & Checkpoints  │ Updates and Deletes
-              │                │
-              ▼                │
-       ┌───────────────────────┴──────┐
-       │   Remote Server (API)        │
-       └──────────────────────────────┘
-```
+## Push and recovery
 
----
+Create/update return confirmed remote IDs and may include the canonical time-entry `entry`. After a confirmed write without that entry, the core can read back canonical state. A read failure after a confirmed update must not cause a second update.
 
-## 1. Pull Phase (Downloading Data & Deltas)
+Declare create idempotency as `native`, `reconcilable` or `none` according to the backend. Reconciliation can locate an uncertain creation, but it does not give a non-idempotent backend native exactly-once guarantees. Only expose `updateConditional` if the server performs atomic comparison and write; local conflict detection alone cannot guarantee remote concurrency safety.
 
-Pull retrieves only remote data created or updated since the last synchronization.
+## Local addon operations
 
-### Executor Services:
+`core.timer` and `core.timeEntries` require explicit workspace and operation identity. Reuse the same command/entry IDs and identical content when retrying an operation. A successful local operation is not proof that a remote server accepted it.
 
-- **`TaskPullService`**: Downloads tasks/issues assigned to the authenticated member.
-- **`TimeEntriesPullService`**: Downloads time entries already stored on the server.
-- **`MetadataPullService`**: Downloads essential metadata such as allowed activities, categories, and projects.
-
-### `checkpoint` and `batch`:
-
-To avoid overloading external APIs or repeatedly downloading the entire history:
-
-- Mr. Tick sends a `checkpoint`, which can be an ISO 8601 timestamp or cursor.
-- The DataSource API returns changes after that `checkpoint`, limited by `batch` size (for example, 50 items per page).
-- Once a batch is processed successfully, Mr. Tick stores the new `checkpoint` locally.
-
-```typescript
-// Exemplo conceitual do método pull na interface de consulta
-public async pull(memberId: string, checkpoint?: string, batch: number = 50): Promise<TaskDTO[]> {
-  const url = checkpoint
-    ? `/api/tasks?updated_after=${checkpoint}&limit=${batch}`
-    : `/api/tasks?limit=${batch}`
-
-  const response = await httpClient.get(url)
-  return response.data.map(mapToTaskDTO)
-}
-```
-
----
-
-## 2. Push Phase (Uploading Time Entries & Detecting Conflicts)
-
-Push sends local time entries that were created, edited, or deleted to the remote provider through **`TimeEntriesPushService`**.
-
-### Batch Processing Flow:
-
-Every batch item (`SyncTimeEntryDTO`) passes through a strict pipeline:
-
-1. **Document Validation**:
-   - A document must have valid `id` and `updatedAt` values.
-2. **Deletion Handling (`_deleted: true`)**:
-   - When an entry is deleted locally, Mr. Tick calls `timeEntryRepository.delete(id)` on the remote server and marks it as synchronized (`syncedAt: new Date()`).
-3. **Conflict Detection (Optimistic Concurrency Control)**:
-   - When a record already exists remotely, Mr. Tick compares the server's `updatedAt` with the client's `assumedMasterState.updatedAt`.
-   - **No Conflict:** Compatible records have their times and comments updated remotely and confirmed with `syncedAt`.
-   - **Conflict:** If someone modified the remote record after the last local read, the item is marked `conflicted: true` with `{ server: existing, local: entry }` for safe resolution without data loss.
-4. **Creating New Time Entries**:
-   - When a record does not exist remotely, the `TimeEntry` entity is validated and persisted through `timeEntryRepository.create()`.
-
----
-
-## 🏢 Workspaces & DataSource Connections
-
-In Mr. Tick, all data context belongs to a **Workspace**.
-
-### Workspace Responsibilities:
-
-- A workspace provides _tenant_ isolation (for example, "Company A", "Company B", "Freelance Consulting").
-- Each workspace has its own tasks, time-entry history, and preference settings.
-
-### Connection Structure (`DataSourceConnection`):
-
-A workspace can have multiple connections to external tools:
-
-```typescript
-type DataSourceConnection = {
-  id: string // Identificador da conexão (ex: "conn-jira-prod")
-  dataSourceId: string // ID do plugin (ex: "jira-datasource")
-  status: 'connected' | 'disabled' | 'disconnected'
-  member?: {
-    // Dados do usuário autenticado nessa ferramenta
-    id: string
-    name: string
-    login: string
-    avatarUrl?: string
-  }
-  config?: Record<string, unknown> // Configurações específicas (ex: baseUrl, tenant)
-}
-```
-
-**`IDataSourceResolver`** receives the `workspaceId` and `connectionInstanceId`, instantiates the correct adapter at runtime, and injects secure credentials.
-
----
-
-## ⏱️ Domain Entities: Time Entries and Tasks
-
-The `@mr-tick/domain` layer ensures consistency of time data:
-
-### `TimeEntry` Entity
-
-Required validation rules:
-
-- **Time Calculation (`timeSpent`)**: When `startDate` and `endDate` are provided, duration in seconds is validated against the actual date interval. End dates cannot precede start dates.
-- **Comments**: An optional field limited to 255 characters, with whitespace sanitization.
-- **Activity & Task**: Every time entry must reference a task and an activity (a work category such as "Development", "Meeting", or "Code Review").
-
-### `Task` Entity
-
-- Contains a title (at least 3 characters), description, `workspaceId`, and optional external-ID references (`externalId`, `externalType`).
-- **Fallback Task (`createFallback`)**: When a user starts a timer without selecting a task, Mr. Tick creates a fallback _General Task_ so worked time is not lost.
+See [datasources](/docs/capabilities/datasources), [connections](/docs/apis/connections) and [vault/events](/docs/apis/vault-and-events).

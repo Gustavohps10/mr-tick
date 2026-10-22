@@ -1,0 +1,19 @@
+---
+title: Overview
+description: Choose the features your addon offers and learn how to declare them.
+icon: Blocks
+---
+
+A **capability** describes a feature your addon offers. Mr. Tick reads this information to decide where the addon can be used. For example, a task integration uses `dataSource`, while a visual theme uses `theme`.
+
+List the features in `capabilities` in manifest.yaml. The accepted names are `dataSource`, `watcher`, `calendar`, `punch` and `theme`; use their exact spelling. The list must have at least one value and no duplicates. An addon can offer more than one feature.
+
+Use `requiredApiVersion` to declare the compatible application API. Menus, commands, settings and authentication are registered by the addon code; they are not extra values in this list.
+
+- [datasources](/docs/capabilities/datasources)
+- [watchers](/docs/capabilities/watchers)
+- [calendars](/docs/capabilities/calendars)
+- [themes](/docs/capabilities/themes)
+- [punch](/docs/capabilities/punch)
+
+See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).

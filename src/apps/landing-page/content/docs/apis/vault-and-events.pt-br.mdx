@@ -1,65 +1,34 @@
 ---
-title: Vault, Eventos & Contexto
-description: Escopo explícito, consultas locais do Core e lifecycle de addons.
+title: Cofre, configurações e eventos
+description: Salve configurações, proteja valores privados e acompanhe eventos do aplicativo.
+icon: Vault
 ---
 
-# Vault, eventos e contexto
+Um addon pode precisar lembrar preferências, guardar um valor privado ou reagir quando o timer começa. Este guia explica onde manter cada tipo de informação e como receber essas notificações.
 
-O addon importa os contratos de `@mr-tick/sdk`. O host fornece capacidades de produto; ele não entrega o HostBridge nem documentos RxDB.
+O aplicativo gerencia as credenciais usadas para conectar contas externas por `core.connections`. Use `host.vault` para outros valores privados do addon e para ler configurações salvas; não crie outro armazenamento para os tokens da mesma conta.
 
-## Vault com escopo explícito
+## Escopos explícitos
 
-O vault usa o chaveiro do sistema e pertence ao addon. Escolha o escopo na chamada: `{ kind: 'workspace', workspaceId }` ou `{ kind: 'addon' }`. A navegação da UI não altera o destino. `get`, `set` e `delete` retornam `Either<AppError, T>`.
+- `{ kind: 'addon' }`
+- `{ kind: 'workspace', workspaceId }`
+- `{ kind: 'connection', workspaceId, connectionInstanceId }`
+- `{ kind: 'capability', workspaceId, connectionInstanceId, capabilityId }`
 
-```ts
-const scope: AddonVaultScope = { kind: 'workspace', workspaceId }
-const result = await context.host.vault.set(scope, 'channelId', channelId)
-if (result.isFailure()) return result.forwardFailure()
-const channel = await context.host.vault.get(scope, 'channelId')
-if (channel.isFailure()) return channel.forwardFailure()
-```
+`get(scope, key)`, `set(scope, key, value)` e `delete(scope, key)` retornam `Either`, que representa sucesso ou falha. Uma string privada ausente é `null`. Informe explicitamente a qual addon, workspace, conexão ou capability o valor pertence. O aplicativo valida o acesso a esses dados; a tela aberta pelo usuário não escolhe esse destino automaticamente. O uso de uma capability no armazenamento não exige uma nova declaração no manifesto.
 
-As configurações existentes de workspace são preservadas. Dados inválidos produzem falha, sem sobrescrita automática.
+## Configurações declarativas
 
-## Consultas do Core
+Descreva os campos de configuração com `contributions.settings.register(schema, { onApply })`. Para ler configurações que não são secretas, use `host.vault.getSettings(scope)`: o resultado inclui os valores salvos e o número da revisão. `onApply` recebe o destino (`scope`), a revisão (`revision`), os valores (`values`), os eventos (`events`) e `track`, que registra recursos para limpeza. Não armazene essas configurações como se fossem credenciais privadas.
 
-- `core.workspaces.list()` e `get(workspaceId)` retornam identidade, nome e estado.
-- `core.connections.list(workspaceId)` e `get(scope)` retornam identidade, datasource e estado, sem credenciais.
-- `core.tasks.get({ workspaceId, connectionInstanceId, taskId })` usa o ID puro da origem.
-- `core.tasks.list({ workspaceId, connectionInstanceId, limit, search? })` lê até 100 tarefas, em ordem de ID ascendente.
-- `core.metadata.get(scope)` lê atividades e demais metadados disponíveis localmente.
+## Inicialização e limpeza
 
-Todas retornam `Either`. A leitura não chama o provider remoto, não abre storage nem inicia sincronização. Cache indisponível retorna 503; tarefa não encontrada retorna 404. Datas são strings ISO 8601. Sucesso de uma escrita local não confirma aceitação remota.
+Registre as integrações e retorne de `activate`; esperar pelo estado `ready` nessa etapa pode bloquear a inicialização. `core.runtime.onStateChanged` informa imediatamente o estado atual e depois as mudanças entre `starting`, `ready`, `restarting` e `closed`. O estado `ready` indica que os serviços locais estão prontos, mas a busca de dados externos pode continuar em andamento.
 
-## Prontidão e desativação
-
-```ts
-activate(context: AddonContext): void {
-  context.core.runtime.onStateChanged((state) => {
-    console.log('Core:', state)
-  })
-  // Registre providers agora e retorne, sem aguardar ready.
-}
-```
-
-Estados: `starting`, `ready`, `restarting`, `closed`. O listener recebe imediatamente o estado atual. `ready` não significa que o pull terminou. Na recuperação, consulte novamente o estado; para repetir uma escrita, mantenha os mesmos IDs de operação.
-
-O host limpa contribuições e listeners na desativação ou falha parcial de ativação. O addon fecha sockets e clientes próprios em `deactivate`. Trocar de workspace não desativa automaticamente o addon.
+O host limpa contribuições e listeners registrados na desativação ou ativação com falha. Feche sockets, clientes e jobs próprios. Trocar workspace não desativa o addon.
 
 ## Eventos garantidos
 
-```ts
-context.host.events.on('timer:start', (data) => console.log(data.taskId))
-context.host.events.on('timer:stop', (data) => console.log(data.currentSeconds))
-context.host.events.on('workspace:changed', (data) => console.log(data.currentWorkspaceId))
-```
+`timer:start`, `timer:pause`, `timer:resume`, `timer:stop`, `timer:update`, `workspace:changed`.
 
-Também existem `timer:pause`, `timer:resume`, `timer:update`. São projeções transitórias, sem replay e sem promessa de ticks por segundo. Eventos de apontamentos e idle não fazem parte do contrato garantido.
-
-## Timer, sugestões e notificações
-
-Use `timer.getActiveEntry(workspaceId)` e os métodos de timer com workspace e `LocalOperationIdentity`. `timeEntries.create` / `createSuggestion` recebem `(workspaceId, input, operation)`, duração em segundos e datas ISO. Reutilize `commandId` e `entryId` somente para repetir a mesma operação.
-
-`notifications.info`, `success`, `warning`, `error`, `loading` e `dismiss` continuam disponíveis para toasts.
-
-Addons atuais executam código confiável no main. Estas capacidades não fornecem sandbox nem autorização granular.
+Esses eventos informam mudanças enquanto o addon está ouvindo; eventos anteriores não são reenviados e não há atualização garantida a cada segundo. O SDK não oferece eventos gerais de inatividade ou de qualquer alteração em apontamentos. Use `context.core.timer` e `context.core.timeEntries` para consultar ou alterar esses dados, informando o workspace e os identificadores da operação. Para autenticação de contas externas, consulte [conexões](/pt-br/docs/apis/connections).

@@ -7,6 +7,8 @@ import { Footer } from '@/app/components/footer'
 import { Navbar } from '@/app/components/navbar'
 import { source } from '@/lib/source'
 
+import { DocsSidebarSection } from './sidebar-section'
+
 export default async function Layout({ children }: { children: ReactNode }) {
   const locale = await getLocale()
   const t = await getTranslations('docsUi')
@@ -72,9 +74,14 @@ export default async function Layout({ children }: { children: ReactNode }) {
             tree={source.getPageTree(locale)}
             nav={{ enabled: false }}
             sidebar={{
+              className:
+                '[&_a]:items-start [&_a]:py-2 [&_a]:leading-[24px] [&_a>svg]:mt-1',
               defaultOpenLevel: 2,
               collapsible: false,
               footer: null,
+              components: {
+                Separator: DocsSidebarSection,
+              },
             }}
           >
             {children}

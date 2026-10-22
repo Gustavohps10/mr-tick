@@ -1,5 +1,5 @@
 @startuml ComponentCustomExtensions
-title MR-TICK - SDK de Addons Multicapacidade (@mr-tick/sdk)
+title MR-TICK - SDK (@mr-tick/sdk)
 
 package "Mr-tick Addon Core" {
     interface "IAddon" as IAddon

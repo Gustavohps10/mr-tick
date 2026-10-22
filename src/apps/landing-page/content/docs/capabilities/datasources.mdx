@@ -1,0 +1,51 @@
+---
+title: "DataSources"
+description: Connect external tools to read tasks and synchronize time entries.
+icon: Database
+---
+
+A **datasource** connects Mr. Tick to a tool that provides tasks and receives time entries. It translates information from that tool into the format the application understands.
+
+Declare `capabilities: [dataSource]` for this kind of integration. Connecting an account alone does not make an addon a datasource: an activity observer may need an account without providing tasks.
+
+## Implementation
+
+`IDataSource` supplies `getConnectionProfiles()`, `getConnectionSchema()` and `createInstance(context)`. Its instance contains only `tasksProvider`, `timeEntriesProvider`, `membersProvider` and `metadataProvider`. Authentication is registered separately:
+
+```ts
+import type {
+  AddonContext,
+  AddonConnectionAuthenticator,
+  IDataSource,
+} from '@mr-tick/sdk'
+
+export function registerDataSource(
+  context: AddonContext,
+  dataSource: IDataSource,
+  authenticator: AddonConnectionAuthenticator,
+): void {
+  context.contributions.dataSources.register(dataSource)
+
+  context.contributions.connections.registerAuthenticator(authenticator)
+}
+```
+
+Create each set of providers from its own `DataSourceContext`: scope, configuration, credentials and HTTP client. Never share mutable HTTP configuration between connections. No authentication strategy or health method belongs in `IDataSourceInstance`.
+
+| Operation                  | Result inside `Promise<Either<AppError, T>>`                                      |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| Task `pull`                | `TaskDTO[]`                                                                       |
+| Time-entry `pull`          | `TimeEntryPullPageDTO`                                                            |
+| Task/time-entry `findById` | DTO or `null`                                                                     |
+| `create` / `update`        | Result with confirmed remote ID; time-entry results may include canonical `entry` |
+| `delete`                   | `void`                                                                            |
+
+Time-entry pull returns `items`, `checkpoint`, `hasMore` and `snapshotId`; an array is insufficient. `createTimeEntrySnapshotPage` paginates a complete validated snapshot. Detect incomplete/inconsistent remote pagination before reporting success.
+
+Advertise `timeEntryCreateIdempotency` according to backend guarantees: `native`, `reconcilable` or `none`. Expose `updateConditional` only when the server compares the expected state and writes atomically; GET followed by PUT does not provide that guarantee.
+
+Every `IHttpClient` request requires `responseValidator`, narrowing `JsonValue` to the external response. JSON parsing and generic type arguments do not validate payloads. Handle legitimate nulls/omitted fields and preserve status codes and server messages. Addons use provider DTOs, not private domain entities.
+
+See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).
+
+Reference implementation: [Redmine addon](https://github.com/Gustavohps10/redmine-plugin), including HTTP and Docker integration tests.

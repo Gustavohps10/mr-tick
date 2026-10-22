@@ -1,190 +1,57 @@
 ---
-title: Criando seu Primeiro Addon
-description: Guia prático e passo a passo para criar, configurar e testar seu primeiro Addon utilizando o SDK do Mr-tick.
+title: "Criando seu primeiro addon"
+description: Crie um addon de tema e aprenda a compilar, empacotar e instalar sua primeira extensão.
+icon: Rocket
 ---
 
-# Criando seu Primeiro Addon
-
-Neste guia prático, você aprenderá a construir um Addon completo para o Mr-tick do zero utilizando **TypeScript** e o pacote oficial **`@mr-tick/sdk`**.
-
----
-
-## 1. Configurando o Projeto
-
-Crie um novo diretório para o seu plugin e inicialize o projeto com suas dependências:
+Neste guia você vai criar um addon de tema pequeno, depois compilá-lo e gerar um pacote para instalar no Mr. Tick. É uma forma simples de conhecer a mesma estrutura de projeto usada pelas outras integrações. Comece em um projeto separado e instale o SDK publicado:
 
 ```bash
-mkdir mr-tick-meu-addon
-cd mr-tick-meu-addon
 npm init -y
-npm install @mr-tick/sdk
+npm install @mr-tick/sdk@^0.10.0
 npm install -D typescript tsup @types/node
 ```
 
-Configure o arquivo `tsconfig.json`:
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "declaration": true,
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true
-  }
-}
-```
-
----
-
-## 2. Estrutura do Addon
-
-Todo addon do Mr-tick possui um arquivo de metadados `manifest.yaml` e exporta como `default` uma classe que implementa o contrato **`IAddon`**.
-
-### 2.1 Manifest (`manifest.yaml`)
-
-Crie o arquivo `manifest.yaml` na raiz do seu addon:
+Configure TypeScript com `strict: true`, `target: ES2022`, `module: ESNext` e `moduleResolution: bundler`; defina `type: module` no package.json. Crie manifest.yaml e src/index.ts:
 
 ```yaml
-id: meu-primeiro-addon
-name: Meu Primeiro Addon
-version: 1.0.0
-description: Exemplo prático de extensão para o Mr-tick
-author: Seu Nome ou Empresa
+id: example-addon
+name: Example Addon
+version: 0.1.0
+author: Example
+shortDescription: SDK example
+description: Example using the published SDK
+capabilities:
+  - theme
+requiredApiVersion: '>=0.10.0'
 ```
 
-### 2.2 Código Principal (`src/index.ts`)
+```ts
+import type { AddonContext, AddonTheme, IAddon } from '@mr-tick/sdk'
 
-Crie o arquivo `src/index.ts`:
+const theme: AddonTheme = {
+  id: 'ocean',
+  name: 'Ocean',
+  css: ':root { --primary: oklch(0.6 0.15 240); } .dark { --primary: oklch(0.75 0.12 240); }',
+}
 
-```typescript
-import type { IAddon, AddonContext } from '@mr-tick/sdk'
-
-export default class MeuPrimeiroAddon implements IAddon {
-  // Ciclo de Vida: Executado quando o plugin é ativado no Mr-tick
-  public async activate(context: AddonContext): Promise<void> {
-    console.log('[MeuPrimeiroAddon] Addon ativado com sucesso!')
-
-    // Registrando formulário de configurações dinamicamente com abas e grupos
-    context.contributions.settings.register([
-      {
-        id: 'geral',
-        label: 'Geral',
-        groups: [
-          {
-            id: 'conexao',
-            label: 'Parâmetros de Conexão',
-            fields: [
-              {
-                id: 'servidorUrl',
-                label: 'URL do Servidor',
-                type: 'text',
-                scope: 'configuration',
-                required: true,
-                description: 'Endereço da API ou instância corporativa.',
-              },
-              {
-                id: 'apiKey',
-                label: 'Chave de Acesso / Token',
-                type: 'password',
-                scope: 'credential',
-                required: true,
-                description: 'Token de autenticação gerado nas preferências da sua conta.',
-              },
-              {
-                id: 'notificarEventos',
-                label: 'Exibir Notificações',
-                type: 'boolean',
-                defaultValue: true,
-              },
-            ],
-          },
-        ],
-      },
-    ])
-
-    // Registrando comandos e ações disponíveis
-    context.contributions.commands.register('testar-conexao', async () => {
-      await context.host.notifications.success('Conexão testada com sucesso!', 'Mr-tick Addon')
-      return { isSuccess: true }
-    })
-
-    // O workspace vem do evento; nunca da seleção implícita da UI.
-    context.host.events.on('timer:start', async (data) => {
-      if (data.workspaceId === undefined) return
-      const value = await context.host.vault.get(
-        { kind: 'workspace', workspaceId: data.workspaceId },
-        'notificarEventos',
-      )
-      if (value.isFailure()) return
-      if (value.success !== 'true') return
-      await context.host.notifications.info('Timer iniciado', 'Meu addon')
-    })
-    context.host.events.on('timer:stop', (data) => {
-      console.log('Timer finalizado. Duração:', data.currentSeconds)
-    })
+export default class OceanAddon implements IAddon {
+  activate(context: AddonContext): void {
+    context.contributions.themes.register(theme)
   }
 
-  // Ciclo de Vida: Executado ao desativar o addon; troca de workspace não o desativa
-  public async deactivate(): Promise<void> {
-    console.log('[MeuPrimeiroAddon] Addon desativado. Limpando recursos...')
-  }
+  deactivate(): void {}
 }
 ```
 
----
-
-## 3. Configurações Dinâmicas (`context.contributions.settings.register`)
-
-Ao chamar `context.contributions.settings.register(schema)` no método `activate`, seu plugin define formulários de preferências sem precisar escrever uma única linha de interface gráfica (UI). O Mr-tick gera e valida os campos nativamente.
-
-### Tipos de Campos Suportados:
-
-- **`text`**: Entrada de texto comum.
-- **`password`**: Campo com máscara de segurança para tokens, senhas e chaves.
-- **`number`**: Entrada numérica.
-- **`boolean`**: Interruptor (Toggle) de verdadeiro/falso.
-- **`select`**: Lista suspensa com pares `{ label, value }`.
-- **`button`**: Botão de ação disparável.
-
----
-
-## 4. O Contexto do Addon (`AddonContext`)
-
-Ao ser ativado, o Mr-tick injeta o objeto `AddonContext` contendo todas as APIs e ferramentas disponíveis:
-
-| Propriedade             | Descrição                                                                         |
-| :---------------------- | :-------------------------------------------------------------------------------- |
-| `context.contributions.settings`      | Registro declarativo do schema de formulários e configurações do addon.           |
-| `context.contributions.menus`         | Registro de itens no menu lateral (sidebar) ou barra de tempo (timerbar).        |
-| `context.contributions.dataSources`   | Registro de fontes de dados externas (Tarefas, Horas, Membros, Metadados).        |
-| `context.contributions.commands`      | Registro e execução de comandos universais do Mr-tick.                            |
-| `context.host.vault`       | Armazenamento chave-valor seguro e isolado por Workspace.                        |
-| `context.host.events`        | Eventos em tempo real do sistema (início/fim de timer, idle, troca de workspace). |
-| `context.host.notifications` | Emissão de toasts e notificações no sistema.                                      |
-| `context.core.timer`         | Leitura e controle do cronômetro ativo.                                           |
-| `context.host.oauth`         | Fluxo de autenticação OAuth 2.0 PKCE seguro sem necessidade de secrets.           |
-
----
-
-## 5. Compilando o Addon
-
-Adicione o script de build ao seu `package.json`:
-
-```json
-{
-  "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean"
-  }
-}
-```
-
-Execute a compilação:
+Registre as funcionalidades em `activate` e retorne sem esperar que todos os serviços do aplicativo estejam prontos. Ao desativar o addon, o Mr. Tick remove os registros feitos por ele. Use `deactivate` para fechar conexões e encerrar tarefas que o próprio addon iniciou.
 
 ```bash
-npm run build
+npx tsup src/index.ts --format esm,cjs --dts --clean
+npx mr-tick validate .
+npx mr-tick pack . --download-url https://example.com/releases/example-addon.tladdon
 ```
 
-O arquivo compilado resultante pode ser importado diretamente nas configurações de Addons do Mr-tick.
+Instale o `.tladdon` resultante pelo gerenciador de addons; um JavaScript compilado avulso não é um pacote de instalação. A CLI deriva o intervalo de API do pacote da versão do SDK. Repositórios gerenciados por Changesets fazem releases via changesets e CI; não altere versões nem reescreva histórico manualmente.
+
+Consulte [conexões](/pt-br/docs/apis/connections), [OAuth PKCE](/pt-br/docs/apis/oauth-pkce) e [cofre e eventos](/pt-br/docs/apis/vault-and-events).

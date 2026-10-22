@@ -1,4 +1,8 @@
 {
+  "docs": {
+    "copyMarkdown": "Copiar Markdown",
+    "openMarkdown": "Abrir Markdown"
+  },
   "navbar": {
     "whyMrTick": "Por que Mr. Tick",
     "integrations": "Integrações",

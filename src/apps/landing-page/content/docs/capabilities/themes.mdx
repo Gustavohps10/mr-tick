@@ -1,0 +1,39 @@
+---
+title: "Themes"
+description: Customize Mr. Tick colors by creating an installable theme.
+icon: Palette
+---
+
+```yaml
+id: example-addon
+name: Example Addon
+version: 0.1.0
+author: Example
+shortDescription: SDK example
+description: Example using the published SDK
+capabilities:
+  - theme
+requiredApiVersion: '>=0.10.0'
+```
+
+```ts
+import type { AddonContext, AddonTheme, IAddon } from '@mr-tick/sdk'
+
+const theme: AddonTheme = {
+  id: 'ocean',
+  name: 'Ocean',
+  css: ':root { --primary: oklch(0.6 0.15 240); } .dark { --primary: oklch(0.75 0.12 240); }',
+}
+
+export default class OceanAddon implements IAddon {
+  activate(context: AddonContext): void {
+    context.contributions.themes.register(theme)
+  }
+
+  deactivate(): void {}
+}
+```
+
+Use complete CSS color values such as `oklch(...)` for current tokens. Theme IDs are local to the addon and namespaced by the host. Menus and commands are contributions, not additional manifest capability values. The host removes the registered theme on addon deactivation.
+
+See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).
