@@ -1,5 +1,19 @@
 ﻿# @mr-tick/datasource-fake
 
+## 1.2.0
+
+### Minor Changes
+
+- 24d3de8: Arquitetura de conexões e capacidades dos addons: perfis de conexão com cardinalidade (`single`/`multi`) validada no domínio e na persistência, fábrica de HTTP por conexão, ciclo de vida de conexão com credenciais em cofre (distinguindo ausência, indisponibilidade e payload inválido), tentativas OAuth controladas pelo host com refresh compartilhado por autorização, configurações e segredos de addons separados por escopo, persistência de workspaces em SQLite e UI de conexões agrupada por workspace.
+
+  Contratos públicos do SDK foram reorganizados (autenticação promovida a capacidade, `IHttpClientFactory`, perfis de conexão); `IAuthenticationStrategy` e os use cases antigos de conectar/vincular foram removidos sem camada de compatibilidade.
+
+### Patch Changes
+
+- Updated dependencies [6d14757]
+- Updated dependencies [24d3de8]
+  - @mr-tick/sdk@0.10.0
+
 ## 1.1.2
 
 ### Patch Changes
