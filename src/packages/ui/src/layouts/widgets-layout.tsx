@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect } from 'react'
 import { Outlet, useNavigate, useParams } from 'react-router-dom'
 
 import { DataSourceConnectionsProvider } from '@/contexts/DataSourceConnectionsContext'
@@ -11,6 +11,14 @@ import { SyncProvider } from '@/stores/syncStore'
 import { TimeEntryProvider } from '@/stores/timeEntryStore'
 
 export function WidgetLayout() {
+  useLayoutEffect(() => {
+    const previousBackground = document.body.style.background
+    document.body.style.background = 'transparent'
+    return () => {
+      document.body.style.background = previousBackground
+    }
+  }, [])
+
   const { workspaceId: paramWorkspaceId } = useParams<{ workspaceId: string }>()
   const { widgetPosition, selectedWorkspaceId, setSelectedWorkspaceId } =
     useTimerSettings()

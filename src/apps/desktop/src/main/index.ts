@@ -487,6 +487,7 @@ if (gotTheLock) {
       show: false,
       frame: false,
       transparent: true,
+      backgroundColor: '#00000000',
       alwaysOnTop: true,
       skipTaskbar: true,
       resizable: false,

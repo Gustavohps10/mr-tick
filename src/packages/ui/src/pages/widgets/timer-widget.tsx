@@ -104,13 +104,6 @@ export function TimerWidget() {
   const { selectedWorkspaceId, setSelectedWorkspaceId } = useTimerSettings()
   const addonBlocks = useAddonBlocks()
 
-  useEffect(() => {
-    document.body.style.background = 'transparent'
-    return () => {
-      document.body.style.background = ''
-    }
-  }, [])
-
   // Lógica de fallback e auto-seleção de Workspace
   useEffect(() => {
     if (!workspaces || workspaces.length === 0) return

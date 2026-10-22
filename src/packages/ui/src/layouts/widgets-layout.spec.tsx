@@ -111,6 +111,16 @@ describe('TB-003: explicit workspace resolution before opening the widget databa
     })
   })
 
+  it('keeps the workspace picker transparent and restores the previous background on unmount', async () => {
+    document.body.style.background = 'white'
+    const view = renderWidget()
+    expect(await screen.findByRole('button', { name: 'ws-A' })).toBeTruthy()
+    expect(document.body.style.background).toBe('transparent')
+    view.unmount()
+    expect(document.body.style.background).toBe('white')
+    document.body.style.removeProperty('background')
+  })
+
   it('does not mount providers while the persisted identity is still being validated', async () => {
     useTimerSettings.setState({ selectedWorkspaceId: 'ws-B' })
     let release: (
