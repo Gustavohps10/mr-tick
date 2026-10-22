@@ -47,7 +47,7 @@ function ClientTasksTableWrapper({
 export function Backlog() {
   const db = useSyncStore((state) => state.db)
 
-  const { connections } = useDataSourceConnections()
+  const { dataSourceConnections: connections } = useDataSourceConnections()
 
   const memberIds = useMemo(() => {
     return Object.values(connections ?? {})

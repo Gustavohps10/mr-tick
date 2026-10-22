@@ -1,3 +1,5 @@
+import type { AddonCapability } from '../helpers/addonCapabilities'
+
 export type AddonTierViewModel = 'free' | 'plus'
 
 export interface AddonScreenshotViewModel {
@@ -26,6 +28,7 @@ export interface AddonManifestViewModel {
   downloads: number
   stars: number
   installed: boolean
+  capabilities: readonly AddonCapability[]
   tier?: AddonTierViewModel
   sha256?: string
   size?: number
@@ -33,8 +36,6 @@ export interface AddonManifestViewModel {
   sourceUrl?: string
   homepage?: string
   tags?: string[]
-  category?: string
-  categories?: string[]
   screenshots?: AddonScreenshotViewModel[]
   downloadUrl?: string
   requiredApiVersion?: string

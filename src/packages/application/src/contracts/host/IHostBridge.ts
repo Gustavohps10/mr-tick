@@ -1,4 +1,5 @@
 import type { ConnectionProfileDescriptor } from '@mr-tick/domain'
+import type { AddonCapability } from '@mr-tick/shared/helpers'
 import { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
 
 import { TimeEntryPullCheckpointDTO, TimeEntryPullPageDTO } from '@/dtos'
@@ -225,9 +226,7 @@ export interface AddonManifest {
   installerManifestUrl?: string
   sourceUrl?: string
   tags?: string[]
-  category?:
-    'auth' | 'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme' | string
-  categories?: string[]
+  capabilities: readonly AddonCapability[]
   tier?: 'free' | 'plus'
   sha256?: string
   size?: number

@@ -1,4 +1,5 @@
 import { AddonTier } from '@mr-tick/domain'
+import type { AddonCapability } from '@mr-tick/shared/helpers'
 
 export interface AddonScreenshotDTO {
   url: string
@@ -26,6 +27,7 @@ export interface AddonManifestDTO {
   downloads: number
   stars: number
   installed: boolean
+  capabilities: readonly AddonCapability[]
   tier?: AddonTier
   sha256?: string
   size?: number
@@ -33,8 +35,6 @@ export interface AddonManifestDTO {
   sourceUrl?: string
   homepage?: string
   tags?: string[]
-  category?: string
-  categories?: string[]
   screenshots?: AddonScreenshotDTO[]
   downloadUrl?: string
   requiredApiVersion?: string

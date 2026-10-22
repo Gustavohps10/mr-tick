@@ -214,8 +214,7 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
           version: '1.2.0',
           creator: 'Gustavohps10',
           description: 'Sincronização com o Redmine',
-          category: 'dataSource',
-          categories: ['auth', 'dataSource', 'theme'],
+          capabilities: ['dataSource', 'theme'],
         },
       ],
     })
@@ -282,7 +281,7 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
           id: 'fake-addon',
           name: 'Fake Addon',
           version: '1.0.0',
-          categories: ['theme'],
+          capabilities: ['theme'],
         },
       ],
     })
@@ -318,8 +317,7 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
           version: '0.2.0',
           creator: 'Mister Tick',
           description: 'Captura automática de chamadas de voz.',
-          category: 'watcher',
-          categories: ['auth', 'watcher'],
+          capabilities: ['watcher'],
         },
       ],
     })

@@ -3,18 +3,18 @@ import React from 'react'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 
 import {
-  addonMatchesCategory,
+  addonHasCapability,
   AddonsManagerView,
-  OFFICIAL_CATEGORIES,
-  type OfficialCategoryItem,
+  OFFICIAL_CAPABILITIES,
+  type OfficialCapabilityItem,
   SafeAddonLogo,
   type SidebarSection,
 } from './addons-manager-view'
 
 export {
-  addonMatchesCategory,
-  OFFICIAL_CATEGORIES,
-  type OfficialCategoryItem,
+  addonHasCapability,
+  OFFICIAL_CAPABILITIES,
+  type OfficialCapabilityItem,
   SafeAddonLogo,
   type SidebarSection,
 }

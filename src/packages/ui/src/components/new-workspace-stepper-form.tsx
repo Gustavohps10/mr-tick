@@ -2,7 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AddonManifest } from '@mr-tick/application'
-import {
+import type {
   AddonManifestViewModel,
   WorkspaceConnectionViewModel,
   WorkspaceViewModel,

@@ -1,83 +1,19 @@
 import fs from 'fs'
-import path from 'path'
 import { describe, expect, it, vi } from 'vitest'
 
+import { AddonCapability } from '../contracts/manifest'
 import * as yamlUtils from '../utils/yaml'
 import { validateAddon } from './validate'
 
 describe('validateAddon', () => {
   it('should validate valid manifest without errors', () => {
-    const fakeDir = path.resolve(process.cwd(), 'src/tests/datasource-fake')
-    if (fs.existsSync(fakeDir)) {
-      const result = validateAddon(fakeDir)
-      expect(result.errors).toEqual([])
-      expect(result.valid).toBe(true)
-    }
-  })
-
-  it('recusa manifesto com mais de um dataSource (regra M16)', () => {
     vi.spyOn(fs, 'existsSync').mockReturnValue(true)
     vi.spyOn(yamlUtils, 'readYaml').mockReturnValue({
       id: 'my-addon',
       name: 'My Addon',
       version: '1.0.0',
       author: 'Author',
-      categories: ['dataSource'],
-      capabilities: [
-        {
-          capabilityId: 'ds-primary',
-          kind: 'dataSource',
-          contractVersion: '1.0.0',
-          required: true,
-          executionPolicy: { kind: 'activeWorkspace' },
-          authRequirement: { kind: 'none' },
-          supportedOperations: ['read'],
-        },
-        {
-          capabilityId: 'ds-secondary',
-          kind: 'dataSource',
-          contractVersion: '1.0.0',
-          required: false,
-          executionPolicy: { kind: 'activeWorkspace' },
-          authRequirement: { kind: 'none' },
-          supportedOperations: ['write'],
-        },
-      ],
-    })
-
-    const result = validateAddon('mock-dir')
-    expect(result.valid).toBe(false)
-    expect(result.errors).toContain(
-      'Um addon pode oferecer no máximo um dataSource.',
-    )
-  })
-
-  it('permite manifesto sem dataSource e com descritores de watcher/calendar válidos', () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(true)
-    vi.spyOn(yamlUtils, 'readYaml').mockReturnValue({
-      id: 'presence-addon',
-      name: 'Presence Addon',
-      version: '1.0.0',
-      author: 'Author',
-      categories: ['watcher'],
-      capabilities: [
-        {
-          capabilityId: 'voice-watcher',
-          kind: 'watcher',
-          contractVersion: '1.0.0',
-          required: true,
-          executionPolicy: {
-            kind: 'activeWorkspace',
-            exclusivity: 'exclusiveSocket',
-          },
-          authRequirement: {
-            kind: 'required',
-            connectionProfileId: 'discord-presence',
-            authorizationRole: 'primary',
-          },
-          supportedOperations: ['watchVoice'],
-        },
-      ],
+      capabilities: ['dataSource'],
     })
 
     const result = validateAddon('mock-dir')
@@ -85,52 +21,50 @@ describe('validateAddon', () => {
     expect(result.valid).toBe(true)
   })
 
-  it('recusa descritores com capabilityId duplicado ou authRequirement genérico', () => {
+  it('permite manifesto sem dataSource e com watcher válido', () => {
     vi.spyOn(fs, 'existsSync').mockReturnValue(true)
     vi.spyOn(yamlUtils, 'readYaml').mockReturnValue({
-      id: 'duplicate-addon',
-      name: 'Duplicate Addon',
+      id: 'presence-addon',
+      name: 'Presence Addon',
       version: '1.0.0',
       author: 'Author',
-      categories: ['calendar'],
-      capabilities: [
-        {
-          capabilityId: 'cap-1',
-          kind: 'calendar',
-          contractVersion: '1.0.0',
-          required: true,
-          executionPolicy: { kind: 'independent' },
-          authRequirement: { kind: 'invalid-auth' },
-          supportedOperations: ['read'],
-        },
-        {
-          capabilityId: 'cap-1',
-          kind: 'calendar',
-          contractVersion: 'invalid-semver',
-          required: false,
-          executionPolicy: { kind: 'independent' },
-          authRequirement: { kind: 'none' },
-          supportedOperations: ['read'],
-        },
-      ],
+      capabilities: ['watcher'],
+    })
+
+    const result = validateAddon('mock-dir')
+    expect(result.errors).toEqual([])
+    expect(result.valid).toBe(true)
+  })
+
+  it('recusa capacidades duplicadas', () => {
+    vi.spyOn(fs, 'existsSync').mockReturnValue(true)
+    vi.spyOn(yamlUtils, 'readYaml').mockReturnValue({
+      id: 'duplicate',
+      name: 'Duplicate',
+      version: '1.0.0',
+      author: 'Author',
+      capabilities: ['dataSource', 'dataSource'],
+    })
+    const result = validateAddon('mock-dir')
+    expect(result.valid).toBe(false)
+    expect(result.errors).toContain('Capacidade duplicada "dataSource".')
+  })
+
+  it('recusa manifesto com capacidade inválida', () => {
+    vi.spyOn(fs, 'existsSync').mockReturnValue(true)
+    const invalidCap = 'invalidCapability' as unknown as AddonCapability
+    vi.spyOn(yamlUtils, 'readYaml').mockReturnValue({
+      id: 'invalid-addon',
+      name: 'Invalid Addon',
+      version: '1.0.0',
+      author: 'Author',
+      capabilities: [invalidCap],
     })
 
     const result = validateAddon('mock-dir')
     expect(result.valid).toBe(false)
-    expect(result.errors).toContain('ID de capacidade duplicado: "cap-1".')
-    expect(
-      result.errors.some((e) =>
-        e.includes(
-          "capabilities[0].authRequirement.kind deve ser 'none' ou 'required'",
-        ),
-      ),
-    ).toBe(true)
-    expect(
-      result.errors.some((e) =>
-        e.includes(
-          'capabilities[1].contractVersion deve seguir o padrão SemVer',
-        ),
-      ),
-    ).toBe(true)
+    expect(result.errors).toContain(
+      'Capacidade inválida "invalidCapability". Capacidades válidas são: dataSource, watcher, calendar, punch, theme',
+    )
   })
 })

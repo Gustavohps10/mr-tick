@@ -24,7 +24,7 @@ export interface UseTimeEntriesDataOptions {
 
 export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
   const db = useSyncStore((state) => state?.db)
-  const { connections } = useDataSourceConnections()
+  const { dataSourceConnections: connections } = useDataSourceConnections()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const memberIdsByConnection = useMemo(() => {

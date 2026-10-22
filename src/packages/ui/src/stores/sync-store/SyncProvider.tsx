@@ -47,7 +47,7 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
   const { isDevelopment, isTest } = useEnvironment()
   const { workspace } = useWorkspace()
   const bridge = useHostBridge()
-  const { connections } = useDataSourceConnections()
+  const { dataSourceConnections: connections } = useDataSourceConnections()
   const queryClient = useQueryClient()
   const [activeStore, setActiveStore] = useState<StoreApi<SyncStore> | null>(
     null,
@@ -422,7 +422,7 @@ const EMPTY_STATUS: ReplicationStatus = {
 }
 
 export function useConnectionsWithSync() {
-  const { connections } = useDataSourceConnections()
+  const { dataSourceConnections: connections } = useDataSourceConnections()
   const statuses = useSyncStore((s) => s.statuses) ?? {}
 
   return useMemo(() => {

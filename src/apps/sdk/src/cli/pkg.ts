@@ -49,10 +49,6 @@ function resolveAddonId(manifest: AddonConfig): string {
     const trimmed = manifest.id.trim()
     if (trimmed.length > 0) return trimmed
   }
-  if (manifest.AddonId) {
-    const trimmed = manifest.AddonId.trim()
-    if (trimmed.length > 0) return trimmed
-  }
   return 'plugin'
 }
 
@@ -68,10 +64,6 @@ function resolveAddonVersion(
     const trimmed = manifest.version.trim()
     if (trimmed.length > 0) return trimmed
   }
-  if (manifest.Version) {
-    const trimmed = manifest.Version.trim()
-    if (trimmed.length > 0) return trimmed
-  }
   return '0.1.0'
 }
 
@@ -81,7 +73,6 @@ function resolveAddonTier(
 ): AddonTier | undefined {
   if (optionTier === 'plus' || optionTier === 'free') return optionTier
   if (manifest.tier === 'plus' || manifest.tier === 'free') return manifest.tier
-  if (manifest.Tier === 'plus' || manifest.Tier === 'free') return manifest.Tier
   return undefined
 }
 
@@ -103,10 +94,6 @@ function resolveDownloadUrl(
     const trimmed = manifest.downloadUrl.trim()
     if (trimmed.length > 0) return trimmed
   }
-  if (manifest.DownloadUrl) {
-    const trimmed = manifest.DownloadUrl.trim()
-    if (trimmed.length > 0) return trimmed
-  }
   return ''
 }
 
@@ -123,8 +110,6 @@ function resolveChangelog(
   if (optionChangelog && optionChangelog.length > 0) return optionChangelog
   if (manifest.changelog && manifest.changelog.length > 0)
     return manifest.changelog
-  if (manifest.Changelog && manifest.Changelog.length > 0)
-    return manifest.Changelog
   return [`Release ${version}`]
 }
 
@@ -221,10 +206,6 @@ export function buildAddon(
   }
   delete preUpdatedManifest.sha256
   delete preUpdatedManifest.size
-  delete preUpdatedManifest.AddonId
-  delete preUpdatedManifest.Version
-  delete preUpdatedManifest.Name
-  delete preUpdatedManifest.Tier
 
   writeYaml(manifestPath, preUpdatedManifest)
 

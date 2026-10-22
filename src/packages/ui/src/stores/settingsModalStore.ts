@@ -1,3 +1,4 @@
+import type { AddonCapability } from '@mr-tick/sdk'
 import { create } from 'zustand'
 
 export type SettingsTab =
@@ -14,25 +15,28 @@ export type SettingsTab =
 export interface SettingsModalState {
   isOpen: boolean
   activeTab: SettingsTab
-  selectedAddonCategory: string | null
-  openModal: (tab?: SettingsTab, addonCategory?: string | null) => void
+  selectedAddonCapability: AddonCapability | null
+  openModal: (
+    tab?: SettingsTab,
+    addonCapability?: AddonCapability | null,
+  ) => void
   closeModal: () => void
   setActiveTab: (tab: SettingsTab) => void
-  setSelectedAddonCategory: (category: string | null) => void
+  setSelectedAddonCapability: (capability: AddonCapability | null) => void
 }
 
 export const useSettingsModalStore = create<SettingsModalState>((set) => ({
   isOpen: false,
   activeTab: 'about',
-  selectedAddonCategory: null,
-  openModal: (tab = 'about', addonCategory = null) =>
+  selectedAddonCapability: null,
+  openModal: (tab = 'about', addonCapability = null) =>
     set({
       isOpen: true,
       activeTab: tab,
-      selectedAddonCategory: addonCategory,
+      selectedAddonCapability: addonCapability,
     }),
   closeModal: () => set({ isOpen: false }),
   setActiveTab: (tab: SettingsTab) => set({ activeTab: tab }),
-  setSelectedAddonCategory: (category: string | null) =>
-    set({ selectedAddonCategory: category }),
+  setSelectedAddonCapability: (capability: AddonCapability | null) =>
+    set({ selectedAddonCapability: capability }),
 }))

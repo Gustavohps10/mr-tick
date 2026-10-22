@@ -184,19 +184,11 @@ it('keeps reused datasource definitions owned by distinct addons without mutatin
     getConnectionSchema: () => [],
     createInstance: vi.fn<IDataSource['createInstance']>(),
   }
-  const dsDescriptor: import('@mr-tick/sdk').AddonCapabilityDescriptor[] = [
-    {
-      capabilityId: 'ds-main',
-      kind: 'dataSource',
-      contractVersion: '1.0.0',
-      required: true,
-      executionPolicy: { kind: 'independent' },
-      authRequirement: { kind: 'none' },
-      supportedOperations: ['read', 'write'],
-    },
+  const dsCapabilities: import('@mr-tick/sdk').AddonCapability[] = [
+    'dataSource',
   ]
-  loader.registerManifestCapabilities('first', dsDescriptor)
-  loader.registerManifestCapabilities('second', dsDescriptor)
+  loader.registerManifestCapabilities('first', dsCapabilities)
+  loader.registerManifestCapabilities('second', dsCapabilities)
   const first = loader.createContext('first')
   const second = loader.createContext('second')
   first.contributions.dataSources.register(source)

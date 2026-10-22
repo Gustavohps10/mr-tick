@@ -58,7 +58,7 @@ function createAddon(tier: 'free' | 'plus' | undefined): string {
     'id: mistertick-discord',
     'name: Discord Presence',
     'version: 0.1.0',
-    'categories:',
+    'capabilities:',
     '  - watcher',
     'author: Mister Tick',
     'shortDescription: Discord IPC',

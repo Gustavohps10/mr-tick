@@ -35,7 +35,7 @@ async function addonArchive(id: string, fails: boolean, sdkApiVersion: string) {
     archive.on('error', reject)
   })
   archive.append(
-    `id: ${id}\nname: Audit Addon\nversion: 1.0.0\nrequiredApiVersion: '${sdkApiVersion}'\n`,
+    `id: ${id}\nname: Audit Addon\nversion: 1.0.0\ncapabilities: [dataSource]\nrequiredApiVersion: '${sdkApiVersion}'\n`,
     { name: 'manifest.yaml' },
   )
   archive.append(addonModule('1.0.0', fails), { name: 'dist/index.mjs' })
@@ -72,7 +72,7 @@ for (const scenario of ['success', 'activation-failure', 'linked-addon']) {
       await mkdir(join(oldFolder, 'dist'), { recursive: true })
       await writeFile(
         join(oldFolder, 'manifest.yaml'),
-        `id: ${id}\nname: Audit Addon\nversion: 0.9.0\ncategory: DataSources\nrequiredApiVersion: '${sdkApiVersion}'\n`,
+        `id: ${id}\nname: Audit Addon\nversion: 0.9.0\ncapabilities: [dataSource]\nrequiredApiVersion: '${sdkApiVersion}'\n`,
       )
       await writeFile(
         join(oldFolder, 'dist/index.mjs'),
@@ -110,8 +110,7 @@ for (const scenario of ['success', 'activation-failure', 'linked-addon']) {
                   name: 'Audit Addon',
                   version: '1.0.0',
                   requiredApiVersion: catalog.sdkApiVersion,
-                  category: 'DataSources',
-                  categories: ['DataSources'],
+                  capabilities: ['dataSource'],
                   creator: 'Audit',
                   description: 'Real update regression',
                   path: '',

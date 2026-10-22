@@ -1,4 +1,10 @@
-import type { AddonCategory, AddonManifestViewModel } from '@mr-tick/sdk'
+import type { AddonCapability, AddonManifestViewModel } from '@mr-tick/sdk'
+import {
+  hasCapability,
+  isDataSource,
+  isTheme,
+  isWatcher,
+} from '@mr-tick/shared/helpers'
 import {
   Calendar,
   Clock,
@@ -16,7 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
 import { AddonSettingsRenderer } from './addon-settings-renderer'
-import { addonMatchesCategory, SafeAddonLogo } from './addons-manager-view'
+import { SafeAddonLogo } from './addons-manager-view'
 
 export interface AddonSettingsDialogProps {
   addon: AddonManifestViewModel | null
@@ -24,7 +30,7 @@ export interface AddonSettingsDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-export type AddonCapabilityId = AddonCategory | 'general'
+export type AddonCapabilityId = AddonCapability | 'auth' | 'general'
 
 export interface AddonCapabilityItem {
   id: AddonCapabilityId
@@ -47,20 +53,16 @@ export function resolveAddonCapabilities(
 
   const capabilities: AddonCapabilityItem[] = []
 
-  if (
-    addonMatchesCategory(addon, 'auth') ||
-    addonMatchesCategory(addon, 'dataSource')
-  ) {
-    capabilities.push({
-      id: 'auth',
-      label: 'Autenticação',
-      icon: KeyRound,
-      description:
-        'Gerencie contas, credenciais e instâncias conectadas por workspace.',
-    })
-  }
+  // Conexões e instâncias existem para qualquer addon que possui capacidades operacionais
+  capabilities.push({
+    id: 'auth',
+    label: 'Autenticação',
+    icon: KeyRound,
+    description:
+      'Gerencie contas, credenciais e instâncias conectadas por workspace.',
+  })
 
-  if (addonMatchesCategory(addon, 'dataSource')) {
+  if (isDataSource(addon.capabilities)) {
     capabilities.push({
       id: 'dataSource',
       label: 'Fonte De Dados',
@@ -70,7 +72,7 @@ export function resolveAddonCapabilities(
     })
   }
 
-  if (addonMatchesCategory(addon, 'watcher')) {
+  if (isWatcher(addon.capabilities)) {
     capabilities.push({
       id: 'watcher',
       label: 'Observador',
@@ -80,7 +82,7 @@ export function resolveAddonCapabilities(
     })
   }
 
-  if (addonMatchesCategory(addon, 'calendar')) {
+  if (hasCapability(addon.capabilities, 'calendar')) {
     capabilities.push({
       id: 'calendar',
       label: 'Calendário',
@@ -89,7 +91,7 @@ export function resolveAddonCapabilities(
     })
   }
 
-  if (addonMatchesCategory(addon, 'punch')) {
+  if (hasCapability(addon.capabilities, 'punch')) {
     capabilities.push({
       id: 'punch',
       label: 'Ponto Eletrônico',
@@ -98,7 +100,7 @@ export function resolveAddonCapabilities(
     })
   }
 
-  if (addonMatchesCategory(addon, 'theme')) {
+  if (isTheme(addon.capabilities)) {
     capabilities.push({
       id: 'theme',
       label: 'Tema Visual',

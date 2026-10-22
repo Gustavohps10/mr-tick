@@ -169,19 +169,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Token Exchange', () => {
   describe('8. DataSourceContext OAuth Injection', () => {
     it('injeta oauth no DataSourceContext permitindo que um DataSource autentique via OAuth 2.0 PKCE', async () => {
       addonLoader.registerManifestCapabilities('oauth-datasource-addon', [
-        {
-          capabilityId: 'oauth-ds',
-          kind: 'dataSource',
-          contractVersion: '1.0.0',
-          required: true,
-          executionPolicy: { kind: 'independent' },
-          authRequirement: {
-            kind: 'required',
-            connectionProfileId: 'oauth-primary',
-            authorizationRole: 'primary',
-          },
-          supportedOperations: ['read', 'write'],
-        },
+        'dataSource',
       ])
       const addonContext = addonLoader.createContext('oauth-datasource-addon')
       vi.mocked(shell.openExternal).mockResolvedValue(undefined)

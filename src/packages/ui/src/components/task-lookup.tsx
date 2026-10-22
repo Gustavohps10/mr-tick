@@ -161,7 +161,7 @@ export function TaskLookup({
     return { statuses, priorities, roles }
   }, [metadata])
 
-  const { connections: dsConnections } = useDataSourceConnections()
+  const { dataSourceConnections: dsConnections } = useDataSourceConnections()
 
   const availableConnections = useMemo(() => {
     const connections = workspace?.connections ?? []

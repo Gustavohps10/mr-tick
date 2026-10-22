@@ -1,12 +1,13 @@
 'use client'
 
-import {
+import type {
   AddonManifestViewModel,
   ConnectionResultViewModel,
   ViewModel,
   WorkspaceConnectionViewModel,
   WorkspaceViewModel,
 } from '@mr-tick/sdk'
+import { isDataSource } from '@mr-tick/shared/helpers'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import React, {
   createContext,
@@ -25,7 +26,7 @@ export interface AddonConnectionView {
   connectionId: string
   dataSourceId: string
   status: WorkspaceConnectionViewModel['status']
-  config?: Record<string, unknown>
+  config?: WorkspaceConnectionViewModel['config']
 
   identity?: WorkspaceConnectionViewModel['identity']
   member?: WorkspaceConnectionViewModel['member']
@@ -39,6 +40,8 @@ export interface DataSourceConnectionsContextType {
   workspaceId: string | undefined
 
   connections: AddonConnectionView[]
+
+  dataSourceConnections: AddonConnectionView[]
 
   workspaceConnections: WorkspaceViewModel['connections']
 
@@ -113,6 +116,14 @@ export function DataSourceConnectionsProvider({
       }
     })
   }, [workspaceConnections, installedPlugins])
+
+  const dataSourceConnections = useMemo(
+    () =>
+      connections.filter((connection) =>
+        isDataSource(connection.addon?.capabilities),
+      ),
+    [connections],
+  )
 
   const getConnection = useCallback(
     (connectionInstanceId: string) => {
@@ -298,6 +309,7 @@ export function DataSourceConnectionsProvider({
       isLoading: false,
       workspaceId,
       connections,
+      dataSourceConnections,
       workspaceConnections,
       installedPlugins,
       link,
@@ -310,6 +322,7 @@ export function DataSourceConnectionsProvider({
     [
       workspaceId,
       connections,
+      dataSourceConnections,
       workspaceConnections,
       installedPlugins,
       link,

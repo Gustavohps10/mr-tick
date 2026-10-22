@@ -26,7 +26,7 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
             id: 'gustavohps10-redmine',
             name: 'Redmine',
             version: '0.1.1',
-            categories: ['dataSource'],
+            capabilities: ['dataSource'],
             author: 'Gustavo Henrique',
             description:
               'Integration with Redmine to fetch projects, issues, users, and time entries',
@@ -56,7 +56,7 @@ test.describe('E2E - Trava de Versão e Compatibilidade SemVer de Addons', () =>
             id: 'test-multi-version-addon',
             name: 'Plugin Híbrido E2E',
             version: sdkVersion,
-            categories: ['dataSource'],
+            capabilities: ['dataSource'],
             author: 'E2E Tester',
             description: 'Plugin com versões legadas e compatíveis',
             downloadUrl: `https://example.com/hybrid-${sdkVersion}.tladdon`,

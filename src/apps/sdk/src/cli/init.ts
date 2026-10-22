@@ -2,7 +2,7 @@ import fs from 'fs'
 import inquirer from 'inquirer'
 import path from 'path'
 
-import { VALID_ADDON_CATEGORIES } from '../contracts/manifest'
+import { isDataSource, VALID_ADDON_CAPABILITIES } from '../contracts/manifest'
 import { writeYaml } from '../utils/yaml'
 
 export async function runInitWizard(targetDirName?: string) {
@@ -30,16 +30,15 @@ export async function runInitWizard(targetDirName?: string) {
     },
     {
       type: 'checkbox',
-      name: 'categories',
-      message: 'Selecione uma ou mais categorias do plugin:',
-      choices: VALID_ADDON_CATEGORIES.map((cat) => ({
-        name: cat,
-        value: cat,
-        checked: cat === 'dataSource',
+      name: 'capabilities',
+      message: 'Selecione uma ou mais capacidades do plugin:',
+      choices: VALID_ADDON_CAPABILITIES.map((cap) => ({
+        name: cap,
+        value: cap,
       })),
       validate: (choices: string[]) => {
         if (choices.length === 0) {
-          return 'Selecione pelo menos uma categoria oficial.'
+          return 'Selecione pelo menos uma capacidade oficial.'
         }
         return true
       },
@@ -125,11 +124,11 @@ export async function runInitWizard(targetDirName?: string) {
     id: answers.id,
     name: answers.name,
     version: '0.1.0',
-    categories: answers.categories,
+    capabilities: answers.capabilities,
     author: answers.author,
     shortDescription: answers.shortDescription,
     description: answers.description,
-    tags: [answers.categories[0], 'mr-tick'],
+    tags: [...answers.capabilities, 'mr-tick'],
     screenshots: [],
     requiredApiVersion: `^${__SDK_VERSION__}`,
     releaseDate: new Date().toISOString().split('T')[0],
@@ -138,7 +137,7 @@ export async function runInitWizard(targetDirName?: string) {
   writeYaml(path.join(targetDir, 'manifest.yaml'), manifest)
 
   // 4. src/index.ts boilerplate
-  const isDataSource = answers.categories.includes('dataSource')
+  const hasDataSource = isDataSource(answers.capabilities)
   const indexTsContent = `import { AddonContext, IAddon } from '@mr-tick/sdk'
 
 export default class ${toPascalCase(answers.name)}Plugin implements IAddon {
@@ -149,7 +148,7 @@ export default class ${toPascalCase(answers.name)}Plugin implements IAddon {
     })
 
     ${
-      isDataSource
+      hasDataSource
         ? `// Registre seu conector de DataSource aqui:\n    // context.contributions.dataSources.register(new MyDataSource())`
         : `// Registre seus comandos ou menus aqui:\n    // context.contributions.menus.sidebar.register({ id: '${answers.id}', label: '${answers.name}' })`
     }

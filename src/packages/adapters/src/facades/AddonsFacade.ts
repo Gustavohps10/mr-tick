@@ -8,6 +8,7 @@ import {
   ILicensingFacade,
 } from '@mr-tick/application'
 import { AddonTier } from '@mr-tick/domain'
+import { AddonCapability, isAddonCapability } from '@mr-tick/shared/helpers'
 import {
   AppError,
   compareSemVer,
@@ -100,7 +101,7 @@ function pickStringArray(record: object, keys: string[]): string[] {
 }
 
 function parseAddonTier(record: object): AddonTier {
-  const raw = pickOptionalString(record, ['tier', 'Tier'])
+  const raw = pickOptionalString(record, ['tier'])
   if (raw === 'plus') return 'plus'
   return 'free'
 }
@@ -110,20 +111,13 @@ function parseScreenshots(record: object): AddonScreenshotDTO[] {
   if (hasProperty(record, 'screenshots') && isArray(record.screenshots)) {
     listSource = record.screenshots
   }
-  if (
-    !listSource &&
-    hasProperty(record, 'Screenshots') &&
-    isArray(record.Screenshots)
-  ) {
-    listSource = record.Screenshots
-  }
   if (!isArray(listSource)) return []
 
   const result: AddonScreenshotDTO[] = []
   for (const item of listSource) {
     if (isRecord(item)) {
-      const url = pickFirstString(item, ['url', 'Url'], '')
-      const caption = pickOptionalString(item, ['caption', 'Caption'])
+      const url = pickFirstString(item, ['url'], '')
+      const caption = pickOptionalString(item, ['caption'])
       result.push({ url, caption })
     }
   }
@@ -135,34 +129,23 @@ function parsePackages(record: object): AddonPackageDTO[] {
   if (hasProperty(record, 'packages') && isArray(record.packages)) {
     listSource = record.packages
   }
-  if (
-    !listSource &&
-    hasProperty(record, 'Packages') &&
-    isArray(record.Packages)
-  ) {
-    listSource = record.Packages
-  }
   if (!isArray(listSource)) return []
 
   const result: AddonPackageDTO[] = []
   for (const item of listSource) {
     if (isRecord(item)) {
       result.push({
-        version: pickFirstString(
-          item,
-          ['version', 'Version'],
-          DEFAULT_MIN_API_VERSION,
-        ),
+        version: pickFirstString(item, ['version'], DEFAULT_MIN_API_VERSION),
         requiredApiVersion: pickFirstString(
           item,
-          ['requiredApiVersion', 'RequiredApiVersion'],
+          ['requiredApiVersion'],
           DEFAULT_MIN_API_VERSION,
         ),
-        releaseDate: pickFirstString(item, ['releaseDate', 'ReleaseDate'], ''),
-        downloadUrl: pickFirstString(item, ['downloadUrl', 'DownloadUrl'], ''),
-        sha256: pickOptionalString(item, ['sha256', 'Sha256']),
-        size: pickOptionalNumber(item, ['size', 'Size']),
-        changelog: pickStringArray(item, ['changelog', 'Changelog']),
+        releaseDate: pickFirstString(item, ['releaseDate'], ''),
+        downloadUrl: pickFirstString(item, ['downloadUrl'], ''),
+        sha256: pickOptionalString(item, ['sha256']),
+        size: pickOptionalNumber(item, ['size']),
+        changelog: pickStringArray(item, ['changelog']),
       })
     }
   }
@@ -236,34 +219,13 @@ export class AddonsFacade implements IAddonsFacade {
           return Either.success([])
         }
 
-        const firstItem = data[0]
-        if (isRecord(firstItem)) {
-          const addons: AddonManifestDTO[] = []
-          for (const item of data) {
-            if (isRecord(item)) {
-              const mapped = this.mapRecordToDTO(item)
-              if (mapped) addons.push(mapped)
-            }
-          }
-          return Either.success(addons)
+        const addons: AddonManifestDTO[] = []
+        for (const item of data) {
+          if (!isRecord(item)) continue
+          const mapped = this.mapRecordToDTO(item)
+          if (mapped) addons.push(mapped)
         }
-
-        if (isString(firstItem)) {
-          const yamlFiles: string[] = []
-          for (const item of data) {
-            if (isString(item)) yamlFiles.push(item)
-          }
-          const addons: AddonManifestDTO[] = await Promise.all(
-            yamlFiles.map(async (filename) => {
-              const yamlUrl = `https://mistertick.github.io/addons-manifest/addonDatabase/dataSource/${filename}`
-              const { data: rawYaml } = await axios.get<string>(yamlUrl)
-              const parsed = await this.parseManifest(rawYaml)
-              if (parsed.isFailure()) throw parsed.failure
-              return parsed.success
-            }),
-          )
-          return Either.success(addons)
-        }
+        return Either.success(addons)
       }
 
       return Either.success([])
@@ -528,7 +490,7 @@ export class AddonsFacade implements IAddonsFacade {
         return Either.failure(AppError.ValidationError('INSTALLER_INVALID'))
       }
 
-      const id = pickOptionalString(rawDoc, ['id', 'AddonId'])
+      const id = pickOptionalString(rawDoc, ['id'])
       if (!id) {
         return Either.failure(AppError.ValidationError('INSTALLER_INVALID'))
       }
@@ -566,21 +528,21 @@ export class AddonsFacade implements IAddonsFacade {
   }
 
   private mapRecordToDTO(doc: object): AddonManifestDTO | null {
-    const id = pickOptionalString(doc, ['id', 'AddonId'])
+    const id = pickOptionalString(doc, ['id'])
     if (!id) return null
 
-    const category = pickOptionalString(doc, ['category', 'Category'])
-    let categories = pickStringArray(doc, ['categories', 'Categories'])
-    if (categories.length === 0 && category) {
-      categories = [category]
-    }
-
-    let primaryCategory = ''
-    if (category) {
-      primaryCategory = category
-    }
-    if (!primaryCategory && categories[0]) {
-      primaryCategory = categories[0]
+    if (!hasProperty(doc, 'capabilities') || !isArray(doc.capabilities))
+      return null
+    if (doc.capabilities.length === 0) return null
+    const capabilities: AddonCapability[] = []
+    for (const capability of doc.capabilities) {
+      if (
+        !isString(capability) ||
+        !isAddonCapability(capability) ||
+        capabilities.includes(capability)
+      )
+        return null
+      capabilities.push(capability)
     }
 
     const screenshots = parseScreenshots(doc)
@@ -589,45 +551,33 @@ export class AddonsFacade implements IAddonsFacade {
 
     return {
       id,
-      version: pickFirstString(
-        doc,
-        ['version', 'Version'],
-        DEFAULT_MIN_API_VERSION,
-      ),
-      name: pickFirstString(doc, ['name', 'Name'], ''),
-      creator: pickFirstString(
-        doc,
-        ['author', 'Author', 'creator', 'Creator'],
-        '',
-      ),
+      version: pickFirstString(doc, ['version'], DEFAULT_MIN_API_VERSION),
+      name: pickFirstString(doc, ['name'], ''),
+      creator: pickFirstString(doc, ['author', 'creator'], ''),
       description: pickFirstString(
         doc,
-        ['shortDescription', 'ShortDescription', 'description', 'Description'],
+        ['shortDescription', 'description'],
         '',
       ),
-      logo: pickFirstString(doc, ['iconUrl', 'IconUrl', 'logo'], ''),
-      sourceUrl: pickFirstString(doc, ['sourceUrl', 'SourceUrl'], ''),
-      homepage: pickFirstString(doc, ['homepage', 'Homepage'], ''),
-      tags: pickStringArray(doc, ['tags', 'Tags']),
-      category: primaryCategory,
-      categories,
+      logo: pickFirstString(doc, ['iconUrl', 'logo'], ''),
+      sourceUrl: pickFirstString(doc, ['sourceUrl'], ''),
+      homepage: pickFirstString(doc, ['homepage'], ''),
+      tags: pickStringArray(doc, ['tags']),
+      capabilities,
       screenshots,
       installed: false,
       tier,
-      sha256: pickOptionalString(doc, ['sha256', 'Sha256']),
-      size: pickOptionalNumber(doc, ['size', 'Size']),
-      installerManifestUrl: pickOptionalString(doc, [
-        'installerUrl',
-        'InstallerUrl',
-      ]),
-      downloadUrl: pickFirstString(doc, ['downloadUrl', 'DownloadUrl'], ''),
+      sha256: pickOptionalString(doc, ['sha256']),
+      size: pickOptionalNumber(doc, ['size']),
+      installerManifestUrl: pickOptionalString(doc, ['installerUrl']),
+      downloadUrl: pickFirstString(doc, ['downloadUrl'], ''),
       requiredApiVersion: pickFirstString(
         doc,
-        ['requiredApiVersion', 'RequiredApiVersion'],
+        ['requiredApiVersion'],
         DEFAULT_MIN_API_VERSION,
       ),
-      releaseDate: pickFirstString(doc, ['releaseDate', 'ReleaseDate'], ''),
-      changelog: pickStringArray(doc, ['changelog', 'Changelog']),
+      releaseDate: pickFirstString(doc, ['releaseDate'], ''),
+      changelog: pickStringArray(doc, ['changelog']),
       packages,
       path: '',
       downloads: 0,

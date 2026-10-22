@@ -82,10 +82,7 @@ program
       const cliTier = parseCliTier(options.tier)
       const manifestPath = path.join(path.resolve(addonDir), 'manifest.yaml')
       const existingManifest = readYaml<AddonConfig>(manifestPath)
-      const isPlusTier =
-        cliTier === 'plus' ||
-        existingManifest.tier === 'plus' ||
-        existingManifest.Tier === 'plus'
+      const isPlusTier = cliTier === 'plus' || existingManifest.tier === 'plus'
 
       let downloadUrl = options.downloadUrl
       if (!downloadUrl && !isPlusTier) {

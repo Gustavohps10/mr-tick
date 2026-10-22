@@ -115,6 +115,7 @@ function renderTimeEntriesWithState(
 
   const connectionsContextValue: DataSourceConnectionsContextType = {
     connections,
+    dataSourceConnections: connections,
     isLoading: false,
     workspaceId: 'ws-1',
     workspaceConnections: [],

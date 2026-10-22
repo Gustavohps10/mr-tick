@@ -12,6 +12,7 @@ import type { SyncStore } from './types'
 interface TestContext {
   workspaceId: string | null
   connections: AddonConnectionView[]
+  dataSourceConnections: AddonConnectionView[] | undefined
   bridge: Pick<IHostBridge, 'events'> & {
     localSync: { request: Mock<IHostBridge['localSync']['request']> }
   }
@@ -20,6 +21,7 @@ interface TestContext {
 const context = vi.hoisted<TestContext>(() => ({
   workspaceId: null,
   connections: [],
+  dataSourceConnections: undefined,
   bridge: {
     events: { on: () => () => undefined, emit: () => undefined },
     localSync: { request: vi.fn<IHostBridge['localSync']['request']>() },
@@ -32,7 +34,10 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
   }),
 }))
 vi.mock('@/contexts/DataSourceConnectionsContext', () => ({
-  useDataSourceConnections: () => ({ connections: context.connections }),
+  useDataSourceConnections: () => ({
+    connections: context.connections,
+    dataSourceConnections: context.dataSourceConnections ?? context.connections,
+  }),
 }))
 vi.mock('@/hooks', () => ({
   useEnvironment: () => ({ isDevelopment: false, isTest: false }),
@@ -139,6 +144,7 @@ describe('SyncProvider workspace lifecycle ownership', () => {
   beforeEach(() => {
     context.workspaceId = 'A'
     context.connections = []
+    context.dataSourceConnections = undefined
     context.create.mockReset()
     context.bridge.localSync.request.mockReset()
     context.bridge.localSync.request.mockImplementation(async () => ({
@@ -152,6 +158,37 @@ describe('SyncProvider workspace lifecycle ownership', () => {
       for (const pending of gates) pending.release()
     })
     gates.length = 0
+  })
+
+  it('connects only the dataSource subset even when other addon accounts are connected', async () => {
+    const reader = fixture('A')
+    const source: AddonConnectionView = {
+      connectionId: 'redmine',
+      dataSourceId: 'redmine-addon',
+      status: 'connected',
+    }
+    const watcher: AddonConnectionView = {
+      connectionId: 'discord',
+      dataSourceId: 'discord-addon',
+      status: 'connected',
+    }
+    context.connections = [source, watcher]
+    context.dataSourceConnections = [source]
+    context.create.mockReturnValue(reader.store)
+    render(container(new QueryClient()))
+    await waitFor(() =>
+      expect(context.bridge.localSync.request).toHaveBeenCalledWith({
+        action: 'connect',
+        workspaceId: 'A',
+        connectionInstanceId: 'redmine',
+        dataSourceId: 'redmine-addon',
+      }),
+    )
+    expect(
+      context.bridge.localSync.request.mock.calls.filter(
+        ([request]) => request.action === 'connect',
+      ),
+    ).toHaveLength(1)
   })
 
   it('an old null-workspace teardown cannot invalidate a newer return to A', async () => {
@@ -234,6 +271,7 @@ describe('SyncProvider workspace lifecycle ownership', () => {
     await oldA.connectionStarted.promise
     context.workspaceId = 'B'
     context.connections = []
+    context.dataSourceConnections = undefined
     view.rerender(container(queryClient))
     expect(oldA.destroy).not.toHaveBeenCalled()
     expect(context.create).toHaveBeenCalledTimes(1)

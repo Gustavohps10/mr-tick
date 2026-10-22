@@ -35,8 +35,11 @@ describe('syncManifest', () => {
     const success = syncManifest(tempDir)
     expect(success).toBe(true)
 
-    const updated = readYaml<{ version: string }>(manifestPath)
+    const updated = readYaml<{ version: string; capabilities: string[] }>(
+      manifestPath,
+    )
     expect(updated.version).toBe('0.2.0')
+    expect(updated.capabilities).toEqual([])
 
     fs.rmSync(tempDir, { recursive: true, force: true })
   })

@@ -3,7 +3,7 @@ import path from 'path'
 
 import { AddonConfig } from '../AddonConfig'
 import {
-  AddonCategory,
+  AddonCapability,
   AddonPackage,
   AddonScreenshot,
   AddonTier,
@@ -60,23 +60,19 @@ function resolveStringField(
   return fallbackValue
 }
 
-function resolveCategories(manifest: AddonConfig): AddonCategory[] {
-  if (manifest.categories && manifest.categories.length > 0)
-    return manifest.categories
-  if (manifest.Categories && manifest.Categories.length > 0)
-    return manifest.Categories
-  return ['dataSource']
+function resolveCapabilities(manifest: AddonConfig): AddonCapability[] {
+  if (manifest.capabilities && manifest.capabilities.length > 0)
+    return manifest.capabilities
+  return []
 }
 
 function resolveTags(manifest: AddonConfig): string[] {
   if (manifest.tags && manifest.tags.length > 0) return manifest.tags
-  if (manifest.Tags && manifest.Tags.length > 0) return manifest.Tags
   return ['mr-tick']
 }
 
 function resolveTier(manifest: AddonConfig): AddonTier | undefined {
   if (manifest.tier === 'plus' || manifest.tier === 'free') return manifest.tier
-  if (manifest.Tier === 'plus' || manifest.Tier === 'free') return manifest.Tier
   return undefined
 }
 
@@ -157,51 +153,39 @@ export function syncManifest(
   const version = resolveStringField(
     pkg.version,
     existingManifest.version,
-    resolveStringField(existingManifest.Version, undefined, '0.1.0'),
+    '0.1.0',
   )
   const tier = resolveTier(existingManifest)
 
   const cleanManifest: AddonConfig = {
-    id: resolveStringField(
-      existingManifest.id,
-      existingManifest.AddonId,
-      'plugin',
-    ),
-    name: resolveStringField(
-      existingManifest.name,
-      existingManifest.Name,
-      'Plugin',
-    ),
+    id: resolveStringField(existingManifest.id, undefined, 'plugin'),
+    name: resolveStringField(existingManifest.name, undefined, 'Plugin'),
     version,
-    categories: resolveCategories(existingManifest),
-    author: resolveStringField(
-      existingManifest.author,
-      existingManifest.Author,
-      'Author',
-    ),
+    capabilities: resolveCapabilities(existingManifest),
+    author: resolveStringField(existingManifest.author, undefined, 'Author'),
     shortDescription: resolveStringField(
       existingManifest.shortDescription,
-      existingManifest.ShortDescription,
+      undefined,
       '',
     ),
     description: resolveStringField(
       existingManifest.description,
-      existingManifest.Description,
+      undefined,
       '',
     ),
     iconUrl: resolveStringField(
       existingManifest.iconUrl,
-      existingManifest.IconUrl,
+      undefined,
       defaultIconUrl,
     ),
     sourceUrl: resolveStringField(
       existingManifest.sourceUrl,
-      existingManifest.SourceUrl,
+      undefined,
       `https://github.com/${repo}`,
     ),
     homepage: resolveStringField(
       existingManifest.homepage,
-      existingManifest.Homepage,
+      undefined,
       `https://github.com/${repo}#readme`,
     ),
     tags: resolveTags(existingManifest),

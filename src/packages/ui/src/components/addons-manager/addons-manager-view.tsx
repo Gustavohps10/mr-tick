@@ -1,8 +1,9 @@
-import {
-  type AddonCategory,
+import type {
+  AddonCapability,
   AddonManifestViewModel,
   AddonPackageViewModel,
 } from '@mr-tick/sdk'
+import { hasCapability } from '@mr-tick/shared/helpers'
 import {
   compareSemVer,
   isApiVersionCompatible,
@@ -53,13 +54,13 @@ import { AddonSettingsRenderer } from './addon-settings-renderer'
 
 export type SidebarSection = 'updates' | 'installed' | 'browse' | 'settings'
 
-export interface OfficialCategoryItem {
-  id: AddonCategory
+export interface OfficialCapabilityItem {
+  id: AddonCapability
   label: string
   icon: React.ComponentType<{ className?: string }>
 }
 
-export const OFFICIAL_CATEGORIES: OfficialCategoryItem[] = [
+export const OFFICIAL_CAPABILITIES: OfficialCapabilityItem[] = [
   { id: 'dataSource', label: 'Fontes De Dados', icon: Database },
   { id: 'watcher', label: 'Observadores', icon: GlobeIcon },
   { id: 'calendar', label: 'Calendários', icon: Calendar },
@@ -91,21 +92,11 @@ function getAddonPackages(
   ]
 }
 
-export function addonMatchesCategory(
-  addon: Pick<AddonManifestViewModel, 'category' | 'categories'>,
-  categoryId: string,
+export function addonHasCapability(
+  addon: Pick<AddonManifestViewModel, 'capabilities'>,
+  capabilityId: AddonCapability,
 ): boolean {
-  if (addon.category === categoryId) {
-    return true
-  }
-
-  if (addon.categories) {
-    for (const cat of addon.categories) {
-      if (cat === categoryId) return true
-    }
-  }
-
-  return false
+  return hasCapability(addon.capabilities, capabilityId)
 }
 
 export function SafeAddonLogo({
@@ -138,22 +129,23 @@ export function SafeAddonLogo({
 export interface AddonsManagerViewProps {
   activeSection?: SidebarSection
   onSectionChange?: (section: SidebarSection) => void
-  activeCategory?: string | null
-  onCategoryChange?: (categoryId: string | null) => void
+  activeCapability?: AddonCapability | null
+  onCapabilityChange?: (capabilityId: AddonCapability | null) => void
   hideSidebar?: boolean
 }
 
 export function AddonsManagerView({
   activeSection: controlledSection,
   onSectionChange,
-  activeCategory: controlledCategory,
-  onCategoryChange,
+  activeCapability: controlledCapability,
+  onCapabilityChange,
   hideSidebar = false,
 }: AddonsManagerViewProps) {
   const bridge = useHostBridge()
   const [internalSection, setInternalSection] =
     useState<SidebarSection>('browse')
-  const [internalCategory, setInternalCategory] = useState<string | null>(null)
+  const [internalCapability, setInternalCapability] =
+    useState<AddonCapability | null>(null)
   const [selectedAddonId, setSelectedAddonId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [installTarget, setInstallTarget] = useState<AddonInstallTarget | null>(
@@ -169,24 +161,19 @@ export function AddonsManagerView({
   const [isConfiguringOpen, setIsConfiguringOpen] = useState<boolean>(false)
 
   const activeSection = controlledSection ?? internalSection
-  const activeCategory =
-    controlledCategory !== undefined ? controlledCategory : internalCategory
+  const activeCapability =
+    controlledCapability !== undefined
+      ? controlledCapability
+      : internalCapability
 
   const handleSelectSection = (
     section: SidebarSection,
-    categoryName: string | null = null,
+    capabilityName: AddonCapability | null = null,
   ) => {
-    if (onSectionChange) {
-      onSectionChange(section)
-    } else {
-      setInternalSection(section)
-    }
-
-    if (onCategoryChange) {
-      onCategoryChange(categoryName)
-    } else {
-      setInternalCategory(categoryName)
-    }
+    if (onSectionChange) onSectionChange(section)
+    if (!onSectionChange) setInternalSection(section)
+    if (onCapabilityChange) onCapabilityChange(capabilityName)
+    if (!onCapabilityChange) setInternalCapability(capabilityName)
 
     setSelectedAddonId(null)
   }
@@ -379,7 +366,7 @@ export function AddonsManagerView({
     label: string,
     IconComponent: React.ComponentType<{ className?: string }>,
   ) => {
-    const isSelected = activeSection === id && !activeCategory
+    const isSelected = activeSection === id && !activeCapability
     return (
       <button
         data-testid={`addons-manager-tab-${id}`}
@@ -406,15 +393,15 @@ export function AddonsManagerView({
     )
   }
 
-  const renderCategoryItem = (categoryItem: OfficialCategoryItem) => {
-    const IconComponent = categoryItem.icon
+  const renderCapabilityItem = (capabilityItem: OfficialCapabilityItem) => {
+    const IconComponent = capabilityItem.icon
     const isSelected =
-      activeSection === 'settings' && activeCategory === categoryItem.id
+      activeSection === 'settings' && activeCapability === capabilityItem.id
     return (
       <button
-        key={categoryItem.id}
-        data-testid={`addons-manager-category-${categoryItem.id}`}
-        onClick={() => handleSelectSection('settings', categoryItem.id)}
+        key={capabilityItem.id}
+        data-testid={`addons-manager-category-${capabilityItem.id}`}
+        onClick={() => handleSelectSection('settings', capabilityItem.id)}
         className={cn(
           'flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-colors',
           isSelected
@@ -422,7 +409,7 @@ export function AddonsManagerView({
             : 'hover:bg-muted text-muted-foreground hover:text-foreground',
         )}
       >
-        <IconComponent className="h-4 w-4" /> {categoryItem.label}
+        <IconComponent className="h-4 w-4" /> {capabilityItem.label}
       </button>
     )
   }
@@ -898,12 +885,12 @@ export function AddonsManagerView({
   }
 
   const renderSettingsView = () => {
-    const activeCategoryObj = OFFICIAL_CATEGORIES.find(
-      (c) => c.id === activeCategory,
+    const activeCapabilityObj = OFFICIAL_CAPABILITIES.find(
+      (c) => c.id === activeCapability,
     )
-    const categoryLabel = activeCategoryObj?.label || activeCategory
+    const categoryLabel = activeCapabilityObj?.label || activeCapability
     const addonsInCat = installedList.filter((a) =>
-      activeCategory ? addonMatchesCategory(a, activeCategory) : false,
+      activeCapability ? addonHasCapability(a, activeCapability) : false,
     )
     return (
       <div className="flex h-full min-h-0 min-w-0">
@@ -948,7 +935,9 @@ export function AddonsManagerView({
           {selectedAddonId ? (
             <AddonSettingsRenderer
               addonId={selectedAddonId}
-              activeCapability={activeCategory?.toLowerCase()}
+              activeCapability={
+                activeCapability === null ? undefined : activeCapability
+              }
               addon={
                 installedList.find((a) => a.id === selectedAddonId) || null
               }
@@ -1113,7 +1102,9 @@ export function AddonsManagerView({
                   <h3 className="text-muted-foreground/70 mb-2 px-2 text-xs font-bold tracking-wider uppercase">
                     Configurações De Extensões
                   </h3>
-                  {OFFICIAL_CATEGORIES.map((cat) => renderCategoryItem(cat))}
+                  {OFFICIAL_CAPABILITIES.map((cat) =>
+                    renderCapabilityItem(cat),
+                  )}
                 </div>
               </div>
             </ScrollArea>

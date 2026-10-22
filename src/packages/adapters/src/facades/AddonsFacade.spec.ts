@@ -1,4 +1,4 @@
-import { ILicensingFacade } from '@mr-tick/application'
+import { AddonManifestDTO, ILicensingFacade } from '@mr-tick/application'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import axios from 'axios'
 import crypto from 'crypto'
@@ -43,7 +43,7 @@ version: 0.1.0
 tier: plus
 sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 size: 4096
-categories:
+capabilities:
   - watcher
 author: Mr. Tick Official
 shortDescription: Integração com Discord
@@ -69,10 +69,27 @@ changelog:
         '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       )
       expect(result.success.size).toBe(4096)
-      expect(result.success.categories).toEqual(['watcher'])
+      expect(result.success.capabilities).toEqual(['watcher'])
       expect(result.success.screenshots).toHaveLength(1)
       expect(result.success.screenshots?.[0].caption).toBe('Tela 1')
     }
+  })
+
+  it.each([
+    '[]',
+    '[Watcher]',
+    '[dataSource, dataSource]',
+    '[{kind: dataSource}]',
+    'dataSource',
+  ])('rejects noncanonical capabilities %s', async (capabilities) => {
+    const facade = new AddonsFacade(
+      new HardDiskStorage('./storage'),
+      createMockLicensingFacade(),
+    )
+    const result = await facade.parseManifest(
+      `id: invalid-addon\ncapabilities: ${capabilities}`,
+    )
+    expect(result.isFailure()).toBe(true)
   })
 
   it('should route Plus catalog download URLs through licensingFacade and verify SHA-256', async () => {
@@ -104,30 +121,31 @@ changelog:
     )
   })
 
-  it('should maintain backward compatibility with legacy PascalCase manifests', async () => {
+  it('should parse manifest with capabilities cleanly', async () => {
     const facade = new AddonsFacade(
       new HardDiskStorage('./storage'),
       createMockLicensingFacade(),
     )
-    const legacyYaml = `
-AddonId: mr-tick-legacy
-Name: Legacy Addon
-Version: 0.9.0
-Author: Legacy Dev
-Description: Legacy description
-Category: DataSources
-IconUrl: https://example.com/legacy.png
+    const manifestYaml = `
+id: mr-tick-test
+name: Test Addon
+version: 0.9.0
+author: Dev
+description: Description
+capabilities:
+  - dataSource
+iconUrl: https://example.com/icon.png
 `
-    const result = await facade.parseManifest(legacyYaml)
+    const result = await facade.parseManifest(manifestYaml)
 
     expect(result.isSuccess()).toBe(true)
     if (result.isSuccess()) {
-      expect(result.success.id).toBe('mr-tick-legacy')
-      expect(result.success.name).toBe('Legacy Addon')
+      expect(result.success.id).toBe('mr-tick-test')
+      expect(result.success.name).toBe('Test Addon')
       expect(result.success.version).toBe('0.9.0')
-      expect(result.success.creator).toBe('Legacy Dev')
-      expect(result.success.category).toBe('DataSources')
-      expect(result.success.logo).toBe('https://example.com/legacy.png')
+      expect(result.success.creator).toBe('Dev')
+      expect(result.success.capabilities).toEqual(['dataSource'])
+      expect(result.success.logo).toBe('https://example.com/icon.png')
     }
   })
 
@@ -141,7 +159,7 @@ IconUrl: https://example.com/legacy.png
         id: 'mr-tick-datasource-redmine',
         name: 'Redmine',
         version: '1.0.0',
-        categories: ['dataSource'],
+        capabilities: ['dataSource'],
         author: 'Community',
         description: 'Redmine plugin',
         downloadUrl: 'https://example.com/redmine.tladdon',
@@ -150,7 +168,7 @@ IconUrl: https://example.com/legacy.png
         id: 'mr-tick-watcher-discord',
         name: 'Discord Presence',
         version: '1.0.0',
-        categories: ['watcher'],
+        capabilities: ['watcher'],
         author: 'Mr-tick',
         description: 'Discord watcher',
         downloadUrl: 'https://example.com/discord.tladdon',
@@ -181,12 +199,12 @@ IconUrl: https://example.com/legacy.png
         new HardDiskStorage('./storage'),
         createMockLicensingFacade(),
       )
-      const installed = [
+      const installed: AddonManifestDTO[] = [
         {
           id: 'mr-tick-datasource-redmine',
           name: 'Redmine',
           version: '0.7.0',
-          categories: ['dataSource'],
+          capabilities: ['dataSource'],
           creator: 'Community',
           description: 'Plugin Redmine',
           downloadUrl: 'https://example.com/redmine-0.7.0.tladdon',
@@ -198,13 +216,13 @@ IconUrl: https://example.com/legacy.png
         },
       ]
 
-      const available = [
+      const available: AddonManifestDTO[] = [
         {
           id: 'mr-tick-datasource-redmine',
           name: 'Redmine',
           version: '0.8.0',
           requiredApiVersion: '>=0.8.0',
-          categories: ['dataSource'],
+          capabilities: ['dataSource'],
           creator: 'Community',
           description: 'Plugin Redmine v0.8.0',
           downloadUrl: 'https://example.com/redmine-0.8.0.tladdon',
@@ -233,12 +251,12 @@ IconUrl: https://example.com/legacy.png
         new HardDiskStorage('./storage'),
         createMockLicensingFacade(),
       )
-      const installed = [
+      const installed: AddonManifestDTO[] = [
         {
           id: 'mr-tick-datasource-redmine',
           name: 'Redmine',
           version: '0.7.0',
-          categories: ['dataSource'],
+          capabilities: ['dataSource'],
           creator: 'Community',
           description: 'Plugin Redmine',
           downloadUrl: 'https://example.com/redmine-0.7.0.tladdon',
@@ -250,13 +268,13 @@ IconUrl: https://example.com/legacy.png
         },
       ]
 
-      const available = [
+      const available: AddonManifestDTO[] = [
         {
           id: 'mr-tick-datasource-redmine',
           name: 'Redmine',
           version: '1.0.0',
           requiredApiVersion: '>=2.0.0',
-          categories: ['dataSource'],
+          capabilities: ['dataSource'],
           creator: 'Community',
           description: 'Plugin Redmine 2.0',
           downloadUrl: 'https://example.com/redmine-1.0.0.tladdon',

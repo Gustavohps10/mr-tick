@@ -44,21 +44,10 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
         id: 'test-concurrent-instances',
         name: 'Concurrent Addon',
         version: '1.0.0',
-        categories: ['dataSource'],
         author: 'Test',
         shortDescription: 'Desc',
         description: 'Long desc',
-        capabilities: [
-          {
-            capabilityId: 'ds-concurrent',
-            kind: 'dataSource',
-            contractVersion: '1.0.0',
-            executionPolicy: { kind: 'independent' },
-            authRequirement: { kind: 'none' },
-            supportedOperations: ['read', 'write', 'getMappingFields'],
-            required: true,
-          },
-        ],
+        capabilities: ['dataSource'],
       }
 
       const staticFields: MappingFieldDefinition[] = [
@@ -303,21 +292,10 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
         id: 'test-optional-methods',
         name: 'Optional Methods Addon',
         version: '1.0.0',
-        categories: ['dataSource'],
         author: 'Test',
         shortDescription: 'Desc',
         description: 'Long desc',
-        capabilities: [
-          {
-            capabilityId: 'ds-opt',
-            kind: 'dataSource',
-            contractVersion: '1.0.0',
-            executionPolicy: { kind: 'independent' },
-            authRequirement: { kind: 'none' },
-            supportedOperations: ['read', 'write'],
-            required: true,
-          },
-        ],
+        capabilities: ['dataSource'],
       }
       const mockAddon: IAddon = {
         activate: (context) => {
@@ -466,42 +444,10 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
           id: 'hybrid-addon',
           name: 'Hybrid Addon',
           version: '1.0.0',
-          categories: ['watcher', 'dataSource'],
           author: 'Test',
           shortDescription: 'Desc',
           description: 'Long desc',
-          capabilities: [
-            {
-              capabilityId: 'voice-watcher',
-              kind: 'watcher',
-              contractVersion: '1.0.0',
-              executionPolicy: {
-                kind: 'activeWorkspace',
-                exclusivity: 'exclusiveSocket',
-              },
-              authRequirement: {
-                kind: 'required',
-                connectionProfileId: 'hybrid-prof',
-                authorizationRole: 'primary',
-              },
-              supportedOperations: ['read', 'write'],
-              required: true,
-              settingsSchemaScope: 'capability',
-            },
-            {
-              capabilityId: 'ds-main',
-              kind: 'dataSource',
-              contractVersion: '1.0.0',
-              executionPolicy: { kind: 'independent' },
-              authRequirement: {
-                kind: 'required',
-                connectionProfileId: 'hybrid-prof',
-                authorizationRole: 'primary',
-              },
-              supportedOperations: ['read', 'write'],
-              required: true,
-            },
-          ],
+          capabilities: ['watcher', 'dataSource'],
         },
       )
 
@@ -511,13 +457,13 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
         'hybrid-addon',
         'ws-1',
         'conn-1',
-        'voice-watcher',
+        'watcher',
       )
       const dsBindingWs1 = loader.getAddonBindingLifetime(
         'hybrid-addon',
         'ws-1',
         'conn-1',
-        'ds-main',
+        'dataSource',
       )
       expect(watcherBindingWs1).toBeDefined()
       expect(dsBindingWs1).toBeDefined()
@@ -668,39 +614,10 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
           id: 'reapply-addon',
           name: 'Reapply Addon',
           version: '1.0.0',
-          categories: ['watcher', 'dataSource'],
           author: 'Test',
           shortDescription: 'Desc',
           description: 'Long desc',
-          capabilities: [
-            {
-              capabilityId: 'voice-watcher',
-              kind: 'watcher',
-              contractVersion: '1.0.0',
-              executionPolicy: { kind: 'activeWorkspace' },
-              authRequirement: {
-                kind: 'required',
-                connectionProfileId: 'reapply-prof',
-                authorizationRole: 'primary',
-              },
-              supportedOperations: ['read', 'write'],
-              required: true,
-              settingsSchemaScope: 'capability',
-            },
-            {
-              capabilityId: 'ds-neighbor',
-              kind: 'dataSource',
-              contractVersion: '1.0.0',
-              executionPolicy: { kind: 'independent' },
-              authRequirement: {
-                kind: 'required',
-                connectionProfileId: 'reapply-prof',
-                authorizationRole: 'primary',
-              },
-              supportedOperations: ['read'],
-              required: true,
-            },
-          ],
+          capabilities: ['watcher', 'dataSource'],
         },
       )
 
@@ -719,7 +636,7 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
         kind: 'capability' as const,
         workspaceId: 'ws-1',
         connectionInstanceId: 'conn-1',
-        capabilityId: 'voice-watcher',
+        capabilityId: 'watcher',
       }
 
       // 1st save: enableFeature = false (rev 0 -> 1)
@@ -935,38 +852,27 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
           id: 'concurrent-apply-addon',
           name: 'Concurrent Apply Addon',
           version: '1.0.0',
-          categories: ['watcher'],
           author: 'Test',
           shortDescription: 'Desc',
           description: 'Long desc',
-          capabilities: [
-            {
-              capabilityId: 'voice-watcher',
-              kind: 'watcher',
-              contractVersion: '1.0.0',
-              executionPolicy: { kind: 'activeWorkspace' },
-              authRequirement: {
-                kind: 'required',
-                connectionProfileId: 'conc-prof',
-                authorizationRole: 'primary',
-              },
-              supportedOperations: ['read', 'write'],
-              required: true,
-              settingsSchemaScope: 'capability',
-            },
-          ],
+          capabilities: ['watcher'],
         },
       )
 
-      // Undeclared scope (e.g. workspace instead of capability) is rejected explicitly
+      // Undeclared capability is rejected explicitly before IO
       const invalidScopeGet = await loader.getAddonSettings(
         'concurrent-apply-addon',
-        { kind: 'workspace', workspaceId: 'ws-1' },
+        {
+          kind: 'capability',
+          workspaceId: 'ws-1',
+          connectionInstanceId: 'conn-1',
+          capabilityId: 'undeclared-cap',
+        },
       )
       expect(invalidScopeGet.isFailure()).toBe(true)
       if (invalidScopeGet.isFailure()) {
         expect(invalidScopeGet.failure.messageKey).toBe(
-          'CAPABILITY_SETTINGS_SCOPE_MISMATCH',
+          'ADDON_SCOPE_OWNERSHIP_INVALID',
         )
       }
 
@@ -974,7 +880,7 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
         kind: 'capability' as const,
         workspaceId: 'ws-1',
         connectionInstanceId: 'conn-1',
-        capabilityId: 'voice-watcher',
+        capabilityId: 'watcher',
       }
 
       // Case A: apply1 (rev 1) held at barrier -> apply2 (rev 2) completes -> release apply1 with SUCCESS
@@ -1158,21 +1064,10 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
         id: 'e2e-addon',
         name: 'E2E Addon',
         version: '1.0.0',
-        categories: ['dataSource'],
         author: 'Test',
         shortDescription: 'Desc',
         description: 'Long desc',
-        capabilities: [
-          {
-            capabilityId: 'ds-e2e',
-            kind: 'dataSource',
-            contractVersion: '1.0.0',
-            executionPolicy: { kind: 'independent' },
-            authRequirement: { kind: 'none' },
-            supportedOperations: ['read', 'write'],
-            required: true,
-          },
-        ],
+        capabilities: ['dataSource'],
       }
 
       const mockAddon: IAddon = {

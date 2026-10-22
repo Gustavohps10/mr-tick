@@ -31,6 +31,7 @@ const mockConnectionsValue: DataSourceConnectionsContextType = {
   isLoading: false,
   workspaceId: undefined,
   connections: [],
+  dataSourceConnections: [],
   workspaceConnections: [],
   installedPlugins: [],
   link: async () => undefined,

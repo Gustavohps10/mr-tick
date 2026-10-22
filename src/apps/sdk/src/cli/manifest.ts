@@ -4,9 +4,9 @@ import path from 'path'
 
 import { AddonConfig } from '../AddonConfig'
 import {
-  AddonCategory,
+  AddonCapability,
   AddonScreenshot,
-  VALID_ADDON_CATEGORIES,
+  VALID_ADDON_CAPABILITIES,
 } from '../contracts/manifest'
 import { readPackageJson } from '../utils/packageJsonData'
 import { readYaml, writeYaml } from '../utils/yaml'
@@ -24,48 +24,31 @@ export async function runManifestWizard(addonDir: string) {
 
   const pkg = readPackageJson(rootDir)
 
-  const defaultId =
-    existingManifest.id ||
-    existingManifest.AddonId ||
-    pkg.sanitizedName ||
-    path.basename(rootDir)
-  const defaultName =
-    existingManifest.name ||
-    existingManifest.Name ||
-    pkg.name ||
-    path.basename(rootDir)
-  const defaultVersion =
-    existingManifest.version ||
-    existingManifest.Version ||
-    pkg.version ||
-    '0.1.0'
-  const defaultAuthor =
-    existingManifest.author ||
-    existingManifest.Author ||
-    pkg.author ||
-    'Mr-tick Community'
-  const defaultShortDesc =
-    existingManifest.shortDescription ||
-    existingManifest.ShortDescription ||
-    pkg.description ||
-    ''
-  const defaultDesc =
-    existingManifest.description ||
-    existingManifest.Description ||
-    pkg.description ||
-    ''
-  const defaultTags = existingManifest.tags ||
-    existingManifest.Tags || ['mr-tick']
+  let defaultId = path.basename(rootDir)
+  if (pkg.sanitizedName) defaultId = pkg.sanitizedName
+  if (existingManifest.id) defaultId = existingManifest.id
+  let defaultName = path.basename(rootDir)
+  if (pkg.name) defaultName = pkg.name
+  if (existingManifest.name) defaultName = existingManifest.name
+  let defaultVersion = '0.1.0'
+  if (pkg.version) defaultVersion = pkg.version
+  if (existingManifest.version) defaultVersion = existingManifest.version
+  let defaultAuthor = 'Mr-tick Community'
+  if (pkg.author) defaultAuthor = pkg.author
+  if (existingManifest.author) defaultAuthor = existingManifest.author
+  let defaultShortDesc = pkg.description
+  if (existingManifest.shortDescription)
+    defaultShortDesc = existingManifest.shortDescription
+  let defaultDesc = pkg.description
+  if (existingManifest.description) defaultDesc = existingManifest.description
+  let defaultTags = ['mr-tick']
+  if (existingManifest.tags) defaultTags = existingManifest.tags
+  let defaultSourceUrl = pkg.defaultSourceUrl
+  if (existingManifest.sourceUrl) defaultSourceUrl = existingManifest.sourceUrl
 
-  const existingCategories: AddonCategory[] =
-    existingManifest.categories ||
-    existingManifest.Categories ||
-    (existingManifest.category || existingManifest.Category
-      ? [
-          (existingManifest.category ||
-            existingManifest.Category) as AddonCategory,
-        ]
-      : ['dataSource'])
+  let existingCapabilities: AddonCapability[] = []
+  if (existingManifest.capabilities)
+    existingCapabilities = existingManifest.capabilities
 
   const answers = await inquirer.prompt([
     {
@@ -91,17 +74,17 @@ export async function runManifestWizard(addonDir: string) {
     },
     {
       type: 'checkbox',
-      name: 'categories',
-      message: 'Categorias do plugin:',
-      choices: VALID_ADDON_CATEGORIES.map((cat) => ({
+      name: 'capabilities',
+      message: 'Capacidades do plugin:',
+      choices: VALID_ADDON_CAPABILITIES.map((cat) => ({
         name: cat,
         value: cat,
-        checked: existingCategories.includes(cat),
+        checked: existingCapabilities.includes(cat),
       })),
       validate: (choices: string[]) =>
         choices.length > 0
           ? true
-          : 'Selecione pelo menos uma categoria oficial.',
+          : 'Selecione pelo menos uma capacidade oficial.',
     },
     {
       type: 'input',
@@ -136,23 +119,19 @@ export async function runManifestWizard(addonDir: string) {
       type: 'input',
       name: 'iconUrl',
       message: 'URL do ícone/logo (opcional):',
-      default: existingManifest.iconUrl || existingManifest.IconUrl || '',
+      default: existingManifest.iconUrl,
     },
     {
       type: 'input',
       name: 'sourceUrl',
       message: 'URL do repositório/código fonte (opcional):',
-      default:
-        existingManifest.sourceUrl ||
-        existingManifest.SourceUrl ||
-        pkg.defaultSourceUrl ||
-        '',
+      default: defaultSourceUrl,
     },
     {
       type: 'input',
       name: 'homepage',
       message: 'URL da documentação/homepage (opcional):',
-      default: existingManifest.homepage || existingManifest.Homepage || '',
+      default: existingManifest.homepage,
     },
     {
       type: 'confirm',
@@ -203,7 +182,7 @@ export async function runManifestWizard(addonDir: string) {
     id: answers.id,
     name: answers.name,
     version: answers.version,
-    categories: answers.categories,
+    capabilities: answers.capabilities,
     author: answers.author,
     shortDescription: answers.shortDescription,
     description: answers.description,
@@ -226,24 +205,17 @@ export async function runManifestWizard(addonDir: string) {
   }
 
   // Preserve existing distribution/package fields if present
-  if (existingManifest.downloadUrl || existingManifest.DownloadUrl) {
-    cleanManifest.downloadUrl =
-      existingManifest.downloadUrl || existingManifest.DownloadUrl
+  if (existingManifest.downloadUrl) {
+    cleanManifest.downloadUrl = existingManifest.downloadUrl
   }
-  if (
-    existingManifest.requiredApiVersion ||
-    existingManifest.RequiredApiVersion
-  ) {
-    cleanManifest.requiredApiVersion =
-      existingManifest.requiredApiVersion || existingManifest.RequiredApiVersion
+  if (existingManifest.requiredApiVersion) {
+    cleanManifest.requiredApiVersion = existingManifest.requiredApiVersion
   }
-  if (existingManifest.releaseDate || existingManifest.ReleaseDate) {
-    cleanManifest.releaseDate =
-      existingManifest.releaseDate || existingManifest.ReleaseDate
+  if (existingManifest.releaseDate) {
+    cleanManifest.releaseDate = existingManifest.releaseDate
   }
-  if (existingManifest.changelog || existingManifest.Changelog) {
-    cleanManifest.changelog =
-      existingManifest.changelog || existingManifest.Changelog
+  if (existingManifest.changelog) {
+    cleanManifest.changelog = existingManifest.changelog
   }
   if (existingManifest.packages) {
     cleanManifest.packages = existingManifest.packages

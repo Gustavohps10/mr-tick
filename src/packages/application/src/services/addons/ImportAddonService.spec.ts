@@ -23,6 +23,7 @@ function createBaseManifest(
     downloads: 0,
     stars: 0,
     installed: false,
+    capabilities: [],
     ...overrides,
   }
 }

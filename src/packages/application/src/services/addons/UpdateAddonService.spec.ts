@@ -33,6 +33,7 @@ describe('UpdateAddonService', () => {
     downloads: 10,
     stars: 5,
     installed: true,
+    capabilities: ['dataSource'],
   }
 
   const updatedManifest: AddonManifestDTO = {
@@ -47,6 +48,7 @@ describe('UpdateAddonService', () => {
     stars: 5,
     installed: false,
     requiredApiVersion: '>=0.8.0',
+    capabilities: ['dataSource'],
   }
 
   const fakeExtractedFiles = [

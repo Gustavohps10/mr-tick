@@ -97,6 +97,7 @@ describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
 id: test-future-addon
 name: Future Addon
 version: 1.0.0
+capabilities: [theme]
 requiredApiVersion: '>=0.5.0'
 `
     writeFileSync(join(testAddonDir, 'manifest.yaml'), manifestContent)
@@ -115,6 +116,7 @@ requiredApiVersion: '>=0.5.0'
 id: gustavohps10-redmine
 name: Redmine Legacy
 version: 0.1.1
+capabilities: [theme]
 requiredApiVersion: '>=0.1.1'
 `
     writeFileSync(join(testAddonDir, 'manifest.yaml'), manifestContent)
@@ -133,6 +135,7 @@ requiredApiVersion: '>=0.1.1'
 id: test-legacy-addon
 name: Legacy Addon
 version: 0.1.0
+capabilities: [theme]
 `
     writeFileSync(join(testAddonDir, 'manifest.yaml'), manifestContent)
 
@@ -150,6 +153,7 @@ version: 0.1.0
 id: test-compatible-addon
 name: Compatible Addon
 version: 0.4.0
+capabilities: [theme]
 requiredApiVersion: '>=0.4.0'
 `
     writeFileSync(join(testAddonDir, 'manifest.yaml'), manifestContent)
@@ -168,6 +172,7 @@ requiredApiVersion: '>=0.4.0'
 id: test-universal-addon
 name: Universal Addon
 version: 1.0.0
+capabilities: [theme]
 requiredApiVersion: '-1'
 `
     writeFileSync(join(testAddonDir, 'manifest.yaml'), manifestContent)
@@ -190,6 +195,7 @@ requiredApiVersion: '-1'
 id: test-future-addon-in-e2e
 name: Future Addon In E2E
 version: 1.0.0
+capabilities: [theme]
 requiredApiVersion: '>=0.9.0'
 `
       writeFileSync(join(testAddonDir, 'manifest.yaml'), manifestContent)

@@ -57,6 +57,7 @@ const availableAddon: AddonManifestViewModel = {
   downloads: 0,
   stars: 0,
   installed: false,
+  capabilities: ['dataSource'],
   packages: [
     {
       version: '0.6.0',
@@ -145,7 +146,7 @@ describe('AddonsManagerModal version selection', () => {
       data: [
         {
           ...availableAddon,
-          categories: ['dataSource'],
+          capabilities: ['dataSource'],
           version: '0.5.0',
           installed: true,
         },

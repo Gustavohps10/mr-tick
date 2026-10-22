@@ -12,6 +12,7 @@ import type {
   ConnectionProfileDescriptor,
   WorkspaceViewModel,
 } from '@mr-tick/sdk'
+import { isDataSource } from '@mr-tick/shared/helpers'
 import { isString } from '@mr-tick/shared/helpers'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -49,7 +50,6 @@ import { cn } from '@/lib/utils'
 
 import { AddonFieldRenderer } from './addon-field-renderer'
 import { AddonThemeSettingsPanel } from './addon-theme-settings-panel'
-import { addonMatchesCategory } from './addons-manager-view'
 import {
   AddonConnection,
   ConnectionCard,
@@ -207,9 +207,9 @@ function WorkspaceSubSidebarSettingsManager({
     return installedList.find((a) => a.id === addonId) ?? null
   }, [addon, installedList, addonId])
 
-  const isDataSource = useMemo(() => {
+  const isDataSourceAddon = useMemo(() => {
     if (!resolvedAddon) return false
-    return addonMatchesCategory(resolvedAddon, 'dataSource')
+    return isDataSource(resolvedAddon.capabilities)
   }, [resolvedAddon])
 
   const activeWorkspace = useMemo(() => {
@@ -272,7 +272,7 @@ function WorkspaceSubSidebarSettingsManager({
       )
     }
 
-    if (activeCapability === 'auth' && isDataSource) {
+    if (activeCapability === 'auth' && isDataSourceAddon) {
       return (
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-y-auto">
           <WorkspaceGroupedDataSourceManager
@@ -294,7 +294,7 @@ function WorkspaceSubSidebarSettingsManager({
       )
     }
 
-    if (!activeCapability && isDataSource) {
+    if (!activeCapability && isDataSourceAddon) {
       return (
         <WorkspaceGroupedDataSourceManager
           key={`ds-default-${addonId}-${ws.id}`}
@@ -688,8 +688,8 @@ function ScopedAddonSettingsRenderer({
   })
 
   const currentAddon = installedList.find((a) => a.id === addonId)
-  const isDataSource = currentAddon
-    ? addonMatchesCategory(currentAddon, 'dataSource')
+  const isDataSourceConnection = currentAddon
+    ? isDataSource(currentAddon.capabilities)
     : false
   const { data: connectionProfiles = [] } = useQuery<
     ConnectionProfileDescriptor[]
@@ -703,7 +703,7 @@ function ScopedAddonSettingsRenderer({
         throw new Error(result.error ?? 'CONNECTION_PROFILES_UNAVAILABLE')
       return result.data
     },
-    enabled: isDataSource,
+    enabled: isDataSourceConnection,
   })
 
   if (isLoadingSchema || isLoadingSettings) {
@@ -835,7 +835,7 @@ function ScopedAddonSettingsRenderer({
   if (tabs.length === 0) {
     if (hideWhenEmpty) return null
 
-    if (!activeCapability && isDataSource) {
+    if (!activeCapability && isDataSourceConnection) {
       return (
         <WorkspaceGroupedDataSourceManager
           addonId={addonId}

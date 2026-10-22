@@ -13,7 +13,7 @@ import {
 import React, { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
-import { addonMatchesCategory } from '@/components/addons-manager/addons-manager-view'
+import { addonHasCapability } from '@/components/addons-manager/addons-manager-view'
 import { useTheme } from '@/components/theme-provider'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -149,7 +149,7 @@ export function AppearanceSettingsTab() {
   })
 
   const themeAddons = useMemo(
-    () => installedAddons.filter((a) => addonMatchesCategory(a, 'theme')),
+    () => installedAddons.filter((a) => addonHasCapability(a, 'theme')),
     [installedAddons],
   )
 

@@ -28,7 +28,7 @@ import {
 } from '@mr-tick/application'
 import {
   AddonActionResponse,
-  AddonCapabilityDescriptor,
+  AddonCapability,
   AddonContext,
   AddonRuntimeCapabilities,
   AddonSettingsApplyHandler,
@@ -57,6 +57,7 @@ import {
   IAddonSettingsAPI,
   IDataSource,
   IRegistry,
+  isAddonCapability,
   OAuthAuthorizeOptions,
   OAuthResult,
   SidebarMenuItem,
@@ -64,7 +65,6 @@ import {
 } from '@mr-tick/sdk'
 import {
   AppError,
-  compareSemVer,
   Either,
   hasProperty,
   isApiVersionCompatible,
@@ -73,7 +73,6 @@ import {
   isNonEmptyString,
   isRecord,
   isString,
-  parseSemVer,
 } from '@mr-tick/shared/helpers'
 import { ISystemEvents } from '@mr-tick/shared/transport'
 import { BrowserWindow, Notification, shell } from 'electron'
@@ -244,21 +243,6 @@ export class AddonEventEmitter implements IAddonEventsAPI {
   }
 }
 
-export function isCapabilityContractCompatible(
-  requiredVersion: string,
-  supportedVersion: string,
-): boolean {
-  const req = parseSemVer(requiredVersion)
-  const sup = parseSemVer(supportedVersion)
-  if (req === null || sup === null) return false
-  if (req.major !== sup.major) return false
-  if (req.major === 0) {
-    if (req.minor !== sup.minor) return false
-    return sup.patch >= req.patch
-  }
-  return compareSemVer(sup, req) >= 0
-}
-
 export class AddonLoader implements IAddonReloader {
   private activeAddons = new Map<string, ActiveAddonInfo>()
   private loadingAddons = new Map<string, Promise<boolean>>()
@@ -313,7 +297,12 @@ export class AddonLoader implements IAddonReloader {
         }
         const caps = this.addonCapabilities.get(addonId)
         if (!caps) return undefined
-        return caps.find((c) => c.capabilityId === capabilityId)
+        if (!caps.some((capability) => capability === capabilityId))
+          return undefined
+        return {
+          capabilityId,
+          authRequirement: { kind: 'none' },
+        }
       },
     )
     const ownershipValidator = new CoreAddonScopeOwnershipValidator(
@@ -489,18 +478,7 @@ export class AddonLoader implements IAddonReloader {
     }
   }
 
-  private readonly supportedContractVersions: Record<string, string> = {
-    dataSource: '1.0.0',
-    watcher: '1.0.0',
-    calendar: '1.0.0',
-    punch: '1.0.0',
-    theme: '1.0.0',
-    custom: '1.0.0',
-  }
-  private readonly addonCapabilities = new Map<
-    string,
-    AddonCapabilityDescriptor[]
-  >()
+  private readonly addonCapabilities = new Map<string, AddonCapability[]>()
   private readonly disabledCapabilities = new Set<string>()
 
   public notifyConnectionBindingChanged(
@@ -534,62 +512,33 @@ export class AddonLoader implements IAddonReloader {
 
   public registerManifestCapabilities(
     addonId: string,
-    capabilities?: AddonCapabilityDescriptor[],
+    capabilities?: readonly AddonCapability[],
   ): Either<AppError, void> {
-    if (!capabilities || capabilities.length === 0) {
-      return Either.success()
-    }
-    const seenIds = new Set<string>()
-    let dataSourceCount = 0
-    const pendingDisabled = new Set<string>()
-    for (const cap of capabilities) {
-      if (seenIds.has(cap.capabilityId)) {
-        return Either.failure(
-          AppError.ValidationError(
-            `CAPABILITY_DUPLICATE_ID:${cap.capabilityId}`,
-          ),
-        )
-      }
-      seenIds.add(cap.capabilityId)
-      if (cap.kind === 'dataSource') {
-        dataSourceCount += 1
-      }
-      const supported = this.supportedContractVersions[cap.kind]
-      if (supported === undefined) {
-        return Either.failure(
-          AppError.ValidationError(`CAPABILITY_UNKNOWN_KIND:${cap.kind}`),
-        )
-      }
-      const isCompatible = isCapabilityContractCompatible(
-        cap.contractVersion,
-        supported,
-      )
-      if (!isCompatible) {
-        if (cap.required) {
-          return Either.failure(
-            AppError.ValidationError(
-              `CAPABILITY_CONTRACT_INCOMPATIBLE:${cap.capabilityId}`,
-            ),
-          )
-        }
-        pendingDisabled.add(`${addonId}:${cap.capabilityId}`)
-      }
-    }
-    if (dataSourceCount > 1) {
-      return Either.failure(
-        AppError.ValidationError('MULTIPLE_DATASOURCES_NOT_ALLOWED'),
-      )
-    }
+    const validation = validateManifestCapabilities(capabilities)
+    if (validation.isFailure()) return validation.forwardFailure()
+    this.applyManifestCapabilities(addonId, capabilities)
+    return Either.success()
+  }
+
+  private applyManifestCapabilities(
+    addonId: string,
+    capabilities: readonly AddonCapability[] | undefined,
+  ): void {
+    if (!capabilities) return
     for (const key of Array.from(this.disabledCapabilities)) {
       if (key.startsWith(`${addonId}:`)) {
         this.disabledCapabilities.delete(key)
       }
     }
-    for (const key of pendingDisabled) {
-      this.disabledCapabilities.add(key)
-    }
-    this.addonCapabilities.set(addonId, capabilities)
-    return Either.success()
+    this.addonCapabilities.set(addonId, [...capabilities])
+  }
+
+  public disableCapability(addonId: string, capabilityId: string): void {
+    this.disabledCapabilities.add(`${addonId}:${capabilityId}`)
+  }
+
+  public enableCapability(addonId: string, capabilityId: string): void {
+    this.disabledCapabilities.delete(`${addonId}:${capabilityId}`)
   }
 
   public isOperationSupported(
@@ -602,40 +551,8 @@ export class AddonLoader implements IAddonReloader {
     }
     const caps = this.addonCapabilities.get(addonId)
     if (caps === undefined) return false
-    const cap = caps.find((c) => c.capabilityId === capabilityId)
-    if (cap === undefined) return false
-    if (
-      !Array.isArray(cap.supportedOperations) ||
-      cap.supportedOperations.length === 0
-    ) {
-      return false
-    }
-    if (cap.supportedOperations.includes(operation)) {
-      return true
-    }
-    if (
-      (operation === 'pull' ||
-        operation === 'findAll' ||
-        operation === 'findById' ||
-        operation === 'findByMemberId' ||
-        operation === 'getCurrentUser' ||
-        operation === 'findByCredentials' ||
-        operation === 'getMetadata' ||
-        operation === 'getMappingFields') &&
-      cap.supportedOperations.includes('read')
-    ) {
-      return true
-    }
-    if (
-      (operation === 'create' ||
-        operation === 'update' ||
-        operation === 'delete' ||
-        operation === 'updateConditional') &&
-      cap.supportedOperations.includes('write')
-    ) {
-      return true
-    }
-    return false
+    if (operation.trim().length === 0) return false
+    return caps.some((capability) => capability === capabilityId)
   }
 
   private readonly addonVaults = new Map<string, AddonScopedVault>()
@@ -695,19 +612,12 @@ export class AddonLoader implements IAddonReloader {
       }
       for (const [addonId, caps] of this.addonCapabilities.entries()) {
         const enabledCaps = caps.filter(
-          (cap) =>
-            !this.disabledCapabilities.has(`${addonId}:${cap.capabilityId}`),
+          (cap) => !this.disabledCapabilities.has(`${addonId}:${cap}`),
         )
         const lifetime = this.lifetimes.get(addonId)
         for (const cap of enabledCaps) {
-          if (
-            cap.executionPolicy.kind === 'activeWorkspace' &&
-            previousWorkspaceId
-          ) {
-            lifetime?.stopWorkspaceCapabilityBindings(
-              previousWorkspaceId,
-              cap.capabilityId,
-            )
+          if (cap === 'watcher' && previousWorkspaceId) {
+            lifetime?.stopWorkspaceCapabilityBindings(previousWorkspaceId, cap)
           }
         }
       }
@@ -901,12 +811,12 @@ export class AddonLoader implements IAddonReloader {
     const dataSourceRegistryProxy: IAddonDataSourcesAPI = {
       register: (item: IDataSource) => {
         if (!lifetime.isActive()) return
-        const dsCap = this.addonCapabilities
+        const hasDsCap = this.addonCapabilities
           .get(addonId)
-          ?.find((c) => c.kind === 'dataSource')
+          ?.includes('dataSource')
         if (
-          dsCap === undefined ||
-          this.disabledCapabilities.has(`${addonId}:${dsCap.capabilityId}`)
+          !hasDsCap ||
+          this.disabledCapabilities.has(`${addonId}:dataSource`)
         ) {
           return
         }
@@ -929,15 +839,11 @@ export class AddonLoader implements IAddonReloader {
             const binding = lifetime.binding(
               workspaceId,
               connectionInstanceId,
-              dsCap.capabilityId,
+              'dataSource',
             )
             const capturedGen = binding.getGeneration()
             const isOpSupported = (operation: string): boolean => {
-              return this.isOperationSupported(
-                addonId,
-                dsCap.capabilityId,
-                operation,
-              )
+              return this.isOperationSupported(addonId, 'dataSource', operation)
             }
             const rawInstance = item.createInstance({
               ...context,
@@ -982,7 +888,7 @@ export class AddonLoader implements IAddonReloader {
             if (
               !this.isOperationSupported(
                 addonId,
-                dsCap.capabilityId,
+                'dataSource',
                 'getMappingFields',
               )
             ) {
@@ -1009,7 +915,7 @@ export class AddonLoader implements IAddonReloader {
             if (
               !this.isOperationSupported(
                 addonId,
-                dsCap.capabilityId,
+                'dataSource',
                 'getMappingFields',
               )
             ) {
@@ -1020,7 +926,7 @@ export class AddonLoader implements IAddonReloader {
             const binding = lifetime.findScopedBinding(
               scope.workspaceId,
               scope.connectionInstanceId,
-              dsCap.capabilityId,
+              'dataSource',
             )
             if (binding === undefined || !binding.isActive()) {
               return Either.failure(
@@ -1228,10 +1134,7 @@ export class AddonLoader implements IAddonReloader {
     manifest?: IAddonManifest,
   ): Promise<boolean> {
     if (manifest && manifest.capabilities) {
-      const capResult = this.registerManifestCapabilities(
-        addonId,
-        manifest.capabilities,
-      )
+      const capResult = validateManifestCapabilities(manifest.capabilities)
       if (capResult.isFailure()) {
         console.error(
           `[AddonLoader] Addon ${addonId} recusado por capacidade incompatível: ${capResult.failure.messageKey}`,
@@ -1240,6 +1143,7 @@ export class AddonLoader implements IAddonReloader {
       }
     }
     if (this.activeAddons.has(addonId)) await this.deactivateAddon(addonId)
+    this.applyManifestCapabilities(addonId, manifest?.capabilities)
     const context = this.createContext(addonId)
     try {
       await addonInstance.activate(context)
@@ -1391,7 +1295,7 @@ export class AddonLoader implements IAddonReloader {
 
       let metaName: string | undefined
       let metaIconUrl: string | undefined
-      let parsedCapabilities: AddonCapabilityDescriptor[] | undefined
+      let parsedCapabilities: AddonCapability[] | undefined
       const manifestPathYaml = join(addonFolderPath, 'manifest.yaml')
       const manifestPathYml = join(addonFolderPath, 'manifest.yml')
       const manifestPathJson = join(addonFolderPath, 'manifest.json')
@@ -1402,7 +1306,15 @@ export class AddonLoader implements IAddonReloader {
           if (isRecord(parsed)) {
             if (isString(parsed.name)) metaName = parsed.name
             if (isString(parsed.iconUrl)) metaIconUrl = parsed.iconUrl
-            parsedCapabilities = parseDiskManifestCapabilities(parsed)
+            const capabilitiesResult = parseDiskManifestCapabilities(parsed)
+            if (capabilitiesResult.isFailure()) {
+              console.error(
+                '[AddonLoader] Manifesto inválido:',
+                capabilitiesResult.failure.messageKey,
+              )
+              return false
+            }
+            parsedCapabilities = capabilitiesResult.success
           }
         }
         if (!metaName && existsSync(manifestPathYml)) {
@@ -1410,7 +1322,15 @@ export class AddonLoader implements IAddonReloader {
           if (isRecord(parsed)) {
             if (isString(parsed.name)) metaName = parsed.name
             if (isString(parsed.iconUrl)) metaIconUrl = parsed.iconUrl
-            parsedCapabilities = parseDiskManifestCapabilities(parsed)
+            const capabilitiesResult = parseDiskManifestCapabilities(parsed)
+            if (capabilitiesResult.isFailure()) {
+              console.error(
+                '[AddonLoader] Manifesto inválido:',
+                capabilitiesResult.failure.messageKey,
+              )
+              return false
+            }
+            parsedCapabilities = capabilitiesResult.success
           }
         }
         if (!metaName && existsSync(manifestPathJson)) {
@@ -1418,7 +1338,15 @@ export class AddonLoader implements IAddonReloader {
           if (isRecord(parsed)) {
             if (isString(parsed.name)) metaName = parsed.name
             if (isString(parsed.iconUrl)) metaIconUrl = parsed.iconUrl
-            parsedCapabilities = parseDiskManifestCapabilities(parsed)
+            const capabilitiesResult = parseDiskManifestCapabilities(parsed)
+            if (capabilitiesResult.isFailure()) {
+              console.error(
+                '[AddonLoader] Manifesto inválido:',
+                capabilitiesResult.failure.messageKey,
+              )
+              return false
+            }
+            parsedCapabilities = capabilitiesResult.success
           }
         }
       } catch {
@@ -1452,7 +1380,6 @@ export class AddonLoader implements IAddonReloader {
           id: addonId,
           name: manifestName,
           version: '1.0.0',
-          categories: [],
           author: '',
           shortDescription: '',
           description: '',
@@ -1599,44 +1526,10 @@ export class AddonLoader implements IAddonReloader {
     return schema
   }
 
-  private validateAddonSettingsScope(
-    addonId: string,
-    scope: AddonVaultScope,
-  ): Either<AppError, void> {
-    if (scope.kind === 'capability') {
-      return Either.success()
-    }
-    const caps = this.addonCapabilities.get(addonId)
-    if (!caps || caps.length === 0) {
-      return Either.success()
-    }
-    const enabledWithSettingsScope = caps.filter(
-      (cap) =>
-        !this.disabledCapabilities.has(`${addonId}:${cap.capabilityId}`) &&
-        cap.settingsSchemaScope !== undefined,
-    )
-    if (enabledWithSettingsScope.length === 0) {
-      return Either.success()
-    }
-    const matchesDeclaredScope = enabledWithSettingsScope.some(
-      (cap) => cap.settingsSchemaScope === scope.kind,
-    )
-    if (!matchesDeclaredScope) {
-      return Either.failure(
-        AppError.ValidationError('CAPABILITY_SETTINGS_SCOPE_MISMATCH'),
-      )
-    }
-    return Either.success()
-  }
-
   public async getAddonSettings(
     addonId: string,
     scope: AddonVaultScope,
   ): Promise<Either<AppError, AddonSettingsView>> {
-    const scopeValidation = this.validateAddonSettingsScope(addonId, scope)
-    if (scopeValidation.isFailure()) {
-      return scopeValidation.forwardFailure()
-    }
     const schema = await this.getSettingsSchema(addonId, scope)
     return this.getAddonSettingsService.execute({ addonId, scope, schema })
   }
@@ -1670,10 +1563,6 @@ export class AddonLoader implements IAddonReloader {
     settings: AddonSettingsValues,
     credentials?: Record<string, string | null>,
   ): Promise<Either<AppError, AddonSettingsView>> {
-    const scopeValidation = this.validateAddonSettingsScope(addonId, scope)
-    if (scopeValidation.isFailure()) {
-      return scopeValidation.forwardFailure()
-    }
     const schema = await this.getSettingsSchema(addonId, scope)
     const result = await this.saveAddonSettingsService.execute({
       addonId,
@@ -1980,107 +1869,44 @@ function extractStringMap(data: object): Record<string, string> {
   return result
 }
 
-function isValidCapabilityKind(
-  val: string,
-): val is AddonCapabilityDescriptor['kind'] {
-  return (
-    val === 'dataSource' ||
-    val === 'watcher' ||
-    val === 'calendar' ||
-    val === 'punch' ||
-    val === 'theme' ||
-    val === 'custom'
-  )
-}
-
-function isValidSettingsSchemaScope(
-  val: string,
-): val is NonNullable<AddonCapabilityDescriptor['settingsSchemaScope']> {
-  return (
-    val === 'workspace' ||
-    val === 'connection' ||
-    val === 'capability' ||
-    val === 'addon'
-  )
-}
-
 function parseDiskManifestCapabilities(
   parsed: object,
-): AddonCapabilityDescriptor[] | undefined {
+): Either<AppError, AddonCapability[]> {
   if (
     !hasProperty(parsed, 'capabilities') ||
-    !Array.isArray(parsed.capabilities)
+    !Array.isArray(parsed.capabilities) ||
+    parsed.capabilities.length === 0
   )
-    return undefined
-  const descriptors: AddonCapabilityDescriptor[] = []
-  for (const rawCap of parsed.capabilities) {
-    if (!isRecord(rawCap)) continue
-    if (!isNonEmptyString(rawCap.capabilityId)) continue
-    if (!isString(rawCap.kind) || !isValidCapabilityKind(rawCap.kind)) continue
-    if (!isNonEmptyString(rawCap.contractVersion)) continue
-    const required = isBoolean(rawCap.required) ? rawCap.required : true
-
-    let executionPolicy: AddonCapabilityDescriptor['executionPolicy'] = {
-      kind: 'independent',
-    }
-    if (isRecord(rawCap.executionPolicy)) {
-      if (rawCap.executionPolicy.kind === 'activeWorkspace') {
-        const exclusivity =
-          rawCap.executionPolicy.exclusivity === 'exclusiveSocket'
-            ? 'exclusiveSocket'
-            : rawCap.executionPolicy.exclusivity === 'none'
-              ? 'none'
-              : undefined
-        executionPolicy = {
-          kind: 'activeWorkspace',
-          exclusivity,
-        }
-      }
-    }
-
-    let authRequirement: AddonCapabilityDescriptor['authRequirement'] = {
-      kind: 'none',
-    }
-    if (
-      isRecord(rawCap.authRequirement) &&
-      rawCap.authRequirement.kind === 'required' &&
-      isNonEmptyString(rawCap.authRequirement.connectionProfileId) &&
-      isNonEmptyString(rawCap.authRequirement.authorizationRole)
-    ) {
-      authRequirement = {
-        kind: 'required',
-        connectionProfileId: rawCap.authRequirement.connectionProfileId,
-        authorizationRole: rawCap.authRequirement.authorizationRole,
-      }
-    }
-
-    const supportedOperations: string[] = []
-    if (Array.isArray(rawCap.supportedOperations)) {
-      for (const op of rawCap.supportedOperations) {
-        if (isNonEmptyString(op)) {
-          supportedOperations.push(op)
-        }
-      }
-    }
-
-    let settingsSchemaScope: AddonCapabilityDescriptor['settingsSchemaScope']
-    if (
-      isString(rawCap.settingsSchemaScope) &&
-      isValidSettingsSchemaScope(rawCap.settingsSchemaScope)
-    ) {
-      settingsSchemaScope = rawCap.settingsSchemaScope
-    }
-
-    descriptors.push({
-      capabilityId: rawCap.capabilityId,
-      kind: rawCap.kind,
-      contractVersion: rawCap.contractVersion,
-      required,
-      executionPolicy,
-      authRequirement,
-      supportedOperations,
-      settingsSchemaScope,
-    })
+    return Either.failure(
+      AppError.ValidationError('ADDON_CAPABILITIES_REQUIRED'),
+    )
+  const result: AddonCapability[] = []
+  for (const capability of parsed.capabilities) {
+    if (!isString(capability) || !isAddonCapability(capability))
+      return Either.failure(
+        AppError.ValidationError('ADDON_CAPABILITY_INVALID'),
+      )
+    if (result.includes(capability))
+      return Either.failure(
+        AppError.ValidationError(`CAPABILITY_DUPLICATE_ID:${capability}`),
+      )
+    result.push(capability)
   }
-  return descriptors
+  return Either.success(result)
+}
+
+function validateManifestCapabilities(
+  capabilities: readonly AddonCapability[] | undefined,
+): Either<AppError, void> {
+  if (!capabilities) return Either.success()
+  const seen = new Set<AddonCapability>()
+  for (const cap of capabilities) {
+    if (seen.has(cap)) {
+      return Either.failure(
+        AppError.ValidationError(`CAPABILITY_DUPLICATE_ID:${cap}`),
+      )
+    }
+    seen.add(cap)
+  }
+  return Either.success()
 }

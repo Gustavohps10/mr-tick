@@ -1,3 +1,4 @@
+export * from './addonCapabilities'
 export * from './AppError'
 export * from './AppSuccess'
 export * from './createResponseViewModel'

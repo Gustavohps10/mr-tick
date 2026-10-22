@@ -47,21 +47,10 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
         id: 'test-granular-addon',
         name: 'Granular Addon',
         version: '1.0.0',
-        categories: ['dataSource'],
         author: 'Test',
         shortDescription: 'Desc',
         description: 'Long desc',
-        capabilities: [
-          {
-            capabilityId: 'ds-granular',
-            kind: 'dataSource',
-            contractVersion: '1.0.0',
-            executionPolicy: { kind: 'independent' },
-            authRequirement: { kind: 'none' },
-            supportedOperations: ['read', 'write'],
-            required: true,
-          },
-        ],
+        capabilities: ['dataSource'],
       }
 
       const mockAddon: IAddon = {
@@ -195,21 +184,10 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
         id: 'test-archive-addon',
         name: 'Archive Addon',
         version: '1.0.0',
-        categories: ['dataSource'],
         author: 'Test',
         shortDescription: 'Desc',
         description: 'Long desc',
-        capabilities: [
-          {
-            capabilityId: 'ds-archive',
-            kind: 'dataSource',
-            contractVersion: '1.0.0',
-            executionPolicy: { kind: 'independent' },
-            authRequirement: { kind: 'none' },
-            supportedOperations: ['read', 'write'],
-            required: true,
-          },
-        ],
+        capabilities: ['dataSource'],
       }
       const mockAddon: IAddon = {
         activate: (context) => {
@@ -281,21 +259,10 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
         id: 'test-remove-addon',
         name: 'Remove Addon',
         version: '1.0.0',
-        categories: ['dataSource'],
         author: 'Test',
         shortDescription: 'Desc',
         description: 'Long desc',
-        capabilities: [
-          {
-            capabilityId: 'ds-remove',
-            kind: 'dataSource',
-            contractVersion: '1.0.0',
-            executionPolicy: { kind: 'independent' },
-            authRequirement: { kind: 'none' },
-            supportedOperations: ['read', 'write'],
-            required: true,
-          },
-        ],
+        capabilities: ['dataSource'],
       }
       const mockAddon: IAddon = {
         activate: (context) => {
@@ -423,40 +390,10 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
         id: 'settings-addon',
         name: 'Settings Addon',
         version: '1.0.0',
-        categories: ['watcher'],
         author: 'Test',
         shortDescription: 'Desc',
         description: 'Long desc',
-        capabilities: [
-          {
-            capabilityId: 'cap-for-profile-a',
-            kind: 'watcher',
-            contractVersion: '1.0.0',
-            executionPolicy: { kind: 'activeWorkspace' },
-            authRequirement: {
-              kind: 'required',
-              connectionProfileId: 'profile-a',
-              authorizationRole: 'any',
-            },
-            supportedOperations: ['read'],
-            required: true,
-            settingsSchemaScope: 'capability',
-          },
-          {
-            capabilityId: 'cap-connection-scope-only',
-            kind: 'watcher',
-            contractVersion: '1.0.0',
-            executionPolicy: { kind: 'activeWorkspace' },
-            authRequirement: {
-              kind: 'required',
-              connectionProfileId: 'profile-a',
-              authorizationRole: 'any',
-            },
-            supportedOperations: ['read'],
-            required: false,
-            settingsSchemaScope: 'connection',
-          },
-        ],
+        capabilities: ['watcher'],
       })
 
       const mismatchedResult = await loader.getAddonSettings('settings-addon', {
@@ -478,13 +415,13 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
           kind: 'capability',
           workspaceId: 'ws-settings',
           connectionInstanceId: 'conn-profile-a',
-          capabilityId: 'cap-connection-scope-only',
+          capabilityId: 'undeclared-cap',
         },
       )
       expect(scopeMismatchResult.isFailure()).toBe(true)
       if (scopeMismatchResult.isFailure()) {
         expect(scopeMismatchResult.failure.messageKey).toBe(
-          'CAPABILITY_SETTINGS_SCOPE_MISMATCH',
+          'ADDON_SCOPE_OWNERSHIP_INVALID',
         )
       }
 
@@ -492,7 +429,7 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
         kind: 'capability',
         workspaceId: 'ws-settings',
         connectionInstanceId: 'conn-profile-a',
-        capabilityId: 'cap-for-profile-a',
+        capabilityId: 'watcher',
       })
       expect(matchedResult.isSuccess()).toBe(true)
     })
@@ -556,21 +493,10 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
         id: 'dispatch-addon',
         name: 'Dispatch Addon',
         version: '1.0.0',
-        categories: ['dataSource'],
         author: 'Test',
         shortDescription: 'Desc',
         description: 'Long desc',
-        capabilities: [
-          {
-            capabilityId: 'ds-cap',
-            kind: 'dataSource',
-            contractVersion: '1.0.0',
-            executionPolicy: { kind: 'activeWorkspace' },
-            authRequirement: { kind: 'none' },
-            supportedOperations: ['read', 'create'],
-            required: true,
-          },
-        ],
+        capabilities: ['dataSource'],
       }
 
       const mockAddon: IAddon = {
@@ -614,6 +540,7 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
         },
       })
 
+      loader.disableCapability('dispatch-addon', 'dataSource')
       const deleteResult = await instance.tasksProvider.delete('t-1')
       expect(deleteResult.isFailure()).toBe(true)
       if (deleteResult.isFailure()) {
@@ -621,32 +548,22 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       }
       expect(deleteSpy).not.toHaveBeenCalled()
 
+      loader.enableCapability('dispatch-addon', 'dataSource')
       const readResult = await instance.tasksProvider.findAll()
       expect(readResult.isSuccess()).toBe(true)
       expect(findAllSpy).toHaveBeenCalled()
     })
 
-    it('does not register executable dataSource if optional capability is incompatible', async () => {
+    it('does not register executable dataSource if addon has no dataSource capability', async () => {
       const loader = createLoader()
       const manifest: IAddonManifest = {
         id: 'optional-incompat-ds',
         name: 'Optional Incompatible DataSource',
         version: '1.0.0',
-        categories: ['dataSource'],
         author: 'Test',
         shortDescription: 'Desc',
         description: 'Long desc',
-        capabilities: [
-          {
-            capabilityId: 'ds-incompat',
-            kind: 'dataSource',
-            contractVersion: '9.9.9',
-            executionPolicy: { kind: 'activeWorkspace' },
-            authRequirement: { kind: 'none' },
-            supportedOperations: ['read'],
-            required: false,
-          },
-        ],
+        capabilities: ['watcher'],
       }
 
       const mockAddon: IAddon = {
@@ -697,40 +614,17 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
     it('ensures atomic registration of manifest capabilities without polluting disabled state on failure', () => {
       const loader = createLoader()
       const res = loader.registerManifestCapabilities('atomic-addon', [
-        {
-          capabilityId: 'opt-incompat',
-          kind: 'watcher',
-          contractVersion: '9.9.9',
-          executionPolicy: { kind: 'activeWorkspace' },
-          authRequirement: { kind: 'none' },
-          supportedOperations: ['watch'],
-          required: false,
-        },
-        {
-          capabilityId: 'ds-1',
-          kind: 'dataSource',
-          contractVersion: '1.0.0',
-          executionPolicy: { kind: 'activeWorkspace' },
-          authRequirement: { kind: 'none' },
-          supportedOperations: ['read'],
-          required: true,
-        },
-        {
-          capabilityId: 'ds-2',
-          kind: 'dataSource',
-          contractVersion: '1.0.0',
-          executionPolicy: { kind: 'activeWorkspace' },
-          authRequirement: { kind: 'none' },
-          supportedOperations: ['read'],
-          required: true,
-        },
+        'dataSource',
+        'dataSource',
       ])
       expect(res.isFailure()).toBe(true)
       if (res.isFailure()) {
-        expect(res.failure.messageKey).toBe('MULTIPLE_DATASOURCES_NOT_ALLOWED')
+        expect(res.failure.messageKey).toBe(
+          'CAPABILITY_DUPLICATE_ID:dataSource',
+        )
       }
       expect(
-        loader.isOperationSupported('atomic-addon', 'opt-incompat', 'watch'),
+        loader.isOperationSupported('atomic-addon', 'watcher', 'watch'),
       ).toBe(false)
     })
   })

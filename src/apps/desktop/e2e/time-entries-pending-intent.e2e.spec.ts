@@ -755,7 +755,10 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
       await page.getByTestId('time-entry-task-popover-trigger').first().click()
       const dialog = page.getByRole('dialog')
       await dialog.getByRole('combobox').last().click()
-      await page.locator('[role="option"][data-state="unchecked"]').click()
+      await page
+        .locator('[role="option"][data-state="unchecked"]')
+        .filter({ hasText: 'DataSource Fake (Testes)' })
+        .click()
       await page.keyboard.press('Escape')
       await page.keyboard.press('Escape')
 
@@ -913,7 +916,10 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
       await page.getByTestId('time-entry-edit-btn').click()
       await page.getByTestId('time-entry-task-popover-trigger').first().click()
       await page.getByRole('dialog').getByRole('combobox').last().click()
-      await page.locator('[role="option"][data-state="unchecked"]').click()
+      await page
+        .locator('[role="option"][data-state="unchecked"]')
+        .filter({ hasText: 'DataSource Fake (Testes)' })
+        .click()
       await page.keyboard.press('Escape')
       await page.keyboard.press('Escape')
       const save = page.getByTestId('time-entry-save-btn').first()
