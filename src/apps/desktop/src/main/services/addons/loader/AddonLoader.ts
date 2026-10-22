@@ -80,15 +80,15 @@ import yaml from 'js-yaml'
 
 import { getSettings, saveSettings } from '@/main/settings'
 
-import sdkPkg from '../../../../sdk/package.json'
-import { AddonBindingLifetime, AddonLifetime } from './AddonLifetime'
-import { AddonScopedVault } from './AddonScopedVault'
+import sdkPkg from '../../../../../../sdk/package.json'
 import {
   GuardedMemberProvider,
   GuardedMetadataProvider,
   GuardedTaskProvider,
   GuardedTimeEntryProvider,
-} from './GuardedDataSourceProviders'
+} from '../data-sources/GuardedDataSourceProviders'
+import { AddonBindingLifetime, AddonLifetime } from '../lifecycle/AddonLifetime'
+import { AddonScopedVault } from '../vault/AddonScopedVault'
 
 export class MemoryRegistry<T extends { id?: string }> implements IRegistry<T> {
   private items = new Map<string, T>()
@@ -1051,24 +1051,12 @@ export class AddonLoader implements IAddonReloader {
 
   public handleOAuthCallbackUrl(rawUrl: string): boolean {
     try {
-      if (!rawUrl || typeof rawUrl !== 'string') {
+      if (!rawUrl) return false
+      const parsed = new URL(rawUrl)
+      if (parsed.protocol !== 'electron:' && parsed.protocol !== 'mr-tick:')
         return false
-      }
-
-      if (!rawUrl.startsWith('mr-tick-app://')) {
+      if (parsed.hostname !== 'oauth' || parsed.pathname !== '/callback')
         return false
-      }
-
-      let parsed: URL
-      try {
-        parsed = new URL(rawUrl.replace('mr-tick-app://', 'http://localhost/'))
-      } catch {
-        return false
-      }
-
-      if (parsed.pathname !== '/oauth/callback') {
-        return false
-      }
 
       console.log(
         '[AddonLoader] 🔗 Deep Link OAuth recebido em /oauth/callback',

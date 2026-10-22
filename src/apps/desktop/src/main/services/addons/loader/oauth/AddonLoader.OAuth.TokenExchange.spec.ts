@@ -10,7 +10,7 @@ import {
 import { shell } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AddonLoader } from './AddonLoader'
+import { AddonLoader } from '../AddonLoader'
 import { createOAuthTestSetup } from './AddonLoader.OAuth.fixture'
 
 vi.mock('electron', () => ({
@@ -230,7 +230,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Token Exchange', () => {
 
       expect(capturedOAuthState).toMatch(/^oauth-ds_[0-9a-f-]{36}$/)
       addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=ds-oauth-code-777&state=${capturedOAuthState}`,
+        `mr-tick://oauth/callback?code=ds-oauth-code-777&state=${capturedOAuthState}`,
       )
 
       const authResult = await authPromise

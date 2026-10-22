@@ -7,7 +7,7 @@ import { ViewModel } from '@mr-tick/shared/view-models'
 import { IpcMainInvokeEvent } from 'electron'
 
 import { HandlerBase } from '@/main/handlers/HandlerBase'
-import { UpdaterService } from '@/main/services/UpdaterService'
+import { UpdaterService } from '@/main/services/updates/UpdaterService'
 
 export class UpdaterHandler implements HandlerBase<UpdaterHandler> {
   constructor(private readonly updaterService: UpdaterService) {}

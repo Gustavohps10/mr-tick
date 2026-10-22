@@ -10,13 +10,13 @@ import {
 import {
   permissiveAddonAccessService,
   unavailableCore,
-} from './addon-core-test-fixture'
+} from '../../core/addon-core-test-fixture'
 import {
   emptyAddonCredentialsVault,
   emptyAddonSettingsRepository,
   emptyWorkspaceReferenceRegistry,
-} from './addon-workspace-reference-test-fixture'
-import { AddonLoader } from './AddonLoader'
+} from '../../core/addon-workspace-reference-test-fixture'
+import { AddonLoader } from '../AddonLoader'
 
 export const unavailableRuntime: ILocalRuntimeAPI = {
   request: async () => ({

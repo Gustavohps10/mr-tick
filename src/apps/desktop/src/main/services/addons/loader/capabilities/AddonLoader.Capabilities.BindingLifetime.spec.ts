@@ -11,7 +11,7 @@ import { IAddon, IAddonManifest } from '@mr-tick/sdk'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import { describe, expect, it, vi } from 'vitest'
 
-import { unavailableCore } from './addon-core-test-fixture'
+import { unavailableCore } from '../../core/addon-core-test-fixture'
 import {
   createLoader,
   fakeHttpClient,

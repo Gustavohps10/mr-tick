@@ -19,12 +19,12 @@ import {
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { unavailableCore } from './addon-core-test-fixture'
+import { unavailableCore } from '../core/addon-core-test-fixture'
 import {
   emptyAddonCredentialsVault,
   emptyAddonSettingsRepository,
   emptyWorkspaceReferenceRegistry,
-} from './addon-workspace-reference-test-fixture'
+} from '../core/addon-workspace-reference-test-fixture'
 import { AddonLoader } from './AddonLoader'
 
 vi.mock('electron', () => ({

@@ -15,12 +15,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   permissiveAddonAccessService,
   unavailableCore,
-} from './addon-core-test-fixture'
+} from '../core/addon-core-test-fixture'
 import {
   emptyAddonCredentialsVault,
   emptyAddonSettingsRepository,
   emptyWorkspaceReferenceRegistry,
-} from './addon-workspace-reference-test-fixture'
+} from '../core/addon-workspace-reference-test-fixture'
 import { AddonLoader } from './AddonLoader'
 
 const unavailableRuntime: ILocalRuntimeAPI = {

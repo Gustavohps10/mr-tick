@@ -69,10 +69,10 @@ import { MetadataHandler } from '@/main/handlers/MetadataHandler'
 import { WorkspacesHandler } from '@/main/handlers/WorkspacesHandler'
 import { DataSourceResolver } from '@/main/resolvers/data-source-resolver'
 import { openIpcRoutes } from '@/main/routes'
-import { AddonLoader } from '@/main/services/AddonLoader'
-import { DesktopCredentialRecovery } from '@/main/services/DesktopCredentialRecovery'
-import { LocalRuntimeDispatcher } from '@/main/services/LocalRuntimeDispatcher'
-import { UpdaterService } from '@/main/services/UpdaterService'
+import { AddonLoader } from '@/main/services/addons/loader/AddonLoader'
+import { DesktopCredentialRecovery } from '@/main/services/credentials/DesktopCredentialRecovery'
+import { LocalRuntimeDispatcher } from '@/main/services/local-runtime/LocalRuntimeDispatcher'
+import { UpdaterService } from '@/main/services/updates/UpdaterService'
 import { getSettings } from '@/main/settings'
 import { createTray } from '@/main/tray'
 
@@ -82,7 +82,7 @@ import {
   licensingApiConfiguration,
   offlineAuthorizationVerificationConfiguration,
 } from './securityConfiguration'
-import { AddonCoreCapabilities } from './services/AddonCoreCapabilities'
+import { AddonCoreCapabilities } from './services/addons/core/AddonCoreCapabilities'
 
 const requireNative = createRequire(import.meta.url)
 
@@ -111,8 +111,13 @@ export type IHandlersScope = {
   updaterHandler: typeof UpdaterHandler
 }
 
+const oauthCallbackProtocol = app.isPackaged ? 'mr-tick' : 'electron'
+
 function findDeepLinkInArgs(args: string[]): string | undefined {
   for (const arg of args) {
+    const oauthPrefix = `${oauthCallbackProtocol}://`
+    if (arg.includes(oauthPrefix))
+      return arg.substring(arg.indexOf(oauthPrefix))
     if (arg.includes('mr-tick-app://')) {
       return arg.substring(arg.indexOf('mr-tick-app://'))
     }
@@ -237,7 +242,10 @@ if (gotTheLock) {
       return
     }
 
-    if (globalAddonLoader && cleanUrl.startsWith('mr-tick-app://')) {
+    if (
+      globalAddonLoader &&
+      cleanUrl.startsWith(`${oauthCallbackProtocol}://`)
+    ) {
       globalAddonLoader.handleOAuthCallbackUrl(cleanUrl)
     }
   }
@@ -335,6 +343,9 @@ if (gotTheLock) {
       compiledFile: currentCompiledFile,
     })
 
+    app.setAsDefaultProtocolClient(oauthCallbackProtocol, process.execPath, [
+      currentCompiledFile,
+    ])
     app.setAsDefaultProtocolClient('mr-tick-app', process.execPath, [
       currentCompiledFile,
     ])
@@ -343,6 +354,7 @@ if (gotTheLock) {
     ])
   }
   if (app.isPackaged) {
+    app.setAsDefaultProtocolClient(oauthCallbackProtocol)
     app.setAsDefaultProtocolClient('mr-tick-app')
     app.setAsDefaultProtocolClient('mistertick')
   }
@@ -357,7 +369,11 @@ if (gotTheLock) {
 
   app.on('open-url', (event, url) => {
     event.preventDefault()
-    if (url.startsWith('mr-tick-app://') || url.startsWith('mistertick://')) {
+    if (
+      url.startsWith(`${oauthCallbackProtocol}://`) ||
+      url.startsWith('mr-tick-app://') ||
+      url.startsWith('mistertick://')
+    ) {
       handleIncomingDeepLink(url)
     }
   })
@@ -536,13 +552,6 @@ if (gotTheLock) {
   function handleProtocol() {
     protocol.handle('mr-tick-app', async (request) => {
       try {
-        if (request.url.startsWith('mr-tick-app://oauth/callback')) {
-          if (globalAddonLoader) {
-            globalAddonLoader.handleOAuthCallbackUrl(request.url)
-          }
-          return new Response('OK', { status: 200 })
-        }
-
         if (request.url.startsWith('mr-tick-app://activate')) {
           handleIncomingDeepLink(request.url)
           return new Response('OK', { status: 200 })

@@ -24,7 +24,7 @@ import type {
   RuntimePersistenceReply,
   RuntimeReplyPacket,
   RuntimeSyncReply,
-} from '../../runtime-protocol'
+} from '../../../runtime-protocol'
 
 interface PendingRuntimeRequest<T> {
   generation: string

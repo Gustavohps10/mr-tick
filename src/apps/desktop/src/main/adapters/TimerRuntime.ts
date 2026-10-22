@@ -2,7 +2,7 @@ import type { TimerStateDTO } from '@mr-tick/application'
 import { isNonEmptyString, isRecord } from '@mr-tick/shared/helpers'
 import { BrowserWindow, ipcMain } from 'electron'
 
-import type { AddonLoader } from '@/main/services/AddonLoader'
+import type { AddonLoader } from '@/main/services/addons/loader/AddonLoader'
 import { formatTrayTime, updateTrayTimer } from '@/main/tray'
 
 interface TimerProjection {

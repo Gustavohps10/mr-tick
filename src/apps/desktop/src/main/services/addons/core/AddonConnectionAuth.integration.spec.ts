@@ -26,6 +26,7 @@ import { AppError, Either } from '@mr-tick/shared/helpers'
 import { NoOpSystemEventEmitter } from '@mr-tick/shared/transport'
 import { describe, expect, it, vi } from 'vitest'
 
+import { AddonLoader } from '../loader/AddonLoader'
 import { permissiveAddonAccessService } from './addon-core-test-fixture'
 import {
   emptyAddonCredentialsVault,
@@ -33,7 +34,6 @@ import {
   emptyWorkspaceReferenceRegistry,
 } from './addon-workspace-reference-test-fixture'
 import { AddonCoreCapabilities } from './AddonCoreCapabilities'
-import { AddonLoader } from './AddonLoader'
 
 function setupIntegrationFixture() {
   const created = Workspace.create({ name: 'Integration Fixture Workspace' })

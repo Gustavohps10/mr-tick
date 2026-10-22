@@ -20,7 +20,7 @@ import type {
 } from '@mr-tick/application'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 
-import type { AddonBindingLifetime } from './AddonLifetime'
+import type { AddonBindingLifetime } from '../lifecycle/AddonLifetime'
 
 export type OperationSupportChecker = (operation: string) => boolean
 

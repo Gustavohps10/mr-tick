@@ -24,9 +24,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { DataSourceResolver } from '@/main/resolvers/data-source-resolver'
 
-import { unavailableCore } from './addon-core-test-fixture'
-import { emptyAddonCredentialsVault } from './addon-workspace-reference-test-fixture'
-import { AddonCoreCapabilities } from './AddonCoreCapabilities'
+import { unavailableCore } from '../../core/addon-core-test-fixture'
+import { emptyAddonCredentialsVault } from '../../core/addon-workspace-reference-test-fixture'
+import { AddonCoreCapabilities } from '../../core/AddonCoreCapabilities'
 import {
   createLoader,
   fakeHttpClient,

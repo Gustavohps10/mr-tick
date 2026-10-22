@@ -25,13 +25,13 @@ import {
 } from '@mr-tick/application'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 
-import { unavailableCore } from './addon-core-test-fixture'
+import { unavailableCore } from '../../core/addon-core-test-fixture'
 import {
   emptyAddonCredentialsVault,
   emptyAddonSettingsRepository,
   emptyWorkspaceReferenceRegistry,
-} from './addon-workspace-reference-test-fixture'
-import { AddonLoader } from './AddonLoader'
+} from '../../core/addon-workspace-reference-test-fixture'
+import { AddonLoader } from '../AddonLoader'
 
 const credentials = emptyAddonCredentialsVault()
 const runtime: ILocalRuntimeAPI = {

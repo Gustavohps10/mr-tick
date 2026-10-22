@@ -5,7 +5,7 @@ import {
 import { shell } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AddonLoader } from './AddonLoader'
+import { AddonLoader } from '../AddonLoader'
 import { createOAuthTestSetup } from './AddonLoader.OAuth.fixture'
 
 vi.mock('electron', () => ({
@@ -36,26 +36,29 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
   })
 
   describe('3. Callback Processing, Deep Linking & Replay Protection', () => {
-    it('resolve Promise em callback válido com code e state', async () => {
-      const context = addonLoader.createContext('test-addon')
-      vi.mocked(shell.openExternal).mockResolvedValue(undefined)
+    it.each(['electron', 'mr-tick'])(
+      'resolve Promise em callback %s com code e state',
+      async (protocol) => {
+        const context = addonLoader.createContext('test-addon')
+        vi.mocked(shell.openExternal).mockResolvedValue(undefined)
 
-      const state = 'state-valid-3'
-      const authPromise = context.host.oauth.authorize({
-        authUrl: 'https://auth.example.com/authorize',
-        state,
-      })
+        const state = 'state-valid-3'
+        const authPromise = context.host.oauth.authorize({
+          authUrl: 'https://auth.example.com/authorize',
+          state,
+        })
 
-      const handled = addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=my-secret-code&state=${state}&custom_param=extra`,
-      )
-      expect(handled).toBe(true)
+        const handled = addonLoader.handleOAuthCallbackUrl(
+          `${protocol}://oauth/callback?code=my-secret-code&state=${state}&custom_param=extra`,
+        )
+        expect(handled).toBe(true)
 
-      const result = await authPromise
-      expect(result.code).toBe('my-secret-code')
-      expect(result.state).toBe(state)
-      expect(result.custom_param).toBe('extra')
-    })
+        const result = await authPromise
+        expect(result.code).toBe('my-secret-code')
+        expect(result.state).toBe(state)
+        expect(result.custom_param).toBe('extra')
+      },
+    )
 
     it('ignora callback sem state e encerra a Promise pendente por timeout sem vazamento', async () => {
       const context = addonLoader.createContext('test-addon')
@@ -68,7 +71,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
       })
 
       const handled = addonLoader.handleOAuthCallbackUrl(
-        'mr-tick-app://oauth/callback?code=some-code',
+        'mr-tick://oauth/callback?code=some-code',
       )
       expect(handled).toBe(false)
 
@@ -89,7 +92,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
       })
 
       const handled = addonLoader.handleOAuthCallbackUrl(
-        'mr-tick-app://oauth/callback?code=attacker-code&state=unknown-state',
+        'mr-tick://oauth/callback?code=attacker-code&state=unknown-state',
       )
       expect(handled).toBe(false)
 
@@ -110,7 +113,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
       })
 
       const handled = addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?error=access_denied&error_description=User+denied+access&state=${state}`,
+        `mr-tick://oauth/callback?error=access_denied&error_description=User+denied+access&state=${state}`,
       )
       expect(handled).toBe(true)
 
@@ -130,7 +133,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
       })
 
       const handled = addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?state=${state}`,
+        `mr-tick://oauth/callback?state=${state}`,
       )
       expect(handled).toBe(true)
 
@@ -150,12 +153,12 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
       })
 
       const firstHandled = addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=valid-code&state=${state}`,
+        `mr-tick://oauth/callback?code=valid-code&state=${state}`,
       )
       expect(firstHandled).toBe(true)
 
       const secondHandled = addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=valid-code&state=${state}`,
+        `mr-tick://oauth/callback?code=valid-code&state=${state}`,
       )
       expect(secondHandled).toBe(false)
 
@@ -216,7 +219,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
       )
 
       const handled = addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=late-code&state=${state}`,
+        `mr-tick://oauth/callback?code=late-code&state=${state}`,
       )
       expect(handled).toBe(false)
     })
@@ -233,7 +236,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
       })
 
       addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=code-123&state=${state}`,
+        `mr-tick://oauth/callback?code=code-123&state=${state}`,
       )
       const result = await authPromise
       expect(result.code).toBe('code-123')
@@ -257,7 +260,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
       )
 
       addonLoader.handleOAuthCallbackUrl(
-        'mr-tick-app://oauth/callback?code=123&state=my-state-open',
+        'mr-tick://oauth/callback?code=123&state=my-state-open',
       )
       await authPromise
     })
@@ -279,7 +282,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
       )
 
       const handled = addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=code-123&state=${state}`,
+        `mr-tick://oauth/callback?code=code-123&state=${state}`,
       )
       expect(handled).toBe(false)
     })
@@ -301,7 +304,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
       )
 
       const handled = addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=123&state=${state}`,
+        `mr-tick://oauth/callback?code=123&state=${state}`,
       )
       expect(handled).toBe(false)
     })
@@ -327,7 +330,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
 
       // Resolve addon 2 first
       addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=code-for-2&state=${state2}`,
+        `mr-tick://oauth/callback?code=code-for-2&state=${state2}`,
       )
       const result2 = await authPromise2
       expect(result2.code).toBe('code-for-2')
@@ -335,7 +338,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Callbacks & Concurrency', () => {
 
       // Resolve addon 1 second
       addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=code-for-1&state=${state1}`,
+        `mr-tick://oauth/callback?code=code-for-1&state=${state1}`,
       )
       const result1 = await authPromise1
       expect(result1.code).toBe('code-for-1')

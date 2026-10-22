@@ -35,7 +35,7 @@ import {
 import { type IpcMainInvokeEvent } from 'electron'
 
 import { HandlerBase } from '@/main/handlers/HandlerBase'
-import { AddonLoader } from '@/main/services/AddonLoader'
+import { AddonLoader } from '@/main/services/addons/loader/AddonLoader'
 import { getSettings, saveSettings } from '@/main/settings'
 
 export class AddonsHandler implements HandlerBase<AddonsHandler> {

@@ -6,7 +6,7 @@ import { generateOAuthState } from '@mr-tick/sdk'
 import { shell } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AddonLoader } from './AddonLoader'
+import { AddonLoader } from '../AddonLoader'
 import { createOAuthTestSetup } from './AddonLoader.OAuth.fixture'
 
 vi.mock('electron', () => ({
@@ -55,7 +55,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - State & Authority', () => {
 
       // Clean up
       addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=abc&state=${generatedState}`,
+        `mr-tick://oauth/callback?code=abc&state=${generatedState}`,
       )
       await authPromise
     })
@@ -75,7 +75,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - State & Authority', () => {
       expect(parsedUrl.searchParams.get('state')).toBe(customState)
 
       addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=auth-code-123&state=${customState}`,
+        `mr-tick://oauth/callback?code=auth-code-123&state=${customState}`,
       )
       const result = await authPromise
       expect(result.code).toBe('auth-code-123')
@@ -110,7 +110,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - State & Authority', () => {
 
       expect(shell.openExternal).toHaveBeenCalledTimes(1)
       addonLoader.handleOAuthCallbackUrl(
-        `mr-tick-app://oauth/callback?code=code-ok&state=${matchingState}`,
+        `mr-tick://oauth/callback?code=code-ok&state=${matchingState}`,
       )
       const result = await authPromise
       expect(result.code).toBe('code-ok')
@@ -143,7 +143,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - State & Authority', () => {
 
       expect(shell.openExternal).toHaveBeenCalledTimes(1)
       addonLoader.handleOAuthCallbackUrl(
-        'mr-tick-app://oauth/callback?code=ok&state=https-state',
+        'mr-tick://oauth/callback?code=ok&state=https-state',
       )
       await authPromise
     })
@@ -172,7 +172,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - State & Authority', () => {
 
       expect(shell.openExternal).toHaveBeenCalledTimes(1)
       addonLoader.handleOAuthCallbackUrl(
-        'mr-tick-app://oauth/callback?code=ok&state=localhost-state',
+        'mr-tick://oauth/callback?code=ok&state=localhost-state',
       )
       await authPromise
     })
@@ -188,7 +188,7 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - State & Authority', () => {
 
       expect(shell.openExternal).toHaveBeenCalledTimes(1)
       addonLoader.handleOAuthCallbackUrl(
-        'mr-tick-app://oauth/callback?code=ok&state=ip-state',
+        'mr-tick://oauth/callback?code=ok&state=ip-state',
       )
       await authPromise
     })

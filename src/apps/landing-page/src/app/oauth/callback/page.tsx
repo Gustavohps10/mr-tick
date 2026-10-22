@@ -1,5 +1,7 @@
 import Link from 'next/link'
 
+import { createOAuthDesktopCallbackUrl } from '@/lib/oauth-callback'
+
 export default async function OAuthCallbackPage({
   searchParams,
 }: {
@@ -17,14 +19,17 @@ export default async function OAuthCallbackPage({
     if (value !== undefined) {
       if (Array.isArray(value)) {
         value.forEach((v) => urlSearchParams.append(key, v))
-      } else {
-        urlSearchParams.append(key, value)
+        continue
       }
+      urlSearchParams.append(key, value)
     }
   }
 
   const query = urlSearchParams.toString()
-  const deepLinkUrl = `mr-tick-app://oauth/callback${query ? `?${query}` : ''}`
+  const deepLinkUrl = createOAuthDesktopCallbackUrl(
+    query,
+    process.env.NODE_ENV === 'development',
+  )
 
   return (
     <div className="bg-background text-foreground flex min-h-screen items-center justify-center p-4">
