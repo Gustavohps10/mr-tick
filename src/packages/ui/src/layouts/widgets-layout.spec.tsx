@@ -111,10 +111,11 @@ describe('TB-003: explicit workspace resolution before opening the widget databa
     })
   })
 
-  it('keeps the workspace picker transparent and restores the previous background on unmount', async () => {
+  it('keeps the unselected widget transparent and restores the previous background on unmount', async () => {
     document.body.style.background = 'white'
     const view = renderWidget()
-    expect(await screen.findByRole('button', { name: 'ws-A' })).toBeTruthy()
+    expect(listAll).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'ws-A' })).toBeNull()
     expect(document.body.style.background).toBe('transparent')
     view.unmount()
     expect(document.body.style.background).toBe('white')
@@ -159,10 +160,13 @@ describe('TB-003: explicit workspace resolution before opening the widget databa
 
   it('does not automatically choose the first configured workspace without a selection', async () => {
     renderWidget()
-    expect(await screen.findByRole('button', { name: 'ws-B' })).toBeTruthy()
+    expect(listAll).not.toHaveBeenCalled()
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
     expect(screen.queryByTestId('workspace-provider')).toBeNull()
     expect(useTimerSettings.getState().selectedWorkspaceId).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'ws-B' }))
+    await act(async () => {
+      registeredEventCallback?.({ workspaceId: 'ws-B' })
+    })
     expect(
       (await screen.findByTestId('workspace-provider')).getAttribute(
         'data-workspace-id',
@@ -178,7 +182,11 @@ describe('TB-003: explicit workspace resolution before opening the widget databa
       error: 'WORKSPACE_NOT_FOUND',
     })
     renderWidget()
-    expect(await screen.findByRole('button', { name: 'ws-A' })).toBeTruthy()
+    await waitFor(() =>
+      expect(useTimerSettings.getState().selectedWorkspaceId).toBeNull(),
+    )
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+    expect(listAll).not.toHaveBeenCalled()
     expect(screen.queryByTestId('workspace-provider')).toBeNull()
     expect(useTimerSettings.getState().selectedWorkspaceId).toBeNull()
   })
@@ -191,7 +199,11 @@ describe('TB-003: explicit workspace resolution before opening the widget databa
       data: { ...workspace('unconfigured-workspace'), status: 'draft' },
     })
     renderWidget()
-    expect(await screen.findByRole('button', { name: 'ws-A' })).toBeTruthy()
+    await waitFor(() =>
+      expect(useTimerSettings.getState().selectedWorkspaceId).toBeNull(),
+    )
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+    expect(listAll).not.toHaveBeenCalled()
     expect(screen.queryByTestId('workspace-provider')).toBeNull()
     expect(useTimerSettings.getState().selectedWorkspaceId).toBeNull()
   })

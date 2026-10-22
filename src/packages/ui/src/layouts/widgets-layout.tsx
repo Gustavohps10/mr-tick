@@ -52,26 +52,6 @@ export function WidgetLayout() {
       setSelectedWorkspaceId(null)
   }, [candidateQuery.data, setSelectedWorkspaceId])
 
-  const isUnconfigured =
-    candidateQuery.data?.isSuccess &&
-    candidateQuery.data.data?.status !== 'configured'
-
-  const shouldFetchCatalog =
-    !candidateId ||
-    candidateQuery.data?.statusCode === 404 ||
-    Boolean(isUnconfigured)
-
-  const listQuery = useQuery({
-    queryKey: ['widget-workspaces-catalog'],
-    queryFn: async () => {
-      const response = await bridge.workspaces.listAll()
-      if (!response.isSuccess || !response.data) return []
-      return response.data
-    },
-    enabled: shouldFetchCatalog,
-    retry: false,
-  })
-
   useEffect(() => {
     if (!bridge?.events?.on) return
 
@@ -105,27 +85,6 @@ export function WidgetLayout() {
         >
           Tentar novamente
         </button>
-      </div>
-    )
-  }
-
-  if (shouldFetchCatalog) {
-    return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center gap-2 p-4">
-        {listQuery.data
-          ?.filter((ws) => ws.status === 'configured')
-          .map((ws) => (
-            <button
-              key={ws.id}
-              onClick={() => {
-                setSelectedWorkspaceId(ws.id)
-                navigate(`/workspaces/${ws.id}/widgets/timer`)
-              }}
-              className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded px-3 py-1.5 text-xs font-medium"
-            >
-              {ws.name}
-            </button>
-          ))}
       </div>
     )
   }

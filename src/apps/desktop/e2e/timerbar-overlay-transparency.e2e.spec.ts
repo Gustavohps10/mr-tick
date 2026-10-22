@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures/electron-fixture'
 
-test('widget workspace picker preserves a transparent desktop surface in the light theme', async ({
+test('widget stays transparent without centered workspace buttons when no workspace is selected', async ({
   electronApp,
   page,
 }) => {
@@ -23,9 +23,6 @@ test('widget workspace picker preserves a transparent desktop surface in the lig
     history.replaceState(null, '', '#/widgets/timer')
   })
   await widget.reload()
-  await expect(
-    widget.getByRole('button', { name: 'TESTE', exact: true }),
-  ).toBeVisible()
   await expect(widget.locator('html')).toHaveClass(/light/)
   await expect(widget.locator('body')).toHaveCSS(
     'background-color',
@@ -39,6 +36,8 @@ test('widget workspace picker preserves a transparent desktop surface in the lig
     'background-color',
     'rgba(0, 0, 0, 0)',
   )
+  await expect(widget.getByRole('button')).toHaveCount(0)
+  await expect(widget.locator('[data-widget-card]')).toHaveCount(0)
   await expect(page.locator('body')).not.toHaveCSS(
     'background-color',
     'rgba(0, 0, 0, 0)',
