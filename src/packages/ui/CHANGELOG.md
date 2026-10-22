@@ -1,5 +1,13 @@
 ﻿# @mr-tick/ui
 
+## 1.10.1
+
+### Patch Changes
+
+- da9d22f: Keep the desktop widget transparent while choosing a workspace, loading, or displaying an error, preventing an opaque fullscreen overlay at startup.
+
+  Keep the widget empty until a workspace is explicitly selected from the main window, instead of rendering a centered workspace catalog on the desktop.
+
 ## 1.10.0
 
 ### Minor Changes
