@@ -101,7 +101,6 @@ describe('GetMappingFieldsService', () => {
 
     dataSourceResolverMock = {
       getDataSource: vi.fn().mockResolvedValue(Either.success(adapter)),
-      getConnectionProfiles: vi.fn(),
       getDataSourcesForWorkspace: vi.fn(),
     }
 

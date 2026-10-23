@@ -17,7 +17,6 @@ import type {
   ICoreCacheTransport,
   ICoreConnectionsAPI,
   ICoreReadAPI,
-  IDataSourceResolver,
   IDisconnectAddonConnectionUseCase,
   ILinkConnectionUseCase,
   IOAuthAttemptCoordinator,
@@ -47,9 +46,6 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
     private readonly transport: ICoreCacheTransport,
     private readonly addonId: string,
     private readonly connectionLifecycleCoordinator: IConnectionLifecycleCoordinator,
-    private readonly dataSourceResolver: IDataSourceResolver,
-    private readonly authenticator: () =>
-      AddonConnectionAuthenticator | undefined | null,
     private readonly linkConnectionService: ILinkConnectionUseCase,
     private readonly connectConnectionService: IConnectAddonConnectionUseCase,
     private readonly disconnectConnectionService: IDisconnectAddonConnectionUseCase,
@@ -236,25 +232,7 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
       )
     }
 
-    let role = scope.authorizationRole?.trim()
-    if (role === undefined || role.length === 0) {
-      if (
-        context.success.profile.roles !== undefined &&
-        context.success.profile.roles.length === 1
-      ) {
-        const singleRole = context.success.profile.roles.find((r) =>
-          isNonEmptyString(r.authorizationRole),
-        )
-        if (singleRole !== undefined) {
-          role = singleRole.authorizationRole
-        }
-      }
-    }
-    if (role === undefined || role.length === 0) {
-      return Either.failure(
-        AppError.ValidationError('AUTHORIZATION_ROLE_REQUIRED'),
-      )
-    }
+    const role = context.success.authorizationRole
 
     const existingAuth = connection.authorizations.find(
       (candidate) => candidate.authorizationRole === role,
@@ -607,7 +585,7 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
           AddonConnectionAuthenticator,
           { method: 'oauth' }
         >
-        profile: ConnectionProfileDescriptor
+        authorizationRole: string
       }
     >
   > {
@@ -636,105 +614,88 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
         AppError.ValidationError('CONNECTION_PROFILE_INVALID'),
       )
 
-    let oauthAuthenticator:
-      Extract<AddonConnectionAuthenticator, { method: 'oauth' }> | undefined
-    if (this.authenticator) {
-      const legacyAuth = this.authenticator()
-      if (legacyAuth && legacyAuth.method === 'oauth') {
-        oauthAuthenticator = legacyAuth
-      }
-    }
+    let authorizationRole = scope.authorizationRole?.trim()
 
-    if (!oauthAuthenticator) {
-      let candidateAuthProfileId: string | undefined
-      if (profile.roles && profile.roles.length > 0) {
-        if (scope.authorizationRole) {
-          const role = profile.roles.find(
-            (candidateRole) =>
-              candidateRole.authorizationRole === scope.authorizationRole,
-          )
-          if (role) {
-            if (role.defaultAuthProfileId) {
-              candidateAuthProfileId = role.defaultAuthProfileId
-            }
-            if (
-              !candidateAuthProfileId &&
-              role.allowedAuthProfileIds.length > 0
-            ) {
-              candidateAuthProfileId = role.allowedAuthProfileIds[0]
-            }
-          }
-        }
-        if (!candidateAuthProfileId && profile.roles.length === 1) {
-          const firstRole = profile.roles[0]
-          if (firstRole.defaultAuthProfileId) {
-            candidateAuthProfileId = firstRole.defaultAuthProfileId
-          }
-          if (
-            !candidateAuthProfileId &&
-            firstRole.allowedAuthProfileIds.length > 0
-          ) {
-            candidateAuthProfileId = firstRole.allowedAuthProfileIds[0]
-          }
-        }
-      }
-      if (candidateAuthProfileId) {
-        const auth = this.authenticatorRegistry.getAuthenticator(
-          this.addonId,
-          candidateAuthProfileId,
+    if (!authorizationRole && profile.roles?.length === 1)
+      for (const role of profile.roles)
+        authorizationRole = role.authorizationRole
+
+    if (!authorizationRole)
+      return Either.failure(
+        AppError.ValidationError('AUTHORIZATION_ROLE_REQUIRED'),
+      )
+
+    let authProfileId = profile.defaultAuthProfileId
+
+    if (profile.roles && profile.roles.length > 0) {
+      const role = profile.roles.find(
+        (item) => item.authorizationRole === authorizationRole,
+      )
+
+      if (!role)
+        return Either.failure(
+          AppError.ValidationError('AUTHORIZATION_ROLE_NOT_ALLOWED'),
         )
-        if (auth && auth.method === 'oauth') {
-          oauthAuthenticator = auth
-        }
-      }
+
+      authProfileId = role.defaultAuthProfileId
+
+      if (authProfileId && !role.allowedAuthProfileIds.includes(authProfileId))
+        return Either.failure(
+          AppError.ValidationError('AUTH_PROFILE_NOT_ALLOWED_FOR_ROLE'),
+        )
     }
 
-    if (!oauthAuthenticator) {
-      const allAuths = this.authenticatorRegistry.getAuthenticatorsForAddon(
-        this.addonId,
+    if (!authProfileId)
+      return Either.failure(
+        AppError.ValidationError('AUTH_PROFILE_SELECTION_REQUIRED'),
       )
-      const found = allAuths.find(
-        (candidateAuth) => candidateAuth.method === 'oauth',
-      )
-      if (found && found.method === 'oauth') {
-        oauthAuthenticator = found
-      }
-    }
 
-    if (!oauthAuthenticator)
+    if (
+      (profile.roles === undefined || profile.roles.length === 0) &&
+      profile.allowedAuthProfileIds &&
+      !profile.allowedAuthProfileIds.includes(authProfileId)
+    )
+      return Either.failure(
+        AppError.ValidationError('AUTH_PROFILE_NOT_ALLOWED'),
+      )
+
+    const authenticator = this.authenticatorRegistry.getAuthenticator(
+      this.addonId,
+      authProfileId,
+    )
+
+    if (!authenticator)
       return Either.failure(
         AppError.NotFound('CONNECTION_AUTHENTICATOR_NOT_FOUND'),
       )
 
-    return Either.success({ authenticator: oauthAuthenticator, profile })
+    if (authenticator.method !== 'oauth')
+      return Either.failure(
+        AppError.ValidationError('UNSUPPORTED_AUTHENTICATION_METHOD'),
+      )
+
+    return Either.success({ authenticator, authorizationRole })
   }
+
   private async connectionProfiles(): Promise<
     Either<AppError, ConnectionProfileDescriptor[]>
   > {
-    const fromRegistry = await this.profilesResolver.getConnectionProfiles(
+    const profiles = await this.profilesResolver.getConnectionProfiles(
       this.addonId,
     )
-    if (fromRegistry.isSuccess() && fromRegistry.success.length > 0) {
-      const profilesList: ConnectionProfileDescriptor[] = [
-        ...fromRegistry.success,
-      ]
-      if (!isValidConnectionProfileDescriptors(profilesList)) {
-        return Either.failure(
-          AppError.ValidationError('CONNECTION_PROFILES_INVALID'),
-        )
-      }
-      return Either.success(profilesList)
-    }
-    const profiles = await this.dataSourceResolver.getConnectionProfiles(
-      this.addonId,
-    )
+
     if (profiles.isFailure()) return profiles.forwardFailure()
-    if (!isValidConnectionProfileDescriptors(profiles.success))
+
+    const descriptors = [...profiles.success]
+
+    if (!isValidConnectionProfileDescriptors(descriptors))
       return Either.failure(
         AppError.ValidationError('CONNECTION_PROFILES_INVALID'),
       )
-    return Either.success([...profiles.success])
+
+    return Either.success(descriptors)
   }
+
   private async query(
     input: CoreCacheQuery,
   ): Promise<Either<AppError, CoreCacheValue>> {

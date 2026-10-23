@@ -1,7 +1,8 @@
 export type AddonCapability =
-  'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme'
+  'auth' | 'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme'
 
 export const VALID_ADDON_CAPABILITIES: readonly AddonCapability[] = [
+  'auth',
   'dataSource',
   'watcher',
   'calendar',

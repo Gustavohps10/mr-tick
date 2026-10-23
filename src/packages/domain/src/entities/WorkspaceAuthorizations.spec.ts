@@ -36,15 +36,6 @@ function profileWithRoles(): ConnectionProfileDescriptor {
   }
 }
 
-function anonymousProfile(): ConnectionProfileDescriptor {
-  return {
-    connectionProfileId: 'public-connection',
-    cardinality: 'multi',
-    default: true,
-    roles: [],
-  }
-}
-
 const readIdentity: ConnectionIdentity = {
   kind: 'human',
   providerId: 'service',
@@ -265,108 +256,6 @@ describe('Workspace authorization roles', () => {
     expect(
       findAuthorization(afterMismatch.authorizations, 'read').identity,
     ).toEqual(readIdentity)
-  })
-
-  it('connects an anonymous declared profile without authorization, identity, or member', () => {
-    const workspace = createWorkspace()
-    expect(
-      workspace
-        .createConnection(
-          'public-connection-1',
-          'public-addon',
-          anonymousProfile(),
-        )
-        .isSuccess(),
-    ).toBe(true)
-
-    const result = workspace.connectNone('public-connection-1', {
-      endpoint: 'https://public.example',
-    })
-
-    expect(result.isSuccess()).toBe(true)
-    const connection = workspace.connections.find(
-      (candidate) => candidate.id === 'public-connection-1',
-    )
-    expect(connection).toBeDefined()
-    if (connection === undefined) return
-    expect(connection.authorizations).toEqual([])
-    expect(connection.identity).toBeUndefined()
-    expect(connection.authorizationId).toBeUndefined()
-  })
-
-  it('does not erase real authorizations when converting a connected profile to anonymous', () => {
-    const workspace = createWorkspace()
-    expect(
-      workspace
-        .createConnection('connection-1', 'service-addon', profileWithRoles())
-        .isSuccess(),
-    ).toBe(true)
-    expect(
-      workspace
-        .connectAuthorization('connection-1', {
-          authorizationRole: 'read',
-          authProfileId: 'read-api-key',
-          authorizationId: 'authorization-read',
-          identity: readIdentity,
-        })
-        .isSuccess(),
-    ).toBe(true)
-
-    const before = workspace.connections.find(
-      (candidate) => candidate.id === 'connection-1',
-    )
-    expect(before).toBeDefined()
-    if (before === undefined) return
-
-    const result = workspace.connectNone('connection-1')
-
-    expect(result.isFailure()).toBe(true)
-    expect(
-      workspace.connections.find(
-        (candidate) => candidate.id === 'connection-1',
-      ),
-    ).toEqual(before)
-  })
-
-  it('preserves anonymous configuration through archive and restore', () => {
-    const workspace = createWorkspace()
-    expect(
-      workspace
-        .createConnection(
-          'public-connection-1',
-          'public-addon',
-          anonymousProfile(),
-        )
-        .isSuccess(),
-    ).toBe(true)
-    expect(
-      workspace
-        .connectNone('public-connection-1', {
-          endpoint: 'https://public.example',
-          project: 'public',
-        })
-        .isSuccess(),
-    ).toBe(true)
-
-    expect(workspace.archiveConnection('public-connection-1').isSuccess()).toBe(
-      true,
-    )
-    expect(workspace.restoreConnection('public-connection-1').isSuccess()).toBe(
-      true,
-    )
-
-    const restored = workspace.connections.find(
-      (candidate) => candidate.id === 'public-connection-1',
-    )
-    expect(restored).toBeDefined()
-    if (restored === undefined) return
-    expect(restored.status).toBe('disconnected')
-    expect(restored.config).toEqual({
-      endpoint: 'https://public.example',
-      project: 'public',
-    })
-    expect(restored.authorizations).toEqual([])
-    expect(restored.identity).toBeUndefined()
   })
 
   it('preserves an inactive principal after disconnect and rejects a different reauthentication principal', () => {

@@ -174,13 +174,6 @@ it('keeps reused datasource definitions owned by distinct addons without mutatin
     oauthAttemptCoordinator,
   )
   const source: IDataSource = {
-    getConnectionProfiles: () => [
-      {
-        connectionProfileId: 'primary',
-        cardinality: 'multi',
-        default: true,
-      },
-    ],
     getConnectionSchema: () => [],
     createInstance: vi.fn<IDataSource['createInstance']>(),
   }

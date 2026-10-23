@@ -214,7 +214,7 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
           version: '1.2.0',
           creator: 'Gustavohps10',
           description: 'Sincronização com o Redmine',
-          capabilities: ['dataSource', 'theme'],
+          capabilities: ['auth', 'dataSource', 'theme'],
         },
       ],
     })
@@ -317,7 +317,7 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
           version: '0.2.0',
           creator: 'Mister Tick',
           description: 'Captura automática de chamadas de voz.',
-          capabilities: ['watcher'],
+          capabilities: ['auth', 'watcher'],
         },
       ],
     })

@@ -28,7 +28,7 @@ describe('validateAddon', () => {
       name: 'Presence Addon',
       version: '1.0.0',
       author: 'Author',
-      capabilities: ['watcher'],
+      capabilities: ['auth', 'watcher'],
     })
 
     const result = validateAddon('mock-dir')
@@ -64,7 +64,7 @@ describe('validateAddon', () => {
     const result = validateAddon('mock-dir')
     expect(result.valid).toBe(false)
     expect(result.errors).toContain(
-      'Capacidade inválida "invalidCapability". Capacidades válidas são: dataSource, watcher, calendar, punch, theme',
+      'Capacidade inválida "invalidCapability". Capacidades válidas são: auth, dataSource, watcher, calendar, punch, theme',
     )
   })
 })

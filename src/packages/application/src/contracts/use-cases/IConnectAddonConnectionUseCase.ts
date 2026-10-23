@@ -14,10 +14,6 @@ export interface OAuthAttemptCorrelation {
 
 export type AddonConnectionAuthenticationInput =
   | {
-      method: 'none'
-      configuration: ConnectionConfigPayload
-    }
-  | {
       method: 'credentials' | 'authorized'
       authorizationRole: string
       authProfileId: string
@@ -41,7 +37,7 @@ export interface ConnectAddonConnectionInput {
 }
 
 export interface ConnectAddonConnectionResult {
-  identity?: ConnectionIdentity
+  identity: ConnectionIdentity
 }
 
 export interface IConnectAddonConnectionUseCase {

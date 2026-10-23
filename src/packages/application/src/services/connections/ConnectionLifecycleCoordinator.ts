@@ -149,48 +149,6 @@ export class ConnectionLifecycleCoordinator implements IConnectionLifecycleCoord
         AppError.ValidationError('CONNECTION_RESERVATION_NOT_FOUND'),
       )
 
-    if (input.method === 'none') {
-      const operationId = crypto.randomUUID()
-      const intent = await this.lifecycleRepository.beginLifecycle({
-        kind: 'lifecycle',
-        operationId,
-        workspaceId: input.workspaceId,
-        connectionId: input.connectionInstanceId,
-        intent: 'connection.connect',
-        expectedRevision: connection.generation,
-        connectionGeneration: connection.generation,
-        reservationId: reservation.reservationId,
-        candidateReference: null,
-        previousReferences: [],
-      })
-      if (intent.isFailure()) return intent.forwardFailure()
-
-      const connected = workspace.connectNone(
-        input.connectionInstanceId,
-        input.configuration,
-      )
-      if (connected.isFailure()) {
-        const aborted = await this.lifecycleRepository.abortPending(operationId)
-        if (aborted.isFailure()) return aborted.forwardFailure()
-        return connected.forwardFailure()
-      }
-
-      const commitResult = await this.transactionBoundary.runInTransaction(
-        async ({ workspaces, lifecycle }) => {
-          const updateResult = await workspaces.update(workspace)
-          if (updateResult.isFailure()) return updateResult.forwardFailure()
-
-          const finished = await lifecycle.finishLifecycle(operationId)
-          if (finished.isFailure()) return finished.forwardFailure()
-
-          return Either.success(undefined)
-        },
-      )
-      if (commitResult.isFailure()) return commitResult.forwardFailure()
-
-      return Either.success({ kind: 'none' })
-    }
-
     const role = input.authorizationRole.trim()
     if (role.length === 0) {
       return Either.failure(
@@ -1345,9 +1303,6 @@ export class ConnectionLifecycleCoordinator implements IConnectionLifecycleCoord
     credentialReferenceId: string | undefined,
     configuration: Readonly<Record<string, string | number | boolean>>,
   ): Either<AppError, void> {
-    if (result.kind === 'none') {
-      return workspace.connectNone(connectionId, configuration)
-    }
     return workspace.connectAuthorization(
       connectionId,
       {

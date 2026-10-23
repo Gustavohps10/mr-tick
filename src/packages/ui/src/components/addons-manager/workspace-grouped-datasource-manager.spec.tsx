@@ -1,3 +1,5 @@
+import '@testing-library/jest-dom/vitest'
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
@@ -92,5 +94,22 @@ describe('WorkspaceGroupedDataSourceManager', () => {
     expect(mockBridge.workspaces.linkDataSource).toHaveBeenCalledOnce()
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(mockBridge.workspaces.submitCredentials).not.toHaveBeenCalled()
+  })
+
+  it('shows a profile loading failure instead of claiming that profiles were not declared', async () => {
+    mockBridge.addons.getConnectionProfiles.mockResolvedValue({
+      isSuccess: false,
+      statusCode: 404,
+      error: 'ADDON_CONNECTION_PROFILES_NOT_FOUND',
+    })
+
+    renderWithClient(<WorkspaceGroupedDataSourceManager addonId="addon-a" />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'ADDON_CONNECTION_PROFILES_NOT_FOUND',
+    )
+    expect(
+      screen.queryByText('O addon não declarou perfis de conexão.'),
+    ).toBeNull()
   })
 })

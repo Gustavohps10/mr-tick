@@ -1,20 +1,33 @@
 ---
-title: "Conexões e autenticação"
-description: Conecte contas externas e mantenha a identidade e as credenciais de cada conta separadas.
-icon: Cable
+title: Autenticação
+description: Declare conexões de contas sem depender de uma integração de tarefas.
+icon: KeyRound
 ---
 
-Use uma **conexão** quando o addon precisar acessar uma conta externa. Por exemplo, o usuário pode conectar dois servidores Redmine ou autorizar o Discord em um workspace. O addon fornece a integração; cada conexão mantém a conta escolhida e suas credenciais separadas.
+A capacidade `auth` permite que o addon ofereça conexões de contas em um workspace. Ela pode acompanhar qualquer outra capacidade. O Redmine usa `auth` e `dataSource`; o Discord usa `auth` e `watcher`. Um tema que só altera cores usa apenas `theme`.
 
-Conectar uma conta é independente de sincronizar tarefas. Um observador de atividade pode autenticar sem se tornar um datasource.
+```yaml
+capabilities:
+  - auth
+  - watcher
+requiredApiVersion: '>=0.11.0'
+```
+
+## Como funciona
+
+O manifesto declara que o addon conecta contas. Durante a ativação, o código registra os modelos de conexão com `contributions.connections.registerProfiles` e as formas de autenticação com `registerAuthenticator`. Os dois registros retornam `Either`: confira o resultado e interrompa a ativação em caso de falha. Sem `auth`, o aplicativo recusa esses registros.
+
+O perfil define quantas contas podem ser conectadas e quais formas de autenticação aceita. O autenticador implementa a comunicação com o serviço externo, usando credenciais ou OAuth. Se não houver autenticação, omita `auth` e o autenticador; use as configurações por addon ou workspace.
+
+O Mr. Tick cuida da conta escolhida, das tentativas de autorização, da renovação e do armazenamento das credenciais. Cada addon implementa as particularidades do serviço que integra. Declarar `auth` não torna o addon um datasource nem oferece isolamento de segurança para seu código.
 
 ## Registro
 
 ```ts
-import type { AddonContext } from '@mr-tick/sdk'
+import { type AddonContext, type AppError, type Either } from '@mr-tick/sdk'
 
-export function registerProfiles(context: AddonContext): void {
-  context.contributions.connections.registerProfiles([
+export function registerProfiles(context: AddonContext): Either<AppError, void> {
+  return context.contributions.connections.registerProfiles([
     {
       connectionProfileId: 'example-account',
       cardinality: 'multi',
@@ -28,7 +41,7 @@ export function registerProfiles(context: AddonContext): void {
 
 `connectionProfileId` identifica um modelo de conexão; `authProfileId` identifica uma implementação de autenticação. Perfis podem declarar autenticadores permitidos, padrão e papéis de autorização. `single` limita um perfil dentro de um workspace; `multi` permite instâncias distintas.
 
-Integrações de tarefas expõem perfis com `getConnectionProfiles()`, publicados quando a integração é registrada. Outros addons usam `contributions.connections.registerProfiles`. Registre os perfis e autenticadores durante a execução do addon; eles não são declarados no manifesto.
+Todo addon que conecta contas declara `auth` no manifesto e registra os perfis com `contributions.connections.registerProfiles`, inclusive datasources. Os detalhes dos perfis e autenticadores ficam no código; registrar ou remover um datasource não altera esses registros. As duas operações de registro retornam `Either`; trate a falha antes de continuar a ativação.
 
 ## Autenticador de credenciais
 

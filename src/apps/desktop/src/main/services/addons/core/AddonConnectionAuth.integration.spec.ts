@@ -9,7 +9,6 @@ import {
   type IAddonConnectionProfilesResolver,
   type IConnectionLifecycleCoordinator,
   type ICoreCacheTransport,
-  type IDataSourceResolver,
   type IDisconnectAddonConnectionUseCase,
   type ILinkConnectionUseCase,
   type ILocalRuntimeAPI,
@@ -129,9 +128,6 @@ function setupIntegrationFixture() {
     async (
       input: Parameters<IConnectionLifecycleCoordinator['connect']>[0],
     ): Promise<Either<AppError, ConnectionLifecycleAuthentication>> => {
-      if (input.method === 'none') {
-        return Either.success({ kind: 'none' })
-      }
       const authResult = await input.authenticate()
       if (authResult.isFailure()) {
         return Either.failure(authResult.failure)
@@ -153,18 +149,6 @@ function setupIntegrationFixture() {
     disconnect: async () => Either.success(),
     archive: async () => Either.success(),
     restore: async () => Either.success(workspace),
-  }
-
-  const resolverGetDataSource = vi.fn(async () =>
-    Either.failure<AppError, never>(
-      AppError.Internal('DATASOURCE_MUST_NOT_BE_RESOLVED_FOR_AUTH'),
-    ),
-  )
-
-  const resolver: IDataSourceResolver = {
-    getConnectionProfiles: async () => Either.success([profile]),
-    getDataSource: resolverGetDataSource,
-    getDataSourcesForWorkspace: async () => Either.success([]),
   }
 
   const workspaceDTO: WorkspaceDTO = {
@@ -241,8 +225,6 @@ function setupIntegrationFixture() {
     transport,
     'test-addon',
     coordinator,
-    resolver,
-    () => authenticator,
     linkService,
     connectService,
     disconnectService,
@@ -258,7 +240,6 @@ function setupIntegrationFixture() {
     core,
     authenticator,
     coordinatorConnect,
-    resolverGetDataSource,
   }
 }
 
@@ -291,7 +272,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
   })
 
   it('RED 2: authenticates via the registered authenticator without resolving or instantiating DataSource', async () => {
-    const { core, workspace, resolverGetDataSource } = setupIntegrationFixture()
+    const { core, workspace } = setupIntegrationFixture()
 
     const result = await core.connections.submitCredentials(
       {
@@ -309,7 +290,6 @@ describe('M07 host unit: addon connection auth via registry', () => {
 
     // COMPORTAMENTO ESPERADO (ALVO): A autenticação deve usar o authenticator do registry sem chamar getDataSource
     // COMPORTAMENTO ATUAL (RED): Chama dataSourceResolver.getDataSource e falha com DATASOURCE_MUST_NOT_BE_RESOLVED_FOR_AUTH
-    expect(resolverGetDataSource).not.toHaveBeenCalled()
     expect(result.isSuccess()).toBe(true)
   })
 
@@ -378,20 +358,16 @@ describe('M07 host unit: addon connection auth via registry', () => {
       },
       connect: async (connectInput) => {
         coordinatorState.connected = true
-        if (connectInput.method === 'authorized') {
-          const authResult = await connectInput.authenticate()
-          if (authResult.isFailure()) return authResult.forwardFailure()
-          coordinatorState.auth = {
-            kind: 'identity',
-            identity: authResult.success.identity,
-          }
-          return Either.success({
-            kind: 'identity',
-            identity: authResult.success.identity,
-          })
+        const authResult = await connectInput.authenticate()
+        if (authResult.isFailure()) return authResult.forwardFailure()
+        coordinatorState.auth = {
+          kind: 'identity',
+          identity: authResult.success.identity,
         }
-        coordinatorState.auth = { kind: 'none' }
-        return Either.success({ kind: 'none' })
+        return Either.success({
+          kind: 'identity',
+          identity: authResult.success.identity,
+        })
       },
       withCredentials: async () => Either.success(),
       refresh: async () => Either.success(),
@@ -437,15 +413,6 @@ describe('M07 host unit: addon connection auth via registry', () => {
       onStateChanged: () => () => {},
     }
 
-    const resolver: IDataSourceResolver = {
-      getConnectionProfiles: async () => Either.success([]),
-      getDataSource: async () =>
-        Either.failure(
-          AppError.Internal('DATASOURCE_MUST_NOT_BE_RESOLVED_FOR_WATCHER'),
-        ),
-      getDataSourcesForWorkspace: async () => Either.success([]),
-    }
-
     const oauthAttemptCoordinator = new OAuthAttemptCoordinator()
 
     const core = new AddonCoreCapabilities(
@@ -453,8 +420,6 @@ describe('M07 host unit: addon connection auth via registry', () => {
       transport,
       'mistertick-discord',
       coordinator,
-      resolver,
-      () => null,
       linkService,
       connectService,
       disconnectService,
@@ -486,6 +451,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
       oauthAttemptCoordinator,
     )
 
+    addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
     const addonContext = addonLoader.createContext('mistertick-discord')
 
     addonContext.contributions.connections.registerProfiles([
@@ -651,7 +617,8 @@ describe('M07 host unit: addon connection auth via registry', () => {
         )
         return Either.success(workspace)
       },
-      connect: async () => Either.success({ kind: 'none' as const }),
+      connect: async () =>
+        Either.failure(AppError.Internal('UNUSED_AUTHENTICATION')),
       withCredentials: async () => Either.success(),
       refresh: async () => Either.success(),
       disconnect: async () => Either.success(),
@@ -685,19 +652,11 @@ describe('M07 host unit: addon connection auth via registry', () => {
         }),
     }
 
-    const resolver: IDataSourceResolver = {
-      getConnectionProfiles: async () => Either.success([]),
-      getDataSource: async () => Either.failure(AppError.Internal('UNUSED')),
-      getDataSourcesForWorkspace: async () => Either.success([]),
-    }
-
     const core = new AddonCoreCapabilities(
       repository,
       transport,
       'mistertick-discord',
       coordinator,
-      resolver,
-      () => null,
       linkService,
       connectService,
       disconnectService,
@@ -729,6 +688,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
       oauthAttemptCoordinator,
     )
 
+    addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
     const addonContext = addonLoader.createContext('mistertick-discord')
     addonContext.contributions.connections.registerProfiles([
       {
@@ -854,7 +814,8 @@ describe('M07 host unit: addon connection auth via registry', () => {
         )
         return Either.success(workspace)
       },
-      connect: async () => Either.success({ kind: 'none' as const }),
+      connect: async () =>
+        Either.failure(AppError.Internal('UNUSED_AUTHENTICATION')),
       withCredentials: async () => Either.success(),
       refresh: async () => Either.success(),
       disconnect: async () => Either.success(),
@@ -888,19 +849,11 @@ describe('M07 host unit: addon connection auth via registry', () => {
         }),
     }
 
-    const resolver: IDataSourceResolver = {
-      getConnectionProfiles: async () => Either.success([]),
-      getDataSource: async () => Either.failure(AppError.Internal('UNUSED')),
-      getDataSourcesForWorkspace: async () => Either.success([]),
-    }
-
     const core = new AddonCoreCapabilities(
       repository,
       transport,
       'mistertick-discord',
       coordinator,
-      resolver,
-      () => null,
       linkService,
       connectService,
       disconnectService,
@@ -932,6 +885,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
       oauthAttemptCoordinator,
     )
 
+    addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
     const addonContext = addonLoader.createContext('mistertick-discord')
     addonContext.contributions.connections.registerProfiles([
       {
@@ -1105,9 +1059,6 @@ describe('M07 host unit: addon connection auth via registry', () => {
         return Either.success(workspace)
       },
       connect: async (input) => {
-        if (input.method === 'none') {
-          return Either.success({ kind: 'none' as const })
-        }
         const conn = workspace.connections.find(
           (c) => c.id === input.connectionInstanceId,
         )
@@ -1178,19 +1129,11 @@ describe('M07 host unit: addon connection auth via registry', () => {
         }),
     }
 
-    const resolver: IDataSourceResolver = {
-      getConnectionProfiles: async () => Either.success([]),
-      getDataSource: async () => Either.failure(AppError.Internal('UNUSED')),
-      getDataSourcesForWorkspace: async () => Either.success([]),
-    }
-
     const core = new AddonCoreCapabilities(
       repository,
       transport,
       'mistertick-discord',
       coordinator,
-      resolver,
-      () => null,
       linkService,
       connectService,
       disconnectService,
@@ -1222,6 +1165,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
       oauthAttemptCoordinator,
     )
 
+    addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
     const addonContext = addonLoader.createContext('mistertick-discord')
     addonContext.contributions.connections.registerProfiles([
       {

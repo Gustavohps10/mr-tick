@@ -56,7 +56,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionProfiles: () => [],
             getConnectionSchema: () => [],
             createInstance: (ctx) => {
               const fakeTaskProvider: ITaskProvider = {
@@ -192,7 +191,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionProfiles: () => [],
             getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
@@ -267,7 +265,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionProfiles: () => [],
             getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
@@ -441,7 +438,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionProfiles: () => [],
             getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
@@ -502,7 +498,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionProfiles: () => [],
             getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
@@ -569,7 +564,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionProfiles: () => [],
             getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {

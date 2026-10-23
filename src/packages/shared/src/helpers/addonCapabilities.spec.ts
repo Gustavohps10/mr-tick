@@ -12,7 +12,7 @@ describe('canonical addon capabilities', () => {
   it('uses exact capability names and rejects aliases and custom labels', () => {
     expect(isAddonCapability('watcher')).toBe(true)
     expect(isAddonCapability('Watcher')).toBe(false)
-    expect(isAddonCapability('auth')).toBe(false)
+    expect(isAddonCapability('auth')).toBe(true)
     expect(isAddonCapability('custom')).toBe(false)
   })
   it('selects declared capabilities independently', () => {

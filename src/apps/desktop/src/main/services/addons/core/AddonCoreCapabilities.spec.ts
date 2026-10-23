@@ -9,7 +9,6 @@ import {
   type IConnectAddonConnectionUseCase,
   type IConnectionLifecycleCoordinator,
   type ICoreCacheTransport,
-  type IDataSourceResolver,
   type IDisconnectAddonConnectionUseCase,
   type ILinkConnectionUseCase,
   type IUnlinkConnectionUseCase,
@@ -145,9 +144,6 @@ function fixture() {
   const lifecycle: IConnectionLifecycleCoordinator = {
     create: createLifecycle,
     connect: async (input) => {
-      if (input.method === 'none') {
-        return Either.success({ kind: 'none' })
-      }
       const authentication = await input.authenticate()
       if (authentication.isFailure()) return authentication.forwardFailure()
       return Either.success({
@@ -160,13 +156,6 @@ function fixture() {
     disconnect: disconnectLifecycle,
     archive: async () => Either.success(),
     restore: async () => Either.success(workspace),
-  }
-  const resolver: IDataSourceResolver = {
-    getConnectionProfiles: async () => Either.success([profile]),
-    getDataSource: vi.fn(async () =>
-      Either.failure(AppError.Internal('UNUSED')),
-    ),
-    getDataSourcesForWorkspace: async () => Either.success([]),
   }
   const unlinkService: IUnlinkConnectionUseCase = {
     execute: vi.fn(async () =>
@@ -219,7 +208,15 @@ function fixture() {
             )
           }
         }
-        return Either.success({})
+        return Either.success({
+          identity: {
+            kind: 'human',
+            providerId: 'provider',
+            tenantId: 'provider.example',
+            providerSubjectId: 'member',
+            displayName: 'Name Test',
+          },
+        })
       },
     ),
   }
@@ -238,21 +235,20 @@ function fixture() {
   return {
     workspace,
     repository,
-    resolver,
     queryCore,
     createLifecycle,
     disconnectLifecycle,
     withCredentialsLifecycle,
     completeAuthentication,
     authenticator,
+    authenticatorRegistry,
+    profile,
     oauthAttemptCoordinator,
     core: new AddonCoreCapabilities(
       repository,
       transport,
       'provider',
       lifecycle,
-      resolver,
-      () => authenticator,
       linkService,
       connectService,
       disconnectService,
@@ -471,7 +467,7 @@ describe('Public core read capabilities', () => {
     expect(disconnectLifecycle).not.toHaveBeenCalled()
   })
   it('requires the submitted authProfileId to match the persisted connection profile', async () => {
-    const { core, workspace, resolver } = fixture()
+    const { core, workspace } = fixture()
     const result = await core.connections.submitCredentials(
       { workspaceId: workspace.id, connectionInstanceId: 'connection' },
       {
@@ -482,7 +478,6 @@ describe('Public core read capabilities', () => {
       },
     )
     expect(result.isFailure()).toBe(true)
-    expect(resolver.getDataSource).not.toHaveBeenCalled()
   })
   it('converts repository read failures at the adapter boundary', async () => {
     const { core, repository } = fixture()
@@ -592,5 +587,42 @@ describe('Public core read capabilities', () => {
     if (result.isSuccess()) return expect.fail('Esperada falha de protocolo')
     expect(result.failure.messageKey).toBe('OAUTH_ENDPOINT_PROTOCOL_INVALID')
     expect(oauthAttemptCoordinator.getActiveAttemptsCount()).toBe(0)
+  })
+})
+
+describe('OAuth profile ownership', () => {
+  it('rejects an unknown role without calling the registered OAuth authenticator', async () => {
+    const { core, workspace, authenticator } = fixture()
+    const result = await core.connections.createAuthorizationRequest({
+      workspaceId: workspace.id,
+      connectionInstanceId: 'connection',
+      authorizationRole: 'other',
+    })
+
+    expect(result.isFailure()).toBe(true)
+    if (result.isFailure())
+      expect(result.failure.messageKey).toBe('AUTHORIZATION_ROLE_NOT_ALLOWED')
+    expect(authenticator.createAuthorizationRequest).not.toHaveBeenCalled()
+  })
+
+  it('never substitutes another OAuth authenticator when the profile authenticator is missing', async () => {
+    const { core, workspace, authenticator, authenticatorRegistry } = fixture()
+    authenticatorRegistry.unregister('provider', 'primary')
+    authenticatorRegistry.register('provider', {
+      ...authenticator,
+      authProfileId: 'other',
+    })
+
+    const result = await core.connections.createAuthorizationRequest({
+      workspaceId: workspace.id,
+      connectionInstanceId: 'connection',
+    })
+
+    expect(result.isFailure()).toBe(true)
+    if (result.isFailure())
+      expect(result.failure.messageKey).toBe(
+        'CONNECTION_AUTHENTICATOR_NOT_FOUND',
+      )
+    expect(authenticator.createAuthorizationRequest).not.toHaveBeenCalled()
   })
 })

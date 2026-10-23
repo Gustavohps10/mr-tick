@@ -6,7 +6,6 @@ import type {
   ITimeEntryProvider,
   MappingFieldDefinition,
 } from '@mr-tick/application'
-import type { ConnectionProfileDescriptor } from '@mr-tick/domain'
 import type { AppError, Either } from '@mr-tick/shared/helpers'
 
 import type { AddonSettingsSchema } from './contracts/contributions/settings'
@@ -21,7 +20,6 @@ export interface IDataSourceInstance {
 }
 
 export interface IDataSource {
-  getConnectionProfiles(): ConnectionProfileDescriptor[]
   getConnectionSchema(): AddonSettingsSchema
   createInstance(context: DataSourceContext): IDataSourceInstance
   getStaticMappingFields?(): MappingFieldDefinition[]

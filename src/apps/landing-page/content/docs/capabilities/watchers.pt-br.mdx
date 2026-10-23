@@ -1,10 +1,12 @@
 ---
-title: "Watchers e sugestões"
+title: Observadores de atividade
 description: Observe atividades e transforme eventos em sugestões de apontamento.
-icon: Activity
+icon: Eye
 ---
 
-Declare `capabilities: [watcher]`. Observe eventos do provedor, sockets locais ou processos externos dentro do addon. Autentique pela API de contribuição de conexões; não registre datasource apenas para guardar credenciais.
+A capacidade `watcher` permite acompanhar atividades e sugerir apontamentos a partir delas. Um addon pode, por exemplo, observar uma chamada de voz ou eventos de um serviço externo.
+
+Declare `watcher` no manifesto. Se o serviço exigir uma conta conectada, declare também `auth` e registre sua autenticação. Não é necessário oferecer uma fonte de dados apenas para guardar credenciais. O exemplo abaixo usa as duas capacidades.
 
 ```yaml
 id: example-addon
@@ -14,8 +16,9 @@ author: Example
 shortDescription: SDK example
 description: Example using the published SDK
 capabilities:
+  - auth
   - watcher
-requiredApiVersion: '>=0.10.0'
+requiredApiVersion: '>=0.11.0'
 ```
 
 ```ts
@@ -41,6 +44,6 @@ export function suggest(
 
 Escolha workspace, conexão de origem, tarefa e atividade explicitamente. `LocalEntryInput` usa segundos e datas ISO. Aloque IDs da operação antes da escrita e os reutilize somente em repetições com conteúdo idêntico. Sucesso significa sugestão local, não confirmação remota.
 
-Eventos garantidos: `timer:start`, `timer:pause`, `timer:resume`, `timer:stop`, `timer:update`, `workspace:changed`. Nenhuma API de assinatura de idle é garantida. Registre listeners e retorne da ativação; feche recursos próprios na desativação. Trocas de workspace não desativam o addon.
+Eventos garantidos: `timer:start`, `timer:pause`, `timer:resume`, `timer:stop`, `timer:update`, `workspace:changed`. O SDK não oferece um evento geral de inatividade. Registre as assinaturas de eventos durante a ativação e libere os recursos do addon na desativação. Trocas de workspace não desativam o addon.
 
-Consulte [conexões](/pt-br/docs/apis/connections), [OAuth PKCE](/pt-br/docs/apis/oauth-pkce) e [cofre e eventos](/pt-br/docs/apis/vault-and-events).
+Consulte [autenticação](/pt-br/docs/capabilities/auth), [OAuth PKCE](/pt-br/docs/apis/oauth-pkce) e [cofre e eventos](/pt-br/docs/apis/vault-and-events).

@@ -6,27 +6,43 @@ icon: Database
 
 A **datasource** connects Mr. Tick to a tool that provides tasks and receives time entries. It translates information from that tool into the format the application understands.
 
-Declare `capabilities: [dataSource]` for this kind of integration. Connecting an account alone does not make an addon a datasource: an activity observer may need an account without providing tasks.
+Declare `capabilities: [auth, dataSource]` for this kind of integration. Connecting an account alone does not make an addon a datasource: an activity observer may need an account without providing tasks.
 
 ## Implementation
 
-`IDataSource` supplies `getConnectionProfiles()`, `getConnectionSchema()` and `createInstance(context)`. Its instance contains only `tasksProvider`, `timeEntriesProvider`, `membersProvider` and `metadataProvider`. Authentication is registered separately:
+`IDataSource` supplies `getConnectionSchema()` and `createInstance(context)`. Its instance contains only `tasksProvider`, `timeEntriesProvider`, `membersProvider` and `metadataProvider`. Authentication is registered separately:
 
 ```ts
-import type {
-  AddonContext,
-  AddonConnectionAuthenticator,
-  IDataSource,
+import {
+  type AddonContext,
+  type AddonConnectionAuthenticator,
+  type ConnectionProfileDescriptor,
+  type AppError,
+  Either,
+  type IDataSource,
 } from '@mr-tick/sdk'
 
 export function registerDataSource(
   context: AddonContext,
   dataSource: IDataSource,
+  profiles: ConnectionProfileDescriptor[],
   authenticator: AddonConnectionAuthenticator,
-): void {
+): Either<AppError, void> {
+  const registered = context.contributions.connections.registerProfiles(profiles)
+
+  if (registered.isFailure()) return registered.forwardFailure()
+
+  const authenticated = context.contributions.connections.registerAuthenticator(authenticator)
+
+  if (authenticated.isFailure()) {
+    context.contributions.connections.unregisterProfiles()
+
+    return authenticated.forwardFailure()
+  }
+
   context.contributions.dataSources.register(dataSource)
 
-  context.contributions.connections.registerAuthenticator(authenticator)
+  return Either.success()
 }
 ```
 
@@ -46,6 +62,6 @@ Advertise `timeEntryCreateIdempotency` according to backend guarantees: `native`
 
 Every `IHttpClient` request requires `responseValidator`, narrowing `JsonValue` to the external response. JSON parsing and generic type arguments do not validate payloads. Handle legitimate nulls/omitted fields and preserve status codes and server messages. Addons use provider DTOs, not private domain entities.
 
-See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).
+See [authentication](/docs/capabilities/auth), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).
 
 Reference implementation: [Redmine addon](https://github.com/Gustavohps10/redmine-plugin), including HTTP and Docker integration tests.

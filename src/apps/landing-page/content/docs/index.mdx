@@ -8,6 +8,8 @@ The SDK is a set of tools for creating extensions for Mr. Tick. It lets you add 
 
 These extensions are called **addons**. Each addon brings a feature that users can install according to their needs, such as connecting a work management tool or suggesting time entries after a meeting.
 
+This documentation describes the upcoming SDK 0.11 contract. Using `auth` requires that SDK release and a compatible desktop version.
+
 ## What can you extend?
 
 - **Connect work tools:** bring tasks into Mr. Tick and send time entries to the original system. The Redmine addon is one example.
@@ -28,7 +30,7 @@ The SDK also provides the contracts for account connections, settings, private s
 
 1. Follow the [quickstart](/docs/quickstart) to create, build and package a small addon.
 2. Choose its [capabilities](/docs/capabilities), which describe the features it offers.
-3. If it connects an external account, read [connections and authentication](/docs/apis/connections) and [OAuth PKCE](/docs/apis/oauth-pkce).
+3. If it connects an external account, read [authentication](/docs/capabilities/auth) and [OAuth PKCE](/docs/apis/oauth-pkce).
 4. Use [settings, private storage and events](/docs/apis/vault-and-events) as needed.
 5. For task and time-entry integrations, read [datasources](/docs/capabilities/datasources) and [synchronization](/docs/sync-engine).
 

@@ -2,7 +2,6 @@
   "title": "Resources & APIs",
   "defaultOpen": true,
   "pages": [
-    "connections",
     "oauth-pkce",
     "vault-and-events"
   ],

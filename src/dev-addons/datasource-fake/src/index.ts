@@ -57,24 +57,6 @@ const configFields: {
 }
 
 export const FakeDataSource: IDataSource = {
-  getConnectionProfiles: () => [
-    {
-      connectionProfileId: 'fake-main',
-      cardinality: 'multi',
-      default: true,
-      allowedAuthProfileIds: ['fake-main'],
-      defaultAuthProfileId: 'fake-main',
-      roles: [
-        {
-          authorizationRole: 'primary',
-          allowedAuthProfileIds: ['fake-main'],
-          defaultAuthProfileId: 'fake-main',
-          cardinality: 'single',
-          required: true,
-        },
-      ],
-    },
-  ],
   getConnectionSchema: () => [
     {
       id: 'credentials',
@@ -112,25 +94,56 @@ export default class FakeDataSourceAddon implements IAddon {
   private readonly timerEventUnsubscribers: Array<() => void> = []
   activate(context: AddonContext): void {
     console.log('🟢 [FakeDataSourceAddon] Registrando FakeDataSource...')
-    context.contributions.dataSources.register(FakeDataSource)
-    context.contributions.connections.registerAuthenticator({
-      method: 'credentials',
-      authProfileId: 'fake-main',
-      supportsRefresh: false,
-      supportsRevocation: false,
-      authenticate: async () =>
-        Either.success({
-          kind: 'authorized',
-          identity: {
-            kind: 'human',
-            providerId: 'fake',
-            tenantId: 'fake.mr-tick-app.local',
-            providerSubjectId: String(FAKE_MEMBER.id),
-            displayName: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
+    const profiles = context.contributions.connections.registerProfiles([
+      {
+        connectionProfileId: 'fake-main',
+        cardinality: 'multi',
+        default: true,
+        allowedAuthProfileIds: ['fake-main'],
+        defaultAuthProfileId: 'fake-main',
+        roles: [
+          {
+            authorizationRole: 'primary',
+            allowedAuthProfileIds: ['fake-main'],
+            defaultAuthProfileId: 'fake-main',
+            required: true,
           },
-          credentials: { apiKey: 'fake-api-key' },
-        }),
-    })
+        ],
+      },
+    ])
+
+    if (profiles.isFailure()) {
+      void context.host.notifications.error(profiles.failure.messageKey)
+      return
+    }
+
+    const authenticator =
+      context.contributions.connections.registerAuthenticator({
+        method: 'credentials',
+        authProfileId: 'fake-main',
+        supportsRefresh: false,
+        supportsRevocation: false,
+        authenticate: async () =>
+          Either.success({
+            kind: 'authorized',
+            identity: {
+              kind: 'human',
+              providerId: 'fake',
+              tenantId: 'fake.mr-tick-app.local',
+              providerSubjectId: String(FAKE_MEMBER.id),
+              displayName: `${FAKE_MEMBER.firstname} ${FAKE_MEMBER.lastname}`,
+            },
+            credentials: { apiKey: 'fake-api-key' },
+          }),
+      })
+
+    if (authenticator.isFailure()) {
+      context.contributions.connections.unregisterProfiles()
+      void context.host.notifications.error(authenticator.failure.messageKey)
+      return
+    }
+
+    context.contributions.dataSources.register(FakeDataSource)
 
     context.contributions.themes.register({
       id: 'fake-matrix-theme',

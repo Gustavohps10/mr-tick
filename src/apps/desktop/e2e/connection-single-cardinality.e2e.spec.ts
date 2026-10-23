@@ -26,8 +26,8 @@ function prepareSingleProfileAddon(userDataPath: string): void {
   )
   const originalId = 'id: mr-tick-datasource-fake'
   const originalProfile =
-    'connectionProfileId: "fake-main",\n      cardinality: "multi",\n      default: true'
-  const targetProfile = `connectionProfileId: "${profileId}",\n      cardinality: "single",\n      default: true`
+    'connectionProfileId: "fake-main",\n        cardinality: "multi",\n        default: true'
+  const targetProfile = `connectionProfileId: "${profileId}",\n        cardinality: "single",\n        default: true`
 
   expect(sourceManifest).toContain(originalId)
   expect(sourceBundle).toContain(originalProfile)
@@ -102,7 +102,6 @@ test('T04 Electron bridge accepts only one concurrent link for a single profile'
           authorizationRole: 'primary',
           allowedAuthProfileIds: ['fake-main'],
           defaultAuthProfileId: 'fake-main',
-          cardinality: 'single',
           required: true,
         },
       ],

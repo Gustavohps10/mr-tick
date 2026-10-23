@@ -8,7 +8,7 @@ Neste guia você vai criar um addon de tema pequeno, depois compilá-lo e gerar 
 
 ```bash
 npm init -y
-npm install @mr-tick/sdk@^0.10.0
+npm install @mr-tick/sdk@^0.11.0
 npm install -D typescript tsup @types/node
 ```
 
@@ -23,7 +23,7 @@ shortDescription: SDK example
 description: Example using the published SDK
 capabilities:
   - theme
-requiredApiVersion: '>=0.10.0'
+requiredApiVersion: '>=0.11.0'
 ```
 
 ```ts
@@ -54,4 +54,4 @@ npx mr-tick pack . --download-url https://example.com/releases/example-addon.tla
 
 Instale o `.tladdon` resultante pelo gerenciador de addons; um JavaScript compilado avulso não é um pacote de instalação. A CLI deriva o intervalo de API do pacote da versão do SDK. Repositórios gerenciados por Changesets fazem releases via changesets e CI; não altere versões nem reescreva histórico manualmente.
 
-Consulte [conexões](/pt-br/docs/apis/connections), [OAuth PKCE](/pt-br/docs/apis/oauth-pkce) e [cofre e eventos](/pt-br/docs/apis/vault-and-events).
+Consulte [autenticação](/pt-br/docs/capabilities/auth), [OAuth PKCE](/pt-br/docs/apis/oauth-pkce) e [cofre e eventos](/pt-br/docs/apis/vault-and-events).

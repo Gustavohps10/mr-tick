@@ -146,35 +146,6 @@ describe('ConnectAddonConnectionService', () => {
     })
   })
 
-  it('connects a method: none connection successfully without authenticator', async () => {
-    coordinatorMock.connect.mockResolvedValueOnce(
-      Either.success({ kind: 'none' }),
-    )
-
-    const input: ConnectAddonConnectionInput = {
-      workspaceId: fakeWorkspace.id,
-      connectionInstanceId: 'conn-1',
-      addonId: 'discord-addon',
-      authenticationInput: {
-        method: 'none',
-        configuration: { channelId: 'general' },
-      },
-    }
-
-    const result = await sut.execute(input)
-    expect(result.isSuccess()).toBe(true)
-    expect(result.success).toEqual({})
-
-    expect(coordinatorMock.connect).toHaveBeenCalledWith({
-      workspaceId: fakeWorkspace.id,
-      connectionInstanceId: 'conn-1',
-      addonId: 'discord-addon',
-      profile: fakeProfile,
-      method: 'none',
-      configuration: { channelId: 'general' },
-    })
-  })
-
   it('returns NotFound when workspace does not exist', async () => {
     workspacesRepositoryMock.getById.mockResolvedValueOnce(
       Either.success(undefined),
@@ -185,7 +156,10 @@ describe('ConnectAddonConnectionService', () => {
       connectionInstanceId: 'conn-1',
       addonId: 'discord-addon',
       authenticationInput: {
-        method: 'none',
+        method: 'credentials',
+        authorizationRole: 'primary',
+        authProfileId: 'primary-auth',
+        credentials: { token: 'secret' },
         configuration: {},
       },
     }
@@ -201,7 +175,10 @@ describe('ConnectAddonConnectionService', () => {
       connectionInstanceId: 'missing-conn',
       addonId: 'discord-addon',
       authenticationInput: {
-        method: 'none',
+        method: 'credentials',
+        authorizationRole: 'primary',
+        authProfileId: 'primary-auth',
+        credentials: { token: 'secret' },
         configuration: {},
       },
     }
@@ -217,7 +194,10 @@ describe('ConnectAddonConnectionService', () => {
       connectionInstanceId: 'conn-1',
       addonId: 'other-addon',
       authenticationInput: {
-        method: 'none',
+        method: 'credentials',
+        authorizationRole: 'primary',
+        authProfileId: 'primary-auth',
+        credentials: { token: 'secret' },
         configuration: {},
       },
     }
@@ -240,7 +220,10 @@ describe('ConnectAddonConnectionService', () => {
       connectionInstanceId: 'conn-1',
       addonId: 'discord-addon',
       authenticationInput: {
-        method: 'none',
+        method: 'credentials',
+        authorizationRole: 'primary',
+        authProfileId: 'primary-auth',
+        credentials: { token: 'secret' },
         configuration: {},
       },
     }

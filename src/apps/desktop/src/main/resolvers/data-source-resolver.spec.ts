@@ -8,11 +8,7 @@ import {
   IWorkspacesRepository,
   PagedResultDTO,
 } from '@mr-tick/application'
-import {
-  ConnectionIdentity,
-  ConnectionProfileDescriptor,
-  Workspace,
-} from '@mr-tick/domain'
+import { ConnectionIdentity, Workspace } from '@mr-tick/domain'
 import {
   DataSourceContext,
   Either,
@@ -168,16 +164,6 @@ class FakeCredentialsVault implements ICredentialsVault {
 }
 
 class TestAddonDataSource implements IDataSource {
-  getConnectionProfiles(): ConnectionProfileDescriptor[] {
-    return [
-      {
-        connectionProfileId: 'primary',
-        cardinality: 'multi',
-        default: true,
-      },
-    ]
-  }
-
   getConnectionSchema() {
     return []
   }

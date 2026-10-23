@@ -235,8 +235,8 @@ function ensureTestAddon(
     )
     const addonIdLine = 'id: mr-tick-datasource-fake'
     const originalProfile =
-      'connectionProfileId: "fake-main",\n      cardinality: "multi",\n      default: true'
-    const targetProfile = `connectionProfileId: "${probeProfileId}",\n      cardinality: "single",\n      default: true`
+      'connectionProfileId: "fake-main",\n        cardinality: "multi",\n        default: true'
+    const targetProfile = `connectionProfileId: "${probeProfileId}",\n        cardinality: "single",\n        default: true`
     if (!manifest.includes(addonIdLine) || !bundle.includes(originalProfile))
       throw new Error('SINGLE_CARDINALITY_PROBE_ANCHOR_MISSING')
     cleanDirectoryIfExists(probeAddonDir)

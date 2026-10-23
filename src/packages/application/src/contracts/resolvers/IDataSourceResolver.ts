@@ -1,4 +1,3 @@
-import { ConnectionProfileDescriptor } from '@mr-tick/domain'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 
 import { AuthenticatedMember, IDataSourceAdapter } from './IDataSourceAdapter'
@@ -124,10 +123,6 @@ export interface ResolvedConnection {
 }
 
 export interface IDataSourceResolver {
-  getConnectionProfiles(
-    addonId: string,
-  ): Promise<Either<AppError, ConnectionProfileDescriptor[]>>
-
   getDataSource(
     workspaceId: string,
     pluginId: string,

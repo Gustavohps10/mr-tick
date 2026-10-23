@@ -14,8 +14,10 @@ import type {
   ConnectionConfigPayload,
 } from './IAddonConnectionAuthenticator'
 
-export type ConnectionLifecycleAuthentication =
-  { kind: 'identity'; identity: ConnectionIdentity } | { kind: 'none' }
+export type ConnectionLifecycleAuthentication = {
+  kind: 'identity'
+  identity: ConnectionIdentity
+}
 
 export type ConnectionLifecycleScope = {
   workspaceId: string
@@ -24,30 +26,18 @@ export type ConnectionLifecycleScope = {
   profile: ConnectionProfileDescriptor
 }
 
-export type ConnectionLifecycleConnectInput = ConnectionLifecycleScope &
-  (
-    | {
-        method: 'none'
-        configuration: ConnectionConfigPayload
-      }
-    | {
-        method: 'authorized'
-        authorizationRole: string
-        authProfileId: string
-        configuration: ConnectionConfigPayload
-        correlation?: {
-          readonly connectionGeneration: number
-          readonly authorizationGeneration: number
-          readonly authorizationId?: string
-        }
-        authenticate: () => Promise<
-          Either<
-            AppError,
-            Extract<AuthenticationResult, { kind: 'authorized' }>
-          >
-        >
-      }
-  )
+export type ConnectionLifecycleConnectInput = ConnectionLifecycleScope & {
+  method: 'authorized'
+  authorizationRole: string
+  authProfileId: string
+  configuration: ConnectionConfigPayload
+  correlation?: {
+    readonly connectionGeneration: number
+    readonly authorizationGeneration: number
+    readonly authorizationId?: string
+  }
+  authenticate: () => Promise<Either<AppError, AuthenticationResult>>
+}
 
 export interface IConnectionLifecycleCoordinator {
   create(input: ConnectionLifecycleScope): Promise<Either<AppError, Workspace>>

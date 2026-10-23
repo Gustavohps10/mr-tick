@@ -3,6 +3,7 @@
   "defaultOpen": true,
   "pages": [
     "index",
+    "auth",
     "datasources",
     "watchers",
     "calendars",

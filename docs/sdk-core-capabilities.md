@@ -86,6 +86,6 @@ Esta evolução rompe o contrato antigo do cofre e torna os registros de comando
 
 Analytics, MCP e um servidor HTTP/REST do core continuam fora deste contrato. Consultas do cache não são CRUD remoto de tarefas. Addons executam código confiável no main, sem sandbox nem autorização granular de dados. As capacidades são portas para evolução futura, não uma promessa de isolamento de código não confiável.
 
-## Conexões e autenticação no SDK 0.10
+## Conexões e autenticação no SDK 0.11
 
-`contributions.connections` registra perfis e autenticadores; `core.connections` executa criação, autenticação, renovação, desconexão, arquivamento, restauração e remoção. `withCredentials` fornece credenciais somente no callback do addon. A instância de datasource não contém autenticação. Consulte o [guia de conexões](../src/apps/landing-page/content/docs/apis/connections.pt-br.mdx) e o [fluxo OAuth](../src/apps/landing-page/content/docs/apis/oauth-pkce.pt-br.mdx).
+`contributions.connections` registra perfis e autenticadores; `core.connections` executa criação, autenticação, renovação, desconexão, arquivamento, restauração e remoção. `withCredentials` fornece credenciais somente no callback do addon. A instância de datasource não contém autenticação. Consulte o [guia de autenticação](../src/apps/landing-page/content/docs/capabilities/auth.pt-br.mdx) e o [fluxo OAuth](../src/apps/landing-page/content/docs/apis/oauth-pkce.pt-br.mdx).

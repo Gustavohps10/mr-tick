@@ -15,14 +15,8 @@ import {
   type ConnectionAuthorizationRecord,
   type ConnectionIdentity,
   type DataSourceConnection,
-  isValidConnectionProfileDescriptors,
 } from '@mr-tick/domain'
-import {
-  AppError,
-  type ConnectionProfileDescriptor,
-  Either,
-  type IDataSource,
-} from '@mr-tick/sdk'
+import { AppError, Either, type IDataSource } from '@mr-tick/sdk'
 import { isNonEmptyString } from '@mr-tick/shared/helpers'
 import { existsSync } from 'fs'
 import { resolve } from 'path'
@@ -245,22 +239,6 @@ export class DataSourceResolver implements IDataSourceResolver {
       membersProvider: instance.membersProvider,
       metadataProvider: instance.metadataProvider,
     })
-  }
-
-  async getConnectionProfiles(
-    addonId: string,
-  ): Promise<Either<AppError, ConnectionProfileDescriptor[]>> {
-    if (!this.options.addonLoader)
-      return Either.failure(AppError.Internal('ADDON_LOADER_UNAVAILABLE'))
-    const dataSource = this.options.addonLoader.getDataSource(addonId)
-    if (!dataSource)
-      return Either.failure(AppError.NotFound('DATASOURCE_NAO_ENCONTRADO'))
-    const profiles = dataSource.getConnectionProfiles()
-    if (!isValidConnectionProfileDescriptors(profiles))
-      return Either.failure(
-        AppError.ValidationError('CONNECTION_PROFILE_REQUIRED'),
-      )
-    return Either.success(profiles)
   }
 
   async getDataSourcesForWorkspace(

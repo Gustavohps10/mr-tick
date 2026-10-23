@@ -6,7 +6,7 @@ icon: KeyRound
 
 OAuth permite que o usuário autorize uma conta pelo navegador, sem entregar sua senha ao addon. PKCE acrescenta uma prova que vincula o código recebido à solicitação que iniciou a autorização.
 
-Para usar esse fluxo, registre um `AddonConnectionAuthenticator` com `method: oauth`. O Mr. Tick gera a prova PKCE e o identificador de segurança `state`, acompanha a tentativa e salva as credenciais. O addon implementa a comunicação com o serviço externo.
+Declare `auth` no manifesto. Para usar esse fluxo, registre um `AddonConnectionAuthenticator` com `method: oauth`. O Mr. Tick gera a prova PKCE e o identificador de segurança `state`, acompanha a tentativa e salva as credenciais. O addon implementa a comunicação com o serviço externo.
 
 | Ambiente        | Endereço de retorno cadastrado no serviço | Página abre no desktop      |
 | --------------- | --------------------------------------- | --------------------------- |
@@ -58,4 +58,4 @@ O `state` pertence a uma tentativa: ele não pode autorizar outra conexão nem r
 
 `context.host.oauth` também oferece `generatePKCE`, `generateState` e `authorize` para operações com o navegador. `authorize` retorna `Promise<OAuthResult>`; ele não salva uma conexão por conta própria. Para conectar contas, siga o fluxo descrito acima.
 
-Consulte também [conexões](/pt-br/docs/apis/connections) e [configurações, armazenamento privado e eventos](/pt-br/docs/apis/vault-and-events).
+Consulte também [autenticação](/pt-br/docs/capabilities/auth) e [configurações, armazenamento privado e eventos](/pt-br/docs/apis/vault-and-events).

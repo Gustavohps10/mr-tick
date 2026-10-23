@@ -1,6 +1,12 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import {
   AddonAuthenticatorRegistry,
@@ -30,6 +36,8 @@ const unavailableRuntime: ILocalRuntimeAPI = {
   }),
 }
 
+const electronState = vi.hoisted(() => ({ isPackaged: false }))
+
 vi.mock('electron', () => ({
   shell: {
     openExternal: vi.fn(),
@@ -38,6 +46,9 @@ vi.mock('electron', () => ({
     getAllWindows: vi.fn(() => []),
   },
   app: {
+    get isPackaged() {
+      return electronState.isPackaged
+    },
     getVersion: vi.fn(() => '0.4.0'),
   },
 }))
@@ -49,6 +60,7 @@ describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    electronState.isPackaged = false
 
     fakeCredentialsVault = emptyAddonCredentialsVault()
 
@@ -110,6 +122,48 @@ requiredApiVersion: '>=0.5.0'
     expect(loaded).toBe(false)
     expect(addonLoader.hasActiveAddon('test-future-addon')).toBe(false)
   })
+
+  it.each([
+    { isPackaged: false, sameSdk: true, expected: true },
+    { isPackaged: true, sameSdk: true, expected: false },
+    { isPackaged: false, sameSdk: false, expected: false },
+  ])(
+    'valida SDK local (empacotado: $isPackaged, mesmo SDK: $sameSdk)',
+    async ({ isPackaged, sameSdk, expected }) => {
+      electronState.isPackaged = isPackaged
+      writeFileSync(
+        join(testAddonDir, 'manifest.yaml'),
+        `
+id: local-sdk-addon
+name: Local SDK Addon
+version: 1.0.0
+capabilities: [theme]
+requiredApiVersion: '>=0.11.0'
+`,
+      )
+      const dependencies = join(testAddonDir, 'node_modules', '@mr-tick')
+      mkdirSync(dependencies, { recursive: true })
+      let sdkPath = resolve('src/apps/sdk')
+
+      if (!sameSdk) {
+        sdkPath = join(testAddonDir, 'another-sdk')
+        mkdirSync(sdkPath)
+      }
+
+      symlinkSync(sdkPath, join(dependencies, 'sdk'), 'junction')
+      const linkedAddon = join(testAddonDir, 'development-link')
+      symlinkSync(testAddonDir, linkedAddon, 'junction')
+
+      const loaded = await addonLoader.loadAndActivateFromDisk(
+        'local-sdk-addon',
+        linkedAddon,
+      )
+
+      expect(loaded).toBe(expected)
+      expect(addonLoader.hasActiveAddon('local-sdk-addon')).toBe(expected)
+    },
+    15000,
+  )
 
   it('deve rejeitar e não ativar addon legado da era 0.1.x (ex: Redmine antigo >=0.1.1) no app 0.4.0', async () => {
     const manifestContent = `

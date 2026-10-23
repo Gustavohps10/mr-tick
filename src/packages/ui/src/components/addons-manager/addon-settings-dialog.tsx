@@ -30,7 +30,7 @@ export interface AddonSettingsDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-export type AddonCapabilityId = AddonCapability | 'auth' | 'general'
+export type AddonCapabilityId = AddonCapability | 'general'
 
 export interface AddonCapabilityItem {
   id: AddonCapabilityId
@@ -53,14 +53,14 @@ export function resolveAddonCapabilities(
 
   const capabilities: AddonCapabilityItem[] = []
 
-  // Conexões e instâncias existem para qualquer addon que possui capacidades operacionais
-  capabilities.push({
-    id: 'auth',
-    label: 'Autenticação',
-    icon: KeyRound,
-    description:
-      'Gerencie contas, credenciais e instâncias conectadas por workspace.',
-  })
+  if (hasCapability(addon.capabilities, 'auth'))
+    capabilities.push({
+      id: 'auth',
+      label: 'Autenticação',
+      icon: KeyRound,
+      description:
+        'Gerencie contas, credenciais e instâncias conectadas por workspace.',
+    })
 
   if (isDataSource(addon.capabilities)) {
     capabilities.push({

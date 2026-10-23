@@ -1,10 +1,12 @@
 ---
-title: "Watchers and suggestions"
+title: Activity watchers
 description: Observe activity and turn events into time-entry suggestions.
-icon: Activity
+icon: Eye
 ---
 
-Declare `capabilities: [watcher]`. Observe provider events, local sockets or external processes inside the addon. Authenticate with the connection contribution API; do not register a datasource just to hold credentials.
+The `watcher` capability lets an addon observe activity and suggest time entries from it. For example, an addon can observe a voice call or events from an external service.
+
+Declare `watcher` in the manifest. If the service requires a connected account, also declare `auth` and register its authentication. A data source is not required just to hold credentials. The example below uses both capabilities.
 
 ```yaml
 id: example-addon
@@ -14,8 +16,9 @@ author: Example
 shortDescription: SDK example
 description: Example using the published SDK
 capabilities:
+  - auth
   - watcher
-requiredApiVersion: '>=0.10.0'
+requiredApiVersion: '>=0.11.0'
 ```
 
 ```ts
@@ -43,4 +46,4 @@ Choose workspace, source connection, task and activity explicitly. `LocalEntryIn
 
 Guaranteed events: `timer:start`, `timer:pause`, `timer:resume`, `timer:stop`, `timer:update`, `workspace:changed`. No idle subscription API is guaranteed. Register listeners and return from activation; close owned resources in deactivation. Workspace changes do not deactivate the addon.
 
-See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).
+See [authentication](/docs/capabilities/auth), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).

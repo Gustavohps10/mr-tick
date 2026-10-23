@@ -6,14 +6,15 @@ icon: Blocks
 
 A **capability** describes a feature your addon offers. Mr. Tick reads this information to decide where the addon can be used. For example, a task integration uses `dataSource`, while a visual theme uses `theme`.
 
-List the features in `capabilities` in manifest.yaml. The accepted names are `dataSource`, `watcher`, `calendar`, `punch` and `theme`; use their exact spelling. The list must have at least one value and no duplicates. An addon can offer more than one feature.
+List the features in `capabilities` in manifest.yaml. The accepted names are `auth`, `dataSource`, `watcher`, `calendar`, `punch` and `theme`; use their exact spelling. The list must have at least one value and no duplicates. An addon can offer more than one feature.
 
-Use `requiredApiVersion` to declare the compatible application API. Menus, commands, settings and authentication are registered by the addon code; they are not extra values in this list.
+Use `requiredApiVersion` to declare the compatible application API. Menus, commands and settings are registered by the addon code. To connect external accounts, also declare `auth` and register its profiles and authenticators during activation.
 
+- [Authentication](/docs/capabilities/auth)
 - [datasources](/docs/capabilities/datasources)
-- [watchers](/docs/capabilities/watchers)
+- [Activity watchers](/docs/capabilities/watchers)
 - [calendars](/docs/capabilities/calendars)
 - [themes](/docs/capabilities/themes)
 - [punch](/docs/capabilities/punch)
 
-See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).
+See [authentication](/docs/capabilities/auth), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).

@@ -518,40 +518,6 @@ export class Workspace extends Entity {
     return Either.success()
   }
 
-  connectNone(
-    id: string,
-    config?: Record<string, string | number | boolean>,
-  ): Either<AppError, void> {
-    const connection = this._connections.find((c) => c.id === id)
-    if (connection === undefined) {
-      return Either.failure(
-        AppError.ValidationError('CONEXAO_NAO_ENCONTRADA', {
-          id: [`Conexão ${id} não encontrada.`],
-        }),
-      )
-    }
-    if (connection.status === 'archived') {
-      return Either.failure(AppError.ValidationError('CONNECTION_ARCHIVED'))
-    }
-    if (connection.authorizations.length > 0) {
-      return Either.failure(
-        AppError.ValidationError(
-          'CANNOT_CONVERT_AUTHORIZED_CONNECTION_TO_ANONYMOUS',
-        ),
-      )
-    }
-    connection.status = 'connected'
-    connection.generation += 1
-    connection.authorizations = []
-    connection.authorizationId = undefined
-    connection.identity = undefined
-    if (config !== undefined) {
-      connection.config = config
-    }
-    this.touch()
-    return Either.success()
-  }
-
   disconnectConnection(id: string): Either<AppError, void> {
     const connection = this._connections.find((c) => c.id === id)
 

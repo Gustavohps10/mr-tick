@@ -11,15 +11,11 @@ export type ConnectionConfigPayload = Readonly<
   Record<string, string | number | boolean>
 >
 
-export type AuthenticationResult =
-  | {
-      readonly kind: 'authorized'
-      readonly identity: ConnectionIdentity
-      readonly credentials: ConnectionConfigPayload
-    }
-  | {
-      readonly kind: 'none'
-    }
+export interface AuthenticationResult {
+  readonly kind: 'authorized'
+  readonly identity: ConnectionIdentity
+  readonly credentials: ConnectionConfigPayload
+}
 
 export interface ConnectionAuthorizationRequest {
   readonly authUrl: string
@@ -72,9 +68,7 @@ export type AddonConnectionAuthenticator =
       authenticate(
         credentials: ConnectionConfigPayload,
         configuration: ConnectionConfigPayload,
-      ): Promise<
-        Either<AppError, Extract<AuthenticationResult, { kind: 'authorized' }>>
-      >
+      ): Promise<Either<AppError, AuthenticationResult>>
     }
   | ({
       readonly method: 'oauth'
@@ -88,9 +82,7 @@ export type AddonConnectionAuthenticator =
       completeAuthentication(
         scope: CoreConnectionScope,
         parameters: OAuthTokenExchangeParameters,
-      ): Promise<
-        Either<AppError, Extract<AuthenticationResult, { kind: 'authorized' }>>
-      >
+      ): Promise<Either<AppError, AuthenticationResult>>
       refreshToken(
         scope: CoreConnectionScope,
         currentCredentials: ConnectionConfigPayload,
@@ -108,17 +100,8 @@ export type AddonConnectionAuthenticator =
       completeAuthentication(
         scope: CoreConnectionScope,
         parameters: OAuthTokenExchangeParameters,
-      ): Promise<
-        Either<AppError, Extract<AuthenticationResult, { kind: 'authorized' }>>
-      >
+      ): Promise<Either<AppError, AuthenticationResult>>
     } & OAuthRevocationCapability)
-  | {
-      readonly method: 'none'
-      readonly authProfileId: string
-      readonly supportsRefresh: false
-      readonly supportsRevocation: false
-      readonly revokeToken?: never
-    }
 
 export interface IAddonAuthenticatorRegistry {
   register(addonId: string, authenticator: AddonConnectionAuthenticator): void

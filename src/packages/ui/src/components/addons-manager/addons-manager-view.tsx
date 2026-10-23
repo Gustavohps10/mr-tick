@@ -22,6 +22,7 @@ import {
   Github,
   Globe,
   GlobeIcon,
+  KeyRound,
   Palette,
   PuzzleIcon,
   RefreshCw,
@@ -61,6 +62,7 @@ export interface OfficialCapabilityItem {
 }
 
 export const OFFICIAL_CAPABILITIES: OfficialCapabilityItem[] = [
+  { id: 'auth', label: 'Autenticação', icon: KeyRound },
   { id: 'dataSource', label: 'Fontes De Dados', icon: Database },
   { id: 'watcher', label: 'Observadores', icon: GlobeIcon },
   { id: 'calendar', label: 'Calendários', icon: Calendar },

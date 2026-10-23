@@ -132,18 +132,20 @@ export function WorkspaceGroupedDataSourceManager({
     null,
   )
 
-  const { data: connectionProfiles = [], isLoading: isLoadingProfiles } =
-    useQuery<ConnectionProfileDescriptor[]>({
-      queryKey: ['addon-connection-profiles', addonId],
-      queryFn: async () => {
-        const response = await bridge.addons.getConnectionProfiles({
-          body: { addonId },
-        })
-        if (!response.isSuccess || !response.data)
-          throw new Error(response.error)
-        return response.data
-      },
-    })
+  const {
+    data: connectionProfiles = [],
+    isLoading: isLoadingProfiles,
+    error: profilesError,
+  } = useQuery<ConnectionProfileDescriptor[]>({
+    queryKey: ['addon-connection-profiles', addonId],
+    queryFn: async () => {
+      const response = await bridge.addons.getConnectionProfiles({
+        body: { addonId },
+      })
+      if (!response.isSuccess || !response.data) throw new Error(response.error)
+      return response.data
+    },
+  })
 
   const selectedConnectionProfileId = resolveSelectedConnectionProfileId(
     connectionProfiles,
@@ -298,12 +300,20 @@ export function WorkspaceGroupedDataSourceManager({
     }
   }
 
-  if (isLoadingWorkspaces) {
+  if (isLoadingWorkspaces || isLoadingProfiles) {
     return (
       <div className="space-y-4 p-6">
         <Skeleton className="h-6 w-48" />
         <Skeleton className="h-28 w-full rounded-lg" />
       </div>
+    )
+  }
+
+  if (profilesError) {
+    return (
+      <p role="alert" className="text-destructive p-6 text-xs">
+        {profilesError.message}
+      </p>
     )
   }
 

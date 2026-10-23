@@ -3,7 +3,7 @@
 O SDK reúne ferramentas para criar extensões do Mr. Tick sem alterar o aplicativo. Ele permite conectar ferramentas de trabalho, consultar tarefas, registrar apontamentos e sugestões, adicionar ações e criar temas. Essas extensões são chamadas de addons.
 
 
-SDK público para addons do Mr. Tick. Instale o pacote publicado no npm; não importe pacotes privados do monorepo. A linha 0.10 usa capabilities canônicas e separa autenticação de conexões dos providers de dados.
+SDK público para addons do Mr. Tick. Instale o pacote publicado no npm; não importe pacotes privados do monorepo. A linha 0.11 usa capabilities canônicas e separa autenticação de conexões dos providers de dados.
 
 ## Modelo público
 
@@ -12,13 +12,13 @@ SDK público para addons do Mr. Tick. Instale o pacote publicado no npm; não im
 - `AddonContext.host`: events, notifications, vault e oauth.
 - `IDataSourceInstance`: tasksProvider, timeEntriesProvider, membersProvider e metadataProvider.
 
-O manifesto declara `capabilities` e `requiredApiVersion`. Perfis e autenticadores são registrados em runtime. `IHttpClient` exige validador de resposta. APIs funcionais retornam `Either`; os helpers OAuth de baixo nível mantêm seus contratos de Promise específicos.
+O manifesto declara `capabilities` e `requiredApiVersion`. Addons que conectam contas declaram `auth`; perfis e autenticadores são registrados em runtime por `contributions.connections`, com retorno `Either`. `IDataSource` não fornece perfis de conexão. `IHttpClient` exige validador de resposta. APIs funcionais retornam `Either`; os helpers OAuth de baixo nível mantêm seus contratos de Promise específicos.
 
 ## Guias
 
 - [Primeiro addon](https://mistertick.com/docs/quickstart)
 - [Capabilities](https://mistertick.com/docs/capabilities)
-- [Conexões e autenticação](https://mistertick.com/docs/apis/connections)
+- [Autenticação](https://mistertick.com/docs/capabilities/auth)
 - [OAuth PKCE](https://mistertick.com/docs/apis/oauth-pkce)
 - [Cofre, settings e eventos](https://mistertick.com/docs/apis/vault-and-events)
 - [Sincronização](https://mistertick.com/docs/sync-engine)

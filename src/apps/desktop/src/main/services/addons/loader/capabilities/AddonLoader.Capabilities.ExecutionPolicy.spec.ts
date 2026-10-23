@@ -60,13 +60,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionProfiles: () => [
-              {
-                connectionProfileId: 'prof-c',
-                cardinality: 'multi',
-                default: true,
-              },
-            ],
             getConnectionSchema: () => [],
             getStaticMappingFields: () => staticFields,
             getMappingFields: async (scope) =>
@@ -300,7 +293,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionProfiles: () => [],
             getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
@@ -408,7 +400,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
         {
           activate: (context) => {
             context.contributions.dataSources.register({
-              getConnectionProfiles: () => [],
               getConnectionSchema: () => [],
               createInstance: () => ({
                 tasksProvider: {
@@ -598,7 +589,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
               },
             )
             context.contributions.dataSources.register({
-              getConnectionProfiles: () => [],
               getConnectionSchema: () => [],
               createInstance: () => ({
                 tasksProvider: fakeTasksProvider,
@@ -1043,13 +1033,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
           archive: async () => Either.failure(AppError.NotFound('NOT_FOUND')),
           restore: async () => Either.failure(AppError.NotFound('NOT_FOUND')),
         },
-        {
-          getConnectionProfiles: async () => Either.success([]),
-          getDataSource: async () =>
-            Either.failure(AppError.NotFound('NOT_FOUND')),
-          getDataSourcesForWorkspace: async () => Either.success([]),
-        },
-        () => undefined,
         { execute: async () => Either.failure(AppError.NotFound('NOT_FOUND')) },
         { execute: async () => Either.failure(AppError.NotFound('NOT_FOUND')) },
         disconnectService,
@@ -1073,7 +1056,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionProfiles: () => [],
             getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {

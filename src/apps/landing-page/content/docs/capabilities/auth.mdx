@@ -1,20 +1,33 @@
 ---
-title: "Connections and authentication"
-description: Connect external accounts and keep each account identity and credentials separate.
-icon: Cable
+title: Authentication
+description: Declare account connections independently of task integrations.
+icon: KeyRound
 ---
 
-Use a **connection** when an addon needs access to an external account. For example, a user might connect two Redmine servers or authorize Discord in a workspace. The addon supplies the integration; each connection keeps the selected account and its credentials separate.
+The `auth` capability lets an addon offer account connections within a workspace. It can accompany any other capability. Redmine uses `auth` and `dataSource`; Discord uses `auth` and `watcher`. A theme that only changes colors uses `theme` alone.
 
-Connecting an account is independent from synchronizing tasks. An activity observer can authenticate without becoming a datasource.
+```yaml
+capabilities:
+  - auth
+  - watcher
+requiredApiVersion: '>=0.11.0'
+```
+
+## How it works
+
+The manifest declares that the addon connects accounts. During activation, its code registers connection profiles through `contributions.connections.registerProfiles` and authentication methods through `registerAuthenticator`. Both operations return `Either`: check the result and stop activation on failure. Without `auth`, the application refuses these registrations.
+
+A profile defines how many accounts can connect and which authentication methods it accepts. An authenticator implements communication with the external service, using credentials or OAuth. If authentication is unnecessary, omit `auth` and the authenticator; use addon or workspace settings.
+
+Mr. Tick manages the selected account, authorization attempts, renewal, and credential storage. Each addon implements the specifics of its external service. Declaring `auth` does not make an addon a datasource or provide security isolation for its code.
 
 ## Registration
 
 ```ts
-import type { AddonContext } from '@mr-tick/sdk'
+import { type AddonContext, type AppError, type Either } from '@mr-tick/sdk'
 
-export function registerProfiles(context: AddonContext): void {
-  context.contributions.connections.registerProfiles([
+export function registerProfiles(context: AddonContext): Either<AppError, void> {
+  return context.contributions.connections.registerProfiles([
     {
       connectionProfileId: 'example-account',
       cardinality: 'multi',
@@ -28,7 +41,7 @@ export function registerProfiles(context: AddonContext): void {
 
 `connectionProfileId` identifies a connection model; `authProfileId` identifies an authentication implementation. Profiles can declare allowed authenticators, defaults and authorization roles. `single` limits a profile within a workspace; `multi` permits separate instances.
 
-Datasources expose profiles with `getConnectionProfiles()` and their registration publishes the profiles. Addons without datasources use `contributions.connections.registerProfiles`. Profiles and authenticators are runtime contributions, not manifest descriptors.
+Every addon that connects accounts declares `auth` in its manifest and registers profiles with `contributions.connections.registerProfiles`, including datasources. Profile and authenticator details belong in code; registering or removing a datasource does not change those contributions. Both registration operations return `Either`; handle failure before continuing activation.
 
 ## Credentials authenticator
 
@@ -111,4 +124,4 @@ Register the returned authenticator with `registerAuthenticator`. Authentication
 
 Refresh-capable OAuth authenticators implement `refreshToken` returning `Either<TokenRefreshError, OAuthRenewalResult>`. Advertise remote revocation only with `supportsRevocation: true` and a working `revokeToken`.
 
-See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).
+See [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).

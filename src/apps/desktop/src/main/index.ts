@@ -29,7 +29,6 @@ import {
   IConnectAddonConnectionUseCase,
   IConnectionLifecycleCoordinator,
   ICoreAddonCapabilities,
-  IDataSourceResolver,
   IDisconnectAddonConnectionUseCase,
   ILinkConnectionUseCase,
   IOAuthAttemptCoordinator,
@@ -669,8 +668,6 @@ if (gotTheLock) {
             serviceProvider.resolve<IConnectionLifecycleCoordinator>(
               'connectionLifecycleCoordinator',
             ),
-            serviceProvider.resolve<IDataSourceResolver>('dataSourceResolver'),
-            () => undefined,
             serviceProvider.resolve<ILinkConnectionUseCase>(
               'linkConnectionService',
             ),

@@ -98,7 +98,6 @@ describe('TimeEntriesPullService', () => {
     service = new TimeEntriesPullService({
       getDataSource: resolve,
       getDataSourcesForWorkspace: vi.fn(),
-      getConnectionProfiles: vi.fn(),
     })
   })
   it('passes the provider page and opaque cursor unchanged through the service', async () => {

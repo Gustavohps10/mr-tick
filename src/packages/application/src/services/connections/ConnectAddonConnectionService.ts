@@ -55,19 +55,6 @@ export class ConnectAddonConnectionService implements IConnectAddonConnectionUse
         AppError.ValidationError('CONNECTION_PROFILE_NOT_DECLARED'),
       )
 
-    if (input.authenticationInput.method === 'none') {
-      const result = await this.connectionLifecycleCoordinator.connect({
-        workspaceId: input.workspaceId,
-        connectionInstanceId: input.connectionInstanceId,
-        addonId: targetAddonId,
-        profile,
-        method: 'none',
-        configuration: input.authenticationInput.configuration,
-      })
-      if (result.isFailure()) return result.forwardFailure()
-      return Either.success({})
-    }
-
     const authInput = input.authenticationInput
     if (!isNonEmptyString(authInput.authorizationRole)) {
       return Either.failure(
@@ -143,9 +130,6 @@ export class ConnectAddonConnectionService implements IConnectAddonConnectionUse
         },
       })
       if (result.isFailure()) return result.forwardFailure()
-      if (result.success.kind === 'none') {
-        return Either.success({})
-      }
       return Either.success({
         identity: result.success.identity,
       })
@@ -174,9 +158,6 @@ export class ConnectAddonConnectionService implements IConnectAddonConnectionUse
       },
     })
     if (result.isFailure()) return result.forwardFailure()
-    if (result.success.kind === 'none') {
-      return Either.success({})
-    }
     return Either.success({
       identity: result.success.identity,
     })

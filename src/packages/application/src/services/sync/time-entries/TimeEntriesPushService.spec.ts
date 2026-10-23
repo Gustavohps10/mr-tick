@@ -153,7 +153,6 @@ describe('TimeEntriesPushService', () => {
             adapter.getAuthenticatedMemberData(),
         }),
       getDataSourcesForWorkspace: vi.fn(),
-      getConnectionProfiles: vi.fn(),
     }
     mutex = new TestMutex()
     sut = new TimeEntriesPushService(repository, resolver, mutex)

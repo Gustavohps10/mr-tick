@@ -6,14 +6,15 @@ icon: Blocks
 
 Uma **capability** descreve uma funcionalidade oferecida pelo addon. O Mr. Tick lê essa informação para saber onde ele pode ser usado. Por exemplo, uma integração de tarefas usa `dataSource`, enquanto um tema visual usa `theme`.
 
-Liste as funcionalidades em `capabilities`, no arquivo manifest.yaml. Os nomes aceitos são `dataSource`, `watcher`, `calendar`, `punch` e `theme`; escreva-os exatamente assim. A lista precisa ter pelo menos um valor e não pode ter repetidos. Um addon pode oferecer mais de uma funcionalidade.
+Liste as funcionalidades em `capabilities`, no arquivo manifest.yaml. Os nomes aceitos são `auth`, `dataSource`, `watcher`, `calendar`, `punch` e `theme`; escreva-os exatamente assim. A lista precisa ter pelo menos um valor e não pode ter repetidos. Um addon pode oferecer mais de uma funcionalidade.
 
-Use `requiredApiVersion` para informar a API compatível do aplicativo. Menus, comandos, configurações e autenticação são registrados pelo código do addon; não são valores adicionais dessa lista.
+Use `requiredApiVersion` para informar a API compatível do aplicativo. Menus, comandos e configurações são registrados pelo código do addon. Para conectar contas externas, declare também `auth` e registre seus perfis e autenticadores durante a ativação.
 
+- [Autenticação](/pt-br/docs/capabilities/auth)
 - [datasources](/pt-br/docs/capabilities/datasources)
-- [watchers](/pt-br/docs/capabilities/watchers)
+- [Observadores de atividade](/pt-br/docs/capabilities/watchers)
 - [calendars](/pt-br/docs/capabilities/calendars)
 - [themes](/pt-br/docs/capabilities/themes)
 - [punch](/pt-br/docs/capabilities/punch)
 
-Consulte [conexões](/pt-br/docs/apis/connections), [OAuth PKCE](/pt-br/docs/apis/oauth-pkce) e [cofre e eventos](/pt-br/docs/apis/vault-and-events).
+Consulte [autenticação](/pt-br/docs/capabilities/auth), [OAuth PKCE](/pt-br/docs/apis/oauth-pkce) e [cofre e eventos](/pt-br/docs/apis/vault-and-events).

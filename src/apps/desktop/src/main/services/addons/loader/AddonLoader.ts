@@ -26,6 +26,7 @@ import {
   IOAuthAttemptCoordinator,
   IWorkspaceCredentialReferenceRegistry,
 } from '@mr-tick/application'
+import { isValidConnectionProfileDescriptors } from '@mr-tick/domain'
 import {
   AddonActionResponse,
   AddonCapability,
@@ -75,7 +76,7 @@ import {
   isString,
 } from '@mr-tick/shared/helpers'
 import { ISystemEvents } from '@mr-tick/shared/transport'
-import { BrowserWindow, Notification, shell } from 'electron'
+import { app, BrowserWindow, Notification, shell } from 'electron'
 import yaml from 'js-yaml'
 
 import { getSettings, saveSettings } from '@/main/settings'
@@ -89,6 +90,7 @@ import {
 } from '../data-sources/GuardedDataSourceProviders'
 import { AddonBindingLifetime, AddonLifetime } from '../lifecycle/AddonLifetime'
 import { AddonScopedVault } from '../vault/AddonScopedVault'
+import { isLocalSdkDevelopmentAddon } from './is-local-sdk-development-addon'
 
 export class MemoryRegistry<T extends { id?: string }> implements IRegistry<T> {
   private items = new Map<string, T>()
@@ -822,7 +824,6 @@ export class AddonLoader implements IAddonReloader {
         }
         const itemWithId: IDataSource & { id: string } = {
           id: addonId,
-          getConnectionProfiles: () => item.getConnectionProfiles(),
           getConnectionSchema: () => item.getConnectionSchema(),
           createInstance: (context) => {
             const isScopeValid = Boolean(
@@ -949,19 +950,13 @@ export class AddonLoader implements IAddonReloader {
           }
         }
         this.dataSourceRegistry.register(itemWithId)
-        this.profilesResolver.registerProfiles(
-          addonId,
-          item.getConnectionProfiles(),
-        )
         lifetime.track(() => {
           this.dataSourceRegistry.unregister(addonId)
-          this.profilesResolver.unregisterProfiles(addonId)
         })
       },
       unregister: (id: string) => {
         if (lifetime.isActive() && id === addonId) {
           this.dataSourceRegistry.unregister(addonId)
-          this.profilesResolver.unregisterProfiles(addonId)
         }
       },
       getItems: () => this.dataSourceRegistry.getItems(),
@@ -969,11 +964,24 @@ export class AddonLoader implements IAddonReloader {
 
     const connectionContributions: IAddonConnectionsContributionAPI = {
       registerProfiles: (profiles) => {
-        if (!lifetime.isActive()) return
+        if (!lifetime.isActive())
+          return Either.failure(AppError.Unauthorized('ADDON_INACTIVE'))
+
+        if (!this.isOperationSupported(addonId, 'auth', 'registerProfiles'))
+          return Either.failure(
+            AppError.Unauthorized('AUTH_CAPABILITY_REQUIRED'),
+          )
+
+        if (!isValidConnectionProfileDescriptors([...profiles]))
+          return Either.failure(
+            AppError.ValidationError('CONNECTION_PROFILES_INVALID'),
+          )
+
         this.profilesResolver.registerProfiles(addonId, profiles)
         lifetime.track(() => {
           this.profilesResolver.unregisterProfiles(addonId)
         })
+        return Either.success()
       },
       unregisterProfiles: () => {
         if (lifetime.isActive()) {
@@ -981,7 +989,29 @@ export class AddonLoader implements IAddonReloader {
         }
       },
       registerAuthenticator: (authenticator) => {
-        if (!lifetime.isActive()) return
+        if (!lifetime.isActive())
+          return Either.failure(AppError.Unauthorized('ADDON_INACTIVE'))
+
+        if (
+          !this.isOperationSupported(addonId, 'auth', 'registerAuthenticator')
+        )
+          return Either.failure(
+            AppError.Unauthorized('AUTH_CAPABILITY_REQUIRED'),
+          )
+
+        if (!isNonEmptyString(authenticator.authProfileId))
+          return Either.failure(
+            AppError.ValidationError('AUTH_PROFILE_ID_REQUIRED'),
+          )
+
+        if (
+          authenticator.method !== 'credentials' &&
+          authenticator.method !== 'oauth'
+        )
+          return Either.failure(
+            AppError.ValidationError('UNSUPPORTED_AUTHENTICATION_METHOD'),
+          )
+
         this.authenticatorRegistry.register(addonId, authenticator)
         lifetime.track(() => {
           this.authenticatorRegistry.unregister(
@@ -989,6 +1019,7 @@ export class AddonLoader implements IAddonReloader {
             authenticator.authProfileId,
           )
         })
+        return Either.success()
       },
       unregisterAuthenticator: (authProfileId: string) => {
         if (lifetime.isActive()) {
@@ -1244,6 +1275,10 @@ export class AddonLoader implements IAddonReloader {
         currentVersion = this.hostSdkVersion
       }
       if (isPlaywrightE2E) {
+        currentVersion = '-1'
+      }
+
+      if (isLocalSdkDevelopmentAddon(addonFolderPath, app.isPackaged)) {
         currentVersion = '-1'
       }
 

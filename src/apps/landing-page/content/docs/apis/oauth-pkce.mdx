@@ -4,7 +4,7 @@ description: Authorize accounts in the browser and complete the connection in th
 icon: KeyRound
 ---
 
-For workspace connections, register an `AddonConnectionAuthenticator` with `method: oauth`. The core owns PKCE, state, attempt lifetime and credential persistence. Do not create a second independent login flow for the same connection.
+Declare `auth` in the manifest. For workspace connections, register an `AddonConnectionAuthenticator` with `method: oauth`. The core owns PKCE, state, attempt lifetime and credential persistence. Do not create a second independent login flow for the same connection.
 
 | Environment | Provider HTTP redirect                  | Landing page opens          |
 | ----------- | --------------------------------------- | --------------------------- |
@@ -56,4 +56,4 @@ The state is bound to the attempt and cannot authorize another connection or rev
 
 `context.host.oauth` still offers low-level `generatePKCE`, `generateState` and `authorize` browser helpers. `authorize` returns `Promise<OAuthResult>` and does not independently persist a core connection. Connection authentication uses the lifecycle above.
 
-See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).
+See [authentication](/docs/capabilities/auth), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).

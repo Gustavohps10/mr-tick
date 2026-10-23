@@ -13,7 +13,7 @@ shortDescription: SDK example
 description: Example using the published SDK
 capabilities:
   - theme
-requiredApiVersion: '>=0.10.0'
+requiredApiVersion: '>=0.11.0'
 ```
 
 ```ts
@@ -36,4 +36,4 @@ export default class OceanAddon implements IAddon {
 
 Use complete CSS color values such as `oklch(...)` for current tokens. Theme IDs are local to the addon and namespaced by the host. Menus and commands are contributions, not additional manifest capability values. The host removes the registered theme on addon deactivation.
 
-See [connections](/docs/apis/connections), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).
+See [authentication](/docs/capabilities/auth), [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).

@@ -12,7 +12,7 @@ import type {
   ConnectionProfileDescriptor,
   WorkspaceViewModel,
 } from '@mr-tick/sdk'
-import { isDataSource } from '@mr-tick/shared/helpers'
+import { hasCapability, isDataSource } from '@mr-tick/shared/helpers'
 import { isString } from '@mr-tick/shared/helpers'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -294,7 +294,11 @@ function WorkspaceSubSidebarSettingsManager({
       )
     }
 
-    if (!activeCapability && isDataSourceAddon) {
+    if (
+      !activeCapability &&
+      isDataSourceAddon &&
+      hasCapability(resolvedAddon?.capabilities, 'auth')
+    ) {
       return (
         <WorkspaceGroupedDataSourceManager
           key={`ds-default-${addonId}-${ws.id}`}
@@ -703,7 +707,7 @@ function ScopedAddonSettingsRenderer({
         throw new Error(result.error ?? 'CONNECTION_PROFILES_UNAVAILABLE')
       return result.data
     },
-    enabled: isDataSourceConnection,
+    enabled: hasCapability(currentAddon?.capabilities, 'auth'),
   })
 
   if (isLoadingSchema || isLoadingSettings) {
@@ -835,7 +839,11 @@ function ScopedAddonSettingsRenderer({
   if (tabs.length === 0) {
     if (hideWhenEmpty) return null
 
-    if (!activeCapability && isDataSourceConnection) {
+    if (
+      !activeCapability &&
+      isDataSourceConnection &&
+      hasCapability(currentAddon?.capabilities, 'auth')
+    ) {
       return (
         <WorkspaceGroupedDataSourceManager
           addonId={addonId}

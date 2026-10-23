@@ -4,9 +4,10 @@
 
 - [SDK](sdk.md): mapa das referências e conceitos públicos.
 - [Execução local](como-rodar.md): ambiente do monorepo.
+- [Testar o SDK sem esperar uma release](../src/dev-addons/desenvolvimento-e-debug-de-addons.md#testar-mudanças-no-sdk-sem-esperar-uma-release): deslinkar, remover instalações anteriores, recompilar e relinkar os addons com o SDK local.
 - [Runtime local do SDK](sdk-local-runtime.md): timer, apontamentos, sugestões e identidade de operação.
 - [Contexto e capacidades do core](sdk-core-capabilities.md): consultas, escopos e lifecycle.
-- [Conexões e autenticação](../src/apps/landing-page/content/docs/apis/connections.pt-br.mdx): perfis, autenticadores e credenciais.
+- [Autenticação](../src/apps/landing-page/content/docs/capabilities/auth.pt-br.mdx): perfis, autenticadores e credenciais.
 - [OAuth PKCE](../src/apps/landing-page/content/docs/apis/oauth-pkce.pt-br.mdx): fluxo atual e callbacks por ambiente.
 
 ## Acesso por agentes
@@ -24,7 +25,7 @@ Para conectar um agente após a publicação, use `https://mistertick.com/api/mc
 
 ## Organização do conteúdo
 
-O portal em [content/docs](../src/apps/landing-page/content/docs) contém os guias públicos em inglês e português. Use `capabilities/` para tipos de addon e `apis/` para contratos transversais. Autenticação é transversal: também atende addons sem datasource.
+O portal em [content/docs](../src/apps/landing-page/content/docs) contém os guias públicos em inglês e português. Use `capabilities/` para capacidades declaradas pelo addon e `apis/` para recursos de apoio. A página de autenticação reúne os conceitos, os perfis de conexão e os autenticadores, inclusive para addons sem datasource.
 
 Os documentos `sdk-*.md` desta pasta descrevem composição e limites do host. ADRs registram decisões e evolução; blocos históricos explicitamente superados não são exemplos de implementação atual. A [ADR-008](adr/008-addon-capabilities-canon.md) fixa os valores de capabilities e a separação de conexões/datasources.
 

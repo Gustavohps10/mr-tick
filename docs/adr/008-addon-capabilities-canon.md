@@ -16,6 +16,7 @@ Historicamente, o ecossistema Mr. Tick utilizava conceitos duplicados e ambíguo
    - A união de capacidades canônicas é definida como:
      ```ts
      export type AddonCapability =
+       | 'auth'
        | 'dataSource'
        | 'watcher'
        | 'calendar'
@@ -62,3 +63,13 @@ Historicamente, o ecossistema Mr. Tick utilizava conceitos duplicados e ambíguo
 - A CLI não infere `dataSource` quando faltam capacidades; o wizard exige seleção explícita e o validador recusa listas ausentes, vazias ou duplicadas.
 - `AddonManifest` do bridge segue o mesmo contrato readonly dos DTOs e ViewModels.
 - A alteração de capacidades não flexibiliza o contrato HTTP: respostas externas continuam exigindo `responseValidator` antes de serem usadas como tipos de domínio.
+
+## Autenticação como capacidade explícita
+
+`auth` declara que o addon oferece conexões de contas. É independente de `dataSource`, `watcher` e das demais capacidades: Redmine combina `auth` e `dataSource`; Discord combina `auth` e `watcher`; um tema sem contas declara somente `theme`.
+
+Todos os perfis e autenticadores são registrados por `contributions.connections`. O loader exige `auth`, valida os perfis na fronteira e retorna `Either<AppError, void>` nos registros. `IDataSource` e `IDataSourceResolver` não fornecem perfis; não existe fallback de autenticação para datasource. O ciclo de registro e limpeza de conexões é independente do registro de providers de dados.
+
+O core mantém identidade, cardinalidade, PKCE, tentativas OAuth, renovação e cofre. O contrato não possui `method: 'none'`: addons sem autenticação não registram autenticadores nem conexões anônimas. Addons sem contas não precisam de perfis nem exibem a seção de autenticação. A declaração não constitui isolamento de segurança do código do addon.
+
+Essa evolução exige a linha 0.11 do SDK. Publicar o SDK e o desktop compatível precede a distribuição dos addons atualizados; os manifestos de pacotes já publicados não são reescritos como se tivessem sido recompilados.
