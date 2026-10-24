@@ -1,7 +1,7 @@
 ---
-"@mr-tick/sdk": major
-"@mr-tick/application": major
-"@mr-tick/ui": major
+"@mr-tick/sdk": minor
+"@mr-tick/application": minor
+"@mr-tick/ui": minor
 "@mr-tick/desktop": patch
 "@mr-tick/datasource-fake": patch
 ---
