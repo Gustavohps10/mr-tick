@@ -1,5 +1,13 @@
 # @mr-tick/adapters
 
+## 1.4.2
+
+### Patch Changes
+
+- Updated dependencies [4733f0b]
+  - @mr-tick/sdk@0.12.0
+  - @mr-tick/application@2.1.0
+
 ## 1.4.1
 
 ### Patch Changes
