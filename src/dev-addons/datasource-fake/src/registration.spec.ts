@@ -4,11 +4,12 @@ import { describe, expect, it, vi } from 'vitest'
 import FakeDataSourceAddon from './index'
 
 describe('Development addon connection registration failures', () => {
-  it.each(['profiles', 'authenticator'])(
+  it.each(['profiles', 'schema', 'authenticator'])(
     'stops activation after rejected %s',
     (stage) => {
       const connections = {
         registerProfiles: vi.fn((): Either<AppError, void> => Either.success()),
+        registerSchema: vi.fn((): Either<AppError, void> => Either.success()),
         registerAuthenticator: vi.fn((): Either<AppError, void> =>
           Either.success(),
         ),
@@ -17,6 +18,10 @@ describe('Development addon connection registration failures', () => {
       if (stage === 'profiles')
         connections.registerProfiles.mockReturnValue(
           Either.failure(AppError.Unauthorized('AUTH_CAPABILITY_REQUIRED')),
+        )
+      if (stage === 'schema')
+        connections.registerSchema.mockReturnValue(
+          Either.failure(AppError.NotFound('CONNECTION_PROFILE_NOT_FOUND')),
         )
       if (stage === 'authenticator')
         connections.registerAuthenticator.mockReturnValue(
@@ -37,8 +42,14 @@ describe('Development addon connection registration failures', () => {
 
       expect(registerDataSource).not.toHaveBeenCalled()
       expect(notifyError).toHaveBeenCalledOnce()
-      if (stage === 'authenticator')
+      if (stage !== 'profiles')
         expect(connections.unregisterProfiles).toHaveBeenCalledOnce()
+      if (stage === 'profiles') {
+        expect(connections.registerSchema).not.toHaveBeenCalled()
+        expect(connections.registerAuthenticator).not.toHaveBeenCalled()
+      }
+      if (stage === 'schema')
+        expect(connections.registerAuthenticator).not.toHaveBeenCalled()
     },
   )
 })
