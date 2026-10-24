@@ -42,7 +42,12 @@ function prepareSingleProfileAddon(userDataPath: string): void {
   )
   writeFileSync(
     join(addonDistDirectory, 'index.js'),
-    sourceBundle.replace(originalProfile, targetProfile),
+    sourceBundle
+      .replace(originalProfile, targetProfile)
+      .replace(
+        'connections.registerSchema(\n      "fake-main",',
+        `connections.registerSchema(\n      "${profileId}",`,
+      ),
   )
 }
 

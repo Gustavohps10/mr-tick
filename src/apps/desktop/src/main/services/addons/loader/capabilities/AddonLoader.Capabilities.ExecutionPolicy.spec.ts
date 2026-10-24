@@ -60,7 +60,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionSchema: () => [],
             getStaticMappingFields: () => staticFields,
             getMappingFields: async (scope) =>
               Either.success<MappingFieldDefinition[], AppError>([
@@ -293,7 +292,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
                 pull: async () => Either.success<TaskDTO[], AppError>([]),
@@ -400,7 +398,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
         {
           activate: (context) => {
             context.contributions.dataSources.register({
-              getConnectionSchema: () => [],
               createInstance: () => ({
                 tasksProvider: {
                   ...fakeTasksProvider,
@@ -589,7 +586,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
               },
             )
             context.contributions.dataSources.register({
-              getConnectionSchema: () => [],
               createInstance: () => ({
                 tasksProvider: fakeTasksProvider,
                 timeEntriesProvider: fakeTimeEntriesProvider,
@@ -1056,7 +1052,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
                 pull: async () => Either.success<TaskDTO[], AppError>([]),

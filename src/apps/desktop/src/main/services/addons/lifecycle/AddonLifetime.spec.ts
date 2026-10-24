@@ -174,7 +174,6 @@ it('keeps reused datasource definitions owned by distinct addons without mutatin
     oauthAttemptCoordinator,
   )
   const source: IDataSource = {
-    getConnectionSchema: () => [],
     createInstance: vi.fn<IDataSource['createInstance']>(),
   }
   const dsCapabilities: import('@mr-tick/sdk').AddonCapability[] = [
@@ -187,8 +186,8 @@ it('keeps reused datasource definitions owned by distinct addons without mutatin
   first.contributions.dataSources.register(source)
   second.contributions.dataSources.register(source)
   expect(source).not.toHaveProperty('id')
-  expect(loader.getDataSource('first')?.getConnectionSchema()).toEqual([])
-  expect(loader.getDataSource('second')?.getConnectionSchema()).toEqual([])
+  expect(loader.getDataSource('first')).toBeDefined()
+  expect(loader.getDataSource('second')).toBeDefined()
   await loader.deactivateAddon('first')
   expect(loader.getDataSource('first')).toBeUndefined()
   expect(loader.getDataSource('second')).toBeDefined()

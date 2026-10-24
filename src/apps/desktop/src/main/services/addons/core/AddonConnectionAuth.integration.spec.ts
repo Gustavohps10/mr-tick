@@ -205,6 +205,7 @@ function setupIntegrationFixture() {
   })
 
   const profilesResolver: IAddonConnectionProfilesResolver = {
+    getConnectionSchema: vi.fn(async () => Either.success([])),
     getConnectionProfiles: async () => Either.success([profile]),
   }
   const connectService = new ConnectAddonConnectionService(

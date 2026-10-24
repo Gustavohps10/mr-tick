@@ -164,10 +164,6 @@ class FakeCredentialsVault implements ICredentialsVault {
 }
 
 class TestAddonDataSource implements IDataSource {
-  getConnectionSchema() {
-    return []
-  }
-
   createInstance(context: DataSourceContext): IDataSourceInstance {
     let client = context.httpClient
     if (context.config && typeof context.config['apiUrl'] === 'string') {

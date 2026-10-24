@@ -824,7 +824,6 @@ export class AddonLoader implements IAddonReloader {
         }
         const itemWithId: IDataSource & { id: string } = {
           id: addonId,
-          getConnectionSchema: () => item.getConnectionSchema(),
           createInstance: (context) => {
             const isScopeValid = Boolean(
               context.scope &&
@@ -987,6 +986,28 @@ export class AddonLoader implements IAddonReloader {
         if (lifetime.isActive()) {
           this.profilesResolver.unregisterProfiles(addonId)
         }
+      },
+      registerSchema: (connectionProfileId, schema) => {
+        if (!lifetime.isActive())
+          return Either.failure(AppError.Unauthorized('ADDON_INACTIVE'))
+        if (!this.isOperationSupported(addonId, 'auth', 'registerSchema'))
+          return Either.failure(
+            AppError.Unauthorized('AUTH_CAPABILITY_REQUIRED'),
+          )
+        const result = this.profilesResolver.registerSchema(
+          addonId,
+          connectionProfileId,
+          schema,
+        )
+        if (result.isFailure()) return result
+        lifetime.track(() =>
+          this.profilesResolver.unregisterSchema(addonId, connectionProfileId),
+        )
+        return Either.success()
+      },
+      unregisterSchema: (connectionProfileId) => {
+        if (lifetime.isActive())
+          this.profilesResolver.unregisterSchema(addonId, connectionProfileId)
       },
       registerAuthenticator: (authenticator) => {
         if (!lifetime.isActive())

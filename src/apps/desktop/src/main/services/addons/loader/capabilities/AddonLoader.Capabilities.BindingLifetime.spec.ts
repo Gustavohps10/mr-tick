@@ -56,7 +56,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionSchema: () => [],
             createInstance: (ctx) => {
               const fakeTaskProvider: ITaskProvider = {
                 pull: async () => Either.success<TaskDTO[], AppError>([]),
@@ -191,7 +190,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
                 pull: async () => Either.success<TaskDTO[], AppError>([]),
@@ -265,7 +263,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
                 pull: async () => Either.success<TaskDTO[], AppError>([]),
@@ -438,7 +435,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
                 pull: async () => Either.success<TaskDTO[], AppError>([]),
@@ -498,7 +494,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
                 pull: async () => Either.success<TaskDTO[], AppError>([]),
@@ -564,7 +559,6 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Binding Lifetime & Co
       const mockAddon: IAddon = {
         activate: (context) => {
           context.contributions.dataSources.register({
-            getConnectionSchema: () => [],
             createInstance: () => ({
               tasksProvider: {
                 pull: async () => Either.success<TaskDTO[], AppError>([]),

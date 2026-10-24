@@ -4,7 +4,7 @@ import type {
   ConnectionProfileDescriptor,
   WorkspaceViewModel,
 } from '@mr-tick/sdk'
-import { isString } from '@mr-tick/shared/helpers'
+import { AppError, Either, isString } from '@mr-tick/shared/helpers'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FolderKanban, KeyRound, Plus, SlidersHorizontal } from 'lucide-react'
 import React, { useState } from 'react'
@@ -12,9 +12,9 @@ import { toast } from 'sonner'
 
 import { MappingConfigModal } from '@/components/mapping-config-modal'
 import {
-  DataSourceInstanceFormData,
-  NewDataSourceInstanceForm,
-} from '@/components/new-datasource-instance-form'
+  AddonConnectionFormData,
+  NewAddonConnectionForm,
+} from '@/components/new-addon-connection-form'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -34,7 +34,7 @@ import {
   ConnectionStatus,
 } from './connection-card'
 
-export interface WorkspaceGroupedDataSourceManagerProps {
+export interface WorkspaceAddonConnectionsManagerProps {
   addonId: string
   workspaceId?: string
   mode?: 'auth' | 'dataSource'
@@ -93,27 +93,50 @@ function resolveProfileSelectValue(
   return defaultProfile.connectionProfileId
 }
 
-function resolveAuthorizationRole(
+function resolveConnectionAuthentication(
   profile: ConnectionProfileDescriptor | undefined,
-  authProfileId: string,
-): string {
-  if (!profile || !profile.roles) return 'primary'
-  const matchingRole = profile.roles.find(
-    (role) =>
-      role.allowedAuthProfileIds.includes(authProfileId) ||
-      role.defaultAuthProfileId === authProfileId,
+): Either<AppError, { authorizationRole: string; authProfileId: string }> {
+  if (!profile)
+    return Either.failure(
+      AppError.ValidationError('CONNECTION_PROFILE_NOT_FOUND'),
+    )
+  if (profile.roles && profile.roles.length > 0) {
+    if (profile.roles.length !== 1)
+      return Either.failure(
+        AppError.ValidationError('AUTHORIZATION_ROLE_SELECTION_REQUIRED'),
+      )
+    const role = profile.roles.find(() => true)
+    if (!role)
+      return Either.failure(
+        AppError.ValidationError('AUTHORIZATION_ROLE_SELECTION_REQUIRED'),
+      )
+    if (role.defaultAuthProfileId === null)
+      return Either.failure(
+        AppError.ValidationError('AUTH_PROFILE_SELECTION_REQUIRED'),
+      )
+    return Either.success({
+      authorizationRole: role.authorizationRole,
+      authProfileId: role.defaultAuthProfileId,
+    })
+  }
+  if (
+    profile.defaultAuthProfileId === undefined ||
+    profile.defaultAuthProfileId === null
   )
-  if (matchingRole) return matchingRole.authorizationRole
-  const firstRole = profile.roles.find(() => true)
-  if (firstRole) return firstRole.authorizationRole
-  return 'primary'
+    return Either.failure(
+      AppError.ValidationError('AUTH_PROFILE_SELECTION_REQUIRED'),
+    )
+  return Either.success({
+    authorizationRole: 'primary',
+    authProfileId: profile.defaultAuthProfileId,
+  })
 }
 
-export function WorkspaceGroupedDataSourceManager({
+export function WorkspaceAddonConnectionsManager({
   addonId,
   workspaceId,
   mode = 'auth',
-}: WorkspaceGroupedDataSourceManagerProps) {
+}: WorkspaceAddonConnectionsManagerProps) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
 
@@ -170,15 +193,27 @@ export function WorkspaceGroupedDataSourceManager({
   })
 
   const connectMutation = useMutation({
-    mutationFn: async (data: DataSourceInstanceFormData) => {
-      if (!activeWorkspaceId) {
-        throw new Error('Nenhum workspace selecionado para esta conexão.')
-      }
-
-      const authorizationRole = resolveAuthorizationRole(
-        selectedProfile,
-        data.connectionProfileId,
+    mutationFn: async (
+      data: AddonConnectionFormData,
+    ): ReturnType<typeof bridge.workspaces.submitCredentials> => {
+      if (!activeWorkspaceId)
+        return {
+          isSuccess: false,
+          statusCode: 400,
+          error: 'WORKSPACE_ID_REQUIRED',
+        }
+      const profile = connectionProfiles.find(
+        (candidate) =>
+          candidate.connectionProfileId === data.connectionProfileId,
       )
+      const authentication = resolveConnectionAuthentication(profile)
+      if (authentication.isFailure())
+        return {
+          isSuccess: false,
+          statusCode: authentication.failure.statusCode,
+          error: authentication.failure.messageKey,
+        }
+      const { authorizationRole, authProfileId } = authentication.success
 
       const res = await bridge.workspaces.submitCredentials({
         body: {
@@ -187,7 +222,7 @@ export function WorkspaceGroupedDataSourceManager({
           authenticationInput: {
             kind: 'credentials',
             authorizationRole,
-            authProfileId: data.connectionProfileId,
+            authProfileId,
             credentials: data.credentials,
             configuration: data.configuration,
           },
@@ -621,7 +656,7 @@ export function WorkspaceGroupedDataSourceManager({
           </DialogHeader>
           <div className="flex-1 overflow-y-auto py-2 pr-1">
             {connectionTargetId && selectedProfile && (
-              <NewDataSourceInstanceForm
+              <NewAddonConnectionForm
                 pluginId={addonId}
                 connectionInstanceId={connectionTargetId}
                 connectionProfileId={selectedProfile.connectionProfileId}

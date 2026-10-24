@@ -251,7 +251,12 @@ function ensureTestAddon(
     )
     writeFileSync(
       join(probeDistDir, 'index.js'),
-      bundle.replace(originalProfile, targetProfile),
+      bundle
+        .replace(originalProfile, targetProfile)
+        .replace(
+          'connections.registerSchema(\n      "fake-main",',
+          `connections.registerSchema(\n      "${probeProfileId}",`,
+        ),
     )
   }
 

@@ -197,40 +197,19 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
 
   public async getConnectionSchema(
     event: IpcMainInvokeEvent,
-    { body }: IRequest<{ addonId: string }>,
+    { body }: IRequest<{ addonId: string; connectionProfileId: string }>,
   ): Promise<ViewModel<AddonSettingsSchema>> {
-    if (!event || !this.addonLoader) {
-      return { isSuccess: true, statusCode: 200, data: [] }
-    }
-    try {
-      if (body?.addonId && !this.addonLoader.hasActiveAddon(body.addonId)) {
-        const installedResult = await this.addonsFacade.getInstalledById(
-          body.addonId,
-        )
-        if (installedResult.isSuccess() && installedResult.success.path) {
-          await this.addonLoader.loadAndActivateFromDisk(
-            body.addonId,
-            installedResult.success.path,
-          )
-        }
+    if (!event || !body.addonId || !body.connectionProfileId)
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'CONNECTION_SCHEMA_SCOPE_REQUIRED',
       }
-
-      const ds = this.addonLoader.getDataSource(body.addonId)
-      if (ds && ds.getConnectionSchema) {
-        return {
-          isSuccess: true,
-          statusCode: 200,
-          data: ds.getConnectionSchema(),
-        }
-      }
-      return { isSuccess: true, statusCode: 200, data: [] }
-    } catch (e) {
-      let error = 'FAILED_TO_GET_CONNECTION_SCHEMA'
-      if (e instanceof Error) {
-        error = e.message
-      }
-      return { isSuccess: false, statusCode: 500, error }
-    }
+    const result = await this.profilesResolver.getConnectionSchema(
+      body.addonId,
+      body.connectionProfileId,
+    )
+    return createResponseViewModel(result)
   }
 
   public async getConnectionProfiles(

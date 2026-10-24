@@ -10,7 +10,7 @@ The `auth` capability lets an addon offer account connections within a workspace
 capabilities:
   - auth
   - watcher
-requiredApiVersion: '>=0.11.0'
+requiredApiVersion: '>=1.0.0'
 ```
 
 ## How it works
@@ -125,3 +125,17 @@ Register the returned authenticator with `registerAuthenticator`. Authentication
 Refresh-capable OAuth authenticators implement `refreshToken` returning `Either<TokenRefreshError, OAuthRenewalResult>`. Advertise remote revocation only with `supportsRevocation: true` and a working `revokeToken`.
 
 See [OAuth PKCE](/docs/apis/oauth-pkce) and [vault and events](/docs/apis/vault-and-events).
+
+## Connection fields
+
+After registering profiles, register the schema for each `connectionProfileId` with `contributions.connections.registerSchema`. The schema belongs to the connection and works without a datasource. OAuth without manual inputs registers `[]`. Registration returns `Either` and is cleaned up when the addon or its profiles are unregistered.
+
+```ts
+const schema = context.contributions.connections.registerSchema('example-account', [
+  { id: 'apiUrl', label: 'API URL', type: 'text', scope: 'configuration', required: true },
+  { id: 'apiToken', label: 'API token', type: 'password', scope: 'credential', required: true },
+])
+if (schema.isFailure()) return schema.forwardFailure()
+```
+
+Use `scope: 'credential'` for secrets. Fields without a scope are configuration; section IDs such as `credentials` never determine storage. `IDataSource` does not expose `getConnectionSchema`.

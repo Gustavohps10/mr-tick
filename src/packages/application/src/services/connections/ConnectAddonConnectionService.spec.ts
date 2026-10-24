@@ -79,6 +79,7 @@ describe('ConnectAddonConnectionService', () => {
     }
 
     profilesResolverMock = {
+      getConnectionSchema: vi.fn(async () => Either.success([])),
       getConnectionProfiles: vi
         .fn()
         .mockResolvedValue(Either.success([fakeProfile])),

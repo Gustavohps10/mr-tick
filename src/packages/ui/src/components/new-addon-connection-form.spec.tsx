@@ -18,13 +18,13 @@ vi.mock('@/hooks/use-host-bridge', () => ({
 }))
 
 import {
-  DataSourceInstanceFormData,
-  NewDataSourceInstanceForm,
-} from '@/components/new-datasource-instance-form'
+  AddonConnectionFormData,
+  NewAddonConnectionForm,
+} from '@/components/new-addon-connection-form'
 
 const mockSampleSchema: AddonSettingsTab[] = [
   {
-    id: 'credentials',
+    id: 'arbitrary-access-section',
     label: 'Credenciais de Acesso',
     groups: [
       {
@@ -33,6 +33,7 @@ const mockSampleSchema: AddonSettingsTab[] = [
         fields: [
           {
             id: 'serverUrl',
+            scope: 'credential',
             type: 'text',
             label: 'URL do Servidor',
             placeholder: 'https://exemplo.local',
@@ -40,6 +41,7 @@ const mockSampleSchema: AddonSettingsTab[] = [
           },
           {
             id: 'apiKey',
+            scope: 'credential',
             type: 'password',
             label: 'Chave de API',
             placeholder: 'sua-chave',
@@ -98,7 +100,7 @@ function renderWithClient(ui: React.ReactElement) {
   )
 }
 
-describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√¢mico)', () => {
+describe('Unit - NewAddonConnectionForm e AddonFieldRenderer (SDK Schema Din√¢mico)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -113,7 +115,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     const handleSubmit = vi.fn()
 
     renderWithClient(
-      <NewDataSourceInstanceForm
+      <NewAddonConnectionForm
         pluginId="custom-datasource-addon"
         connectionProfileId="test-profile"
         connectionInstanceId="conn-instance-test-1"
@@ -126,6 +128,12 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
       expect(screen.getByText('Op√ß√µes de Sincroniza√ß√£o')).toBeTruthy()
     })
 
+    expect(mockGetConnectionSchema).toHaveBeenCalledWith({
+      body: {
+        addonId: 'custom-datasource-addon',
+        connectionProfileId: 'test-profile',
+      },
+    })
     expect(screen.getByText('URL do Servidor')).toBeTruthy()
     expect(screen.getByText('Chave de API')).toBeTruthy()
     expect(screen.getByText('Intervalo de Sync (Minutos)')).toBeTruthy()
@@ -143,7 +151,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     const handleSubmit = vi.fn()
 
     renderWithClient(
-      <NewDataSourceInstanceForm
+      <NewAddonConnectionForm
         pluginId="custom-datasource-addon"
         connectionProfileId="test-profile"
         connectionInstanceId="conn-instance-test-2"
@@ -185,13 +193,13 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
       data: mockSampleSchema,
     })
 
-    let capturedData: DataSourceInstanceFormData | null = null
-    const handleSubmit = vi.fn((data: DataSourceInstanceFormData) => {
+    let capturedData: AddonConnectionFormData | null = null
+    const handleSubmit = vi.fn((data: AddonConnectionFormData) => {
       capturedData = data
     })
 
     renderWithClient(
-      <NewDataSourceInstanceForm
+      <NewAddonConnectionForm
         pluginId="custom-datasource-addon"
         connectionProfileId="test-profile"
         connectionInstanceId="conn-instance-test-3"
@@ -228,7 +236,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
       throw new Error('Formul√°rio n√£o gerou payload de submiss√£o.')
     }
 
-    const payload: DataSourceInstanceFormData = capturedData
+    const payload: AddonConnectionFormData = capturedData
 
     expect(payload.pluginId).toBe('custom-datasource-addon')
     expect(payload.connectionInstanceId).toBe('conn-instance-test-3')
@@ -253,7 +261,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     const handleSubmit = vi.fn()
 
     renderWithClient(
-      <NewDataSourceInstanceForm
+      <NewAddonConnectionForm
         pluginId="custom-datasource-addon"
         connectionProfileId="test-profile"
         connectionInstanceId="conn-instance-test-4"
@@ -280,12 +288,14 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
         fields: [
           {
             id: 'host',
+            scope: 'credential',
             type: 'text',
             label: 'Host',
             defaultValue: '127.0.0.1',
           },
           {
             id: 'port',
+            scope: 'credential',
             type: 'number',
             label: 'Porta',
             defaultValue: 8080,
@@ -300,13 +310,13 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
       data: flatSchema,
     })
 
-    let capturedData: DataSourceInstanceFormData | null = null
-    const handleSubmit = vi.fn((data: DataSourceInstanceFormData) => {
+    let capturedData: AddonConnectionFormData | null = null
+    const handleSubmit = vi.fn((data: AddonConnectionFormData) => {
       capturedData = data
     })
 
     renderWithClient(
-      <NewDataSourceInstanceForm
+      <NewAddonConnectionForm
         pluginId="flat-schema-addon"
         connectionProfileId="test-profile"
         connectionInstanceId="conn-flat-1"
@@ -337,7 +347,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
       throw new Error('Formul√°rio n√£o gerou payload para schema plano.')
     }
 
-    const payload: DataSourceInstanceFormData = capturedData
+    const payload: AddonConnectionFormData = capturedData
     expect(payload.credentials.host).toBe('127.0.0.1')
     expect(payload.credentials.port).toBe(8080)
   })
@@ -349,13 +359,13 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
       data: mockSampleSchema,
     })
 
-    let capturedData: DataSourceInstanceFormData | null = null
-    const handleSubmit = vi.fn((data: DataSourceInstanceFormData) => {
+    let capturedData: AddonConnectionFormData | null = null
+    const handleSubmit = vi.fn((data: AddonConnectionFormData) => {
       capturedData = data
     })
 
     renderWithClient(
-      <NewDataSourceInstanceForm
+      <NewAddonConnectionForm
         pluginId="custom-datasource-addon"
         connectionProfileId="test-profile"
         connectionInstanceId="conn-switch-test"
@@ -386,7 +396,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
       throw new Error('Formul√°rio n√£o gerou payload ap√≥s toggle de switch.')
     }
 
-    const payload: DataSourceInstanceFormData = capturedData
+    const payload: AddonConnectionFormData = capturedData
     expect(payload.configuration.enableAutoPush).toBe(false)
   })
 
@@ -421,7 +431,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     const handleSubmit = vi.fn()
 
     renderWithClient(
-      <NewDataSourceInstanceForm
+      <NewAddonConnectionForm
         pluginId="json-mapping-addon"
         connectionProfileId="test-profile"
         connectionInstanceId="conn-json-1"
@@ -451,6 +461,15 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
       {
         id: 'configuration',
         label: 'Configura√ß√µes',
+        groups: [
+          {
+            id: 'mapping-only',
+            label: 'Mapping-only group',
+            fields: [
+              { id: 'groupMapping', type: 'mapping', label: 'Grouped mapping' },
+            ],
+          },
+        ],
         fields: [
           {
             id: 'serverUrl',
@@ -477,7 +496,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     const handleSubmit = vi.fn()
 
     renderWithClient(
-      <NewDataSourceInstanceForm
+      <NewAddonConnectionForm
         pluginId="mapping-addon"
         connectionProfileId="test-profile"
         connectionInstanceId="conn-mapping-1"
@@ -494,6 +513,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
       screen.queryByTestId('configure-mapping-statusMapping-btn'),
     ).toBeNull()
     expect(screen.queryByText('Mapeamento de Status e Cores')).toBeNull()
+    expect(screen.queryByText('Mapping-only group')).toBeNull()
   })
 
   it('deve permitir alternar entre metodos de autenticacao (credentials vs oauth2) e submeter com authType no configuration', async () => {
@@ -547,7 +567,7 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
     const handleSubmit = vi.fn()
 
     renderWithClient(
-      <NewDataSourceInstanceForm
+      <NewAddonConnectionForm
         pluginId="dual-auth-addon"
         connectionProfileId="test-profile"
         connectionInstanceId="conn-oauth-1"
@@ -559,8 +579,9 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
       expect(screen.getByTestId('datasource-auth-type-selector')).toBeTruthy()
     })
 
-    const oauthBtn = screen.getByRole('button', { name: 'OAuth 2.0' })
-    fireEvent.click(oauthBtn)
+    fireEvent.change(screen.getByLabelText('M√©todo de autentica√ß√£o'), {
+      target: { value: 'oauth-auth' },
+    })
 
     const submitBtn = screen.getByTestId('datasource-instance-connect-btn')
     expect(submitBtn.textContent).toContain('Autenticar via OAuth e Conectar')
@@ -580,5 +601,73 @@ describe('Unit - NewDataSourceInstanceForm e AddonFieldRenderer (SDK Schema Din√
         },
       })
     })
+  })
+  it('does not infer credential scope from the credentials section name', async () => {
+    mockGetConnectionSchema.mockResolvedValueOnce({
+      isSuccess: true,
+      statusCode: 200,
+      data: [
+        {
+          id: 'credentials',
+          label: 'Connection',
+          fields: [
+            {
+              id: 'publicHost',
+              label: 'Public host',
+              type: 'text',
+              defaultValue: 'public.example',
+            },
+            {
+              id: 'token',
+              label: 'Secret',
+              type: 'password',
+              scope: 'credential',
+              defaultValue: 'secret',
+            },
+          ],
+        },
+      ],
+    })
+    const submit = vi.fn()
+    renderWithClient(
+      <NewAddonConnectionForm
+        pluginId="auth-only-addon"
+        connectionProfileId="account"
+        connectionInstanceId="instance"
+        onSubmit={submit}
+      />,
+    )
+    fireEvent.click(
+      await screen.findByTestId('datasource-instance-connect-btn'),
+    )
+    await waitFor(() =>
+      expect(submit).toHaveBeenCalledWith({
+        pluginId: 'auth-only-addon',
+        connectionProfileId: 'account',
+        connectionInstanceId: 'instance',
+        credentials: { token: 'secret' },
+        configuration: { publicHost: 'public.example' },
+      }),
+    )
+  })
+
+  it('shows the original schema error without enabling a blank connection submission', async () => {
+    mockGetConnectionSchema.mockResolvedValueOnce({
+      isSuccess: false,
+      statusCode: 404,
+      error: 'CONNECTION_SCHEMA_NOT_FOUND',
+    })
+    const submit = vi.fn()
+    renderWithClient(
+      <NewAddonConnectionForm
+        pluginId="auth-only-addon"
+        connectionProfileId="missing"
+        connectionInstanceId="instance"
+        onSubmit={submit}
+      />,
+    )
+    expect(await screen.findByText('CONNECTION_SCHEMA_NOT_FOUND')).toBeTruthy()
+    expect(screen.queryByTestId('datasource-instance-connect-btn')).toBeNull()
+    expect(submit).not.toHaveBeenCalled()
   })
 })

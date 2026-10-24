@@ -27,9 +27,9 @@ import { toast } from 'sonner'
 
 import { MappingConfigModal } from '@/components/mapping-config-modal'
 import {
-  DataSourceInstanceFormData,
-  NewDataSourceInstanceForm,
-} from '@/components/new-datasource-instance-form'
+  AddonConnectionFormData,
+  NewAddonConnectionForm,
+} from '@/components/new-addon-connection-form'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -55,7 +55,7 @@ import {
   ConnectionCard,
   ConnectionStatus,
 } from './connection-card'
-import { WorkspaceGroupedDataSourceManager } from './workspace-grouped-datasource-manager'
+import { WorkspaceAddonConnectionsManager } from './workspace-addon-connections-manager'
 
 const emptySettings: AddonSettingsView = {
   schemaVersion: 1,
@@ -263,7 +263,7 @@ function WorkspaceSubSidebarSettingsManager({
   const renderWorkspaceCapabilityContent = (ws: WorkspaceViewModel) => {
     if (activeCapability === 'dataSource') {
       return (
-        <WorkspaceGroupedDataSourceManager
+        <WorkspaceAddonConnectionsManager
           key={`ds-cap-${addonId}-${ws.id}`}
           addonId={addonId}
           workspaceId={ws.id}
@@ -275,7 +275,7 @@ function WorkspaceSubSidebarSettingsManager({
     if (activeCapability === 'auth' && isDataSourceAddon) {
       return (
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-y-auto">
-          <WorkspaceGroupedDataSourceManager
+          <WorkspaceAddonConnectionsManager
             key={`ds-auth-${addonId}-${ws.id}`}
             addonId={addonId}
             workspaceId={ws.id}
@@ -300,7 +300,7 @@ function WorkspaceSubSidebarSettingsManager({
       hasCapability(resolvedAddon?.capabilities, 'auth')
     ) {
       return (
-        <WorkspaceGroupedDataSourceManager
+        <WorkspaceAddonConnectionsManager
           key={`ds-default-${addonId}-${ws.id}`}
           addonId={addonId}
           workspaceId={ws.id}
@@ -734,15 +734,11 @@ function ScopedAddonSettingsRenderer({
     if (authTabs.length === 0) {
       if (hideWhenEmpty) return null
       return (
-        <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center p-8 text-center text-sm">
-          <Check className="mb-2 size-8 text-emerald-500/80" />
-          <span className="text-foreground font-semibold">
-            AutenticaÃ§Ã£o AutomÃ¡tica
-          </span>
-          <p className="mt-1 max-w-sm text-xs">
-            Esta extensÃ£o nÃ£o requer credenciais manuais neste workspace.
-          </p>
-        </div>
+        <WorkspaceAddonConnectionsManager
+          addonId={addonId}
+          workspaceId={workspaceId}
+          mode="auth"
+        />
       )
     }
 
@@ -845,7 +841,7 @@ function ScopedAddonSettingsRenderer({
       hasCapability(currentAddon?.capabilities, 'auth')
     ) {
       return (
-        <WorkspaceGroupedDataSourceManager
+        <WorkspaceAddonConnectionsManager
           addonId={addonId}
           workspaceId={workspaceId}
           mode="auth"
@@ -1080,7 +1076,7 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
   })
 
   const connectMutation = useMutation({
-    mutationFn: (data: DataSourceInstanceFormData) =>
+    mutationFn: (data: AddonConnectionFormData) =>
       connect({
         connectionInstanceId: data.connectionInstanceId,
         pluginId: data.pluginId,
@@ -1266,7 +1262,7 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
           </DialogHeader>
           <div className="flex-1 overflow-y-auto py-2 pr-1">
             {connectionTargetId && connectionTargetProfile && (
-              <NewDataSourceInstanceForm
+              <NewAddonConnectionForm
                 pluginId={addonId}
                 connectionInstanceId={connectionTargetId}
                 connectionProfileId={

@@ -455,7 +455,7 @@ export interface IAddonsAPI {
     payload: IRequest<{ addonId: string; scope?: AddonVaultScope }>,
   ): Promise<ViewModel<AddonSettingsSchema>>
   getConnectionSchema(
-    payload: IRequest<{ addonId: string }>,
+    payload: IRequest<{ addonId: string; connectionProfileId: string }>,
   ): Promise<ViewModel<AddonSettingsSchema>>
   getConnectionProfiles(
     payload: IRequest<{ addonId: string }>,

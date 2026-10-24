@@ -73,3 +73,17 @@ Todos os perfis e autenticadores são registrados por `contributions.connections
 O core mantém identidade, cardinalidade, PKCE, tentativas OAuth, renovação e cofre. O contrato não possui `method: 'none'`: addons sem autenticação não registram autenticadores nem conexões anônimas. Addons sem contas não precisam de perfis nem exibem a seção de autenticação. A declaração não constitui isolamento de segurança do código do addon.
 
 Essa evolução exige a linha 0.11 do SDK. Publicar o SDK e o desktop compatível precede a distribuição dos addons atualizados; os manifestos de pacotes já publicados não são reescritos como se tivessem sido recompilados.
+
+## Schema de conexão independente do datasource
+
+O addon registra os campos de cada perfil com `contributions.connections.registerSchema(connectionProfileId, schema)`, após `registerProfiles`. O loader exige `auth` e remove o schema no encerramento do addon ou dos perfis. A consulta no bridge exige `addonId` e `connectionProfileId`; perfil sem schema produz erro explícito. Schema vazio é permitido para OAuth sem entrada manual.
+
+`IDataSource` fornece apenas a criação dos providers e os campos de mapeamento. Não fornece mais `getConnectionSchema`. Os campos de conexão usam `scope: 'credential'` para segredos; a ausência de scope significa configuração, independentemente do nome de aba ou campo. Nenhum consumidor infere credenciais por uma aba chamada `credentials`.
+
+O gerenciador de conexões e o formulário são compartilhados por addons com `auth`, sem exigir `dataSource`. Uma aba explícita `kind: 'auth'` de settings preserva a apresentação própria do addon (por exemplo, a ação OAuth do Discord); na ausência dela, o caminho auth usa o formulário do perfil registrado. O gerenciador usa o autenticador padrão declarado no perfil ou no seu único papel de autorização; múltiplos papéis e autenticadores sem padrão exigem seleção explícita, sem inferir um ID a partir do connectionProfileId.
+
+### Publicação e limites de validação
+
+A remoção de `IDataSource.getConnectionSchema` e a substituição dos exports de formulário são quebras de contrato registradas em changeset, sem alteração manual de versões. Publicar primeiro SDK/core compatíveis. Só depois atualizar as dependências e locks dos addons pelo Yarn e gerar novos manifestos/artefatos pela CLI oficial. Os manifestos e locks publicados da linha 0.11 não demonstram compatibilidade com o novo método; a migração de fontes Redmine/Discord foi validada com SDK local vinculado, não com uma versão nova já publicada.
+
+As provas desta refatoração cobrem registry/lifetime/handler, escopo explícito dos campos, integração UI de auth+watcher com perfil/autenticador de IDs distintos, preservação de ação OAuth própria, testes dos addons e jornada Electron com provider fake. Não demonstram uma nova autorização OAuth real, instalação limpa de release nem garantias novas do provedor remoto.

@@ -8,8 +8,6 @@ import type {
 } from '@mr-tick/application'
 import type { AppError, Either } from '@mr-tick/shared/helpers'
 
-import type { AddonSettingsSchema } from './contracts/contributions/settings'
-
 export type { DataSourceContext, MappingFieldDefinition }
 
 export interface IDataSourceInstance {
@@ -20,7 +18,6 @@ export interface IDataSourceInstance {
 }
 
 export interface IDataSource {
-  getConnectionSchema(): AddonSettingsSchema
   createInstance(context: DataSourceContext): IDataSourceInstance
   getStaticMappingFields?(): MappingFieldDefinition[]
   getMappingFields?(scope: {

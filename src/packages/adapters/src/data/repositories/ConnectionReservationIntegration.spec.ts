@@ -624,6 +624,7 @@ function createResolver(
   query: () => Promise<Either<never, ConnectionProfileDescriptor[]>>,
 ): IAddonConnectionProfilesResolver {
   return {
+    getConnectionSchema: vi.fn(async () => Either.success([])),
     getConnectionProfiles: async () => query(),
   }
 }

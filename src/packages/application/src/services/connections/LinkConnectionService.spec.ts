@@ -41,6 +41,7 @@ describe('LinkConnectionService', () => {
     } as unknown as Mocked<IWorkspacesRepository>
 
     profilesResolverMock = {
+      getConnectionSchema: vi.fn(async () => Either.success([])),
       getConnectionProfiles: vi.fn().mockResolvedValue(
         Either.success([
           {

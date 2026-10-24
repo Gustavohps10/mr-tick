@@ -228,6 +228,7 @@ function fixture() {
   const authenticatorRegistry = new AddonAuthenticatorRegistry()
   authenticatorRegistry.register('provider', authenticator)
   const profilesResolver: IAddonConnectionProfilesResolver = {
+    getConnectionSchema: vi.fn(async () => Either.success([])),
     getConnectionProfiles: async () => Either.success([profile]),
   }
   const oauthAttemptCoordinator = new OAuthAttemptCoordinator()

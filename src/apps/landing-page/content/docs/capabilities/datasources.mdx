@@ -10,7 +10,7 @@ Declare `capabilities: [auth, dataSource]` for this kind of integration. Connect
 
 ## Implementation
 
-`IDataSource` supplies `getConnectionSchema()` and `createInstance(context)`. Its instance contains only `tasksProvider`, `timeEntriesProvider`, `membersProvider` and `metadataProvider`. Authentication is registered separately:
+`IDataSource` supplies `createInstance(context)`. Its instance contains only `tasksProvider`, `timeEntriesProvider`, `membersProvider` and `metadataProvider`. Authentication is registered separately:
 
 ```ts
 import {

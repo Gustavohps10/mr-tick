@@ -47,9 +47,9 @@ import z from 'zod'
 
 import { DataSourceList } from '@/components/datasource-list'
 import {
-  DataSourceInstanceFormData,
-  NewDataSourceInstanceForm,
-} from '@/components/new-datasource-instance-form'
+  AddonConnectionFormData,
+  NewAddonConnectionForm,
+} from '@/components/new-addon-connection-form'
 import { Button, Input, Label, Progress, Textarea } from '@/components/ui'
 import { DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { workspaceKeys } from '@/contexts/WorkspaceContext'
@@ -971,7 +971,7 @@ export function StepperForm({
   }
 
   async function handleConnectDataSource(
-    instanceData: DataSourceInstanceFormData,
+    instanceData: AddonConnectionFormData,
   ) {
     if (!currentWorkspaceId) return
 
@@ -1518,7 +1518,7 @@ export function StepperForm({
                                 </div>
                               ) : /* O FORMULÁRIO DINÂMICO */
                               currentConnectionProfileId ? (
-                                <NewDataSourceInstanceForm
+                                <NewAddonConnectionForm
                                   connectionInstanceId={methods.getValues(
                                     'currentConnectionInstanceId',
                                   )!}

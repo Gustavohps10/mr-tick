@@ -32,6 +32,7 @@ const configFields: {
       fields: [
         {
           id: 'serverUrl',
+          scope: 'configuration',
           type: 'text',
           label: 'URL do Servidor',
           placeholder: 'https://fake.mr-tick-app.local',
@@ -39,6 +40,7 @@ const configFields: {
         },
         {
           id: 'username',
+          scope: 'credential',
           type: 'text',
           label: 'Usuário',
           placeholder: 'Admin',
@@ -46,6 +48,7 @@ const configFields: {
         },
         {
           id: 'password',
+          scope: 'credential',
           type: 'password',
           label: 'Senha de Acesso',
           placeholder: '123',
@@ -57,13 +60,6 @@ const configFields: {
 }
 
 export const FakeDataSource: IDataSource = {
-  getConnectionSchema: () => [
-    {
-      id: 'credentials',
-      label: 'Credenciais',
-      groups: configFields.credentials,
-    },
-  ],
   getMappingFields: async () => new FakeMetadataProvider().getMappingFields(),
   createInstance: (context) => ({
     tasksProvider: new FakeTaskProvider(context),
@@ -114,6 +110,22 @@ export default class FakeDataSourceAddon implements IAddon {
 
     if (profiles.isFailure()) {
       void context.host.notifications.error(profiles.failure.messageKey)
+      return
+    }
+
+    const schema = context.contributions.connections.registerSchema(
+      'fake-main',
+      [
+        {
+          id: 'access',
+          label: 'Credenciais',
+          groups: configFields.credentials,
+        },
+      ],
+    )
+    if (schema.isFailure()) {
+      context.contributions.connections.unregisterProfiles()
+      void context.host.notifications.error(schema.failure.messageKey)
       return
     }
 

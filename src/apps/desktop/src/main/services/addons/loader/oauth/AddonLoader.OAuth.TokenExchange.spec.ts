@@ -179,7 +179,6 @@ describe('OAuth 2.0 PKCE Flow in AddonLoader - Token Exchange', () => {
         credentials: { accessToken: string }
       }>
       addonContext.contributions.dataSources.register({
-        getConnectionSchema: () => [],
         createInstance: (dsContext) => {
           expect(dsContext.oauth).toBeDefined()
           executeOAuthAuth = async () => {

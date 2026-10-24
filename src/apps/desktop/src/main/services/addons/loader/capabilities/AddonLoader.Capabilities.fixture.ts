@@ -59,6 +59,7 @@ const fakeHttpClient: IHttpClient = {
 function createLoader(
   coreProvider?: (addonId: string) => ICoreAddonCapabilities,
   customCredentials?: ReturnType<typeof emptyAddonCredentialsVault>,
+  profilesResolver = new AddonConnectionProfilesResolver(),
 ): AddonLoader {
   const snapshots = new Map<string, AddonSettingsSnapshot>()
   const settingsRepo: IAddonSettingsRepository = {
@@ -108,7 +109,7 @@ function createLoader(
     emptyWorkspaceReferenceRegistry,
     settingsRepo,
     new AddonAuthenticatorRegistry(),
-    new AddonConnectionProfilesResolver(),
+    profilesResolver,
     new OAuthAttemptCoordinator(),
   )
 }

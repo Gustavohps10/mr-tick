@@ -3,7 +3,7 @@
 O SDK reúne ferramentas para criar extensões do Mr. Tick sem alterar o aplicativo. Ele permite conectar ferramentas de trabalho, consultar tarefas, registrar apontamentos e sugestões, adicionar ações e criar temas. Essas extensões são chamadas de addons.
 
 
-O pacote público `@mr-tick/sdk` é o ponto de entrada para addons. Os guias descrevem a próxima linha do SDK, 0.11, ainda dependente da publicação e `requiredApiVersion: '>=0.11.0'`; o empacotamento deriva o intervalo da versão do SDK usado pela CLI.
+O pacote público `@mr-tick/sdk` é o ponto de entrada para addons. Os guias de schemas de conexão acompanham a próxima linha 1.0 do SDK, ainda dependente da publicação e `requiredApiVersion: '>=1.0.0'`; o empacotamento deriva o intervalo da versão do SDK usado pela CLI.
 
 ## Conceitos
 
@@ -35,3 +35,5 @@ Uma conexão de watcher não é datasource e não entra na replicação de taref
 - [Addon Discord](https://github.com/mistertick/discord-addon)
 
 Addons executam código confiável no main; as APIs com escopo não são sandbox de código de terceiros. Um sucesso local não comprova confirmação remota.
+
+Schemas de conexão são registrados por perfil em `contributions.connections.registerSchema(connectionProfileId, schema)`, independentemente dos providers do datasource. O bridge exige addon e perfil explícitos; campos secretos usam `scope: 'credential'`.
