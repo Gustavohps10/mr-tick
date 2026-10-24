@@ -3,7 +3,7 @@
 O SDK reúne ferramentas para criar extensões do Mr. Tick sem alterar o aplicativo. Ele permite conectar ferramentas de trabalho, consultar tarefas, registrar apontamentos e sugestões, adicionar ações e criar temas. Essas extensões são chamadas de addons.
 
 
-O pacote público `@mr-tick/sdk` é o ponto de entrada para addons. Os guias de schemas de conexão acompanham a próxima linha 0.12 do SDK, ainda dependente da publicação e `requiredApiVersion: '>=0.12.0'`; o empacotamento deriva o intervalo da versão do SDK usado pela CLI.
+O pacote público `@mr-tick/sdk` é o ponto de entrada para addons. Os guias de schemas de conexão acompanham o SDK 0.12 publicado no npm e `requiredApiVersion: '>=0.12.0'`; o empacotamento deriva o intervalo da versão do SDK usado pela CLI.
 
 ## Conceitos
 
