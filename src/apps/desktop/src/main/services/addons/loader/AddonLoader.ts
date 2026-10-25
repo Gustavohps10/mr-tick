@@ -21,6 +21,7 @@ import {
   IConnectionCredentialsVault,
   ICoreAddonCapabilities,
   ICredentialsVault,
+  IHttpClientFactory,
   ILicensingFacade,
   ILocalRuntimeAPI,
   IOAuthAttemptCoordinator,
@@ -291,6 +292,7 @@ export class AddonLoader implements IAddonReloader {
     private readonly authenticatorRegistry: IAddonAuthenticatorRegistry,
     private readonly profilesResolver: IAddonConnectionProfilesRegistry,
     private readonly oauthAttemptCoordinator: IOAuthAttemptCoordinator,
+    private readonly httpClientFactory: IHttpClientFactory,
   ) {
     const capabilityOwnershipValidator = new AddonCapabilityOwnershipValidator(
       (addonId, capabilityId) => {
@@ -1074,6 +1076,8 @@ export class AddonLoader implements IAddonReloader {
       },
     }
 
+    const addonHttpClient = this.httpClientFactory.createClient({})
+
     return {
       core: {
         runtime: lifetime.availability(addonCore.runtime),
@@ -1097,7 +1101,9 @@ export class AddonLoader implements IAddonReloader {
         notifications,
         vault,
         oauth,
+        http: addonHttpClient,
       },
+      http: addonHttpClient,
     }
   }
 

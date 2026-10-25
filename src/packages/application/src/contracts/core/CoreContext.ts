@@ -48,6 +48,8 @@ export interface CoreConnectionAuthorizationRequest {
 export interface CoreConnectionAuthorizationResponse {
   code: string
   state: string
+  /** Explicit connection configuration committed atomically with the OAuth authorization. */
+  configuration?: Readonly<Record<string, string | number | boolean>>
 }
 export interface CoreConnectionAuthenticationInput {
   kind: 'credentials'

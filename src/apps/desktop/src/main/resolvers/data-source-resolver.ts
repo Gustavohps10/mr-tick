@@ -189,7 +189,11 @@ export class DataSourceResolver implements IDataSourceResolver {
     let datasource: IDataSource
     try {
       datasource = await this.loadModule(connection.addonId)
-    } catch {
+    } catch (err) {
+      console.error(
+        `[DataSourceResolver] Erro ao carregar módulo do datasource ${connection.addonId}:`,
+        err,
+      )
       return Either.failure(AppError.Internal('DATASOURCE_LOAD_FAILED'))
     }
     if (!contextOverride) {

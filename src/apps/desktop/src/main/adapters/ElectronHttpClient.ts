@@ -401,13 +401,15 @@ export class ElectronHttpClient implements IHttpClient {
   ): Record<string, string> {
     const sameOrigin = this.isSameOrigin(fullUrl)
     const headers: Record<string, string> = {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'User-Agent': 'MrTick/1.0 (Desktop; Electron)',
     }
 
     for (const [key, value] of Object.entries(this.defaultHeaders)) {
       if (!sameOrigin && this.isSensitiveHeader(key, requestSensitiveHeaders)) {
         continue
+      }
+      if (key.toLowerCase() === 'user-agent') {
+        delete headers['User-Agent']
       }
       headers[key] = value
     }
@@ -423,6 +425,9 @@ export class ElectronHttpClient implements IHttpClient {
     for (const [key, value] of Object.entries(requestHeaders)) {
       if (!sameOrigin && this.isSensitiveHeader(key, requestSensitiveHeaders)) {
         continue
+      }
+      if (key.toLowerCase() === 'user-agent') {
+        delete headers['User-Agent']
       }
       if (value !== undefined && value !== null && value !== '') {
         headers[key] = String(value)
@@ -470,6 +475,35 @@ export class ElectronHttpClient implements IHttpClient {
     config: IHttpRequestOptions<T>,
   ): Promise<Either<AppError, T>> {
     return this.request<T>('DELETE', url, undefined, config)
+  }
+
+  private async httpError(
+    response: Response,
+    readMessage: IHttpRequestOptions<JsonValue>['readErrorMessage'],
+  ): Promise<AppError> {
+    const statusError = AppError.Http(
+      response.status,
+      `HTTP ${response.status}`,
+    )
+    if (!readMessage) return statusError
+    try {
+      const text = await response.text()
+      let payload: JsonValue = text
+      try {
+        const parsed = JSON.parse(text)
+        const validated = jsonValueSchema.safeParse(parsed)
+        if (validated.success) {
+          payload = validated.data
+        }
+      } catch {
+        payload = text
+      }
+      const message = readMessage(payload)
+      if (message === undefined) return statusError
+      return AppError.Http(response.status, message)
+    } catch {
+      return statusError
+    }
   }
 
   private extractQueryParams<T extends JsonValue>(
@@ -654,11 +688,10 @@ export class ElectronHttpClient implements IHttpClient {
         )
       }
 
-      if (!response.ok) {
+      if (!response.ok)
         return Either.failure(
-          AppError.Http(response.status, `HTTP ${response.status}`),
+          await this.httpError(response, config.readErrorMessage),
         )
-      }
 
       if (config.responseType === 'text') {
         const responseText = await response.text()
@@ -667,6 +700,15 @@ export class ElectronHttpClient implements IHttpClient {
             AppError.ValidationError('HTTP_RESPONSE_INVALID'),
           )
         return Either.success<T>(responseText)
+      }
+
+      if (response.status === 204 || response.status === 205) {
+        const noContent: JsonValue = null
+        if (!config.responseValidator(noContent))
+          return Either.failure(
+            AppError.ValidationError('HTTP_RESPONSE_INVALID'),
+          )
+        return Either.success<T>(noContent)
       }
 
       const text = await response.text()

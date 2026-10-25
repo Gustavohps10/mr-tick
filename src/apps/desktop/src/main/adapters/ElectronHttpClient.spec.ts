@@ -80,6 +80,26 @@ describe('T01 / T21 / Seção 8.1: Isolamento HTTP por Conexão, Origem Cruzada,
         url,
         headers: req.headers,
       })
+      if (url === '/worklog-no-content') {
+        res.writeHead(204).end()
+        return
+      }
+      if (url === '/malformed-json') {
+        res
+          .writeHead(200, { 'Content-Type': 'application/json' })
+          .end('not-json')
+        return
+      }
+      if (url === '/provider-validation-error') {
+        res.setHeader('Content-Type', 'application/json')
+        res.writeHead(422).end(
+          JSON.stringify({
+            messageKey: 'WORKLOG_NOT_ALLOWED',
+            accessToken: 'must-not-be-exposed',
+          }),
+        )
+        return
+      }
 
       if (url.includes('/redirect-same-origin')) {
         res.writeHead(302, {
@@ -468,6 +488,62 @@ describe('T01 / T21 / Seção 8.1: Isolamento HTTP por Conexão, Origem Cruzada,
     } finally {
       console.log = originalConsoleLog
     }
+  })
+
+  it('accepts a real HTTP DELETE 204 as null for a JSON request', async () => {
+    const client = new ElectronHttpClient(
+      { baseURL: `http://127.0.0.1:${portA}` },
+      testTransport,
+    )
+    const result = await client.delete('/worklog-no-content', {
+      responseValidator: (value: JsonValue): value is null => value === null,
+    })
+    expect(result.isSuccess()).toBe(true)
+    expect(result.success).toBeNull()
+    expect(requestsA.map((request) => request.method)).toEqual(['DELETE'])
+  })
+
+  it('allows an explicit provider error decoder without exposing other payload fields', async () => {
+    const client = new ElectronHttpClient(
+      { baseURL: `http://127.0.0.1:${portA}` },
+      testTransport,
+    )
+    const options = {
+      responseValidator: isSource,
+      readErrorMessage: (payload: JsonValue): string | undefined => {
+        if (isJsonRecord(payload) && typeof payload.messageKey === 'string')
+          return payload.messageKey
+        return undefined
+      },
+    }
+    const result = await client.get('/provider-validation-error', options)
+    expect(result.failure.statusCode).toBe(422)
+    expect(result.failure.messageKey).toBe('WORKLOG_NOT_ALLOWED')
+    expect(result.failure.messageKey).not.toContain('must-not-be-exposed')
+  })
+  it('preserves an explicitly requested empty text response', async () => {
+    const client = new ElectronHttpClient(
+      { baseURL: `http://127.0.0.1:${portA}` },
+      testTransport,
+    )
+    const result = await client.delete('/worklog-no-content', {
+      responseType: 'text',
+      responseValidator: (value: JsonValue): value is string =>
+        typeof value === 'string',
+    })
+    expect(result.isSuccess()).toBe(true)
+    expect(result.success).toBe('')
+  })
+  it('does not accept malformed JSON as a bodyless success', async () => {
+    const client = new ElectronHttpClient(
+      { baseURL: `http://127.0.0.1:${portA}` },
+      testTransport,
+    )
+    const result = await client.get(
+      '/malformed-json',
+      responseOptions(isSource),
+    )
+    expect(result.failure.messageKey).toBe('HTTP_RESPONSE_INVALID_JSON')
   })
 
   it('deve garantir que AppError.Http contenha apenas status seguro e NÃO vaze o corpo de erro com sentinel secreto (T21)', async () => {

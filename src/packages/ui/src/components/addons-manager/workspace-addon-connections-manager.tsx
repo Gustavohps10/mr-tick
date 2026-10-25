@@ -192,6 +192,9 @@ export function WorkspaceAddonConnectionsManager({
     },
   })
 
+  const [connectionFieldErrors, setConnectionFieldErrors] = useState<
+    Record<string, string[]> | undefined
+  >(undefined)
   const connectMutation = useMutation({
     mutationFn: async (
       data: AddonConnectionFormData,
@@ -232,6 +235,7 @@ export function WorkspaceAddonConnectionsManager({
     },
     onSuccess: (res) => {
       if (!res?.isSuccess || !res.data) {
+        setConnectionFieldErrors(res?.details)
         let errorMsg = 'Falha ao conectar instância'
         if (res?.error) errorMsg = res.error
         toast.error(errorMsg)
@@ -661,6 +665,7 @@ export function WorkspaceAddonConnectionsManager({
                 connectionInstanceId={connectionTargetId}
                 connectionProfileId={selectedProfile.connectionProfileId}
                 isSubmitting={connectMutation.isPending}
+                fieldErrors={connectionFieldErrors}
                 onSubmit={(data) => connectMutation.mutate(data)}
               />
             )}

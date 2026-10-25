@@ -1,3 +1,4 @@
+import { EMPTY_HTTP_CONFIG } from '@mr-tick/adapters/contracts'
 import {
   AddonAuthenticatorRegistry,
   type AddonConnectionAuthenticator,
@@ -25,6 +26,10 @@ import { AppError, Either } from '@mr-tick/shared/helpers'
 import { NoOpSystemEventEmitter } from '@mr-tick/shared/transport'
 import { describe, expect, it, vi } from 'vitest'
 
+import {
+  ElectronHttpClientFactory,
+  NodeFetchTransport,
+} from '../../../adapters/ElectronHttpClient'
 import { AddonLoader } from '../loader/AddonLoader'
 import { permissiveAddonAccessService } from './addon-core-test-fixture'
 import {
@@ -450,6 +455,10 @@ describe('M07 host unit: addon connection auth via registry', () => {
       authenticatorRegistry,
       profilesResolver,
       oauthAttemptCoordinator,
+      new ElectronHttpClientFactory(
+        EMPTY_HTTP_CONFIG,
+        new NodeFetchTransport(),
+      ),
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
@@ -541,14 +550,24 @@ describe('M07 host unit: addon connection auth via registry', () => {
     const returnedState = url.searchParams.get('state')!
     expect(returnedState).toBeDefined()
 
+    const oauthConnect = vi.spyOn(connectService, 'execute')
     const completeResult = await core.connections.completeAuthentication(
       authScope,
       {
         code: 'auth-code-test',
         state: returnedState,
+        configuration: { projectKey: 'SCRUM', syncStartDate: '2026-10-01' },
       },
     )
     expect(completeResult.isSuccess()).toBe(true)
+    expect(oauthConnect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authenticationInput: expect.objectContaining({
+          method: 'oauth',
+          configuration: { projectKey: 'SCRUM', syncStartDate: '2026-10-01' },
+        }),
+      }),
+    )
     expect(coordinatorState.connected).toBe(true)
     const authSnapshot = coordinatorState.auth
     if (!authSnapshot) {
@@ -687,6 +706,10 @@ describe('M07 host unit: addon connection auth via registry', () => {
       authenticatorRegistry,
       profilesResolver,
       oauthAttemptCoordinator,
+      new ElectronHttpClientFactory(
+        EMPTY_HTTP_CONFIG,
+        new NodeFetchTransport(),
+      ),
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
@@ -884,6 +907,10 @@ describe('M07 host unit: addon connection auth via registry', () => {
       authenticatorRegistry,
       profilesResolver,
       oauthAttemptCoordinator,
+      new ElectronHttpClientFactory(
+        EMPTY_HTTP_CONFIG,
+        new NodeFetchTransport(),
+      ),
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
@@ -1164,6 +1191,10 @@ describe('M07 host unit: addon connection auth via registry', () => {
       authenticatorRegistry,
       profilesResolver,
       oauthAttemptCoordinator,
+      new ElectronHttpClientFactory(
+        EMPTY_HTTP_CONFIG,
+        new NodeFetchTransport(),
+      ),
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])

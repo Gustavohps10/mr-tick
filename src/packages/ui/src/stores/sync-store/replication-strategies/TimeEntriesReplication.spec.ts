@@ -1959,6 +1959,54 @@ describe('TimeEntriesReplication durable creation and canonical state', () => {
     bridgePull.mockRestore()
   })
 
+  it('continues a change feed across distinct bounded selections', async () => {
+    const baseline = toRemoteState(canonical, '500')
+    await db.timeEntries.insert({
+      ...local,
+      remoteId: '500',
+      remoteState: baseline,
+      remoteUpdatedAt: baseline.updatedAt,
+      syncStatus: 'synced',
+    })
+    const bridgePull = vi.spyOn(client.timeEntries, 'pull')
+    bridgePull.mockResolvedValueOnce({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        kind: 'changes',
+        items: [canonical],
+        hasMore: true,
+        snapshotId: 'feed-selection-A',
+        checkpoint: {
+          id: '500',
+          updatedAt: canonical.updatedAt,
+          cursor: 'feed-A',
+        },
+      },
+    })
+    bridgePull.mockResolvedValueOnce({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        kind: 'changes',
+        items: [{ ...canonical, id: '501', correlationId: undefined }],
+        hasMore: false,
+        snapshotId: 'feed-selection-B',
+        checkpoint: {
+          id: '501',
+          updatedAt: canonical.updatedAt,
+          cursor: 'feed-B',
+        },
+      },
+    })
+    const result = await strategy.pull(undefined, 10)
+    expect(
+      result.documents.some((document) => document.remoteId === '501'),
+    ).toBe(true)
+    expect(result.checkpoint.cursor).toBe('feed-B')
+    bridgePull.mockRestore()
+  })
+
   it('rejects a changed snapshot between filtered pages before importing the second page', async () => {
     const baseline = toRemoteState(canonical, '500')
     await db.timeEntries.insert({

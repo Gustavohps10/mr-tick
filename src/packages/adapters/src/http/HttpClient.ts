@@ -97,12 +97,12 @@ export class HttpClient implements IHttpClient {
   private mergeConfig<T extends JsonValue>(
     config: IHttpRequestOptions<T>,
   ): AxiosRequestConfig {
-    const mergedParams: Record<string, string> = { ...this.defaultParams }
+    const mergedParams: Record<string, string | number | boolean> = {
+      ...this.defaultParams,
+    }
     if (config.params) {
       for (const [key, value] of Object.entries(config.params)) {
-        if (typeof value === 'string') {
-          mergedParams[key] = value
-        }
+        mergedParams[key] = value
       }
     }
 
@@ -131,17 +131,22 @@ export class HttpClient implements IHttpClient {
     config: IHttpRequestOptions<T>,
   ): Promise<Either<AppError, T>> {
     try {
-      const { data } = await this.axiosInstance.get<JsonValue>(
+      const response = await this.axiosInstance.get<JsonValue>(
         url,
         this.mergeConfig(config),
+      )
+      const data = this.responseData(
+        response.status,
+        response.data,
+        config.responseType,
       )
       if (!config.responseValidator(data))
         return Either.failure(AppError.ValidationError('HTTP_RESPONSE_INVALID'))
       return Either.success(data)
     } catch (error) {
-      return this.handleError(
-        error instanceof Error ? error : new Error(String(error)),
-      )
+      if (axios.isAxiosError<JsonValue>(error))
+        return this.handleError(error, config.readErrorMessage)
+      return Either.failure(AppError.Internal('HTTP_REQUEST_FAILED'))
     }
   }
 
@@ -156,13 +161,18 @@ export class HttpClient implements IHttpClient {
         data,
         this.mergeConfig(config),
       )
-      if (!config.responseValidator(response.data))
-        return Either.failure(AppError.ValidationError('HTTP_RESPONSE_INVALID'))
-      return Either.success(response.data)
-    } catch (error) {
-      return this.handleError(
-        error instanceof Error ? error : new Error(String(error)),
+      const payload = this.responseData(
+        response.status,
+        response.data,
+        config.responseType,
       )
+      if (!config.responseValidator(payload))
+        return Either.failure(AppError.ValidationError('HTTP_RESPONSE_INVALID'))
+      return Either.success(payload)
+    } catch (error) {
+      if (axios.isAxiosError<JsonValue>(error))
+        return this.handleError(error, config.readErrorMessage)
+      return Either.failure(AppError.Internal('HTTP_REQUEST_FAILED'))
     }
   }
 
@@ -177,13 +187,18 @@ export class HttpClient implements IHttpClient {
         data,
         this.mergeConfig(config),
       )
-      if (!config.responseValidator(response.data))
-        return Either.failure(AppError.ValidationError('HTTP_RESPONSE_INVALID'))
-      return Either.success(response.data)
-    } catch (error) {
-      return this.handleError(
-        error instanceof Error ? error : new Error(String(error)),
+      const payload = this.responseData(
+        response.status,
+        response.data,
+        config.responseType,
       )
+      if (!config.responseValidator(payload))
+        return Either.failure(AppError.ValidationError('HTTP_RESPONSE_INVALID'))
+      return Either.success(payload)
+    } catch (error) {
+      if (axios.isAxiosError<JsonValue>(error))
+        return this.handleError(error, config.readErrorMessage)
+      return Either.failure(AppError.Internal('HTTP_REQUEST_FAILED'))
     }
   }
 
@@ -198,13 +213,18 @@ export class HttpClient implements IHttpClient {
         data,
         this.mergeConfig(config),
       )
-      if (!config.responseValidator(response.data))
-        return Either.failure(AppError.ValidationError('HTTP_RESPONSE_INVALID'))
-      return Either.success(response.data)
-    } catch (error) {
-      return this.handleError(
-        error instanceof Error ? error : new Error(String(error)),
+      const payload = this.responseData(
+        response.status,
+        response.data,
+        config.responseType,
       )
+      if (!config.responseValidator(payload))
+        return Either.failure(AppError.ValidationError('HTTP_RESPONSE_INVALID'))
+      return Either.success(payload)
+    } catch (error) {
+      if (axios.isAxiosError<JsonValue>(error))
+        return this.handleError(error, config.readErrorMessage)
+      return Either.failure(AppError.Internal('HTTP_REQUEST_FAILED'))
     }
   }
 
@@ -217,37 +237,54 @@ export class HttpClient implements IHttpClient {
         url,
         this.mergeConfig(config),
       )
-      if (!config.responseValidator(response.data))
-        return Either.failure(AppError.ValidationError('HTTP_RESPONSE_INVALID'))
-      return Either.success(response.data)
-    } catch (error) {
-      return this.handleError(
-        error instanceof Error ? error : new Error(String(error)),
+      const payload = this.responseData(
+        response.status,
+        response.data,
+        config.responseType,
       )
+      if (!config.responseValidator(payload))
+        return Either.failure(AppError.ValidationError('HTTP_RESPONSE_INVALID'))
+      return Either.success(payload)
+    } catch (error) {
+      if (axios.isAxiosError<JsonValue>(error))
+        return this.handleError(error, config.readErrorMessage)
+      return Either.failure(AppError.Internal('HTTP_REQUEST_FAILED'))
     }
   }
 
-  private handleError(error: Error | AxiosError): Either<AppError, never> {
-    if (error instanceof AxiosError) {
-      let message = error.message ? error.message : 'HTTP Request Failed'
-      if (
-        isRecord(error.response?.data) &&
-        isNonEmptyString(error.response.data.message)
-      ) {
-        message = error.response.data.message
-      }
-      const status = error.response?.status
-      if (status !== undefined) {
-        return Either.failure(AppError.Http(status, message))
-      }
-      return Either.failure(AppError.Internal(message))
-    }
+  private responseData(
+    status: number,
+    data: JsonValue,
+    responseType: 'json' | 'text' | undefined,
+  ): JsonValue {
+    if (responseType === 'text') return data
+    if (status === 204 || status === 205) return null
+    return data
+  }
 
-    return Either.failure(
-      AppError.Internal(
-        error.message ? error.message : 'An unknown error occurred',
-      ),
-    )
+  private handleError(
+    error: AxiosError<JsonValue>,
+    readMessage: IHttpRequestOptions<JsonValue>['readErrorMessage'],
+  ): Either<AppError, never> {
+    let message = error.message
+    if (readMessage && error.response) {
+      const parsedMessage = readMessage(error.response.data)
+      if (parsedMessage !== undefined)
+        return Either.failure(
+          AppError.Http(error.response.status, parsedMessage),
+        )
+    }
+    if (
+      isRecord(error.response?.data) &&
+      isNonEmptyString(error.response.data.message)
+    ) {
+      message = error.response.data.message
+    }
+    const status = error.response?.status
+    if (status !== undefined) {
+      return Either.failure(AppError.Http(status, message))
+    }
+    return Either.failure(AppError.Http(503, message))
   }
 }
 

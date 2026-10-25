@@ -128,3 +128,15 @@ Esses métodos coordenam processos, segredos ou armazenamento externo; não são
 4. Se a chamada externa falhar, o service decide e executa a compensação ou recuperação definida para esse caso. O repositório apenas persiste o estado solicitado; eventual registro recuperável da operação externa tem responsabilidade e contrato próprios, fora do repositório de workspace, e só existe quando um cenário concreto o exigir.
 
 Exemplo: alterar o avatar não autoriza `workspaceRepository.uploadAvatar(...)`. O domínio valida a mudança; o service coordena `workspacesRepository.update(...)` e `blobStorage.put(...)`, trata falha entre essas etapas e mantém os metadados coerentes. Seguir rigorosamente as classes, contratos e pastas existentes; não introduzir `BaseRepository`, Unit of Work, saga, framework ou camada nova apenas para acomodar o exemplo. `BaseRepository` é exceção somente se já for padrão real do projeto.
+
+38. **Espaçamento e Respiração de Código (Proibição de Código Colado)**:
+    - Ao escrever ou modificar código em qualquer arquivo do ecossistema, NUNCA deixe declarações, estruturas de controle e blocos colados uns aos outros sem respiração visual.
+    - **Pulo de 1 Linha Obrigatório**: Sempre pule 1 linha elegantemente antes e depois de blocos como `switch`, `if` (com corpo em bloco multilinhas ou chaves `{ ... }`), laços de repetição (`for`, `while`), blocos `try/catch` e declarações de classes ou métodos.
+    - **Escopos Simples sem Pulo Forçado**: Deixe sem pulo de linha APENAS guard clauses ou escopos simples e diretos de 1 linha que façam sentido visual contínuo em sequência (exemplo: `if (!siteUrl) return ...` seguido imediatamente de `if (!token) return ...`).
+    - Métodos de classes e declarações de exportação de topo devem sempre ter 1 linha em branco de respiro entre si. O código deve priorizar ritmo de leitura, legibilidade e elegância visual, evitando aglomerações.
+
+39. **Proibição de Imports Inline dentro de Funções ou Tipos (`import('...')`)**:
+    - NUNCA utilize importações dinâmicas inline de tipos (como `import('@mr-tick/sdk').MetadataDTO`) dentro de generics, assinaturas de métodos ou no corpo de funções.
+    - Todos os tipos, contratos, DTOs e utilitários necessários DEVEM ser importados explicitamente no topo do arquivo via declaração de cabeçalho (`import { type MetadataDTO } from '@mr-tick/sdk'`).
+
+

@@ -312,6 +312,7 @@ export class TimeEntriesReplication implements IReplicationStrategy<
         ]),
       )
     if (
+      page.kind !== 'changes' &&
       expectedSnapshotId !== undefined &&
       page.snapshotId !== expectedSnapshotId
     )

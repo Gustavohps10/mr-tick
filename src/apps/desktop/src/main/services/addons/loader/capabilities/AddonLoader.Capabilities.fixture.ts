@@ -1,3 +1,4 @@
+import { EMPTY_HTTP_CONFIG } from '@mr-tick/adapters/contracts'
 import {
   AddonAuthenticatorRegistry,
   AddonConnectionProfilesResolver,
@@ -25,6 +26,10 @@ import {
 } from '@mr-tick/application'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 
+import {
+  ElectronHttpClientFactory,
+  NodeFetchTransport,
+} from '../../../../adapters/ElectronHttpClient'
 import { unavailableCore } from '../../core/addon-core-test-fixture'
 import {
   emptyAddonCredentialsVault,
@@ -111,6 +116,7 @@ function createLoader(
     new AddonAuthenticatorRegistry(),
     profilesResolver,
     new OAuthAttemptCoordinator(),
+    new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
   )
 }
 

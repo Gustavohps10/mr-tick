@@ -12,6 +12,7 @@ const { mockBridge, mockToastError } = vi.hoisted(() => ({
       getConnectionSchema: vi.fn(),
       getSchema: vi.fn(),
       getSettings: vi.fn(),
+      saveSettings: vi.fn(),
       listInstalled: vi.fn(),
     },
     workspaces: {
@@ -229,23 +230,111 @@ describe('WorkspaceAddonConnectionsManager', () => {
     },
   )
 
-  it('preserves an explicit OAuth settings action without substituting a credentials form', async () => {
+  it.each([
+    { capability: 'watcher', view: 'auth' },
+    { capability: 'dataSource', view: 'auth' },
+    { capability: 'dataSource', view: undefined },
+  ])(
+    'preserves an explicit OAuth settings action for $capability / $view',
+    async ({ capability, view }) => {
+      mockBridge.addons.listInstalled.mockResolvedValue({
+        isSuccess: true,
+        data: [{ id: 'watcher', capabilities: ['auth', capability] }],
+      })
+      mockBridge.addons.getSchema.mockResolvedValue({
+        isSuccess: true,
+        data: [
+          {
+            id: 'account-panel',
+            kind: 'auth',
+            label: 'Account',
+            fields: [
+              {
+                id: 'sign-in',
+                type: 'button',
+                label: 'Sign in with OAuth',
+                actionId: 'login',
+              },
+            ],
+          },
+        ],
+      })
+      mockBridge.addons.getSettings.mockResolvedValue({
+        isSuccess: true,
+        data: {
+          schemaVersion: 1,
+          revision: 0,
+          values: {},
+          credentialStates: {},
+        },
+      })
+      renderWithClient(
+        <AddonSettingsRenderer addonId="watcher" activeCapability={view} />,
+      )
+      expect(
+        await screen.findByRole('button', { name: 'Sign in with OAuth' }),
+      ).toBeVisible()
+      expect(
+        screen.queryByRole('button', { name: 'Conectar agora' }),
+      ).toBeNull()
+      expect(mockBridge.addons.getConnectionSchema).not.toHaveBeenCalled()
+      expect(screen.queryByRole('button', { name: 'Salvar' })).toBeNull()
+    },
+  )
+
+  it('keeps datasource mapping separate from authentication without offering a credentials connection', async () => {
     mockBridge.addons.listInstalled.mockResolvedValue({
       isSuccess: true,
-      data: [{ id: 'watcher', capabilities: ['auth', 'watcher'] }],
+      data: [{ id: 'jira', capabilities: ['auth', 'dataSource'] }],
+    })
+    mockBridge.workspaces.listAll.mockResolvedValue({
+      isSuccess: true,
+      data: [
+        {
+          id: 'workspace-a',
+          name: 'Workspace A',
+          status: 'configured',
+          connections: [
+            {
+              id: 'jira-connection',
+              addonId: 'jira',
+              connectionProfileId: 'site',
+              cardinality: 'multi',
+              status: 'disconnected',
+            },
+          ],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    })
+    renderWithClient(
+      <AddonSettingsRenderer addonId="jira" activeCapability="dataSource" />,
+    )
+    expect(await screen.findByText('Autenticação pendente')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Conectar agora' })).toBeNull()
+    expect(screen.queryByTestId('datasource-instance-connect-btn')).toBeNull()
+    expect(mockBridge.workspaces.submitCredentials).not.toHaveBeenCalled()
+  })
+
+  it('saves editable OAuth connection settings in the explicit workspace scope', async () => {
+    mockBridge.addons.listInstalled.mockResolvedValue({
+      isSuccess: true,
+      data: [{ id: 'jira', capabilities: ['auth', 'dataSource'] }],
     })
     mockBridge.addons.getSchema.mockResolvedValue({
       isSuccess: true,
       data: [
         {
-          id: 'account-panel',
+          id: 'jira-auth',
           kind: 'auth',
-          label: 'Account',
+          label: 'Jira',
           fields: [
+            { id: 'conn.projectKey', type: 'text', label: 'Project' },
             {
-              id: 'sign-in',
+              id: 'login',
               type: 'button',
-              label: 'Sign in with OAuth',
+              label: 'Connect Jira',
               actionId: 'login',
             },
           ],
@@ -256,13 +345,37 @@ describe('WorkspaceAddonConnectionsManager', () => {
       isSuccess: true,
       data: { schemaVersion: 1, revision: 0, values: {}, credentialStates: {} },
     })
+    mockBridge.addons.saveSettings.mockResolvedValue({
+      isSuccess: true,
+      data: {
+        schemaVersion: 1,
+        revision: 1,
+        values: { 'conn.projectKey': 'SCRUM' },
+        credentialStates: {},
+      },
+    })
     renderWithClient(
-      <AddonSettingsRenderer addonId="watcher" activeCapability="auth" />,
+      <AddonSettingsRenderer
+        addonId="jira"
+        activeCapability="auth"
+        scope={{ kind: 'workspace', workspaceId: 'workspace-a' }}
+      />,
     )
-    expect(
-      await screen.findByRole('button', { name: 'Sign in with OAuth' }),
-    ).toBeVisible()
-    expect(screen.queryByRole('button', { name: 'Conectar agora' })).toBeNull()
-    expect(mockBridge.addons.getConnectionSchema).not.toHaveBeenCalled()
+    fireEvent.change(
+      await screen.findByTestId('addon-field-input-conn.projectKey'),
+      { target: { value: 'SCRUM' } },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    await waitFor(() =>
+      expect(mockBridge.addons.saveSettings).toHaveBeenCalledWith({
+        body: {
+          addonId: 'jira',
+          scope: { kind: 'workspace', workspaceId: 'workspace-a' },
+          expectedRevision: 0,
+          patch: { 'conn.projectKey': 'SCRUM' },
+          credentials: {},
+        },
+      }),
+    )
   })
 })

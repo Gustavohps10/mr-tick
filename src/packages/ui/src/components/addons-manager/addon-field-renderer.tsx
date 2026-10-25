@@ -34,6 +34,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib/utils'
 
+import { AddonDateField } from './addon-date-field'
+
 export interface AddonFieldRendererProps {
   field: AddonSettingsField
   addonId?: string
@@ -44,9 +46,30 @@ export interface AddonFieldRendererProps {
   workspaceId?: string
   connectionInstanceId?: string
   credentialConfigured?: boolean
+  errors?: readonly string[]
 }
 
 export function AddonFieldRenderer({
+  errors,
+  ...props
+}: AddonFieldRendererProps) {
+  if (errors === undefined || errors.length === 0)
+    return <AddonFieldControl {...props} />
+  return (
+    <div
+      className="flex flex-col"
+      data-testid={`addon-field-errors-${props.field.id}`}
+    >
+      <AddonFieldControl {...props} />
+      {errors.map((message) => (
+        <p key={message} role="alert" className="text-destructive text-xs">
+          {message}
+        </p>
+      ))}
+    </div>
+  )
+}
+function AddonFieldControl({
   field,
   addonId = '',
   value,
@@ -56,7 +79,7 @@ export function AddonFieldRenderer({
   workspaceId,
   connectionInstanceId,
   credentialConfigured = false,
-}: AddonFieldRendererProps) {
+}: Omit<AddonFieldRendererProps, 'errors'>) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
   const [actionState, setActionState] = useState<{
@@ -276,6 +299,25 @@ export function AddonFieldRenderer({
     )
   }
 
+  if (field.type === 'date') {
+    let dateValue: string | undefined
+    if (typeof fieldValue === 'string') dateValue = fieldValue
+    return (
+      <div className="flex flex-col gap-1.5 py-2">
+        <label className="text-sm font-medium">{field.label}</label>
+        <AddonDateField
+          fieldId={field.id}
+          value={dateValue}
+          disabled={disabled}
+          placeholder={field.placeholder}
+          onChange={(date) => onChange(field.id, date)}
+        />
+        {field.description && (
+          <p className="text-muted-foreground text-xs">{field.description}</p>
+        )}
+      </div>
+    )
+  }
   if (field.type === 'select') {
     return (
       <div className="flex flex-col gap-1.5 py-2">

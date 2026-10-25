@@ -32,6 +32,7 @@ interface NewAddonConnectionFormProps {
   onSubmit: (data: AddonConnectionFormData) => void
   isSubmitting?: boolean
   hideSubmitButton?: boolean
+  fieldErrors?: Readonly<Record<string, readonly string[]>>
 }
 
 function schemaTabs(schema: AddonSettingsSchema): AddonSettingsTab[] {
@@ -110,6 +111,7 @@ function ConnectionFields({
   onSubmit,
   isSubmitting = false,
   hideSubmitButton = false,
+  fieldErrors,
   tabs,
 }: NewAddonConnectionFormProps & { tabs: AddonSettingsTab[] }) {
   const methods = useForm<Record<string, FieldPrimitiveValue>>()
@@ -173,6 +175,7 @@ function ConnectionFields({
         field={field}
         addonId={pluginId}
         value={fieldValue(field)}
+        errors={fieldErrors?.[field.id]}
         onChange={(fieldId, value) => {
           if (value === null) {
             methods.unregister(fieldId)

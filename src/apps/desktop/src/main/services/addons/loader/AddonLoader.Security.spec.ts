@@ -8,6 +8,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { EMPTY_HTTP_CONFIG } from '@mr-tick/adapters/contracts'
 import { JSONAddonSettingsRepository } from '@mr-tick/adapters/data'
 import {
   AddonAuthenticatorRegistry,
@@ -19,6 +20,10 @@ import {
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import {
+  ElectronHttpClientFactory,
+  NodeFetchTransport,
+} from '../../../adapters/ElectronHttpClient'
 import { unavailableCore } from '../core/addon-core-test-fixture'
 import {
   emptyAddonCredentialsVault,
@@ -88,6 +93,10 @@ describe('AddonLoader security', () => {
       new AddonAuthenticatorRegistry(),
       new AddonConnectionProfilesResolver(),
       new OAuthAttemptCoordinator(),
+      new ElectronHttpClientFactory(
+        EMPTY_HTTP_CONFIG,
+        new NodeFetchTransport(),
+      ),
     )
     const activated = await loader.activateAddon(addonId, {
       activate: (context) =>
@@ -156,6 +165,10 @@ describe('AddonLoader security', () => {
       new AddonAuthenticatorRegistry(),
       new AddonConnectionProfilesResolver(),
       new OAuthAttemptCoordinator(),
+      new ElectronHttpClientFactory(
+        EMPTY_HTTP_CONFIG,
+        new NodeFetchTransport(),
+      ),
     )
     const addonId = 'password-scope-security'
     const activated = await loader.activateAddon(addonId, {
@@ -232,6 +245,10 @@ describe('AddonLoader security', () => {
       new AddonAuthenticatorRegistry(),
       new AddonConnectionProfilesResolver(),
       new OAuthAttemptCoordinator(),
+      new ElectronHttpClientFactory(
+        EMPTY_HTTP_CONFIG,
+        new NodeFetchTransport(),
+      ),
     )
     expect(await loader.loadAndActivateFromDisk('unknown', directory)).toBe(
       false,

@@ -20,6 +20,8 @@ export type HttpResponseValidator<T extends JsonValue> = (
 ) => value is T
 
 export interface IHttpRequestOptions<T extends JsonValue> {
+  /** Opt-in provider decoder. Return only approved, user-facing error fields; never the entire body. */
+  readonly readErrorMessage?: (payload: JsonValue) => string | undefined
   readonly params?: Record<string, string | number | boolean>
   readonly headers?: Record<string, string>
   readonly sensitiveHeaders?: readonly string[]

@@ -382,6 +382,10 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
       return Either.failure(AppError.ValidationError('AUTHENTICATOR_NOT_FOUND'))
     }
 
+    let configuration: Readonly<Record<string, string | number | boolean>> = {}
+    if (connection.config !== undefined) configuration = connection.config
+    if (response.configuration !== undefined)
+      configuration = response.configuration
     const connected = await this.connectConnectionService.execute({
       workspaceId: scope.workspaceId,
       connectionInstanceId: scope.connectionInstanceId,
@@ -396,7 +400,7 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
           codeVerifier: consumed.codeVerifier,
           redirectUri: consumed.redirectUri,
         },
-        configuration: connection.config ?? {},
+        configuration,
         correlation: {
           connectionGeneration: consumed.generation,
           authorizationGeneration: consumed.authorizationGeneration,

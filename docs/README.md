@@ -9,6 +9,7 @@
 - [Contexto e capacidades do core](sdk-core-capabilities.md): consultas, escopos e lifecycle.
 - [Autenticação](../src/apps/landing-page/content/docs/capabilities/auth.pt-br.mdx): perfis, autenticadores e credenciais.
 - [OAuth PKCE](../src/apps/landing-page/content/docs/apis/oauth-pkce.pt-br.mdx): fluxo atual e callbacks por ambiente.
+- [Limitações de OAuth e Arquitetura de Autenticação](limitacoes-oauth.md): modelo de segurança (clientes públicos vs confidenciais), Discord IPC, Jira 3LO e governança de addons oficiais vs terceiros.
 
 ## Acesso por agentes
 

@@ -1,11 +1,12 @@
 export * from './AddonConfig'
 export * from './contracts'
 export {
-  DataSourceContext,
-  IDataSource,
-  IDataSourceInstance,
+  type DataSourceContext,
+  type IDataSource,
+  type IDataSourceInstance,
   type MappingFieldDefinition,
 } from './data-source'
+export { FetchHttpClient } from './http/FetchHttpClient'
 export * from './runtime/AddonRuntimeCapabilities'
 export { createTimeEntrySnapshotPage } from './utils/createTimeEntrySnapshotPage'
 export * from './utils/MarkupConverter'

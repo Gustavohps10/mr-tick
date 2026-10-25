@@ -49,6 +49,7 @@ import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib/utils'
 
 import { AddonFieldRenderer } from './addon-field-renderer'
+import { tabHasEditableFields } from './addon-settings-fields'
 import { AddonThemeSettingsPanel } from './addon-theme-settings-panel'
 import {
   AddonConnection,
@@ -272,39 +273,19 @@ function WorkspaceSubSidebarSettingsManager({
       )
     }
 
-    if (activeCapability === 'auth' && isDataSourceAddon) {
-      return (
-        <div className="flex h-full min-h-0 flex-1 flex-col overflow-y-auto">
-          <WorkspaceAddonConnectionsManager
-            key={`ds-auth-${addonId}-${ws.id}`}
-            addonId={addonId}
-            workspaceId={ws.id}
-            mode="auth"
-          />
-          <ScopedAddonSettingsRenderer
-            key={`scoped-auth-${addonId}-${ws.id}`}
-            addonId={addonId}
-            activeCapability="auth"
-            addon={resolvedAddon}
-            scope={{ kind: 'workspace', workspaceId: ws.id }}
-            hideHeader={true}
-            hideWhenEmpty={true}
-          />
-        </div>
-      )
-    }
-
     if (
       !activeCapability &&
       isDataSourceAddon &&
       hasCapability(resolvedAddon?.capabilities, 'auth')
     ) {
       return (
-        <WorkspaceAddonConnectionsManager
+        <ScopedAddonSettingsRenderer
           key={`ds-default-${addonId}-${ws.id}`}
           addonId={addonId}
-          workspaceId={ws.id}
-          mode="auth"
+          activeCapability="auth"
+          addon={resolvedAddon}
+          scope={{ kind: 'workspace', workspaceId: ws.id }}
+          hideHeader={true}
         />
       )
     }
@@ -420,14 +401,12 @@ function ScopedAddonSettingsRenderer({
   addon,
   scope,
   hideHeader,
-  hideWhenEmpty = false,
 }: {
   addonId: string
   activeCapability?: string
   addon?: AddonManifestViewModel | null
   scope: AddonVaultScope
   hideHeader?: boolean
-  hideWhenEmpty?: boolean
 }) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
@@ -711,7 +690,6 @@ function ScopedAddonSettingsRenderer({
   })
 
   if (isLoadingSchema || isLoadingSettings) {
-    if (hideWhenEmpty) return null
     return (
       <div
         className="flex flex-1 flex-col gap-4 p-6"
@@ -729,10 +707,26 @@ function ScopedAddonSettingsRenderer({
 
   const authTabs = allTabs.filter(isAuthTab)
   const capabilityTabs = allTabs.filter((t) => !isAuthTab(t))
+  const saveActions = (
+    <div className="bg-muted/20 flex shrink-0 justify-end gap-2 border-t px-6 py-3">
+      <Button
+        variant="outline"
+        onClick={handleReset}
+        disabled={saveMutation.isPending}
+      >
+        Cancelar
+      </Button>
+      <Button onClick={handleSave} disabled={saveMutation.isPending}>
+        {saveMutation.isPending && (
+          <Loader2 className="mr-2 size-4 animate-spin" />
+        )}
+        Salvar
+      </Button>
+    </div>
+  )
 
   if (activeCapability === 'auth') {
     if (authTabs.length === 0) {
-      if (hideWhenEmpty) return null
       return (
         <WorkspaceAddonConnectionsManager
           addonId={addonId}
@@ -822,6 +816,7 @@ function ScopedAddonSettingsRenderer({
             ))}
           </div>
         </div>
+        {authTabs.some(tabHasEditableFields) && saveActions}
       </div>
     )
   }
@@ -833,8 +828,6 @@ function ScopedAddonSettingsRenderer({
   const tabs: AddonSettingsTab[] = matchingTab ? [matchingTab] : capabilityTabs
 
   if (tabs.length === 0) {
-    if (hideWhenEmpty) return null
-
     if (
       !activeCapability &&
       isDataSourceConnection &&
@@ -861,31 +854,6 @@ function ScopedAddonSettingsRenderer({
   }
 
   const defaultTab = initialSettingsTab(tabs)
-
-  const tabHasEditableFields = (tab: AddonSettingsTab) => {
-    if (tab.requiresAuth && tab.isAuthenticated === false) {
-      return false
-    }
-    if (tab.groups && tab.groups.length > 0) {
-      return tab.groups.some((group) =>
-        group.fields.some(
-          (field) =>
-            field.type !== 'button' &&
-            field.type !== 'info-card' &&
-            field.type !== 'datasource-instances',
-        ),
-      )
-    }
-    if (tab.fields && tab.fields.length > 0) {
-      return tab.fields.some(
-        (field) =>
-          field.type !== 'button' &&
-          field.type !== 'info-card' &&
-          field.type !== 'datasource-instances',
-      )
-    }
-    return false
-  }
 
   const hasEditableFields = tabs.some(tabHasEditableFields)
 
@@ -1004,23 +972,7 @@ function ScopedAddonSettingsRenderer({
         </Tabs>
       </div>
 
-      {hasEditableFields && (
-        <div className="bg-muted/20 flex justify-end gap-2 border-t px-6 py-3">
-          <Button
-            variant="outline"
-            onClick={handleReset}
-            disabled={saveMutation.isPending}
-          >
-            Cancelar
-          </Button>
-          <Button onClick={handleSave} disabled={saveMutation.isPending}>
-            {saveMutation.isPending && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            )}
-            Salvar
-          </Button>
-        </div>
-      )}
+      {hasEditableFields && saveActions}
     </div>
   )
 }
@@ -1075,6 +1027,9 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  const [connectionFieldErrors, setConnectionFieldErrors] = useState<
+    Record<string, string[]> | undefined
+  >(undefined)
   const connectMutation = useMutation({
     mutationFn: (data: AddonConnectionFormData) =>
       connect({
@@ -1086,6 +1041,7 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
       }),
     onSuccess: (res) => {
       if (!res?.isSuccess || !res.data) {
+        setConnectionFieldErrors(res?.details)
         let errorMsg = 'Falha ao conectar'
         if (res?.error) errorMsg = res.error
         toast.error(errorMsg)
@@ -1269,6 +1225,7 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
                   connectionTargetProfile.connectionProfileId
                 }
                 isSubmitting={connectMutation.isPending}
+                fieldErrors={connectionFieldErrors}
                 onSubmit={(data) => connectMutation.mutate(data)}
               />
             )}

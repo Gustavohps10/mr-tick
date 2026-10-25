@@ -1,3 +1,4 @@
+import { EMPTY_HTTP_CONFIG } from '@mr-tick/adapters/contracts'
 import {
   AddonAuthenticatorRegistry,
   AddonConnectionProfilesResolver,
@@ -7,6 +8,10 @@ import {
   OAuthAttemptCoordinator,
 } from '@mr-tick/application'
 
+import {
+  ElectronHttpClientFactory,
+  NodeFetchTransport,
+} from '../../../../adapters/ElectronHttpClient'
 import {
   permissiveAddonAccessService,
   unavailableCore,
@@ -42,6 +47,7 @@ export function createOAuthTestSetup(): {
     new AddonAuthenticatorRegistry(),
     new AddonConnectionProfilesResolver(),
     new OAuthAttemptCoordinator(),
+    new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
   )
 
   return { addonLoader, fakeCredentialsVault }

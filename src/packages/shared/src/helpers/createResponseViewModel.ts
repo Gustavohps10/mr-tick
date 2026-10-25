@@ -35,6 +35,7 @@ export function createResponseViewModel(
       isSuccess: false,
       statusCode: error.statusCode,
       error: translate(error.messageKey),
+      details: error.details,
     }
   }
 

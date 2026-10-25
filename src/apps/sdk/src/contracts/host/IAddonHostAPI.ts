@@ -1,4 +1,5 @@
 import type { IAddonEventsAPI } from './events'
+import type { IHttpClient } from './http'
 import type { IAddonNotificationsAPI } from './notifications'
 import type { IAddonOAuthAPI } from './oauth'
 import type { IAddonVaultAPI } from './vault'
@@ -9,4 +10,5 @@ export interface IAddonHostAPI {
   readonly notifications: IAddonNotificationsAPI
   readonly vault: IAddonVaultAPI
   readonly oauth: IAddonOAuthAPI
+  readonly http: IHttpClient
 }

@@ -655,6 +655,11 @@ if (gotTheLock) {
         serviceProvider.resolve<IOAuthAttemptCoordinator>(
           'oauthAttemptCoordinator',
         )
+      const electronHttpClientFactory = new ElectronHttpClientFactory(
+        {},
+        new DefaultElectronFetchTransport(),
+      )
+      const electronHttpClient = electronHttpClientFactory.createClient({})
       let addonLoader: AddonLoader
       addonLoader = new AddonLoader(
         credentialsVault,
@@ -699,6 +704,7 @@ if (gotTheLock) {
           'profilesResolver',
         ),
         oauthAttemptCoordinator,
+        electronHttpClientFactory,
       )
       globalAddonLoader = addonLoader
 
@@ -713,11 +719,6 @@ if (gotTheLock) {
       )
 
       const eventEmitter = new ElectronJobEventEmitter(() => mainWindow)
-      const electronHttpClientFactory = new ElectronHttpClientFactory(
-        {},
-        new DefaultElectronFetchTransport(),
-      )
-      const electronHttpClient = electronHttpClientFactory.createClient({})
 
       if (!app.isPackaged && process.env.PLAYWRIGHT_TEST === '1') {
         const { registerElectronHttpTransportTestProbe } =

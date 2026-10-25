@@ -562,4 +562,76 @@ describe('Browser workspace owner lifecycle', () => {
       await registry.close()
     }
   })
+
+  it('ignores connections whose addon does not have the dataSource capability when addons.listInstalled is provided', async () => {
+    const workspaceId = crypto.randomUUID()
+    const discordConnId = 'conn-discord'
+    const redmineConnId = 'conn-redmine'
+    const { bridge } = bridgeFor(workspaceId, [
+      {
+        id: discordConnId,
+        addonId: 'discord-watcher',
+        connectionProfileId: 'discord-profile',
+        cardinality: 'single',
+        status: 'connected',
+      },
+      {
+        id: redmineConnId,
+        addonId: 'redmine',
+        connectionProfileId: 'redmine-instance',
+        cardinality: 'multi',
+        status: 'connected',
+      },
+    ])
+    bridge.addons = {
+      listInstalled: async () => ({
+        isSuccess: true,
+        statusCode: 200,
+        data: [
+          {
+            id: 'discord-watcher',
+            name: 'Discord',
+            creator: 'Community',
+            description: '',
+            path: '',
+            logo: '',
+            downloads: 0,
+            version: '1.0.0',
+            stars: 0,
+            installed: true,
+            capabilities: ['watcher'],
+          },
+          {
+            id: 'redmine',
+            name: 'Redmine',
+            creator: 'Official',
+            description: '',
+            path: '',
+            logo: '',
+            downloads: 0,
+            version: '1.0.0',
+            stars: 0,
+            installed: true,
+            capabilities: ['dataSource'],
+          },
+        ],
+        totalItems: 2,
+        totalPages: 1,
+        currentPage: 1,
+      }),
+    }
+    const registry = new BrowserWorkspaceRegistry(bridge, options)
+    const opened = await registry.open(workspaceId)
+    expect(opened.isSuccess()).toBe(true)
+    if (opened.isFailure()) return expect.fail('Failed to open workspace')
+    const executor = opened.success
+    try {
+      const statusKeys = Object.keys(executor.store.getState().statuses)
+      expect(statusKeys.some((key) => key.includes(discordConnId))).toBe(false)
+      expect(statusKeys.some((key) => key.includes(redmineConnId))).toBe(true)
+    } finally {
+      await executor.close()
+      await registry.close()
+    }
+  })
 })

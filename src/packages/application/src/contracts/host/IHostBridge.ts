@@ -302,6 +302,7 @@ export type AddonSettingsFieldType =
   | 'mapping'
   | 'password'
   | 'number'
+  | 'date'
   | 'boolean'
   | 'select'
   | 'button'

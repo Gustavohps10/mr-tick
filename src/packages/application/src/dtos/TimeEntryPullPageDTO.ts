@@ -8,9 +8,11 @@ export interface TimeEntryPullCheckpointDTO {
 }
 
 export interface TimeEntryPullPageDTO {
+  /** Omitted means snapshot. Change feeds do not promise immutable records between pages. */
+  kind?: 'snapshot' | 'changes'
   items: TimeEntryDTO[]
   checkpoint: TimeEntryPullCheckpointDTO
   hasMore: boolean
-  /** Identifies the coherent source view used by this page and its continuation. */
+  /** Snapshot identity, or the bounded source selection identity for a change-feed page. */
   snapshotId: string
 }

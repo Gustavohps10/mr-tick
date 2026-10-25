@@ -37,3 +37,17 @@ Uma conexão de watcher não é datasource e não entra na replicação de taref
 Addons executam código confiável no main; as APIs com escopo não são sandbox de código de terceiros. Um sucesso local não comprova confirmação remota.
 
 Schemas de conexão são registrados por perfil em `contributions.connections.registerSchema(connectionProfileId, schema)`, independentemente dos providers do datasource. O bridge exige addon e perfil explícitos; campos secretos usam `scope: 'credential'`.
+
+## Evolução em desenvolvimento para Jira Cloud
+
+As mudanças abaixo ainda dependem da próxima publicação minor do SDK e do desktop; não estão no pacote npm 0.12. O addon Jira usa o SDK local durante essa validação e exige API 0.13 antes de ser distribuído.
+
+- `MemberDTO.id` preserva a identidade nativa do provedor (`string | number`). Informações de administração e histórico do membro são opcionais quando a API não as fornece.
+- `core.connections.completeAuthentication(scope, response)` aceita `response.configuration` explícita. O core verifica a tentativa OAuth e sua geração e encaminha a configuração para a mesma operação de autorização; não grava tokens em settings.
+- `TimeEntryPullPageDTO.kind` distingue `changes` de `snapshot`. A omissão significa snapshot. Um change feed tem seleção limitada e checkpoint próprio; seus registros podem mudar entre chamadas, portanto o consumidor não exige que páginas diferentes tenham o mesmo snapshot. Isso não implementa tombstones nem garante retenção ilimitada no provedor.
+- `IHttpRequestOptions.readErrorMessage(payload)` permite ao addon selecionar mensagens canônicas do erro remoto. O transporte preserva o status; sem decoder, o desktop continua retornando apenas o status seguro. O decoder não deve devolver o corpo inteiro ou campos de credenciais.
+- Respostas JSON HTTP 204/205 são representadas por `null`; um pedido explícito por texto preserva o corpo vazio. A validação da resposta continua obrigatória.
+
+Schemas customizados da área de autenticação podem incluir campos editáveis e ações OAuth. O renderer oferece salvar/cancelar apenas quando o schema contém campos editáveis, mantendo o escopo do workspace escolhido.
+
+A apresentação `kind: 'auth'` declarada pelo addon governa a autenticação também quando há um datasource. O formulário genérico aparece apenas na ausência dessa apresentação; a área Fonte de dados mantém os mapeamentos e orienta contas pendentes para Autenticação.

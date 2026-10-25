@@ -8,6 +8,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import { EMPTY_HTTP_CONFIG } from '@mr-tick/adapters/contracts'
 import {
   AddonAuthenticatorRegistry,
   AddonConnectionProfilesResolver,
@@ -18,6 +19,10 @@ import {
 } from '@mr-tick/application'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import {
+  ElectronHttpClientFactory,
+  NodeFetchTransport,
+} from '../../../adapters/ElectronHttpClient'
 import {
   permissiveAddonAccessService,
   unavailableCore,
@@ -76,6 +81,10 @@ describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
       new AddonAuthenticatorRegistry(),
       new AddonConnectionProfilesResolver(),
       new OAuthAttemptCoordinator(),
+      new ElectronHttpClientFactory(
+        EMPTY_HTTP_CONFIG,
+        new NodeFetchTransport(),
+      ),
     )
 
     // Cria diretório temporário para simular addon no disco

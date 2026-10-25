@@ -16,6 +16,7 @@ import { LocalRuntime } from '@mr-tick/application/local-runtime'
 import {
   AppError,
   Either,
+  isDataSource,
   isNonEmptyString,
   isRecord,
 } from '@mr-tick/shared/helpers'
@@ -40,6 +41,7 @@ export interface BrowserRuntimeBridge extends Pick<
 > {
   workspaces: Pick<IHostBridge['workspaces'], 'getById' | 'listAll'>
   events: Pick<IHostBridge['events'], 'emit'>
+  addons?: Pick<IHostBridge['addons'], 'listInstalled'>
 }
 
 export interface BrowserRuntimeOptions {
@@ -292,6 +294,17 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
             )
             if (connection === undefined || connection.status !== 'connected')
               return syncFailure(AppError.Http(409, 'CONNECTION_NOT_CONNECTED'))
+            if (this.bridge.addons?.listInstalled) {
+              const installedRes = await this.bridge.addons.listInstalled()
+              if (installedRes?.data) {
+                const targetAddon = installedRes.data.find(
+                  (addon) => addon.id === input.dataSourceId,
+                )
+                if (targetAddon && !isDataSource(targetAddon.capabilities)) {
+                  return { ok: true }
+                }
+              }
+            }
             await store.connectDataSource({
               connectionInstanceId: input.connectionInstanceId,
               dataSourceId: input.dataSourceId,
@@ -668,8 +681,24 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
       )
       const recovered = await executor.recover()
       if (recovered.isFailure()) return recovered.forwardFailure()
+      let isAllowedDataSource: ((addonId: string) => boolean) | null = null
+      if (this.bridge.addons?.listInstalled) {
+        const installedRes = await this.bridge.addons.listInstalled()
+        if (installedRes?.data) {
+          const dataSourceAddonIds = new Set(
+            installedRes.data
+              .filter((addon) => isDataSource(addon.capabilities))
+              .map((addon) => addon.id),
+          )
+          isAllowedDataSource = (addonId: string) =>
+            dataSourceAddonIds.has(addonId)
+        }
+      }
+
       for (const connection of response.data.connections) {
         if (connection.status !== 'connected') continue
+        if (isAllowedDataSource && !isAllowedDataSource(connection.addonId))
+          continue
         await store.getState().connectDataSource({
           connectionInstanceId: connection.id,
           dataSourceId: connection.addonId,
