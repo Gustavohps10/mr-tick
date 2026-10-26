@@ -513,6 +513,16 @@ export function useTimeEntryMutations(
           docJson.syncStatus === 'synced',
         )
 
+        if (
+          changes.connectionInstanceId &&
+          changes.connectionInstanceId !== docJson.connectionInstanceId &&
+          Boolean(docJson.confirmationState)
+        ) {
+          console.log('[MUTATION-DEBUG BLOCKED_BY_CONFIRMATION_STATE]')
+          toast.error('Confirme a operação remota antes de trocar a conexão')
+          return
+        }
+
         if (isLinkedToRemote) {
           if (
             changes.task?.id !== undefined &&
@@ -522,6 +532,7 @@ export function useTimeEntryMutations(
             toast.error('Registros remotos não podem ficar sem tarefa')
             return
           }
+
           if (
             changes.activity?.id !== undefined &&
             !changes.activity.id.trim()
@@ -543,16 +554,6 @@ export function useTimeEntryMutations(
             syncStatus: docJson.syncStatus,
           }),
         )
-
-        if (
-          changes.connectionInstanceId &&
-          changes.connectionInstanceId !== docJson.connectionInstanceId &&
-          Boolean(docJson.confirmationState)
-        ) {
-          console.log('[MUTATION-DEBUG BLOCKED_BY_CONFIRMATION_STATE]')
-          toast.error('Confirme a operação remota antes de trocar a conexão')
-          return
-        }
 
         const edit = await requestEntryPersistence(bridge, db, {
           action: 'editRecord',
@@ -834,6 +835,15 @@ export function useTimeEntryMutations(
             doc.syncStatus === 'synced',
           )
 
+          if (
+            updates.connectionInstanceId &&
+            updates.connectionInstanceId !== doc.connectionInstanceId &&
+            Boolean(doc.confirmationState)
+          ) {
+            toast.error('Confirme a operação remota antes de trocar a conexão')
+            return
+          }
+
           if (isLinkedToRemote) {
             if (
               updates.task?.id !== undefined &&
@@ -843,6 +853,7 @@ export function useTimeEntryMutations(
               toast.error('Registros remotos não podem ficar sem tarefa')
               return
             }
+
             if (
               updates.activity?.id !== undefined &&
               !updates.activity.id.trim()
@@ -859,15 +870,6 @@ export function useTimeEntryMutations(
             confirmationState: doc.confirmationState,
             syncStatus: doc.syncStatus,
           })
-
-          if (
-            updates.connectionInstanceId &&
-            updates.connectionInstanceId !== doc.connectionInstanceId &&
-            Boolean(doc.confirmationState)
-          ) {
-            toast.error('Confirme a operação remota antes de trocar a conexão')
-            return
-          }
 
           const edit = await requestEntryPersistence(bridge, db, {
             action: 'editRecord',

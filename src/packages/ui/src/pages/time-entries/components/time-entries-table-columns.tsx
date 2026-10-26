@@ -460,14 +460,14 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
   const TrackerIconComponent = getActivityIcon(resolvedTracker.icon)
 
   const resolvedConnectionInstanceId =
-    original.connectionInstanceId ||
+    mergedRow.connectionInstanceId ||
     associatedTask?.connectionInstanceId ||
-    mergedRow.connectionInstanceId
+    original.connectionInstanceId
 
   const resolvedDataSourceId =
-    original.dataSourceId ||
+    mergedRow.dataSourceId ||
     associatedTask?.dataSourceId ||
-    mergedRow.dataSourceId
+    original.dataSourceId
 
   if (isEditing) {
     const isRemote = Boolean(
@@ -483,12 +483,16 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
 
     const hasSelectedTask = Boolean(cleanId && cleanId !== '')
 
-    const rowActivities =
-      hasSelectedTask && resolvedConnectionInstanceId && activitiesByConnection
-        ? activitiesByConnection[resolvedConnectionInstanceId] || []
-        : hasSelectedTask
-          ? activities
-          : []
+    const connectionActivities =
+      resolvedConnectionInstanceId && activitiesByConnection
+        ? activitiesByConnection[resolvedConnectionInstanceId]
+        : undefined
+
+    const rowActivities = hasSelectedTask
+      ? connectionActivities && connectionActivities.length > 0
+        ? connectionActivities
+        : activities
+      : []
 
     const formattedActivities = rowActivities.map((act) => ({
       id: act.id,
@@ -537,16 +541,16 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
             )
 
             const nextActivities =
-              nextConnectionId && activitiesByConnection
-                ? activitiesByConnection[nextConnectionId] || []
-                : []
+              nextConnectionId &&
+              activitiesByConnection &&
+              activitiesByConnection[nextConnectionId]?.length
+                ? activitiesByConnection[nextConnectionId]
+                : activities
 
             const isCurrentActivityValid =
-              !sourceChanged &&
-              Boolean(
-                mergedRow.activity?.id &&
-                nextActivities.some((act) => act.id === mergedRow.activity?.id),
-              )
+              !sourceChanged ||
+              (Boolean(mergedRow.activity?.id) &&
+                nextActivities.some((act) => act.id === mergedRow.activity?.id))
 
             const activityUpdate = isCurrentActivityValid
               ? {}
@@ -583,21 +587,29 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
           }}
           selectedConnectionId={currentConnectionId}
           onConnectionChange={(val) => {
+            const previousConnectionId =
+              currentConnectionId ||
+              mergedRow.connectionInstanceId ||
+              original.connectionInstanceId
+            const nextConnectionId = val
+
             const sourceChanged = Boolean(
-              currentConnectionId && val && currentConnectionId !== val,
+              previousConnectionId &&
+              nextConnectionId &&
+              previousConnectionId !== nextConnectionId,
             )
 
             const nextActivities =
-              val && activitiesByConnection
-                ? activitiesByConnection[val] || []
-                : []
+              nextConnectionId &&
+              activitiesByConnection &&
+              activitiesByConnection[nextConnectionId]?.length
+                ? activitiesByConnection[nextConnectionId]
+                : activities
 
             const isCurrentActivityValid =
-              !sourceChanged &&
-              Boolean(
-                mergedRow.activity?.id &&
-                nextActivities.some((act) => act.id === mergedRow.activity?.id),
-              )
+              !sourceChanged ||
+              (Boolean(mergedRow.activity?.id) &&
+                nextActivities.some((act) => act.id === mergedRow.activity?.id))
 
             const activityUpdate = isCurrentActivityValid
               ? {}
@@ -624,16 +636,16 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
             )
 
             const nextActivities =
-              nextConnectionId && activitiesByConnection
-                ? activitiesByConnection[nextConnectionId] || []
-                : []
+              nextConnectionId &&
+              activitiesByConnection &&
+              activitiesByConnection[nextConnectionId]?.length
+                ? activitiesByConnection[nextConnectionId]
+                : activities
 
             const isCurrentActivityValid =
-              !sourceChanged &&
-              Boolean(
-                mergedRow.activity?.id &&
-                nextActivities.some((act) => act.id === mergedRow.activity?.id),
-              )
+              !sourceChanged ||
+              (Boolean(mergedRow.activity?.id) &&
+                nextActivities.some((act) => act.id === mergedRow.activity?.id))
 
             const activityUpdate = isCurrentActivityValid
               ? {}
@@ -912,12 +924,16 @@ function ActivityCell({ row }: { row: TanStackRow<SuggestionRow> }) {
       currentTaskId && currentTaskId.trim() !== '',
     )
 
-    const rowActivities =
-      hasSelectedTask && resolvedConnectionInstanceId && activitiesByConnection
-        ? activitiesByConnection[resolvedConnectionInstanceId] || []
-        : hasSelectedTask
-          ? activities
-          : []
+    const connectionActivities =
+      resolvedConnectionInstanceId && activitiesByConnection
+        ? activitiesByConnection[resolvedConnectionInstanceId]
+        : undefined
+
+    const rowActivities = hasSelectedTask
+      ? connectionActivities && connectionActivities.length > 0
+        ? connectionActivities
+        : activities
+      : []
 
     // REGRA 3: Se já tiver escolhido uma atividade e trocou de fonte/tarefa,
     // ou se a atividade atual não pertence à nova conexão, resetar/invalidar
