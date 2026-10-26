@@ -61,7 +61,6 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import { RxDocument } from 'rxdb'
 import { toast } from 'sonner'
 
 import { TaskLookup } from '@/components/task-lookup'
@@ -87,7 +86,6 @@ import {
   useTimerSettings,
 } from '@/hooks/use-timer-settings'
 import { cn } from '@/lib/utils'
-import { SyncMetadataRxDBDTO } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { requestEntryPersistence } from '@/local-runtime/persistence-client'
 import { extractPureTaskId } from '@/pages/time-entries/lib/time-entries-utils'
@@ -233,10 +231,9 @@ export const UltimateTimeTracker = ({
   const [selectedActivity, setSelectedActivity] = useState<string>('')
   const [manualInitialSeconds, setManualInitialSeconds] = useState<number>(0)
   const [timerError, setTimerError] = useState<string | null>(null)
-  const [activities, setActivities] =
-    useState<Array<{ id: string; name: string; icon: React.ElementType }>>(
-      mockActivities,
-    )
+  const [activities, setActivities] = useState<
+    Array<{ id: string; name: string; icon: React.ElementType }>
+  >([])
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>('')
   const syncConnections = useConnectionsWithSync()
 
@@ -263,25 +260,26 @@ export const UltimateTimeTracker = ({
 
     const loadMetadataActivities = async () => {
       try {
-        let docs: RxDocument<SyncMetadataRxDBDTO>[] = []
-
         const connId =
           selectedTask?.connectionInstanceId || selectedConnectionId
-        if (connId) {
-          docs = await db.metadata
-            .find({
-              selector: {
-                connectionInstanceId: {
-                  $eq: connId,
-                },
-              },
-            })
-            .exec()
+
+        if (!connId) {
+          if (isMounted) {
+            setActivities([])
+            setSelectedActivity('')
+          }
+          return
         }
 
-        if (docs.length === 0) {
-          docs = await db.metadata.find().exec()
-        }
+        const docs = await db.metadata
+          .find({
+            selector: {
+              connectionInstanceId: {
+                $eq: connId,
+              },
+            },
+          })
+          .exec()
 
         const loaded: Array<{
           id: string
@@ -291,10 +289,14 @@ export const UltimateTimeTracker = ({
 
         docs.forEach((doc) => {
           const json = doc.toMutableJSON ? doc.toMutableJSON() : doc
-          json.activities?.forEach((act: any) => {
+          const acts = json.activities ?? []
+
+          acts.forEach((act) => {
             if (!loaded.some((a) => a.id === act.id)) {
-              const lucideMap: Record<string, React.ElementType> =
-                LucideIcons.icons
+              const lucideMap = LucideIcons.icons as Record<
+                string,
+                React.ElementType
+              >
               const IconComp =
                 (act.icon ? lucideMap[act.icon] : undefined) || Code2Icon
               loaded.push({
@@ -306,8 +308,15 @@ export const UltimateTimeTracker = ({
           })
         })
 
-        if (isMounted && loaded.length > 0) {
+        if (isMounted) {
           setActivities(loaded)
+
+          if (
+            selectedActivity &&
+            !loaded.some((a) => a.id === selectedActivity)
+          ) {
+            setSelectedActivity('')
+          }
         }
       } catch (err) {
         console.error('[METADATA] Erro ao carregar atividades:', err)
@@ -319,7 +328,7 @@ export const UltimateTimeTracker = ({
     return () => {
       isMounted = false
     }
-  }, [db, selectedTask, selectedConnectionId])
+  }, [db, selectedTask, selectedConnectionId, selectedActivity])
 
   useEffect(() => {
     const isWidgetWindow = window.location.hash.includes('/widgets/')
@@ -887,9 +896,19 @@ export const UltimateTimeTracker = ({
   const handleSelectTask = useCallback(
     async (task: SyncTaskRxDBDTO) => {
       const pureId = extractPureTaskId(task.sourceId || task.id)
+      const connId = task.connectionInstanceId || selectedConnectionId
+      const previousConnectionId =
+        selectedTask?.connectionInstanceId || selectedConnectionId
+      const sourceChanged = Boolean(
+        previousConnectionId && connId && previousConnectionId !== connId,
+      )
+
+      if (sourceChanged) {
+        setSelectedActivity('')
+      }
+
       setSelectedTask(task)
       setTaskId(pureId)
-      const connId = task.connectionInstanceId || selectedConnectionId
       if (connId) {
         setSelectedConnectionId(connId)
       }
@@ -1715,11 +1734,8 @@ UltimateTimeTracker.TaskBlock = function TaskBlock() {
     isRemote,
   } = useTrackerContext()
 
-  const selectedAct =
-    activities.find((a) => a.id === selectedActivity) ||
-    activities[0] ||
-    mockActivities[0]
-  const ActivityIcon = selectedAct.icon
+  const selectedAct = activities.find((a) => a.id === selectedActivity)
+  const ActivityIcon = selectedAct?.icon || Code2Icon
 
   const [committedTaskId, setCommittedTaskId] = React.useState(taskId)
   const [committedTask, setCommittedTask] = React.useState(selectedTask)

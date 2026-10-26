@@ -51,6 +51,7 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
     syncResult,
     syncErrorMessage,
     activities,
+    activitiesByConnection,
     tasksById,
     daysInRange,
     activeTimeEntry,
@@ -262,6 +263,7 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
   const columnOptions = useMemo<CreateColumnsOptions>(() => {
     return {
       activities,
+      activitiesByConnection,
       tasksById,
       mappings,
       editingRows,
@@ -291,6 +293,7 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
     }
   }, [
     activities,
+    activitiesByConnection,
     tasksById,
     mappings,
     editingRows,
@@ -354,17 +357,6 @@ export function TimeEntries({ className, compact }: TimeEntriesProps = {}) {
         <TimeEntriesSkeleton />
       ) : (
         <div className={cn('flex flex-col gap-6', compact && 'gap-3')}>
-          {isPulling && (
-            <div className="border-primary/20 bg-primary/5 text-primary flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs">
-              <span className="relative flex h-2 w-2">
-                <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
-                <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
-              </span>
-              <span className="font-medium">
-                Sincronizando apontamentos do período com as fontes remotas...
-              </span>
-            </div>
-          )}
           {daysInRange.map((day) => (
             <TimeEntriesColumnsProvider
               value={columnOptions}

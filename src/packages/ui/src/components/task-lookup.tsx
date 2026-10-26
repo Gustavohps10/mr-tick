@@ -57,10 +57,7 @@ import {
 } from '@/hooks/use-field-mappings'
 import { fetchAndPersistTasks } from '@/lib/tasks-enrichment'
 import { cn } from '@/lib/utils'
-import {
-  SyncMetadataItem,
-  SyncMetadataRxDBDTO,
-} from '@/local-db/schemas/metadata-sync-schema'
+import { SyncMetadataItem } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import {
   cleanTaskId,
@@ -141,25 +138,29 @@ export function TaskLookup({
   const isModalOpen = open ?? internalOpen
   const setIsModalOpen = onOpenChange ?? setInternalOpen
 
-  const { data: metadata } = useQuery({
-    queryKey: ['sync-metadata'],
+  const { data: metadataDocs } = useQuery({
+    queryKey: ['sync-metadata-all', db?.name],
     queryFn: async () => {
-      if (!db) return null
-      const doc = await db.metadata.findOne().exec()
-      return doc?.toMutableJSON() as SyncMetadataRxDBDTO
+      if (!db) return []
+      const docs = await db.metadata.find().exec()
+      return docs.map((d) => d.toMutableJSON())
     },
-    enabled: isModalOpen && !!db,
+    enabled: Boolean(isModalOpen && db),
   })
 
   const metaLookup = useMemo(() => {
     const statuses = new Map<string, SyncMetadataItem>()
     const priorities = new Map<string, SyncMetadataItem>()
     const roles = new Map<string, SyncMetadataItem>()
-    metadata?.taskStatuses?.forEach((s) => statuses.set(s.id, s))
-    metadata?.taskPriorities?.forEach((p) => priorities.set(p.id, p))
-    metadata?.participantRoles?.forEach((r) => roles.set(r.id, r))
+
+    metadataDocs?.forEach((doc) => {
+      doc.taskStatuses?.forEach((s) => statuses.set(s.id, s))
+      doc.taskPriorities?.forEach((p) => priorities.set(p.id, p))
+      doc.participantRoles?.forEach((r) => roles.set(r.id, r))
+    })
+
     return { statuses, priorities, roles }
-  }, [metadata])
+  }, [metadataDocs])
 
   const { dataSourceConnections: dsConnections } = useDataSourceConnections()
 
@@ -554,7 +555,7 @@ export function TaskLookup({
                     <SelectItem value="all" className="text-xs font-medium">
                       Todos Status
                     </SelectItem>
-                    {metadata?.taskStatuses?.map((s) => (
+                    {Array.from(metaLookup.statuses.values()).map((s) => (
                       <SelectItem
                         key={s.id}
                         value={s.id}
@@ -583,7 +584,7 @@ export function TaskLookup({
                     <SelectItem value="all" className="text-xs font-medium">
                       Todas Prioridades
                     </SelectItem>
-                    {metadata?.taskPriorities?.map((p) => (
+                    {Array.from(metaLookup.priorities.values()).map((p) => (
                       <SelectItem
                         key={p.id}
                         value={p.id}

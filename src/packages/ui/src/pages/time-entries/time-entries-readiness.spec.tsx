@@ -239,12 +239,12 @@ describe('TB-001 & TB-002: TimeEntries & Popover Readiness & Sync Blocking', () 
         screen.queryAllByText(/Nenhum registro para exibir/i).length,
       ).toBeGreaterThan(0)
 
-      // E o banner informativo de sincronização deve estar visível
+      // O banner que empurrava o conteúdo da página para baixo não deve existir
       expect(
-        screen.getByText(
+        screen.queryByText(
           /Sincronizando apontamentos do período com as fontes remotas.../i,
         ),
-      ).toBeTruthy()
+      ).toBeNull()
     } finally {
       await testDb.close()
       removeDatabaseFromCache(workspaceId, true)

@@ -8,10 +8,48 @@ import { useSyncStore } from '@/stores/syncStore'
 
 export interface UseActivitiesQueryResult {
   data: SyncMetadataItem[]
+  activitiesByConnection: Record<string, SyncMetadataItem[]>
   isLoading: boolean
   isError: boolean
   error: unknown
   refetch: () => Promise<unknown>
+}
+
+interface ActivitiesQueryPayload {
+  activities: SyncMetadataItem[]
+  activitiesByConnection: Record<string, SyncMetadataItem[]>
+}
+
+function extractActivitiesPayload(
+  docs: Array<{
+    connectionInstanceId?: string
+    activities?: SyncMetadataItem[]
+  }>,
+): ActivitiesQueryPayload {
+  const activitiesByConnection: Record<string, SyncMetadataItem[]> = {}
+  const allActivities: SyncMetadataItem[] = []
+  const seenActivityIds = new Set<string>()
+
+  for (const doc of docs) {
+    const connId = doc.connectionInstanceId
+    const acts = doc.activities ?? []
+
+    if (connId) {
+      activitiesByConnection[connId] = acts
+    }
+
+    for (const act of acts) {
+      if (!seenActivityIds.has(act.id)) {
+        seenActivityIds.add(act.id)
+        allActivities.push(act)
+      }
+    }
+  }
+
+  return {
+    activities: allActivities,
+    activitiesByConnection,
+  }
 }
 
 export function useActivitiesQuery(enabled = true): UseActivitiesQueryResult {
@@ -23,33 +61,42 @@ export function useActivitiesQuery(enabled = true): UseActivitiesQueryResult {
   useEffect(() => {
     if (!db?.metadata || !enabled) return
 
-    const query = db.metadata.findOne()
-    const subscription = query.$.subscribe((doc) => {
-      if (doc) {
-        const metadata = doc.toMutableJSON()
-        queryClient.setQueryData(queryKey, metadata.activities || [])
-      }
+    const query = db.metadata.find()
+    const subscription = query.$.subscribe((docs) => {
+      if (!docs) return
+
+      const plainDocs = docs.map((doc) => doc.toMutableJSON())
+      const payload = extractActivitiesPayload(plainDocs)
+      queryClient.setQueryData(queryKey, payload)
     })
 
     return () => {
       subscription.unsubscribe()
     }
-  }, [db, enabled, queryClient])
+  }, [db, enabled, queryClient, queryKey])
 
-  const query = useQuery<SyncMetadataItem[]>({
+  const query = useQuery<ActivitiesQueryPayload>({
     queryKey,
     queryFn: async () => {
-      if (!db?.metadata) return []
-      const doc = await db.metadata.findOne().exec()
-      if (!doc) return []
-      return doc.toMutableJSON().activities || []
+      if (!db?.metadata) {
+        return { activities: [], activitiesByConnection: {} }
+      }
+
+      const docs = await db.metadata.find().exec()
+      if (!docs || docs.length === 0) {
+        return { activities: [], activitiesByConnection: {} }
+      }
+
+      const plainDocs = docs.map((doc) => doc.toMutableJSON())
+      return extractActivitiesPayload(plainDocs)
     },
-    enabled: !!db?.metadata && enabled,
+    enabled: Boolean(db?.metadata && enabled),
     staleTime: 1000 * 60 * 15,
   })
 
   return {
-    data: query.data ?? [],
+    data: query.data?.activities ?? [],
+    activitiesByConnection: query.data?.activitiesByConnection ?? {},
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,

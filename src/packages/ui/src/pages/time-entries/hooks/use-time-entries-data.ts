@@ -29,11 +29,13 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
 
   const memberIdsByConnection = useMemo(() => {
     const next: Record<string, string> = {}
+
     for (const conn of connections) {
       if (conn.connectionId && conn.member?.id) {
         next[conn.connectionId] = String(conn.member.id)
       }
     }
+
     return next
   }, [connections])
 
@@ -41,6 +43,7 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
     if (options?.ignoreUrlRange && options.from && options.to) {
       return { from: options.from, to: options.to }
     }
+
     if (options?.from && options.to) {
       return { from: options.from, to: options.to }
     }
@@ -62,6 +65,7 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
 
   const handleRangeChange = (newRange: DateRange | undefined) => {
     if (options?.ignoreUrlRange) return
+
     if (newRange?.from && newRange.to) {
       setSearchParams({
         from: newRange.from.toISOString(),
@@ -92,15 +96,17 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
     to: range.to,
   })
 
-  const { data: activities } = useActivitiesQuery()
+  const { data: activities, activitiesByConnection } = useActivitiesQuery()
   const { data: tasks = [] } = useTasksQuery()
 
   const tasksById = useMemo(() => {
     const map: Record<string, SyncTaskRxDBDTO> = {}
+
     for (const t of tasks) {
       if (t.id) map[t.id] = t
       if (t.sourceId) map[t.sourceId] = t
     }
+
     return map
   }, [tasks])
 
@@ -128,10 +134,12 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
       requestedTaskIdsRef.current.add(cacheKey)
 
       const currentList = missingByConnection.get(connId)
+
       if (currentList) {
         currentList.push(pureId)
         continue
       }
+
       missingByConnection.set(connId, [pureId])
     }
 
@@ -169,6 +177,9 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
     syncResult,
     syncErrorMessage,
     activities: activities ? activities : [],
+    activitiesByConnection: activitiesByConnection
+      ? activitiesByConnection
+      : {},
     tasks,
     tasksById,
     daysInRange,

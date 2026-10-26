@@ -111,6 +111,7 @@ export function TimeEntriesCalendarView({
     isLoading,
     timeEntries,
     activities,
+    activitiesByConnection,
     tasksById,
     activeTimeEntry,
     setActive,
@@ -298,6 +299,7 @@ export function TimeEntriesCalendarView({
   const columnOptions = React.useMemo<CreateColumnsOptions>(() => {
     return {
       activities,
+      activitiesByConnection,
       tasksById,
       mappings,
       editingRows,
@@ -327,6 +329,7 @@ export function TimeEntriesCalendarView({
     }
   }, [
     activities,
+    activitiesByConnection,
     tasksById,
     mappings,
     editingRows,

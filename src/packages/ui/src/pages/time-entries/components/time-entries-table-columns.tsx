@@ -55,6 +55,7 @@ import { useTimeEntriesColumnsOptions } from './time-entries-columns-context'
 
 export interface CreateColumnsOptions {
   activities: SyncMetadataItem[]
+  activitiesByConnection?: Record<string, SyncMetadataItem[]>
   tasksById?: Record<string, SyncTaskRxDBDTO>
   mappings?: Record<string, ConfiguredFieldMapping>
   editingRows: Record<string, boolean>
@@ -400,6 +401,7 @@ function ExpandCell({ row }: { row: TanStackRow<SuggestionRow> }) {
 function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
   const {
     activities,
+    activitiesByConnection,
     tasksById,
     mappings = {},
     editingRows,
@@ -479,12 +481,20 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
     const currentConnectionId =
       mergedRow.connectionInstanceId || resolvedConnectionInstanceId || ''
 
-    const formattedActivities = activities.map((act) => ({
+    const hasSelectedTask = Boolean(cleanId && cleanId !== '')
+
+    const rowActivities =
+      hasSelectedTask && resolvedConnectionInstanceId && activitiesByConnection
+        ? activitiesByConnection[resolvedConnectionInstanceId] || []
+        : hasSelectedTask
+          ? activities
+          : []
+
+    const formattedActivities = rowActivities.map((act) => ({
       id: act.id,
       name: act.name,
     }))
 
-    const hasSelectedTask = Boolean(cleanId && cleanId !== '')
     const displayLabel = hasSelectedTask
       ? taskTitle
         ? `#${cleanId} - ${taskTitle}`
@@ -501,7 +511,58 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
           onTaskIdChange={(id) => {
             const clean = extractPureTaskId(id)
             if (isRemote && !clean) return
-            updateField({ task: { id: clean } })
+
+            if (!clean) {
+              updateField({
+                task: { id: '' },
+                taskData: undefined,
+                connectionInstanceId: undefined,
+                dataSourceId: undefined,
+                activity: { id: '', name: '' },
+              })
+              return
+            }
+
+            const matchedTask = tasksById ? tasksById[clean] : undefined
+            const nextConnectionId = matchedTask?.connectionInstanceId
+            const previousConnectionId =
+              mergedRow.connectionInstanceId ||
+              associatedTask?.connectionInstanceId ||
+              original.connectionInstanceId
+
+            const sourceChanged = Boolean(
+              previousConnectionId &&
+              nextConnectionId &&
+              previousConnectionId !== nextConnectionId,
+            )
+
+            const nextActivities =
+              nextConnectionId && activitiesByConnection
+                ? activitiesByConnection[nextConnectionId] || []
+                : []
+
+            const isCurrentActivityValid =
+              !sourceChanged &&
+              Boolean(
+                mergedRow.activity?.id &&
+                nextActivities.some((act) => act.id === mergedRow.activity?.id),
+              )
+
+            const activityUpdate = isCurrentActivityValid
+              ? {}
+              : { activity: { id: '', name: '' } }
+
+            updateField({
+              task: { id: clean },
+              ...(matchedTask
+                ? {
+                    taskData: matchedTask,
+                    connectionInstanceId: matchedTask.connectionInstanceId,
+                    dataSourceId: matchedTask.dataSourceId,
+                  }
+                : {}),
+              ...activityUpdate,
+            })
           }}
           description={currentDescription}
           onDescriptionChange={(val) => updateField({ comments: val })}
@@ -512,23 +573,78 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
               updateField({ activity: { id: '', name: '' } })
               return
             }
-            const foundActivity = activities.find((a) => a.id === val)
+
+            const foundActivity = rowActivities.find((a) => a.id === val)
             let activityName: string | undefined = undefined
+
             if (foundActivity) activityName = foundActivity.name
+
             updateField({ activity: { id: val, name: activityName } })
           }}
           selectedConnectionId={currentConnectionId}
-          onConnectionChange={(val) =>
-            updateField({ connectionInstanceId: val })
-          }
+          onConnectionChange={(val) => {
+            const sourceChanged = Boolean(
+              currentConnectionId && val && currentConnectionId !== val,
+            )
+
+            const nextActivities =
+              val && activitiesByConnection
+                ? activitiesByConnection[val] || []
+                : []
+
+            const isCurrentActivityValid =
+              !sourceChanged &&
+              Boolean(
+                mergedRow.activity?.id &&
+                nextActivities.some((act) => act.id === mergedRow.activity?.id),
+              )
+
+            const activityUpdate = isCurrentActivityValid
+              ? {}
+              : { activity: { id: '', name: '' } }
+
+            updateField({
+              connectionInstanceId: val,
+              ...activityUpdate,
+            })
+          }}
           activities={formattedActivities}
           onSelectTask={(task) => {
             const resolvedTaskId = extractPureTaskId(task.sourceId || task.id)
+            const nextConnectionId = task.connectionInstanceId
+            const previousConnectionId =
+              mergedRow.connectionInstanceId ||
+              associatedTask?.connectionInstanceId ||
+              original.connectionInstanceId
+
+            const sourceChanged = Boolean(
+              previousConnectionId &&
+              nextConnectionId &&
+              previousConnectionId !== nextConnectionId,
+            )
+
+            const nextActivities =
+              nextConnectionId && activitiesByConnection
+                ? activitiesByConnection[nextConnectionId] || []
+                : []
+
+            const isCurrentActivityValid =
+              !sourceChanged &&
+              Boolean(
+                mergedRow.activity?.id &&
+                nextActivities.some((act) => act.id === mergedRow.activity?.id),
+              )
+
+            const activityUpdate = isCurrentActivityValid
+              ? {}
+              : { activity: { id: '', name: '' } }
+
             updateField({
               task: { id: resolvedTaskId },
               taskData: task,
               connectionInstanceId: task.connectionInstanceId,
               dataSourceId: task.dataSourceId,
+              ...activityUpdate,
             })
           }}
           trigger={
@@ -734,6 +850,8 @@ function SyncStatusTableCell({ row }: { row: TanStackRow<SuggestionRow> }) {
 function ActivityCell({ row }: { row: TanStackRow<SuggestionRow> }) {
   const {
     activities,
+    activitiesByConnection,
+    tasksById = {},
     mappings = {},
     editingRows,
     getRowData,
@@ -780,31 +898,58 @@ function ActivityCell({ row }: { row: TanStackRow<SuggestionRow> }) {
         !mergedRow.remoteId.startsWith('local-')) ||
       mergedRow.syncStatus === 'synced',
     )
-    const currentTaskId = mergedRow.task?.id
-    const currentConnectionId = mergedRow.connectionInstanceId
-    const hasTaskOrDatasource = Boolean(
-      currentTaskId || currentConnectionId || original.dataSourceId,
+    const rawTaskId = mergedRow.task?.id
+    const currentTaskId = extractPureTaskId(rawTaskId)
+    const associatedTask = currentTaskId ? tasksById[currentTaskId] : undefined
+
+    const resolvedConnectionInstanceId =
+      mergedRow.connectionInstanceId ||
+      associatedTask?.connectionInstanceId ||
+      original.connectionInstanceId
+
+    // REGRA 1 & 2: Somente depois da tarefa escolhida pode escolher atividade
+    const hasSelectedTask = Boolean(
+      currentTaskId && currentTaskId.trim() !== '',
     )
 
-    let currentVal = ''
-    if (mergedRow.activity && mergedRow.activity.id) {
-      currentVal = mergedRow.activity.id
-    }
+    const rowActivities =
+      hasSelectedTask && resolvedConnectionInstanceId && activitiesByConnection
+        ? activitiesByConnection[resolvedConnectionInstanceId] || []
+        : hasSelectedTask
+          ? activities
+          : []
 
-    const isSelectDisabled = !hasTaskOrDatasource && activities.length === 0
+    // REGRA 3: Se já tiver escolhido uma atividade e trocou de fonte/tarefa,
+    // ou se a atividade atual não pertence à nova conexão, resetar/invalidar
+    const isCurrentActivityValid = Boolean(
+      hasSelectedTask &&
+      mergedRow.activity?.id &&
+      rowActivities.some((a) => a.id === mergedRow.activity?.id),
+    )
+
+    const currentVal = isCurrentActivityValid
+      ? (mergedRow.activity?.id ?? '')
+      : ''
+
+    const isSelectDisabled = !hasSelectedTask || rowActivities.length === 0
 
     return (
       <Select
-        value={currentVal || (isRemote ? '' : '__NONE__')}
+        value={
+          hasSelectedTask ? currentVal || (isRemote ? '' : '__NONE__') : ''
+        }
         onValueChange={(val) => {
           if (val === '__NONE__') {
             if (isRemote) return
             updateField({ activity: { id: '', name: '' } })
             return
           }
-          const foundActivity = activities.find((a) => a.id === val)
+
+          const foundActivity = rowActivities.find((a) => a.id === val)
           let activityName: string | undefined = undefined
+
           if (foundActivity) activityName = foundActivity.name
+
           updateField({ activity: { id: val, name: activityName } })
         }}
         disabled={isSelectDisabled}
@@ -817,11 +962,15 @@ function ActivityCell({ row }: { row: TanStackRow<SuggestionRow> }) {
         >
           <SelectValue
             placeholder={
-              isSelectDisabled
+              !hasSelectedTask
                 ? compact
                   ? 'Sem tarefa'
                   : 'Selecione uma tarefa'
-                : 'Selecione'
+                : rowActivities.length === 0
+                  ? compact
+                    ? 'Nenhuma'
+                    : 'Sem atividade'
+                  : 'Selecione'
             }
           />
         </SelectTrigger>
@@ -839,11 +988,12 @@ function ActivityCell({ row }: { row: TanStackRow<SuggestionRow> }) {
               </div>
             </SelectItem>
           )}
-          {activities.map((a) => {
+          {rowActivities.map((a) => {
             const resolved = resolveEntityMapping(a, 'activity', mappings)
             const SelectIcon = resolved.icon
               ? getActivityIcon(resolved.icon)
               : undefined
+
             return (
               <SelectItem key={a.id} value={a.id}>
                 <div className="flex items-center gap-1.5">
@@ -881,7 +1031,16 @@ function ActivityCell({ row }: { row: TanStackRow<SuggestionRow> }) {
     ).filter(Boolean)
 
     const groupActivities = uniqueActivityIds
-      .map((id) => activities.find((a) => a.id === id))
+      .map((id) => {
+        if (activitiesByConnection) {
+          for (const acts of Object.values(activitiesByConnection)) {
+            const found = acts.find((a) => a.id === id)
+            if (found) return found
+          }
+        }
+
+        return activities.find((a) => a.id === id)
+      })
       .filter((a): a is SyncMetadataItem => Boolean(a))
 
     return (
@@ -934,35 +1093,68 @@ function ActivityCell({ row }: { row: TanStackRow<SuggestionRow> }) {
     )
   }
 
-  const foundActivity = activities.find((a) => a.id === original.activity?.id)
+  const currentTaskId = extractPureTaskId(original.task?.id)
+  const associatedTask =
+    currentTaskId && tasksById ? tasksById[currentTaskId] : undefined
+  const resolvedConnectionInstanceId =
+    original.connectionInstanceId || associatedTask?.connectionInstanceId
+
+  const rowActivities =
+    currentTaskId && resolvedConnectionInstanceId && activitiesByConnection
+      ? activitiesByConnection[resolvedConnectionInstanceId] || []
+      : currentTaskId
+        ? activities
+        : []
+
+  const foundActivity = rowActivities.find(
+    (a) => a.id === original.activity?.id,
+  )
 
   const activityId = original.activity?.id
   const activityName = foundActivity?.name || original.activity?.name || ''
 
   if (!activityId && !activityName) {
+    const hasSelectedTask = Boolean(
+      currentTaskId && currentTaskId.trim() !== '',
+    )
+
     return (
       <div className="flex w-full justify-start pl-1">
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
+              disabled={!hasSelectedTask || rowActivities.length === 0}
               onClick={(event) => {
                 event.stopPropagation()
+                if (!hasSelectedTask) return
                 setEditingRows((prev) => ({ ...prev, [rowKey]: true }))
               }}
               className={cn(
                 'hover:border-primary text-muted-foreground hover:text-primary bg-muted/20 hover:bg-primary/10 border-muted-foreground/40 inline-flex h-6 max-w-full cursor-pointer items-center gap-1 truncate rounded border border-dashed font-sans transition-all',
+                (!hasSelectedTask || rowActivities.length === 0) &&
+                  'hover:border-muted-foreground/40 hover:text-muted-foreground cursor-not-allowed opacity-50 hover:bg-transparent',
                 compact ? 'px-1.5 text-[10px]' : 'px-2 text-[11px] font-medium',
               )}
             >
               <Plus className="h-3 w-3 shrink-0" />
               <span className="truncate">
-                {compact ? 'Selecionar' : 'Selecione a atividade'}
+                {!hasSelectedTask
+                  ? compact
+                    ? 'Sem tarefa'
+                    : 'Selecione uma tarefa'
+                  : compact
+                    ? 'Selecionar'
+                    : 'Selecione a atividade'}
               </span>
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">
-            <p className="text-xs">Clique para definir uma atividade</p>
+            <p className="text-xs">
+              {!hasSelectedTask
+                ? 'Selecione uma tarefa primeiro'
+                : 'Clique para definir uma atividade'}
+            </p>
           </TooltipContent>
         </Tooltip>
       </div>

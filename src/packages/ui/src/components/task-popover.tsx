@@ -221,11 +221,11 @@ export function TaskPopover({
   )
 
   const activities =
-    propActivities && propActivities.length > 0
+    propActivities !== undefined
       ? propActivities
       : trackerContext?.activities && trackerContext.activities.length > 0
         ? trackerContext.activities
-        : DEFAULT_ACTIVITIES
+        : []
 
   const handleSelectTask =
     propOnSelectTask ?? trackerContext?.handleSelectTask ?? (() => {})

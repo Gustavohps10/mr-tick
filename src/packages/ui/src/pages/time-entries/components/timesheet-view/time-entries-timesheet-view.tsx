@@ -245,6 +245,7 @@ export function TimeEntriesTimesheetView({
     isLoading,
     timeEntries,
     activities,
+    activitiesByConnection,
     tasksById,
     activeTimeEntry,
     setActive,
@@ -616,6 +617,7 @@ export function TimeEntriesTimesheetView({
   const columnOptions = React.useMemo<CreateColumnsOptions>(() => {
     return {
       activities,
+      activitiesByConnection,
       tasksById,
       mappings,
       editingRows,
@@ -645,6 +647,7 @@ export function TimeEntriesTimesheetView({
     }
   }, [
     activities,
+    activitiesByConnection,
     tasksById,
     mappings,
     editingRows,
