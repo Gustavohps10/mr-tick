@@ -1,5 +1,18 @@
 ﻿# @mr-tick/ui
 
+## 1.13.0
+
+### Minor Changes
+
+- 790e624: Support native provider member identities, explicit connection configuration committed with OAuth authorization, and bounded change-feed time-entry pages. Allow provider-approved HTTP error messages without exposing arbitrary response bodies; normalize bodyless JSON responses and preserve numeric/boolean query parameters. Make editable custom authentication settings saveable in their workspace scope and honor custom authentication presentations for datasource addons without a parallel credentials form.
+
+### Patch Changes
+
+- 0c86ca4: Isolate activity metadata per datasource connection, enforce task selection prior to activity picking, reset activity when switching tasks or connections, and remove the disruptive layout-shifting sync banner.
+- Updated dependencies [790e624]
+  - @mr-tick/sdk@0.13.0
+  - @mr-tick/application@2.2.0
+
 ## 1.12.0
 
 ### Minor Changes
