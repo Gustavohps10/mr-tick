@@ -2,7 +2,6 @@
 
 O SDK reúne ferramentas para criar extensões do Mr. Tick sem alterar o aplicativo. Ele permite conectar ferramentas de trabalho, consultar tarefas, registrar apontamentos e sugestões, adicionar ações e criar temas. Essas extensões são chamadas de addons.
 
-
 SDK público para addons do Mr. Tick. Instale o pacote publicado no npm; não importe pacotes privados do monorepo. A linha 0.11 usa capabilities canônicas e separa autenticação de conexões dos providers de dados.
 
 ## Modelo público

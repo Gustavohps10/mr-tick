@@ -1,6 +1,12 @@
 import type {
   CoreCacheQuery,
   CoreCacheResponse,
+  DiagnosticCheckResult,
+  DiagnosticCountAvailability,
+  DiagnosticOperationalWorkspaceStatus,
+  DiagnosticReplicationAvailability,
+  DiagnosticScope,
+  DiagnosticWorkspaceOperationalStatus,
   IHostBridge,
   ILocalRuntimeEvents,
   ILocalWorkspaceFactory,
@@ -20,7 +26,7 @@ import {
   isNonEmptyString,
   isRecord,
 } from '@mr-tick/shared/helpers'
-import { removeRxDatabase } from 'rxdb'
+import { normalizeMangoQuery, prepareQuery, removeRxDatabase } from 'rxdb'
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { getRxStorageMemory } from 'rxdb/plugins/storage-memory'
 
@@ -66,11 +72,60 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
   private readonly remoteOperations = new Map<string, Promise<void>>()
   private readonly statusSubscriptions = new Map<string, () => void>()
   private readonly receipts = new Map<string, BrowserCommandReceipts>()
+  private readonly accessOrder: string[] = []
 
   constructor(
     private readonly bridge: BrowserRuntimeBridge,
     private readonly options: BrowserRuntimeOptions,
   ) {}
+
+  private touchAccess(workspaceId: string): void {
+    const index = this.accessOrder.indexOf(workspaceId)
+    if (index !== -1) {
+      this.accessOrder.splice(index, 1)
+    }
+
+    this.accessOrder.push(workspaceId)
+  }
+
+  private forgetAccess(workspaceId: string): void {
+    const index = this.accessOrder.indexOf(workspaceId)
+    if (index !== -1) {
+      this.accessOrder.splice(index, 1)
+    }
+  }
+
+  private async evictLeastRecentlyUsedWorkspace(
+    excludeWorkspaceId: string,
+  ): Promise<void> {
+    const candidate = this.accessOrder.find(
+      (id) =>
+        id !== excludeWorkspaceId &&
+        !this.maintenance.has(id) &&
+        !this.remoteOperations.has(id),
+    )
+
+    if (candidate === undefined) {
+      return
+    }
+
+    await this.releaseWorkspace(candidate)
+  }
+
+  private async prepareAndInitialize(
+    workspaceId: string,
+  ): Promise<Either<AppError, BrowserWorkspaceExecutor>> {
+    if (this.workspaces.size >= 2) {
+      await this.evictLeastRecentlyUsedWorkspace(workspaceId)
+    }
+
+    const result = await this.initialize(workspaceId)
+    if (result.isSuccess()) {
+      this.touchAccess(workspaceId)
+    }
+
+    return result
+  }
 
   open(
     workspaceId: string,
@@ -88,16 +143,196 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
         Either.failure(AppError.Http(503, 'WORKSPACE_MAINTENANCE')),
       )
     const existing = this.workspaces.get(workspaceId)
-    if (existing !== undefined) return Promise.resolve(Either.success(existing))
+    if (existing !== undefined) {
+      this.touchAccess(workspaceId)
+      return Promise.resolve(Either.success(existing))
+    }
     const pending = this.openings.get(workspaceId)
     if (pending !== undefined) return pending
-    const opening = this.initialize(workspaceId)
+    const opening = this.prepareAndInitialize(workspaceId)
     this.openings.set(workspaceId, opening)
     void opening.then(
       () => this.openings.delete(workspaceId),
       () => this.openings.delete(workspaceId),
     )
     return opening
+  }
+
+  async diagnose(): Promise<{
+    workspaces: DiagnosticOperationalWorkspaceStatus[]
+    operationalReadChecks: DiagnosticCheckResult[]
+  }> {
+    const list: DiagnosticOperationalWorkspaceStatus[] = []
+    const operationalReadChecks: DiagnosticCheckResult[] = []
+
+    for (const [workspaceId, executor] of this.workspaces.entries()) {
+      const storeState = executor.store.getState()
+      const hasDb = storeState.db !== null
+      let status: DiagnosticWorkspaceOperationalStatus = 'ready'
+      if (this.stopping) status = 'closed'
+      if (this.maintenance.has(workspaceId)) status = 'maintenance'
+      if (!hasDb) status = 'unavailable'
+
+      const collectedAt = new Date().toISOString()
+      const replication: DiagnosticReplicationAvailability = {
+        status: 'available',
+        items: serializeSyncStatuses(storeState.statuses),
+        collectedAt,
+      }
+
+      const receipts: DiagnosticCountAvailability = {
+        status: 'not-supported',
+        reason: 'RECEIPTS_COUNT_SCAN_AVOIDED',
+        collectedAt,
+      }
+
+      list.push({
+        workspaceId,
+        status,
+        hasDb,
+        replication,
+        receipts,
+      })
+
+      const checkId = `probe-workspace-storage-${workspaceId}`
+      const checkName = `Workspace Storage Physical Probe (${workspaceId})`
+      const checkScope: DiagnosticScope = {
+        type: 'workspace',
+        workspaceId,
+      }
+
+      if (this.stopping) {
+        operationalReadChecks.push({
+          id: checkId,
+          name: checkName,
+          capability: 'storage.read',
+          source: 'executor',
+          scope: checkScope,
+          status: 'unavailable',
+          reason: 'WORKSPACE_REGISTRY_STOPPING',
+          startedAt: collectedAt,
+          finishedAt: collectedAt,
+          durationMs: 0,
+        })
+        continue
+      }
+
+      if (this.maintenance.has(workspaceId)) {
+        operationalReadChecks.push({
+          id: checkId,
+          name: checkName,
+          capability: 'storage.read',
+          source: 'executor',
+          scope: checkScope,
+          status: 'unavailable',
+          reason: 'WORKSPACE_MAINTENANCE_ACTIVE',
+          startedAt: collectedAt,
+          finishedAt: collectedAt,
+          durationMs: 0,
+        })
+        continue
+      }
+
+      if (!hasDb || storeState.db === null) {
+        operationalReadChecks.push({
+          id: checkId,
+          name: checkName,
+          capability: 'storage.read',
+          source: 'executor',
+          scope: checkScope,
+          status: 'unavailable',
+          reason: 'WORKSPACE_DATABASE_NOT_INITIALIZED',
+          startedAt: collectedAt,
+          finishedAt: collectedAt,
+          durationMs: 0,
+        })
+        continue
+      }
+
+      const collection = storeState.db.timeEntries
+      const query = normalizeMangoQuery(collection.schema.jsonSchema, {
+        selector: {},
+        sort: [{ id: 'asc' }],
+        limit: 1,
+      })
+
+      const probeStartTime = Date.now()
+      const probeStartedAt = new Date().toISOString()
+      try {
+        await collection.storageInstance.query(
+          prepareQuery(collection.schema.jsonSchema, query),
+        )
+        const probeFinishedAt = new Date().toISOString()
+        const probeDurationMs = Math.max(0, Date.now() - probeStartTime)
+
+        const isStillValid =
+          !this.stopping &&
+          !this.maintenance.has(workspaceId) &&
+          this.workspaces.get(workspaceId) === executor
+
+        if (!isStillValid) {
+          operationalReadChecks.push({
+            id: checkId,
+            name: checkName,
+            capability: 'storage.read',
+            source: 'executor',
+            scope: checkScope,
+            status: 'unavailable',
+            reason: 'WORKSPACE_LIFECYCLE_CHANGED_DURING_PROBE',
+            startedAt: probeStartedAt,
+            finishedAt: probeFinishedAt,
+            durationMs: probeDurationMs,
+          })
+          continue
+        }
+
+        operationalReadChecks.push({
+          id: checkId,
+          name: checkName,
+          capability: 'storage.read',
+          source: 'executor',
+          scope: checkScope,
+          status: 'pass',
+          provenOperation: 'timeEntries.storageInstance.query',
+          startedAt: probeStartedAt,
+          finishedAt: probeFinishedAt,
+          durationMs: probeDurationMs,
+        })
+      } catch (error) {
+        const probeFinishedAt = new Date().toISOString()
+        const probeDurationMs = Math.max(0, Date.now() - probeStartTime)
+        const reason =
+          error instanceof Error
+            ? error.message
+            : 'STORAGE_INSTANCE_QUERY_FAILED'
+        operationalReadChecks.push({
+          id: checkId,
+          name: checkName,
+          capability: 'storage.read',
+          source: 'executor',
+          scope: checkScope,
+          status: 'fail',
+          reason,
+          startedAt: probeStartedAt,
+          finishedAt: probeFinishedAt,
+          durationMs: probeDurationMs,
+        })
+      }
+    }
+
+    for (const workspaceId of this.openings.keys()) {
+      if (this.workspaces.has(workspaceId)) continue
+      list.push({
+        workspaceId,
+        status: 'opening',
+        hasDb: false,
+      })
+    }
+
+    return {
+      workspaces: list,
+      operationalReadChecks,
+    }
   }
 
   async queryCore(input: CoreCacheQuery): Promise<CoreCacheResponse> {
@@ -144,10 +379,7 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
       }
       if (response.data === undefined)
         return Either.failure(AppError.Internal('WORKSPACE_LIST_MISSING'))
-      for (const workspace of response.data) {
-        const opened = await this.open(workspace.id)
-        if (opened.isFailure()) return opened.forwardFailure()
-      }
+
       return Either.success()
     } catch (error) {
       if (error instanceof Error) return runtimeFailure(error)
@@ -445,6 +677,7 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
         return syncFailure(AppError.Http(503, 'RUNTIME_STOPPING'))
       const opened = await this.initialize(input.workspaceId)
       if (opened.isFailure()) return syncFailure(opened.failure)
+      this.touchAccess(input.workspaceId)
       return {
         ok: true,
         statuses: serializeSyncStatuses(
@@ -485,6 +718,7 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
   private async releaseWorkspace(
     workspaceId: string,
   ): Promise<Either<AppError, void>> {
+    this.forgetAccess(workspaceId)
     await this.remoteOperations.get(workspaceId)
     const unsubscribe = this.statusSubscriptions.get(workspaceId)
     this.statusSubscriptions.delete(workspaceId)
@@ -776,6 +1010,7 @@ export function createBrowserLocalRuntime(
     runtime,
     queryCore: (input: CoreCacheQuery) => registry.queryCore(input),
     start: () => registry.start(),
+    diagnose: () => registry.diagnose(),
     requestInternal: (command: LocalPersistenceCommand) =>
       registry.requestInternal(command),
     requestSync: (request: LocalSyncRequest) =>

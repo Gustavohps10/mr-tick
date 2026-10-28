@@ -6,6 +6,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
   addonsInvoker,
   credentialsVaultInvoker,
+  diagnosticsInvoker,
   headersInvoker,
   licensingInvoker,
   metadataInvoker,
@@ -18,6 +19,7 @@ import {
 } from '@/main/invokers'
 
 const api: IHostBridge = {
+  diagnostics: diagnosticsInvoker,
   localPersistence: {
     request: (input) => ipcRenderer.invoke('local-runtime:persistence', input),
   },

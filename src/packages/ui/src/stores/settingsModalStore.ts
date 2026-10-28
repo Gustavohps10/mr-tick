@@ -7,6 +7,7 @@ export type SettingsTab =
   | 'appearance'
   | 'updates'
   | 'license'
+  | 'system-data'
   | 'addons-browse'
   | 'addons-installed'
   | 'addons-updates'

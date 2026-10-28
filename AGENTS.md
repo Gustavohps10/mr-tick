@@ -23,72 +23,95 @@ Ao escrever ou modificar código neste projeto, você DEVE seguir rigorosamente 
 19. **Tratamento Funcional de Erros com Either (Proibição de Exceptions e String Matching de Erro)**: O projeto NÃO trabalha com exceptions (`throw`) para controle de fluxo nem captura genérica de erros com `try/catch` para tentar inferir tipos (ex: NUNCA faça `if (error instanceof AppError)` nem `error.message.includes('401')`). Erros de rede, requisições externas e integrações com provedores DEVEM ser capturados e encapsulados no nível mais baixo possível (na camada de transporte / HTTP Client / Provider) e convertidos imediatamente em instâncias de `Either<AppError, T>`. As camadas superiores (Services, Use Cases) devem operar exclusivamente sobre `Either` com verificação de status (`result.isFailure()`), repassando falhas via `forwardFailure()` ou tratando `failure.statusCode` de forma determinística e tipada.
 20. **Comunicação Ativa e Correção na Raiz de Falhas Arquiteturais**: Ao identificar falhas graves de arquitetura, incompatibilidades estruturais de contratos ou incoerências conceituais (como métodos artificiais inseridos fora de seus contratos para contornar problemas de tipagem ou fluxo), NUNCA aplique gambiarras ou desvios provisórios. Corrija o problema diretamente na raiz (nas interfaces, contratos de domínio e camada de transporte corretas). Sempre informe explicitamente o usuário ao identificar falhas arquiteturais desse porte, apresentando a causa raiz e o plano estrutural antes de avançar.
 21. **Continuidade Otimista de UI e Transição Atômica de Rascunhos (Prevenção de Flickering e Gaps de DOM)**: Em interfaces reativas com tabelas e listas locais (RxDB / TanStack Query):
-  - **Identificadores Estáveis desde o Rascunho**: Drafts (rascunhos em memória) DEVEM nascer com identificadores UUID definitivos (`crypto.randomUUID()`) e a flag `isDraft: true`. Ao persistir o rascunho, o `id` DEVE ser mantido idêntico para garantir que a reconciliação do React DOM reutilize o mesmo nó sem desmontar/remontar a linha (`unmount -> mount`).
-    - **Transição Atômica sem Gaps Temporais**: NUNCA remova um rascunho do estado local (`setDraftEntries`) antes que o registro salvo já esteja presente no cache da query (`queryClient.setQueriesData`). A injeção da nova entidade persistida no cache DEVE preceder ou ocorrer atomicamente com a remoção do rascunho para que a linha nunca desapareça por nenhum frame ("some e volta").
-    - **Sem Invalidações Redundantes Agressivas sobre Observables**: Quando houver uma subscription reativa contínua do banco local (ex: RxDB `rxQuery.$`), NUNCA dispare `invalidateQueries({ refetchType: 'all' })` em mutações rotineiras de criação/edição. Atualize o cache otimisticamente e deixe o stream do banco sincronizar a coleção sem forçar múltiplos refetches concorrentes que causam oscilação de estados de fetching.
-    - **Expansão Síncrona no Frame Zero**: Estados de expansão de grupos e sublinhas (ex: tickets) DEVEM ser avaliados de forma síncrona no momento da renderização (ou controlando explicitamente apenas o conjunto de itens fechados `collapsedGroups`). NUNCA utilize `useEffect` pós-render para descobrir e abrir novos grupos, pois isso força um frame de grupo fechado seguido de re-render para abrir (glitch visual).
-    - **Estabilidade Posicional**: Rascunhos e registros em edição devem seguir ordenação natural por data/horário coerente (`startDate DESC`). NUNCA force rascunhos para o rodapé da lista caso possuam horário definido, prevenindo saltos físicos de posição na tabela após o salvamento.
+
+- **Identificadores Estáveis desde o Rascunho**: Drafts (rascunhos em memória) DEVEM nascer com identificadores UUID definitivos (`crypto.randomUUID()`) e a flag `isDraft: true`. Ao persistir o rascunho, o `id` DEVE ser mantido idêntico para garantir que a reconciliação do React DOM reutilize o mesmo nó sem desmontar/remontar a linha (`unmount -> mount`).
+  - **Transição Atômica sem Gaps Temporais**: NUNCA remova um rascunho do estado local (`setDraftEntries`) antes que o registro salvo já esteja presente no cache da query (`queryClient.setQueriesData`). A injeção da nova entidade persistida no cache DEVE preceder ou ocorrer atomicamente com a remoção do rascunho para que a linha nunca desapareça por nenhum frame ("some e volta").
+  - **Sem Invalidações Redundantes Agressivas sobre Observables**: Quando houver uma subscription reativa contínua do banco local (ex: RxDB `rxQuery.$`), NUNCA dispare `invalidateQueries({ refetchType: 'all' })` em mutações rotineiras de criação/edição. Atualize o cache otimisticamente e deixe o stream do banco sincronizar a coleção sem forçar múltiplos refetches concorrentes que causam oscilação de estados de fetching.
+  - **Expansão Síncrona no Frame Zero**: Estados de expansão de grupos e sublinhas (ex: tickets) DEVEM ser avaliados de forma síncrona no momento da renderização (ou controlando explicitamente apenas o conjunto de itens fechados `collapsedGroups`). NUNCA utilize `useEffect` pós-render para descobrir e abrir novos grupos, pois isso força um frame de grupo fechado seguido de re-render para abrir (glitch visual).
+  - **Estabilidade Posicional**: Rascunhos e registros em edição devem seguir ordenação natural por data/horário coerente (`startDate DESC`). NUNCA force rascunhos para o rodapé da lista caso possuam horário definido, prevenindo saltos físicos de posição na tabela após o salvamento.
+
 22. **Isolamento de Wizards e Modais de Criação (Sem Contaminação de Contexto Global Ativo)**:
-  - **Sem Consumo Cego do Contexto Global**: Modais e wizards de criação de recursos NUNCA devem inicializar formulários ou estados padrão a partir de hooks de contexto global (ex: `useWorkspace()`) que representem a entidade ativa em segundo plano na tela. Se o usuário está criando um novo item, o formulário deve nascer completamente limpo e agnóstico da rota ativa.
-    - **Transição Tardia de Ativação**: A troca ou navegação para o novo recurso só deve ocorrer na conclusão explícita do wizard (ex: no botão "Finalizar" da última etapa). NUNCA altere o ID do recurso ativo globalmente durante etapas intermediárias (Step 1 -> Step 2), pois isso afeta os providers da aplicação em background, altera flags como `isLoading`, provoca desmontagem de componentes e gera recarregamento ou fechamento involuntário do modal ("flicker" de reabertura).
-    - **Escopo Estrito em Operações Intermediárias**: Chamadas de API para vincular dados, instâncias ou plugins dentro do wizard DEVEM receber explicitamente o identificador da entidade sob criação do wizard, NUNCA herdando contextos de dados conectados à entidade ativa na tela.
+
+- **Sem Consumo Cego do Contexto Global**: Modais e wizards de criação de recursos NUNCA devem inicializar formulários ou estados padrão a partir de hooks de contexto global (ex: `useWorkspace()`) que representem a entidade ativa em segundo plano na tela. Se o usuário está criando um novo item, o formulário deve nascer completamente limpo e agnóstico da rota ativa.
+  - **Transição Tardia de Ativação**: A troca ou navegação para o novo recurso só deve ocorrer na conclusão explícita do wizard (ex: no botão "Finalizar" da última etapa). NUNCA altere o ID do recurso ativo globalmente durante etapas intermediárias (Step 1 -> Step 2), pois isso afeta os providers da aplicação em background, altera flags como `isLoading`, provoca desmontagem de componentes e gera recarregamento ou fechamento involuntário do modal ("flicker" de reabertura).
+  - **Escopo Estrito em Operações Intermediárias**: Chamadas de API para vincular dados, instâncias ou plugins dentro do wizard DEVEM receber explicitamente o identificador da entidade sob criação do wizard, NUNCA herdando contextos de dados conectados à entidade ativa na tela.
+
 23. **Comandos de Lint Sempre com Fix na Raiz**: NUNCA execute comandos de verificação pura de lint (como `yarn lint` ou `eslint`). Quando precisar verificar ou corrigir linter, execute SEMPRE `yarn lint:fix` na raiz do monorepo.
 24. **Toolkit Oficial no SDK e Proibição de Scripts Ad-Hoc em Addons**: NUNCA crie scripts auxiliares ou ad-hoc (como arquivos `.js` soltos em diretórios de plugins/addons) para contornar limitações de empacotamento, versionamento, sincronização de manifestos ou pipelines. O SDK (`@mr-tick/sdk`) é o toolkit oficial e deve cobrir nativamente 100% das necessidades do desenvolvedor de addons. Ao identificar qualquer lacuna arquitetural ou deficiência no ferramental, NUNCA crie gambiarras ou desvios no addon: pare, explique a lógica e a causa raiz ao usuário antes de qualquer código, e resolva diretamente na raiz (evoluindo o SDK no monorepo, publicando a nova versão e consumindo-a de forma limpa e canônica).
 25. **Confirmação Prévia Obrigatória para Ações Críticas**: Para quaisquer comandos ou operações com impacto crítico — tais como `git push`, envio de requisições de escrita para APIs remotas/produção, comandos SQL destrutivos (`DELETE`, `DROP`, `TRUNCATE`), deleção em massa de arquivos/diretórios, `git merge`, `git reset --hard` ou operações que afetem branches principais/remotas — você DEVE SEMPRE solicitar confirmação explícita do usuário antes de rodar, explicando o que será executado e o impacto. NUNCA execute ações críticas de forma autônoma sem a aprovação prévia do usuário.
 26. **Git Pull Obrigatório Antes de Codificar**: SEMPRE antes de iniciar qualquer desenvolvimento, escrita de código, criação de branches ou modificação de arquivos em qualquer repositório (seja no monorepo, em plugins/addons ou submódulos), execute `git pull` para sincronizar a branch local com a remota. Isso previne atritos, desvios e conflitos com commits automáticos de pipelines de CI/CD (como releases de versionamento e atualizações de manifesto) ou commits de outros contribuidores.
 27. **Proibição de Bump Manual de Versão (Versionamento Exclusivo via Changesets e CI/CD)**: NUNCA altere manualmente os campos `version` em arquivos `package.json` ou `manifest.yaml` nem edite `CHANGELOG.md` manualmente. O versionamento de todos os pacotes e aplicações do monorepo é 100% automatizado pelo bot de CI/CD conforme documentado em `GITFLOW.md`. Desenvolvedores e agentes devem EXCLUSIVAMENTE criar arquivos de changeset (bump files) no diretório `.changeset/` (ex: `.changeset/<nome-descritivo>.md`) especificando os pacotes afetados (`@mr-tick/sdk`, `@mr-tick/desktop`, etc.) e o nível semântico (`patch`, `minor`, `major`), deixando o cálculo e publicação para a pipeline oficial.
 28. **Padronização de Largura, Dimensionamento, Scroll e Skeletons de Modais Shadcn UI (Prevenção de Overflow, Estrangulamento e Layout Shifts)**:
-  - **Largura Proporcional e Responsiva**: Modais de configuração, listagens densas, mapeamentos ou formulários com seletores ricos (ícones, paletas de cores, botões de ação) NUNCA devem utilizar larguras subdimensionadas (como `sm:max-w-md` ou `sm:max-w-lg` que sufocam o conteúdo e provocam vazamento horizontal). Utilize a escala padrão recomendada de UI: `w-[95vw] max-w-3xl sm:max-w-3xl` para modais de densidade média, ou `w-[95vw] max-w-4xl sm:max-w-4xl` para modais ricos de mapeamento/configurações, e `max-w-6xl` para visualizações complexas/tabelas.
-    - **Arquitetura de Layout Tripartido e Contenção Estrita (`p-0 gap-0`)**:
-      - O `DialogContent` DEVE conter `overflow-hidden flex flex-col min-w-0 max-h-[85vh] p-0 gap-0` para isolar cabeçalho, corpo e rodapé em blocos estanques sem paddings externos conflitantes.
-      - `DialogHeader`: DEVE conter `shrink-0 border-b px-6 py-4` (com `pr-8` para prevenir colisão com o botão de fechar `X`).
-      - Corpo Rolável: DEVE conter `min-h-0 flex-1 overflow-y-auto px-6 py-4`, garantindo rolagem nativa suave, confinada estritamente entre o header e o footer.
-      - `DialogFooter`: DEVE conter `shrink-0 border-t bg-muted/20 px-6 py-3 flex items-center justify-end gap-2` com fundo opaco, impedindo que elementos rolados passem de forma transparente por baixo dos botões ou colidam com as ações.
-    - **Flexibilidade Horizontal**: Em linhas com layout `flex items-center justify-between`, envolva textos e descrições com `min-w-0 flex-1 truncate` e seletores fixos (botões, ícones, paletas) com `shrink-0`.
-    - **Prevenção de Scroll Duplo e Alturas Rígidas**: NUNCA utilize alturas estáticas ou arbitrárias em vh no elemento rolável interno (como `max-h-[60vh]` ou `h-[500px]`), pois isso quebra a responsividade vertical em telas menores (notebooks/split screen).
-    - **Skeletons Obrigatórios em Estados Assíncronos via TanStack Query (`queryClient`)**:
-      - Sempre que um modal depender de dados remotos carregados via `useQuery`, desestruture `isLoading` e exiba OBRIGATORIAMENTE componentes `<Skeleton />` estruturados espelhando as sessões, títulos, botões e cards do modal.
-      - NUNCA renderize mensagens de lista vazia (ex: "Nenhum campo requer mapeamento") enquanto a consulta assíncrona estiver pendente (`isLoading: true`), evitando falsos negativos e flashes visuais bruscos (glitches) na interface.
+
+- **Largura Proporcional e Responsiva**: Modais de configuração, listagens densas, mapeamentos ou formulários com seletores ricos (ícones, paletas de cores, botões de ação) NUNCA devem utilizar larguras subdimensionadas (como `sm:max-w-md` ou `sm:max-w-lg` que sufocam o conteúdo e provocam vazamento horizontal). Utilize a escala padrão recomendada de UI: `w-[95vw] max-w-3xl sm:max-w-3xl` para modais de densidade média, ou `w-[95vw] max-w-4xl sm:max-w-4xl` para modais ricos de mapeamento/configurações, e `max-w-6xl` para visualizações complexas/tabelas.
+  - **Arquitetura de Layout Tripartido e Contenção Estrita (`p-0 gap-0`)**:
+    - O `DialogContent` DEVE conter `overflow-hidden flex flex-col min-w-0 max-h-[85vh] p-0 gap-0` para isolar cabeçalho, corpo e rodapé em blocos estanques sem paddings externos conflitantes.
+    - `DialogHeader`: DEVE conter `shrink-0 border-b px-6 py-4` (com `pr-8` para prevenir colisão com o botão de fechar `X`).
+    - Corpo Rolável: DEVE conter `min-h-0 flex-1 overflow-y-auto px-6 py-4`, garantindo rolagem nativa suave, confinada estritamente entre o header e o footer.
+    - `DialogFooter`: DEVE conter `shrink-0 border-t bg-muted/20 px-6 py-3 flex items-center justify-end gap-2` com fundo opaco, impedindo que elementos rolados passem de forma transparente por baixo dos botões ou colidam com as ações.
+  - **Flexibilidade Horizontal**: Em linhas com layout `flex items-center justify-between`, envolva textos e descrições com `min-w-0 flex-1 truncate` e seletores fixos (botões, ícones, paletas) com `shrink-0`.
+  - **Prevenção de Scroll Duplo e Alturas Rígidas**: NUNCA utilize alturas estáticas ou arbitrárias em vh no elemento rolável interno (como `max-h-[60vh]` ou `h-[500px]`), pois isso quebra a responsividade vertical em telas menores (notebooks/split screen).
+  - **Skeletons Obrigatórios em Estados Assíncronos via TanStack Query (`queryClient`)**:
+    - Sempre que um modal depender de dados remotos carregados via `useQuery`, desestruture `isLoading` e exiba OBRIGATORIAMENTE componentes `<Skeleton />` estruturados espelhando as sessões, títulos, botões e cards do modal.
+    - NUNCA renderize mensagens de lista vazia (ex: "Nenhum campo requer mapeamento") enquanto a consulta assíncrona estiver pendente (`isLoading: true`), evitando falsos negativos e flashes visuais bruscos (glitches) na interface.
+
 29. **Restrições de Arredondamento de Bordas (Border Radius Máximo `-lg`)**:
-  - NUNCA utilize classes de arredondamento superiores a `rounded-lg` (como `rounded-xl`, `rounded-3xl` ou `rounded-full`, exceto quando estritamente aplicável a avatares circulares ou status dots puramente esféricos de tamanho 1:1).
-    - Para containers, cards, barras e painéis, priorize `rounded-lg` ou `rounded-md`. Utilize `rounded-xl` somente quando estritamente necessário para superfícies flutuantes ou modais destacados.
+
+- NUNCA utilize classes de arredondamento superiores a `rounded-lg` (como `rounded-xl`, `rounded-3xl` ou `rounded-full`, exceto quando estritamente aplicável a avatares circulares ou status dots puramente esféricos de tamanho 1:1).
+  - Para containers, cards, barras e painéis, priorize `rounded-lg` ou `rounded-md`. Utilize `rounded-xl` somente quando estritamente necessário para superfícies flutuantes ou modais destacados.
+
 30. **Estratégia de Commits Consolidados por Bloco de Entrega (Proibição de Micro-Commits Fragmentados)**:
-  - NUNCA crie commits isolados para cada alteração pontual, ajuste cosmético ou linha modificada durante o desenvolvimento.
-    - Agrupe modificações relacionadas e valide o conjunto completo (código, testes unitários, linter e typecheck na raiz).
-    - Realize commits coesos e consolidados que representem uma etapa completa de trabalho, uma funcionalidade inteira ou um pacote de correções em conjunto, mantendo o histórico do Git limpo, rastreável e sem poluição de micro-commits desnecessários.
+
+- NUNCA crie commits isolados para cada alteração pontual, ajuste cosmético ou linha modificada durante o desenvolvimento.
+  - Agrupe modificações relacionadas e valide o conjunto completo (código, testes unitários, linter e typecheck na raiz).
+  - Realize commits coesos e consolidados que representem uma etapa completa de trabalho, uma funcionalidade inteira ou um pacote de correções em conjunto, mantendo o histórico do Git limpo, rastreável e sem poluição de micro-commits desnecessários.
+
 31. **Injeção Estrita de Dependências em IoC (Proibição de `?:`)**:
-  - NUNCA declare parâmetros de construtor como opcionais (`?:`) em classes gerenciadas por IoC/DI (Services, Use Cases, Handlers, Repositories).
-  - Toda dependência que a classe necessita para operar deve ser declarada como obrigatória e sem `?:`.
-  - O uso de `?:` mascara falhas de registro no container de IoC e força o espalhamento de verificações nulas (`if (this.dep) ...`) no meio da regra de negócio. Se um comportamento for opcional para certos cenários (ex: testes ou modo headless), utilize o padrão Null Object (`NoOp`) registrado no container, garantindo determinismo total do grafo de dependências.
+
+- NUNCA declare parâmetros de construtor como opcionais (`?:`) em classes gerenciadas por IoC/DI (Services, Use Cases, Handlers, Repositories).
+- Toda dependência que a classe necessita para operar deve ser declarada como obrigatória e sem `?:`.
+- O uso de `?:` mascara falhas de registro no container de IoC e força o espalhamento de verificações nulas (`if (this.dep) ...`) no meio da regra de negócio. Se um comportamento for opcional para certos cenários (ex: testes ou modo headless), utilize o padrão Null Object (`NoOp`) registrado no container, garantindo determinismo total do grafo de dependências.
+
 32. **Validações Simples e Semânticas em TypeScript (Princípio da Menor Verificação Correta)**:
-  - Produza código TypeScript limpo, conciso e idiomático, confiando nos contratos tipados e evitando validações redundantes ou defensivas especulativas. Utilize a verificação mais simples que preserve a semântica do domínio.
-  - NUNCA utilize `typeof` redundante em propriedades que já possuem contrato tipado confiável no TypeScript (ex: `typeof input.maxDevices === 'number'`). Se o campo é opcional, verifique presença com `if (input.maxDevices !== undefined)` para números/booleanos (preservando `0` e `false`), ou `const key = input.encryptedActivationKey?.trim(); if (key) { ... }` para strings úteis.
-  - Restrinja `typeof` estritamente a cenários que demandam distinção em runtime: type guards canônicos de baixo nível (`isRecord`, `isString`), narrowing de uniões primitivas genéricas (`string | number`) e tratamento de erros ou dados externos desconhecidos (`unknown`) nas bordas do sistema.
+
+- Produza código TypeScript limpo, conciso e idiomático, confiando nos contratos tipados e evitando validações redundantes ou defensivas especulativas. Utilize a verificação mais simples que preserve a semântica do domínio.
+- NUNCA utilize `typeof` redundante em propriedades que já possuem contrato tipado confiável no TypeScript (ex: `typeof input.maxDevices === 'number'`). Se o campo é opcional, verifique presença com `if (input.maxDevices !== undefined)` para números/booleanos (preservando `0` e `false`), ou `const key = input.encryptedActivationKey?.trim(); if (key) { ... }` para strings úteis.
+- Restrinja `typeof` estritamente a cenários que demandam distinção em runtime: type guards canônicos de baixo nível (`isRecord`, `isString`), narrowing de uniões primitivas genéricas (`string | number`) e tratamento de erros ou dados externos desconhecidos (`unknown`) nas bordas do sistema.
+
 33. **Proibição Geral de Compatibilidade com Dados e Contratos Legados**:
-  - NUNCA manter compatibilidade com dados, bases, configurações, credenciais ou contratos antigos na máquina do usuário.
-  - O código deve remover suporte legado e implementar diretamente a arquitetura canônica adequada.
-  - A autenticação não precisa devolver `member` se desnecessário.
-  - Os identificadores (IDs) devem seguir estritamente o domínio/provedor sem conversões artificiais string/int motivadas por legado.
-  - O usuário é o único responsável pelo descarte/limpeza de bases antigas; o código não deve executar rotinas de destruição/reset cego de dados do usuário.
+
+- NUNCA manter compatibilidade com dados, bases, configurações, credenciais ou contratos antigos na máquina do usuário.
+- O código deve remover suporte legado e implementar diretamente a arquitetura canônica adequada.
+- A autenticação não precisa devolver `member` se desnecessário.
+- Os identificadores (IDs) devem seguir estritamente o domínio/provedor sem conversões artificiais string/int motivadas por legado.
+- O usuário é o único responsável pelo descarte/limpeza de bases antigas; o código não deve executar rotinas de destruição/reset cego de dados do usuário.
+
 34. **Proibição Terminante de SELECT * e Carregamento Total para Filtragem em Memória**:
-  - É terminantemente PROIBIDO carregar todos os dados ou coleções inteiras na memória (equivalente a `SELECT *`) para posteriormente filtrar, buscar ou projetar dados na camada de aplicação.
-  - Repositórios devem expor APENAS operações básicas, coesas e estritamente tipadas (`getById`, `remove`, `list` com filtros explícitos no contrato e retorno restrito aos campos necessários, com paginação quando aplicável).
-  - São proibidos métodos ad-hoc ou gambiarras criados sob medida para conveniência de consumidores específicos.
-  - A orquestração e regras de negócio devem residir fora do repositório, preservando integralmente a atomicidade, isolamento, journal e rotinas de retry.
+
+- É terminantemente PROIBIDO carregar todos os dados ou coleções inteiras na memória (equivalente a `SELECT *`) para posteriormente filtrar, buscar ou projetar dados na camada de aplicação.
+- Repositórios devem expor APENAS operações básicas, coesas e estritamente tipadas (`getById`, `remove`, `list` com filtros explícitos no contrato e retorno restrito aos campos necessários, com paginação quando aplicável).
+- São proibidos métodos ad-hoc ou gambiarras criados sob medida para conveniência de consumidores específicos.
+- A orquestração e regras de negócio devem residir fora do repositório, preservando integralmente a atomicidade, isolamento, journal e rotinas de retry.
+
 35. **Um Repositório por Classe de Domínio**:
-  - É terminantemente PROIBIDO criar múltiplos repositórios ou classes de repositório paralelas para uma mesma entidade de domínio.
-  - Toda e qualquer estratégia interna de persistência (particionamento, índices, arquivos auxiliares, cache ou sharding) deve ser encapsulada estritamente dentro do repositório canônico existente daquela entidade (ex: `JSONWorkspacesRepository`).
-  - NUNCA crie novos repositórios, aliases paralelos ou camadas desnecessárias para contornar ou alterar estratégias de armazenamento.
+
+- É terminantemente PROIBIDO criar múltiplos repositórios ou classes de repositório paralelas para uma mesma entidade de domínio.
+- Toda e qualquer estratégia interna de persistência (particionamento, índices, arquivos auxiliares, cache ou sharding) deve ser encapsulada estritamente dentro do repositório canônico existente daquela entidade (ex: `JSONWorkspacesRepository`).
+- NUNCA crie novos repositórios, aliases paralelos ou camadas desnecessárias para contornar ou alterar estratégias de armazenamento.
+
 36. **Fluxos distintos para correção de bug e refatoração arquitetural**:
-  - Para bug de comportamento confirmado, registrar o cenário, produzir teste determinístico vermelho pela falha esperada, corrigir na camada responsável, obter verde e revisar. Não confundir falha de infraestrutura com evidência vermelha.
-  - Para refatoração arquitetural aprovada, implementar todo o escopo ponta a ponta, incluindo consumidores e addons afetados, e testar as partes conforme avançar. Os blocos do plano são marcos de organização, não encerramentos independentes. Não exigir vermelho artificial por mudança estrutural.
-  - Somente após a implementação integral da refatoração, executar `yarn typecheck` e `yarn lint:fix` na raiz de `metric`, corrigir os resultados e então solicitar revisão final do Tech Lead. As regras 18 e 23 definem onde executar os comandos, não exigem executá-los após cada bloco parcial.
-  - Se surgir um bug concreto durante a refatoração, tratá-lo separadamente pelo ciclo vermelho → correção → verde. Não marcar a refatoração concluída nem chamar o Tech Lead antes de implementar e validar o conjunto aprovado.
+
+- Para bug de comportamento confirmado, registrar o cenário, produzir teste determinístico vermelho pela falha esperada, corrigir na camada responsável, obter verde e revisar. Não confundir falha de infraestrutura com evidência vermelha.
+- Para refatoração arquitetural aprovada, implementar todo o escopo ponta a ponta, incluindo consumidores e addons afetados, e testar as partes conforme avançar. Os blocos do plano são marcos de organização, não encerramentos independentes. Não exigir vermelho artificial por mudança estrutural.
+- Somente após a implementação integral da refatoração, executar `yarn typecheck` e `yarn lint:fix` na raiz de `metric`, corrigir os resultados e então solicitar revisão final do Tech Lead. As regras 18 e 23 definem onde executar os comandos, não exigem executá-los após cada bloco parcial.
+- Se surgir um bug concreto durante a refatoração, tratá-lo separadamente pelo ciclo vermelho → correção → verde. Não marcar a refatoração concluída nem chamar o Tech Lead antes de implementar e validar o conjunto aprovado.
+
 37. **Responsabilidade Única e Contrato Próprio dos Repositórios**:
-  - Cada repositório implementa somente o contrato de persistência da sua entidade, sem estender contratos de lifecycle, cofre ou registro de credenciais. Herança de `BaseRepository` é permitida quando já integra o padrão do projeto e não mistura responsabilidades.
-  - O repositório de workspace busca, grava, atualiza e remove os seus dados; usa transações e constraints para consistência da própria persistência. Não coordena escrita, limpeza, recuperação ou fases do cofre.
-  - Services de application orquestram os métodos de domínio, o repositório e o cofre por dependências independentes. Se uma operação entre banco e cofre precisar de registro recuperável, persista a operação fora do repositório de workspace com o mínimo de contrato e campos justificados por cenários concretos.
-  - Não crie repositórios paralelos para a mesma entidade, herança artificial, métodos ad-hoc ou protocolo genérico para contornar a separação das camadas.
+
+- Cada repositório implementa somente o contrato de persistência da sua entidade, sem estender contratos de lifecycle, cofre ou registro de credenciais. Herança de `BaseRepository` é permitida quando já integra o padrão do projeto e não mistura responsabilidades.
+- O repositório de workspace busca, grava, atualiza e remove os seus dados; usa transações e constraints para consistência da própria persistência. Não coordena escrita, limpeza, recuperação ou fases do cofre.
+- Services de application orquestram os métodos de domínio, o repositório e o cofre por dependências independentes. Se uma operação entre banco e cofre precisar de registro recuperável, persista a operação fora do repositório de workspace com o mínimo de contrato e campos justificados por cenários concretos.
+- Não crie repositórios paralelos para a mesma entidade, herança artificial, métodos ad-hoc ou protocolo genérico para contornar a separação das camadas.
 
 ### Exemplos da regra 37: repositório pequeno, service coordenando o fluxo
 
@@ -98,7 +121,10 @@ Ao escrever ou modificar código neste projeto, você DEVE seguir rigorosamente 
 interface IWorkspacesRepository {
   create(workspace: Workspace): Promise<Either<AppError, void>>
   getById(id: string): Promise<Either<AppError, Workspace | undefined>>
-  list(filter: WorkspaceFilter, page: Page): Promise<Either<AppError, PagedWorkspaces>>
+  list(
+    filter: WorkspaceFilter,
+    page: Page,
+  ): Promise<Either<AppError, PagedWorkspaces>>
   update(workspace: Workspace): Promise<Either<AppError, void>>
   remove(id: string): Promise<Either<AppError, void>>
 }
@@ -138,5 +164,3 @@ Exemplo: alterar o avatar não autoriza `workspaceRepository.uploadAvatar(...)`.
 39. **Proibição de Imports Inline dentro de Funções ou Tipos (`import('...')`)**:
     - NUNCA utilize importações dinâmicas inline de tipos (como `import('@mr-tick/sdk').MetadataDTO`) dentro de generics, assinaturas de métodos ou no corpo de funções.
     - Todos os tipos, contratos, DTOs e utilitários necessários DEVEM ser importados explicitamente no topo do arquivo via declaração de cabeçalho (`import { type MetadataDTO } from '@mr-tick/sdk'`).
-
-

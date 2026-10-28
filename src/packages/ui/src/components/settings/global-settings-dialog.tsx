@@ -1,6 +1,7 @@
 import {
   CheckCircle2,
   Compass,
+  Database,
   Download,
   Info,
   Palette,
@@ -29,13 +30,14 @@ import { AboutSettingsTab } from './about-settings-tab'
 import { AppearanceSettingsTab } from './appearance-settings-tab'
 import { GeneralSettingsTab } from './general-settings-tab'
 import { LicenseSettingsTab } from './license-settings-tab'
+import { SystemDataSettingsTab } from './system-data-settings-tab'
 import { UpdateSettingsTab } from './update-settings-tab'
 
 interface NavMenuItem {
   id: SettingsTab
   label: string
   icon: React.ComponentType<{ className?: string }>
-  sectionGroup: 'app' | 'addons'
+  sectionGroup: 'app' | 'addons' | 'system'
   description: string
 }
 
@@ -101,6 +103,16 @@ const NAV_ITEMS: NavMenuItem[] = [
     sectionGroup: 'addons',
     description: 'Verifique se há novas versões para seus plugins instalados.',
   },
+
+  // Grupo Sistema
+  {
+    id: 'system-data',
+    label: 'Dados e Diagnóstico',
+    icon: Database,
+    sectionGroup: 'system',
+    description:
+      'Saúde dos armazenamentos, estado do motor local e eventos de diagnóstico.',
+  },
 ]
 
 export function GlobalSettingsDialog({
@@ -138,6 +150,7 @@ export function GlobalSettingsDialog({
 
   const appItems = filteredItems.filter((i) => i.sectionGroup === 'app')
   const addonItems = filteredItems.filter((i) => i.sectionGroup === 'addons')
+  const systemItems = filteredItems.filter((i) => i.sectionGroup === 'system')
 
   const activeItem = useMemo(() => {
     return NAV_ITEMS.find((i) => i.id === activeTab) || NAV_ITEMS[0]
@@ -202,6 +215,7 @@ export function GlobalSettingsDialog({
     if (activeTab === 'appearance') return <AppearanceSettingsTab />
     if (activeTab === 'updates') return <UpdateSettingsTab />
     if (activeTab === 'license') return <LicenseSettingsTab />
+    if (activeTab === 'system-data') return <SystemDataSettingsTab />
 
     const resolvedAddonSection: SidebarSection =
       activeTab === 'addons-installed'
@@ -282,6 +296,16 @@ export function GlobalSettingsDialog({
                     Extensões & Addons
                   </h4>
                   {addonItems.map(renderNavButton)}
+                </div>
+              )}
+
+              {/* Grupo 3: Sistema */}
+              {systemItems.length > 0 && (
+                <div className="space-y-1">
+                  <h4 className="text-muted-foreground/70 px-2 py-1 text-[11px] font-bold tracking-wider uppercase">
+                    Sistema
+                  </h4>
+                  {systemItems.map(renderNavButton)}
                 </div>
               )}
 

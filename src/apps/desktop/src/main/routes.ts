@@ -13,6 +13,7 @@ import { app, BrowserWindow, screen } from 'electron'
 import { NativeOverlay } from '@/main'
 import { IpcHandler } from '@/main/adapters/IpcHandler'
 import {
+  DiagnosticsHandler,
   LicensingHandler,
   SessionHandler,
   TasksHandler,
@@ -62,10 +63,67 @@ export function openIpcRoutes(
     serviceProvider.resolve<IDataSourceResolver>('dataSourceResolver')
   const updaterHandler =
     serviceProvider.resolve<UpdaterHandler>('updaterHandler')
+  const diagnosticsHandler =
+    serviceProvider.resolve<DiagnosticsHandler>('diagnosticsHandler')
+
+  function isAuthorizedDiagnosticsClient(
+    event: Electron.IpcMainInvokeEvent,
+  ): boolean {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender)
+    if (!senderWindow) return false
+    return (
+      senderWindow.windowType === 'main' || senderWindow.windowType === 'widget'
+    )
+  }
 
   if (dataSourceResolver) {
     //Mantém resolução explícita do DataSourceResolver no container
   }
+
+  // --- DIAGNOSTICS ---
+  IpcHandler.register('DIAGNOSTICS_GET_SNAPSHOT', (event) => {
+    if (!isAuthorizedDiagnosticsClient(event)) {
+      return Promise.resolve({
+        isSuccess: false,
+        statusCode: 403,
+        error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
+      })
+    }
+    return diagnosticsHandler.getSnapshot()
+  })
+
+  IpcHandler.register('DIAGNOSTICS_RUN_CHECKS', (event) => {
+    if (!isAuthorizedDiagnosticsClient(event)) {
+      return Promise.resolve({
+        isSuccess: false,
+        statusCode: 403,
+        error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
+      })
+    }
+    return diagnosticsHandler.runChecks()
+  })
+
+  IpcHandler.register('DIAGNOSTICS_GENERATE_REPORT', (event) => {
+    if (!isAuthorizedDiagnosticsClient(event)) {
+      return Promise.resolve({
+        isSuccess: false,
+        statusCode: 403,
+        error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
+      })
+    }
+    return diagnosticsHandler.generateReport()
+  })
+
+  IpcHandler.register('DIAGNOSTICS_OPEN_DATA_DIRECTORY', (event) => {
+    if (!isAuthorizedDiagnosticsClient(event)) {
+      return Promise.resolve({
+        isSuccess: false,
+        statusCode: 403,
+        error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
+      })
+    }
+    return diagnosticsHandler.openDataDirectory()
+  })
 
   // --- SYSTEM ---
   IpcHandler.register('UPDATER_CHECK', (e) => updaterHandler.checkForUpdates(e))

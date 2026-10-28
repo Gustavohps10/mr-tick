@@ -25,7 +25,9 @@ Esta skill define as regras obrigatórias para criação de registros de mudanç
 ## 2. Proibição Absoluta de Pacotes Ignorados ("Mixed Changesets")
 
 ### O Erro
+
 Ao incluir um pacote ignorado em um changeset com outros pacotes, a esteira quebra com o erro fatal:
+
 ```text
 🦋 error Error: Found mixed changeset <nome>
 🦋 error Found ignored packages: @mr-tick/landing-page
@@ -34,6 +36,7 @@ Ao incluir um pacote ignorado em um changeset com outros pacotes, a esteira queb
 ```
 
 ### Regra
+
 1. **Sempre consultar `.changeset/config.json`**:
    - Verifique a lista de pacotes no array `"ignore"` (ex: `"@mr-tick/landing-page"`).
 2. **Nunca incluir pacotes ignorados no frontmatter**:
@@ -63,9 +66,9 @@ Os arquivos devem ser criados em `.changeset/<nome-claro-da-funcionalidade>.md` 
 
 ```markdown
 ---
-"@mr-tick/sdk": patch
-"@mr-tick/application": patch
-"@mr-tick/ui": patch
+'@mr-tick/sdk': patch
+'@mr-tick/application': patch
+'@mr-tick/ui': patch
 ---
 
 Descrição clara e objetiva do que foi corrigido, adicionado ou modificado.

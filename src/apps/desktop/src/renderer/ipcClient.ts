@@ -1,6 +1,7 @@
 import { IHostBridge } from '@mr-tick/application'
 
 const ipcClient: IHostBridge = {
+  diagnostics: window.api.diagnostics,
   localPersistence: window.api.localPersistence,
   localSync: window.api.localSync,
   localRuntime: window.api.localRuntime,

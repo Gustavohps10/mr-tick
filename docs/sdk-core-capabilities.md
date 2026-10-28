@@ -20,14 +20,14 @@ A identidade do addon permanece interna ao host: namespace, cofre e autoria são
 
 ## Capacidades disponíveis
 
-| API | Resultado |
-| --- | --- |
-| `context.core.workspaces.list()` / `get(workspaceId)` | Identidade, nome e estado dos workspaces |
-| `context.core.connections.list(workspaceId)` / `get(scope)` | Workspace, instância, addon, perfil, identidade e estado; sem credenciais/configuração |
-| `context.core.tasks.get(reference)` | Snapshot local da tarefa; referência contém workspace, conexão e ID puro da origem |
-| `context.core.tasks.list({ workspaceId, connectionInstanceId, limit, search? })` | Até 100 tarefas, ordenadas pelo ID da origem ascendente; `hasMore` informa truncamento |
-| `context.core.metadata.get(scope)` | Atividades, estados e demais metadados locais; `lastPulledAt` indica a última leitura remota |
-| `context.core.runtime.getState()` / `onStateChanged(listener)` | Disponibilidade do executor e unsubscribe |
+| API                                                                              | Resultado                                                                                    |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `context.core.workspaces.list()` / `get(workspaceId)`                            | Identidade, nome e estado dos workspaces                                                     |
+| `context.core.connections.list(workspaceId)` / `get(scope)`                      | Workspace, instância, addon, perfil, identidade e estado; sem credenciais/configuração       |
+| `context.core.tasks.get(reference)`                                              | Snapshot local da tarefa; referência contém workspace, conexão e ID puro da origem           |
+| `context.core.tasks.list({ workspaceId, connectionInstanceId, limit, search? })` | Até 100 tarefas, ordenadas pelo ID da origem ascendente; `hasMore` informa truncamento       |
+| `context.core.metadata.get(scope)`                                               | Atividades, estados e demais metadados locais; `lastPulledAt` indica a última leitura remota |
+| `context.core.runtime.getState()` / `onStateChanged(listener)`                   | Disponibilidade do executor e unsubscribe                                                    |
 
 As capacidades de dados retornam `Either<AppError, T>`. `CoreTask` usa datas ISO 8601, não expõe chaves compostas nem estado interno da replicação. `search` procura um trecho literal do título ou ID, sem distinguir maiúsculas/minúsculas. `limit` é obrigatório, inteiro, de 1 a 100. Não há paginação do histórico nesta entrega.
 

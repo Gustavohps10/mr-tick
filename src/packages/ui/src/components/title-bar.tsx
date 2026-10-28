@@ -4,6 +4,7 @@ import { HelpCircle, Minus, Square, X } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 
 import { NotificationsPopover } from '@/components/notifications/notifications-popover'
+import { RuntimeStatusIndicator } from '@/components/settings/system-diagnostics/runtime-status-indicator'
 import {
   Tooltip,
   TooltipContent,
@@ -131,6 +132,9 @@ export function TitleBar({ title, children }: TitleBarProps) {
         <div style={noDragStyle} className="flex h-full items-center gap-1">
           {/* Botão de Notificações */}
           <NotificationsPopover />
+
+          {/* Indicador Canônico de Indisponibilidade do Motor */}
+          <RuntimeStatusIndicator />
 
           {/* Botão de Ajuda (Estilo Discord) */}
           <TooltipProvider delayDuration={300}>

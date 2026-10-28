@@ -4,6 +4,9 @@ import type {
   CoreCacheQuery,
   CoreCacheResponse,
   CoreRuntimeState,
+  DiagnosticDispatcherState,
+  DiagnosticEvent,
+  DiagnosticStartupFailure,
   IConnectionPendingWorkGuard,
   ICoreCacheTransport,
   ILocalRuntimeAPI,
@@ -16,13 +19,15 @@ import type {
   LocalSyncResponse,
 } from '@mr-tick/application'
 import { validateCoreCacheQuery } from '@mr-tick/application'
-import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either, isRecord } from '@mr-tick/shared/helpers'
 import { BrowserWindow, ipcMain } from 'electron'
 
 import type {
   RuntimeCommitPacket,
+  RuntimeDiagnosticProbeResponse,
   RuntimePersistenceReply,
   RuntimeReplyPacket,
+  RuntimeStartupFailurePacket,
   RuntimeSyncReply,
 } from '../../../runtime-protocol'
 
@@ -58,6 +63,9 @@ export class LocalRuntimeDispatcher
   >()
   private runtimeState: CoreRuntimeState = 'starting'
   private readonly stateListeners = new Set<(state: CoreRuntimeState) => void>()
+  private readonly diagnosticListeners = new Set<
+    (event: DiagnosticEvent) => void
+  >()
   private readonly pending = new Map<
     string,
     PendingRuntimeRequest<LocalRuntimeResponse>
@@ -70,6 +78,10 @@ export class LocalRuntimeDispatcher
     string,
     PendingRuntimeRequest<LocalSyncResponse>
   >()
+  private readonly diagnosticProbePending = new Map<
+    string,
+    PendingRuntimeRequest<RuntimeDiagnosticProbeResponse>
+  >()
   private readonly readerReleases = new Map<string, PendingReaderRelease>()
   private readonly maintenanceWorkspaces = new Set<string>()
   private readonly workspaceTails = new Map<string, Promise<void>>()
@@ -77,6 +89,8 @@ export class LocalRuntimeDispatcher
   private ready = false
   private lastSequence = 0
   private readonly startupWaiters = new Set<(ready: boolean) => void>()
+  private lastStartupFailure: DiagnosticStartupFailure | undefined
+  private startupStage = 'initialized'
 
   constructor(private readonly window: BrowserWindow) {
     ipcMain.handle(
@@ -172,18 +186,72 @@ export class LocalRuntimeDispatcher
     )
     ipcMain.handle('local-runtime:begin', (event) => {
       if (event.sender !== this.window.webContents) return null
+      this.startupStage = 'bootstrapping'
+      this.lastStartupFailure = undefined
+      this.notifyDiagnosticEvent('bootstrapping', 'Executor began bootstrap')
       return this.generation
     })
+    ipcMain.handle(
+      'local-runtime:failed',
+      (event, packet: RuntimeStartupFailurePacket) => {
+        if (!isRecord(packet)) return null
+        if (
+          typeof packet.generation !== 'string' ||
+          typeof packet.stage !== 'string'
+        )
+          return null
+        if (!isRecord(packet.error)) return null
+        if (
+          typeof packet.error.messageKey !== 'string' ||
+          typeof packet.error.statusCode !== 'number'
+        )
+          return null
+        if (
+          event.sender !== this.window.webContents ||
+          packet.generation !== this.generation
+        )
+          return null
+        this.ready = false
+        this.startupStage = 'failed'
+        this.lastStartupFailure = {
+          kind: 'explicit',
+          stage: packet.stage,
+          messageKey: packet.error.messageKey,
+          statusCode: packet.error.statusCode,
+          timestamp: new Date().toISOString(),
+        }
+        for (const waiter of this.startupWaiters) waiter(false)
+        this.startupWaiters.clear()
+        this.notifyDiagnosticEvent(
+          'failed',
+          `Startup failed at ${packet.stage}: ${packet.error.messageKey}`,
+          packet.error.messageKey,
+        )
+        for (const client of BrowserWindow.getAllWindows()) {
+          if (!this.isClient(client.webContents.id)) continue
+          client.webContents.send('local-runtime:state', {
+            generation: this.generation,
+            state: this.runtimeState,
+            failure: this.lastStartupFailure,
+          })
+        }
+        return this.generation
+      },
+    )
     ipcMain.handle('local-runtime:ready', (event, generation: string) => {
       if (
         event.sender !== this.window.webContents ||
+        typeof generation !== 'string' ||
         generation !== this.generation
       )
         return null
       this.ready = true
+      this.startupStage = 'ready'
+      this.lastStartupFailure = undefined
       this.setRuntimeState('ready')
       for (const waiter of this.startupWaiters) waiter(true)
       this.startupWaiters.clear()
+      this.notifyDiagnosticEvent('ready', 'Executor became ready')
       for (const client of BrowserWindow.getAllWindows()) {
         if (!this.isClient(client.webContents.id)) continue
         client.webContents.send('local-runtime:state', {
@@ -216,6 +284,16 @@ export class LocalRuntimeDispatcher
       (event, packet: RuntimeSyncReply) => {
         if (event.sender !== this.window.webContents) return
         this.complete(this.syncPending, packet)
+      },
+    )
+    ipcMain.on(
+      'local-runtime:diagnostic-probe-reply',
+      (event, packet: RuntimeReplyPacket<RuntimeDiagnosticProbeResponse>) => {
+        if (event.sender !== this.window.webContents) return
+        if (!isRecord(packet) || packet.generation !== this.generation) return
+        if (typeof packet.requestId !== 'string' || !isRecord(packet.response))
+          return
+        this.complete(this.diagnosticProbePending, packet)
       },
     )
     ipcMain.on(
@@ -262,6 +340,23 @@ export class LocalRuntimeDispatcher
     return this.runtimeState
   }
 
+  getDiagnosticState(): DiagnosticDispatcherState {
+    const pendingRequestsByChannel: Record<string, number> = {
+      core: this.corePending.size,
+      runtime: this.pending.size,
+      persistence: this.persistencePending.size,
+      sync: this.syncPending.size,
+      diagnosticProbe: this.diagnosticProbePending.size,
+    }
+    return {
+      state: this.runtimeState,
+      generation: this.generation,
+      startupStage: this.startupStage,
+      lastStartupFailure: this.lastStartupFailure,
+      pendingRequestsByChannel,
+    }
+  }
+
   onStateChanged(listener: (state: CoreRuntimeState) => void): () => void {
     this.stateListeners.add(listener)
     try {
@@ -272,6 +367,11 @@ export class LocalRuntimeDispatcher
     return () => this.stateListeners.delete(listener)
   }
 
+  onDiagnosticEvent(listener: (event: DiagnosticEvent) => void): () => void {
+    this.diagnosticListeners.add(listener)
+    return () => this.diagnosticListeners.delete(listener)
+  }
+
   private setRuntimeState(state: CoreRuntimeState): void {
     this.runtimeState = state
     for (const listener of this.stateListeners) {
@@ -279,6 +379,33 @@ export class LocalRuntimeDispatcher
         listener(state)
       } catch (error) {
         console.error('[LocalRuntime] Availability listener failed:', error)
+      }
+    }
+  }
+
+  private notifyDiagnosticEvent(
+    stage: string,
+    message: string,
+    code?: string,
+  ): void {
+    const level =
+      stage === 'failed' ? 'error' : stage === 'timed_out' ? 'warn' : 'info'
+    const event: DiagnosticEvent = {
+      sequence: 0,
+      sessionId: '',
+      generation: this.generation,
+      origin: 'dispatcher',
+      level,
+      stage,
+      code,
+      message,
+      timestamp: new Date().toISOString(),
+    }
+    for (const listener of this.diagnosticListeners) {
+      try {
+        listener(event)
+      } catch (error) {
+        console.error('[LocalRuntime] Diagnostic observer failed:', error)
       }
     }
   }
@@ -315,15 +442,54 @@ export class LocalRuntimeDispatcher
 
   whenReady(): Promise<boolean> {
     if (this.ready) return Promise.resolve(true)
+    if (
+      this.lastStartupFailure !== undefined &&
+      this.lastStartupFailure.kind === 'explicit'
+    ) {
+      return Promise.resolve(false)
+    }
     return new Promise((resolve) => {
       const finish = (ready: boolean) => {
         clearTimeout(deadline)
         this.startupWaiters.delete(finish)
         resolve(ready)
       }
-      const deadline = setTimeout(() => finish(false), 30000)
+      const deadline = setTimeout(() => {
+        if (!this.ready && this.lastStartupFailure === undefined) {
+          this.startupStage = 'timed_out'
+          this.lastStartupFailure = {
+            kind: 'deadline_exceeded',
+            stage: 'startup_timeout',
+            messageKey: 'localRuntime.startupDeadlineExceeded',
+            timestamp: new Date().toISOString(),
+          }
+          this.notifyDiagnosticEvent(
+            'timed_out',
+            'Startup deadline exceeded',
+            'localRuntime.startupDeadlineExceeded',
+          )
+        }
+        finish(false)
+      }, 30000)
       this.startupWaiters.add(finish)
     })
+  }
+
+  probeExecutor(
+    timeoutMs: number = 5000,
+  ): Promise<RuntimeDiagnosticProbeResponse> {
+    if (!this.ready || this.window.isDestroyed())
+      return Promise.resolve({
+        ok: false,
+        error: { messageKey: 'localRuntime.notReady', statusCode: 503 },
+      })
+    return this.dispatch(
+      this.diagnosticProbePending,
+      'local-runtime:execute-diagnostic-probe',
+      {},
+      undefined,
+      timeoutMs,
+    )
   }
 
   request(input: LocalRuntimeRequest): Promise<LocalRuntimeResponse> {
@@ -464,12 +630,14 @@ export class LocalRuntimeDispatcher
       | LocalRuntimeResponse
       | LocalPersistenceResponse
       | LocalSyncResponse
-      | CoreCacheResponse,
+      | CoreCacheResponse
+      | RuntimeDiagnosticProbeResponse,
   >(
     pendingRequests: Map<string, PendingRuntimeRequest<TResponse>>,
     channel: string,
     input: TRequest,
     completed?: (response: TResponse | ReturnType<typeof unavailable>) => void,
+    timeoutMs: number = 30000,
   ): Promise<TResponse | ReturnType<typeof unavailable>> {
     if (!this.ready || this.window.isDestroyed()) {
       const response = unavailable('localRuntime.notReady')
@@ -480,11 +648,9 @@ export class LocalRuntimeDispatcher
     const generation = this.generation
     return new Promise((resolve) => {
       const deadline = setTimeout(() => {
-        // A maintenance timeout does not cancel deletion. Keep its fence until
-        // the executor replies or its generation is invalidated.
         if (!completed) pendingRequests.delete(requestId)
         resolve(unavailable('localRuntime.responseDeadlineExceeded'))
-      }, 30000)
+      }, timeoutMs)
       pendingRequests.set(requestId, {
         generation,
         resolve,
@@ -513,7 +679,8 @@ export class LocalRuntimeDispatcher
       | LocalRuntimeResponse
       | LocalPersistenceResponse
       | LocalSyncResponse
-      | CoreCacheResponse,
+      | CoreCacheResponse
+      | RuntimeDiagnosticProbeResponse,
   >(
     pendingRequests: Map<string, PendingRuntimeRequest<T>>,
     messageKey: string,
@@ -531,13 +698,32 @@ export class LocalRuntimeDispatcher
     this.ready = false
     this.generation = randomUUID()
     this.lastSequence = 0
+    this.startupStage =
+      messageKey === 'localRuntime.restarting' ? 'restarting' : 'invalidated'
+    if (messageKey === 'localRuntime.executorUnavailable') {
+      this.lastStartupFailure = {
+        kind: 'process_gone',
+        stage: 'invalidation',
+        messageKey,
+        timestamp: new Date().toISOString(),
+      }
+    }
+    if (messageKey !== 'localRuntime.executorUnavailable') {
+      this.lastStartupFailure = undefined
+    }
     this.setRuntimeState(
       messageKey === 'localRuntime.executorClosed' ? 'closed' : 'restarting',
+    )
+    this.notifyDiagnosticEvent(
+      this.startupStage,
+      `Dispatcher invalidated: ${messageKey}`,
+      messageKey,
     )
     this.rejectPending(this.corePending, messageKey)
     this.rejectPending(this.pending, messageKey)
     this.rejectPending(this.persistencePending, messageKey)
     this.rejectPending(this.syncPending, messageKey)
+    this.rejectPending(this.diagnosticProbePending, messageKey)
     for (const release of this.readerReleases.values()) {
       clearTimeout(release.deadline)
       release.resolve(false)

@@ -6,7 +6,7 @@ O **Custodiante Local-First no Renderer (Chromium)** do Mr. Tick. Responsável p
 
 ## 🎯 Por que este módulo existe?
 
-No Mr. Tick, a interface gráfica (React) roda no **Renderer Process** do Chromium, onde reside a API de armazenamento de alta performance reativa **IndexedDB**. 
+No Mr. Tick, a interface gráfica (React) roda no **Renderer Process** do Chromium, onde reside a API de armazenamento de alta performance reativa **IndexedDB**.
 
 Para evitar corrupção de dados, perdas silenciosas de horas de trabalho e colisões de revisão (`RxError: CONFLICT`) no IndexedDB em cenários de alta concorrência (ex: sincronização em segundo plano rodando enquanto o usuário inicia/para timers ou clica repetidamente), este módulo atua como o **executor canônico serializado** de todas as operações locais.
 
@@ -47,13 +47,13 @@ flowchart TD
 
 ## 📦 Componentes e Responsabilidades
 
-| Arquivo | Papel Arquitetural | Responsabilidade |
-| :--- | :--- | :--- |
-| [`browser-workspace-registry.ts`](file:///c:/myapps/metric-context/metric/src/packages/ui/src/local-runtime/browser-workspace-registry.ts) | **Factory & Lifecycle Manager** | Implementa `ILocalWorkspaceFactory`. Gerencia instâncias de executores, criação das coleções RxDB (`time_entries`, `tasks`, `metadata`), transições de status de sync e encerramento seguro. |
-| [`browser-workspace-executor.ts`](file:///c:/myapps/metric-context/metric/src/packages/ui/src/local-runtime/browser-workspace-executor.ts) | **Serial Execution Engine** | Implementa `ILocalWorkspaceExecutor`. Enfileira operações assíncronas em uma fila serial determinística (`this.serial`), executando queries (`queryCore`) e comandos de persistência no RxDB. |
-| [`command-receipts.ts`](file:///c:/myapps/metric-context/metric/src/packages/ui/src/local-runtime/command-receipts.ts) | **Durable Idempotency Outbox** | Mantém uma object store dedicada no IndexedDB (`mr-tick-command-receipts-${workspaceId}`) com recibos de transação para proteger contra requisições duplicadas. |
-| [`persistence-client.ts`](file:///c:/myapps/metric-context/metric/src/packages/ui/src/local-runtime/persistence-client.ts) | **React UI Gateway** | Fornece `requestEntryPersistence`, a função pública utilizada por componentes React e hooks para enviar mutações sem manipular diretamente os bancos internos. |
-| [`index.ts`](file:///c:/myapps/metric-context/metric/src/packages/ui/src/local-runtime/index.ts) | **Public Barrel** | Exporta as fábricas e contratos públicos consumidos pela aplicação desktop. |
+| Arquivo                                                                                                                                    | Papel Arquitetural              | Responsabilidade                                                                                                                                                                              |
+| :----------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`browser-workspace-registry.ts`](file:///c:/myapps/metric-context/metric/src/packages/ui/src/local-runtime/browser-workspace-registry.ts) | **Factory & Lifecycle Manager** | Implementa `ILocalWorkspaceFactory`. Gerencia instâncias de executores, criação das coleções RxDB (`time_entries`, `tasks`, `metadata`), transições de status de sync e encerramento seguro.  |
+| [`browser-workspace-executor.ts`](file:///c:/myapps/metric-context/metric/src/packages/ui/src/local-runtime/browser-workspace-executor.ts) | **Serial Execution Engine**     | Implementa `ILocalWorkspaceExecutor`. Enfileira operações assíncronas em uma fila serial determinística (`this.serial`), executando queries (`queryCore`) e comandos de persistência no RxDB. |
+| [`command-receipts.ts`](file:///c:/myapps/metric-context/metric/src/packages/ui/src/local-runtime/command-receipts.ts)                     | **Durable Idempotency Outbox**  | Mantém uma object store dedicada no IndexedDB (`mr-tick-command-receipts-${workspaceId}`) com recibos de transação para proteger contra requisições duplicadas.                               |
+| [`persistence-client.ts`](file:///c:/myapps/metric-context/metric/src/packages/ui/src/local-runtime/persistence-client.ts)                 | **React UI Gateway**            | Fornece `requestEntryPersistence`, a função pública utilizada por componentes React e hooks para enviar mutações sem manipular diretamente os bancos internos.                                |
+| [`index.ts`](file:///c:/myapps/metric-context/metric/src/packages/ui/src/local-runtime/index.ts)                                           | **Public Barrel**               | Exporta as fábricas e contratos públicos consumidos pela aplicação desktop.                                                                                                                   |
 
 ---
 

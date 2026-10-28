@@ -11,11 +11,11 @@ O **Coração Determinístico Local-First** do Mr. Tick. Responsável por orques
 
 ## 📦 Componentes Contidos
 
-| Arquivo | Responsabilidade |
-| :--- | :--- |
-| `LocalRuntime.ts` | Ponto de entrada de requisições e comandos (`ILocalRuntimeAPI`), gerenciador de executores e fila por workspace |
-| `local-runtime-rules.ts` | Regras puras e imutáveis de transição de comandos (planning de comandos, cálculo de tempo e status do timer) |
-| `local-time-entry-identity.ts` | Helpers de identidade e estado remoto (detecção de operações pendentes, conflitos e sanitização de IDs) |
+| Arquivo                        | Responsabilidade                                                                                                |
+| :----------------------------- | :-------------------------------------------------------------------------------------------------------------- |
+| `LocalRuntime.ts`              | Ponto de entrada de requisições e comandos (`ILocalRuntimeAPI`), gerenciador de executores e fila por workspace |
+| `local-runtime-rules.ts`       | Regras puras e imutáveis de transição de comandos (planning de comandos, cálculo de tempo e status do timer)    |
+| `local-time-entry-identity.ts` | Helpers de identidade e estado remoto (detecção de operações pendentes, conflitos e sanitização de IDs)         |
 
 ## 🛡️ Invariantes e Regras de Negócio
 
@@ -25,6 +25,7 @@ O **Coração Determinístico Local-First** do Mr. Tick. Responsável por orques
 4. **Respeito à Manutenção:** Se um workspace estiver em processo de manutenção/migração, novos comandos são rejeitados com `WORKSPACE_MAINTENANCE` de forma segura.
 
 ## 🚫 O que NÃO deve ficar aqui
+
 - Chamadas a APIs externas (pertencem a `sync/` e aos addons).
 - Consultas diretas ao cofre do sistema (pertencem a `connections/`).
 - Código acoplado a Electron, IPC ou APIs do navegador (o runtime é agnóstico e opera via contratos).

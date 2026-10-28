@@ -1,9 +1,6 @@
 {
   "title": "Resources & APIs",
   "defaultOpen": true,
-  "pages": [
-    "oauth-pkce",
-    "vault-and-events"
-  ],
+  "pages": ["oauth-pkce", "vault-and-events"],
   "icon": "CodeXml"
 }

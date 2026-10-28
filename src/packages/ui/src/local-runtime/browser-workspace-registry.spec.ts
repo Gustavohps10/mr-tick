@@ -634,4 +634,142 @@ describe('Browser workspace owner lifecycle', () => {
       await registry.close()
     }
   })
+
+  it('diagnoses open workspaces with operationalReadChecks without reading cached document layer', async () => {
+    const workspaceId = crypto.randomUUID()
+    const { bridge } = bridgeFor(workspaceId)
+    const registry = new BrowserWorkspaceRegistry(bridge, options)
+    const opened = await registry.open(workspaceId)
+    expect(opened.isSuccess()).toBe(true)
+
+    const diag = await registry.diagnose()
+    expect(diag.workspaces).toHaveLength(1)
+    expect(diag.workspaces[0]?.workspaceId).toBe(workspaceId)
+    expect(diag.workspaces[0]?.hasDb).toBe(true)
+    expect(diag.workspaces[0]?.receipts?.status).toBe('not-supported')
+
+    expect(diag.operationalReadChecks).toHaveLength(1)
+    const check = diag.operationalReadChecks[0]
+    expect(check?.id).toBe(`probe-workspace-storage-${workspaceId}`)
+    expect(check?.status).toBe('pass')
+    expect(check?.provenOperation).toBe('timeEntries.storageInstance.query')
+
+    await registry.close()
+  })
+
+  it('opens workspaces on demand and caps concurrent open instances to prevent RxDB collection limits', async () => {
+    const ws1 = crypto.randomUUID()
+    const ws2 = crypto.randomUUID()
+    const ws3 = crypto.randomUUID()
+
+    const workspaces: WorkspaceViewModel[] = [
+      {
+        id: ws1,
+        name: 'Workspace 1',
+        status: 'configured',
+        connections: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: ws2,
+        name: 'Workspace 2',
+        status: 'configured',
+        connections: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: ws3,
+        name: 'Workspace 3',
+        status: 'configured',
+        connections: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]
+
+    const bridge: BrowserRuntimeBridge = {
+      workspaces: {
+        getById: vi.fn(async ({ body }) => {
+          const found = workspaces.find((w) => w.id === body.workspaceId)
+          if (!found)
+            return { isSuccess: false, statusCode: 404, error: 'NOT_FOUND' }
+          return { isSuccess: true, statusCode: 200, data: found }
+        }),
+        listAll: async () => ({
+          isSuccess: true,
+          statusCode: 200,
+          data: workspaces,
+          totalItems: 3,
+          totalPages: 1,
+          currentPage: 1,
+        }),
+      },
+      events: { emit: vi.fn() },
+      tasks: {
+        listTasks: async () => ({
+          isSuccess: true,
+          statusCode: 200,
+          data: [],
+          totalItems: 0,
+          totalPages: 0,
+          currentPage: 1,
+        }),
+        pull: async () => ({ isSuccess: true, statusCode: 200, data: [] }),
+      },
+      metadata: {
+        pull: async () => ({
+          isSuccess: false,
+          statusCode: 503,
+          error: 'UNUSED',
+        }),
+      },
+      timeEntries: {
+        listTimeEntries: async () => ({
+          isSuccess: true,
+          statusCode: 200,
+          data: [],
+          totalItems: 0,
+          totalPages: 0,
+          currentPage: 1,
+        }),
+        pull: async () => ({
+          isSuccess: false,
+          statusCode: 503,
+          error: 'UNUSED',
+        }),
+        push: async () => ({ isSuccess: true, statusCode: 200, data: [] }),
+      },
+    }
+
+    const registry = new BrowserWorkspaceRegistry(bridge, options)
+
+    const started = await registry.start()
+    expect(started.isSuccess()).toBe(true)
+
+    const diagInitial = await registry.diagnose()
+    expect(diagInitial.workspaces).toHaveLength(0)
+
+    const opened1 = await registry.open(ws1)
+    expect(opened1.isSuccess()).toBe(true)
+    const diag1 = await registry.diagnose()
+    expect(diag1.workspaces).toHaveLength(1)
+
+    const opened2 = await registry.open(ws2)
+    expect(opened2.isSuccess()).toBe(true)
+    const diag2 = await registry.diagnose()
+    expect(diag2.workspaces).toHaveLength(2)
+
+    const opened3 = await registry.open(ws3)
+    expect(opened3.isSuccess()).toBe(true)
+    const diag3 = await registry.diagnose()
+    expect(diag3.workspaces).toHaveLength(2)
+    const openIds = diag3.workspaces.map((w) => w.workspaceId)
+    expect(openIds).toContain(ws2)
+    expect(openIds).toContain(ws3)
+    expect(openIds).not.toContain(ws1)
+
+    await registry.close()
+  })
 })

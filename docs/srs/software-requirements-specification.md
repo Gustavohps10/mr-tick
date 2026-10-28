@@ -12,13 +12,13 @@
 
 # Tabela de Revisão
 
-| Versão | Autores          | Descrição                                                                                            | Data       |
-| ------ | ---------------- | ---------------------------------------------------------------------------------------------------- | ---------- |
-| 1.0    | Gustavo Henrique | Versão Inicial consolidada (ADR-001 + Core Sync)                                                     | 07/03/2026 |
-| 1.1    | Gustavo Henrique | Arquitetura do Timer Service, Schema de TimeEntries, Journal e timerConfig                           | 10/05/2026 |
-| 1.2    | Gustavo Henrique | Revisão arquitetural: camadas Domain/Application/Main/Renderer, modelo operacional do timer          | 10/05/2026 |
-| 1.3    | Gustavo Henrique | Simplificação: SDK, Política Zero-Cloud e Modelo Offline-First             | 24/08/2026 |
-| 1.4    | Gustavo Henrique | Consolidação Open-Source (Apache 2.0), Core Gratuito e Extensível, Modelos Reconciliados e Roadmap  | 05/10/2026 |
+| Versão | Autores          | Descrição                                                                                          | Data       |
+| ------ | ---------------- | -------------------------------------------------------------------------------------------------- | ---------- |
+| 1.0    | Gustavo Henrique | Versão Inicial consolidada (ADR-001 + Core Sync)                                                   | 07/03/2026 |
+| 1.1    | Gustavo Henrique | Arquitetura do Timer Service, Schema de TimeEntries, Journal e timerConfig                         | 10/05/2026 |
+| 1.2    | Gustavo Henrique | Revisão arquitetural: camadas Domain/Application/Main/Renderer, modelo operacional do timer        | 10/05/2026 |
+| 1.3    | Gustavo Henrique | Simplificação: SDK, Política Zero-Cloud e Modelo Offline-First                                     | 24/08/2026 |
+| 1.4    | Gustavo Henrique | Consolidação Open-Source (Apache 2.0), Core Gratuito e Extensível, Modelos Reconciliados e Roadmap | 05/10/2026 |
 
 ---
 
@@ -88,19 +88,19 @@ O Mr-tick possui uma arquitetura orientada a **Addons Multicapacidade**. Um úni
 
 ## 5.1 Requisitos Funcionais (RF)
 
-| ID    | Descrição                                                         | Prioridade | Depende De   |
-| ----- | ----------------------------------------------------------------- | ---------- | ------------ |
-| RF001 | Gestão de Workspaces locais independentes                         | Alta       | —            |
-| RF002 | Gerenciador e SDK                       | Alta       | —            |
-| RF003 | Configuração de conexões externas diretas                         | Alta       | RF002        |
-| RF004 | Motor de sincronização Pull/Push direto com DataSources           | Alta       | RF003        |
-| RF005 | Conversão de metadados para padrão interno agnóstico              | Alta       | RF004        |
-| RF006 | Sistema de timer processado em background                         | Alta       | —            |
-| RF007 | Widget flutuante com suporte a click-through e atalhos            | Alta       | RF006        |
-| RF008 | Injeção dinâmica de temas CSS via Addons                          | Alta       | RF002        |
-| RF009 | Temporização manual e recuperação de estado (Boot Recovery)       | Alta       | RF006        |
-| RF010 | Journal de eventos do timer e auditoria local                     | Alta       | RF006        |
-| RF011 | Pacote de Watchers e Automações Locais (Window/Git/Idle/Sugestor) | Média      | RF002        |
+| ID    | Descrição                                                         | Prioridade | Depende De |
+| ----- | ----------------------------------------------------------------- | ---------- | ---------- |
+| RF001 | Gestão de Workspaces locais independentes                         | Alta       | —          |
+| RF002 | Gerenciador e SDK                                                 | Alta       | —          |
+| RF003 | Configuração de conexões externas diretas                         | Alta       | RF002      |
+| RF004 | Motor de sincronização Pull/Push direto com DataSources           | Alta       | RF003      |
+| RF005 | Conversão de metadados para padrão interno agnóstico              | Alta       | RF004      |
+| RF006 | Sistema de timer processado em background                         | Alta       | —          |
+| RF007 | Widget flutuante com suporte a click-through e atalhos            | Alta       | RF006      |
+| RF008 | Injeção dinâmica de temas CSS via Addons                          | Alta       | RF002      |
+| RF009 | Temporização manual e recuperação de estado (Boot Recovery)       | Alta       | RF006      |
+| RF010 | Journal de eventos do timer e auditoria local                     | Alta       | RF006      |
+| RF011 | Pacote de Watchers e Automações Locais (Window/Git/Idle/Sugestor) | Média      | RF002      |
 
 ## 5.2 Requisitos Não Funcionais (RNF)
 
@@ -134,39 +134,38 @@ Coleções principais:
 
 Representa tarefas sincronizadas a partir de sistemas externos, armazenadas reativamente no RxDB.
 
-| Campo                | Tipo     | Descrição                                                                                   |
-| -------------------- | -------- | ------------------------------------------------------------------------------------------- |
-| id                   | String   | **Chave primária local.** Chave composta determinística `connectionInstanceId::sourceId`.     |
-| sourceId             | String   | Identificador oficial da tarefa no sistema externo (ex: ID da issue no Redmine/Jira).        |
-| connectionInstanceId | String   | Identificador da conexão ativa no workspace.                                               |
-| dataSourceId         | String   | Identificador do plugin/provedor do conector (ex: `mr-tick-redmine`).                       |
-| _deleted             | Boolean  | Flag nativa de soft delete do RxDB.                                                         |
-| syncStatus           | String   | Status de sincronização: `synced`, `pending_push`, `pulling`, `conflict`, `local_only`.      |
-| lastPulledAt         | DateTime | Timestamp ISO do último pull executado com sucesso.                                         |
-| lastPushedAt         | DateTime | Timestamp ISO do último push de alterações.                                                 |
-| lastReconciledAt     | DateTime | Timestamp ISO da última reconciliação canônica.                                             |
-| title                | String   | Título da tarefa.                                                                           |
-| description          | String   | Descrição e corpo da tarefa.                                                                |
-| url                  | String   | Link direto para a tarefa na ferramenta externa.                                            |
-| projectName          | String   | Nome do projeto ao qual a tarefa pertence.                                                  |
-| status               | Object   | Status atual da tarefa `{ id, name }`.                                                      |
-| tracker              | Object   | Tipo ou rastreador `{ id }`.                                                                |
-| priority             | Object   | Nível de prioridade `{ id, name }`.                                                         |
-| author               | Object   | Usuário que criou a tarefa `{ id?, name }`.                                                 |
-| assignedTo           | Object   | Usuário atribuído `{ id?, name }`.                                                          |
-| createdAt            | DateTime | Data de criação na ferramenta remota.                                                       |
-| updatedAt            | DateTime | Data da última atualização na ferramenta remota.                                            |
-| startDate            | DateTime | Data prevista de início.                                                                    |
-| dueDate              | DateTime | Data limite de entrega.                                                                     |
-| doneRatio            | Number   | Percentual de conclusão da tarefa (0 a 100).                                                |
-| spentHours           | Number   | Total de horas gastas registradas no servidor remoto.                                       |
-| estimatedTimes       | Array    | Estimativas de tempo por atividade (`hours`, `activities`).                                 |
-| statusChanges        | Array    | Histórico de alterações de status.                                                          |
-| participants         | Array    | Participantes e papéis atribuídos `{ id, name, role }`.                                     |
-| timeEntries          | Array    | Snapshots de apontamentos vinculados.                                                       |
-| conflicted           | Boolean  | Flag de detecção de divergência remota.                                                     |
-| conflictData         | Object   | Snapshot do estado do servidor e estado local em conflito.                                  |
-
+| Campo                | Tipo     | Descrição                                                                                 |
+| -------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| id                   | String   | **Chave primária local.** Chave composta determinística `connectionInstanceId::sourceId`. |
+| sourceId             | String   | Identificador oficial da tarefa no sistema externo (ex: ID da issue no Redmine/Jira).     |
+| connectionInstanceId | String   | Identificador da conexão ativa no workspace.                                              |
+| dataSourceId         | String   | Identificador do plugin/provedor do conector (ex: `mr-tick-redmine`).                     |
+| _deleted             | Boolean  | Flag nativa de soft delete do RxDB.                                                       |
+| syncStatus           | String   | Status de sincronização: `synced`, `pending_push`, `pulling`, `conflict`, `local_only`.   |
+| lastPulledAt         | DateTime | Timestamp ISO do último pull executado com sucesso.                                       |
+| lastPushedAt         | DateTime | Timestamp ISO do último push de alterações.                                               |
+| lastReconciledAt     | DateTime | Timestamp ISO da última reconciliação canônica.                                           |
+| title                | String   | Título da tarefa.                                                                         |
+| description          | String   | Descrição e corpo da tarefa.                                                              |
+| url                  | String   | Link direto para a tarefa na ferramenta externa.                                          |
+| projectName          | String   | Nome do projeto ao qual a tarefa pertence.                                                |
+| status               | Object   | Status atual da tarefa `{ id, name }`.                                                    |
+| tracker              | Object   | Tipo ou rastreador `{ id }`.                                                              |
+| priority             | Object   | Nível de prioridade `{ id, name }`.                                                       |
+| author               | Object   | Usuário que criou a tarefa `{ id?, name }`.                                               |
+| assignedTo           | Object   | Usuário atribuído `{ id?, name }`.                                                        |
+| createdAt            | DateTime | Data de criação na ferramenta remota.                                                     |
+| updatedAt            | DateTime | Data da última atualização na ferramenta remota.                                          |
+| startDate            | DateTime | Data prevista de início.                                                                  |
+| dueDate              | DateTime | Data limite de entrega.                                                                   |
+| doneRatio            | Number   | Percentual de conclusão da tarefa (0 a 100).                                              |
+| spentHours           | Number   | Total de horas gastas registradas no servidor remoto.                                     |
+| estimatedTimes       | Array    | Estimativas de tempo por atividade (`hours`, `activities`).                               |
+| statusChanges        | Array    | Histórico de alterações de status.                                                        |
+| participants         | Array    | Participantes e papéis atribuídos `{ id, name, role }`.                                   |
+| timeEntries          | Array    | Snapshots de apontamentos vinculados.                                                     |
+| conflicted           | Boolean  | Flag de detecção de divergência remota.                                                   |
+| conflictData         | Object   | Snapshot do estado do servidor e estado local em conflito.                                |
 
 ---
 
@@ -176,36 +175,36 @@ Representa registros de tempo vinculados a tarefas, gerenciados com garantias de
 
 ## Campos da Coleção
 
-| Campo                  | Tipo     | Descrição                                                                                                                                                                                |
-| ---------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| id                     | String   | **Chave primária local.** Hash SHA-256 determinístico de `connectionInstanceId::remoteId` para registros importados, ou UUID v4 para criações locais não confirmadas.                  |
-| _deleted               | Boolean  | Flag nativa de soft delete do RxDB.                                                                                                                                                      |
-| connectionInstanceId   | String   | Identificador único da conexão ativa no workspace.                                                                                                                                       |
-| dataSourceId           | String   | Identificador do plugin/provedor do datasource (ex: `mr-tick-redmine`).                                                                                                                   |
-| syncStatus             | String   | Status de sincronização: `synced`, `pending_push`, `creating`, `ambiguous`, `conflict`, `local_only`, `error`.                                                                            |
-| remoteDeleted          | Boolean  | Tombstone que confirma a ausência remota do registro; impede que a exclusão local seja reenviada como DELETE ao provedor.                                                                |
-| deletionConfirmed      | Boolean  | Confirmação durável de exclusão solicitada explicitamente pelo usuário.                                                                                                                  |
-| remoteId               | String   | Identificador oficial do apontamento no sistema externo.                                                                                                                                 |
-| remoteUpdatedAt        | String   | Timestamp ISO da última versão confirmada pelo servidor; base de comparação para detecção de conflitos sem depender do relógio local.                                                     |
-| task                   | Object   | Referência mínima da tarefa `{ id }`.                                                                                                                                                    |
-| taskData               | Object   | Snapshot local desnormalizado da tarefa para renderização offline instantânea.                                                                                                           |
-| activity               | Object   | Atividade vinculada `{ id, name? }`.                                                                                                                                                     |
-| user                   | Object   | Usuário responsável `{ id, name? }`.                                                                                                                                                     |
-| startDate              | DateTime | **Âncora temporal do timer.** Início do período apontado.                                                                                                                                 |
-| endDate                | DateTime | Fim do período apontado (preenchido no stop ou apontamento manual).                                                                                                                       |
-| timeSpent              | Number   | Tempo total em horas (número decimal enviado ao provedor remoto).                                                                                                                        |
-| comments               | String   | Descrição e observações do apontamento.                                                                                                                                                  |
-| timeStatus             | Enum     | Estado do timer: `running`, `paused`, `finished`, `suggestion`.                                                                                                                          |
-| source                 | Enum     | Origem do apontamento: `manual`, `timer`, `ai_suggestion`, `addon`.                                                                                                                      |
-| type                   | Enum     | Modo de contagem: `increasing`, `decreasing`, `manual`.                                                                                                                                  |
-| journal                | Array    | Histórico local de eventos do timer (nunca sincronizado com o servidor) — ver seção 6.2.3.                                                                                               |
-| timerConfig            | Object   | Configurações locais do timer para este apontamento — ver seção 6.2.4.                                                                                                                   |
-| conflictData           | Object   | Snapshot de conflito contendo o estado remoto (`server`) e o estado local (`local`).                                                                                                     |
-| syncFailure            | Object   | Detalhes estruturados da falha de sincronização (`status`, `serverMessage`, etc.).                                                                                                       |
-| confirmationState      | Object   | Estado submetido de escrita confirmada pendente de releitura canônica.                                                                                                                   |
-| creationState          | Object   | Payload original durável retido durante criação em voo para recuperação de respostas perdidas.                                                                                           |
-| createdAt              | DateTime | Timestamp local de criação.                                                                                                                                                              |
-| updatedAt              | DateTime | Timestamp local de alteração.                                                                                                                                                            |
+| Campo                | Tipo     | Descrição                                                                                                                                                             |
+| -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                   | String   | **Chave primária local.** Hash SHA-256 determinístico de `connectionInstanceId::remoteId` para registros importados, ou UUID v4 para criações locais não confirmadas. |
+| _deleted             | Boolean  | Flag nativa de soft delete do RxDB.                                                                                                                                   |
+| connectionInstanceId | String   | Identificador único da conexão ativa no workspace.                                                                                                                    |
+| dataSourceId         | String   | Identificador do plugin/provedor do datasource (ex: `mr-tick-redmine`).                                                                                               |
+| syncStatus           | String   | Status de sincronização: `synced`, `pending_push`, `creating`, `ambiguous`, `conflict`, `local_only`, `error`.                                                        |
+| remoteDeleted        | Boolean  | Tombstone que confirma a ausência remota do registro; impede que a exclusão local seja reenviada como DELETE ao provedor.                                             |
+| deletionConfirmed    | Boolean  | Confirmação durável de exclusão solicitada explicitamente pelo usuário.                                                                                               |
+| remoteId             | String   | Identificador oficial do apontamento no sistema externo.                                                                                                              |
+| remoteUpdatedAt      | String   | Timestamp ISO da última versão confirmada pelo servidor; base de comparação para detecção de conflitos sem depender do relógio local.                                 |
+| task                 | Object   | Referência mínima da tarefa `{ id }`.                                                                                                                                 |
+| taskData             | Object   | Snapshot local desnormalizado da tarefa para renderização offline instantânea.                                                                                        |
+| activity             | Object   | Atividade vinculada `{ id, name? }`.                                                                                                                                  |
+| user                 | Object   | Usuário responsável `{ id, name? }`.                                                                                                                                  |
+| startDate            | DateTime | **Âncora temporal do timer.** Início do período apontado.                                                                                                             |
+| endDate              | DateTime | Fim do período apontado (preenchido no stop ou apontamento manual).                                                                                                   |
+| timeSpent            | Number   | Tempo total em horas (número decimal enviado ao provedor remoto).                                                                                                     |
+| comments             | String   | Descrição e observações do apontamento.                                                                                                                               |
+| timeStatus           | Enum     | Estado do timer: `running`, `paused`, `finished`, `suggestion`.                                                                                                       |
+| source               | Enum     | Origem do apontamento: `manual`, `timer`, `ai_suggestion`, `addon`.                                                                                                   |
+| type                 | Enum     | Modo de contagem: `increasing`, `decreasing`, `manual`.                                                                                                               |
+| journal              | Array    | Histórico local de eventos do timer (nunca sincronizado com o servidor) — ver seção 6.2.3.                                                                            |
+| timerConfig          | Object   | Configurações locais do timer para este apontamento — ver seção 6.2.4.                                                                                                |
+| conflictData         | Object   | Snapshot de conflito contendo o estado remoto (`server`) e o estado local (`local`).                                                                                  |
+| syncFailure          | Object   | Detalhes estruturados da falha de sincronização (`status`, `serverMessage`, etc.).                                                                                    |
+| confirmationState    | Object   | Estado submetido de escrita confirmada pendente de releitura canônica.                                                                                                |
+| creationState        | Object   | Payload original durável retido durante criação em voo para recuperação de respostas perdidas.                                                                        |
+| createdAt            | DateTime | Timestamp local de criação.                                                                                                                                           |
+| updatedAt            | DateTime | Timestamp local de alteração.                                                                                                                                         |
 
 ## 6.2.1 `timeStatus` — Estados e Transições
 
@@ -263,22 +262,22 @@ Objeto **local**, nunca sincronizado. Guarda preferências do usuário para aque
 
 Armazena metadados provenientes da fonte externa (status, prioridades, papéis, tipos de atividade).
 
-| Campo                | Tipo     | Descrição                                                                                   |
-| -------------------- | -------- | ------------------------------------------------------------------------------------------- |
-| id                   | String   | **Chave primária local.** Chave composta determinística `connectionInstanceId::sourceId`.     |
-| sourceId             | String   | Identificador de metadados na fonte externa.                                                |
-| connectionInstanceId | String   | Identificador da conexão ativa no workspace.                                               |
-| dataSourceId         | String   | Identificador do plugin/provedor do conector (ex: `mr-tick-redmine`).                       |
-| _deleted             | Boolean  | Flag nativa de soft delete do RxDB.                                                         |
-| syncStatus           | String   | Status de sincronização (`synced`, `pulling`, `conflict`, `local_only`).                     |
-| lastPulledAt         | DateTime | Timestamp ISO do último pull executado.                                                     |
-| taskStatuses         | Array    | Lista de status possíveis de tarefas (`SyncMetadataItem`).                                  |
-| taskPriorities       | Array    | Lista de prioridades configuradas (`SyncMetadataItem`).                                     |
-| activities           | Array    | Lista de atividades de apontamento (`SyncMetadataItem`).                                    |
-| trackStatuses        | Array    | Status de tracking.                                                                         |
-| participantRoles     | Array    | Papéis de participantes no projeto.                                                         |
-| estimationTypes      | Array    | Tipos de estimativa suportados.                                                             |
-| conflicted           | Boolean  | Indica conflito na importação de metadados.                                                 |
+| Campo                | Tipo     | Descrição                                                                                 |
+| -------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| id                   | String   | **Chave primária local.** Chave composta determinística `connectionInstanceId::sourceId`. |
+| sourceId             | String   | Identificador de metadados na fonte externa.                                              |
+| connectionInstanceId | String   | Identificador da conexão ativa no workspace.                                              |
+| dataSourceId         | String   | Identificador do plugin/provedor do conector (ex: `mr-tick-redmine`).                     |
+| _deleted             | Boolean  | Flag nativa de soft delete do RxDB.                                                       |
+| syncStatus           | String   | Status de sincronização (`synced`, `pulling`, `conflict`, `local_only`).                  |
+| lastPulledAt         | DateTime | Timestamp ISO do último pull executado.                                                   |
+| taskStatuses         | Array    | Lista de status possíveis de tarefas (`SyncMetadataItem`).                                |
+| taskPriorities       | Array    | Lista de prioridades configuradas (`SyncMetadataItem`).                                   |
+| activities           | Array    | Lista de atividades de apontamento (`SyncMetadataItem`).                                  |
+| trackStatuses        | Array    | Status de tracking.                                                                       |
+| participantRoles     | Array    | Papéis de participantes no projeto.                                                       |
+| estimationTypes      | Array    | Tipos de estimativa suportados.                                                           |
+| conflicted           | Boolean  | Indica conflito na importação de metadados.                                               |
 
 Cada item de metadados (`SyncMetadataItem`) contém:
 
@@ -296,6 +295,7 @@ Cada item de metadados (`SyncMetadataItem`) contém:
 Diferente das coleções sincronizáveis com provedores externos (que utilizam `id` determinístico), as coleções exclusivas de interface e configuração local adotam o padrão RxDB com chave primária **`_id`**:
 
 ### automations
+
 - **`_id`**: Chave primária local (UUID).
 - `name`: Nome legível da automação.
 - `type`: Tipo da automação (ex: `window_focus`, `idle_detection`, `git_branch`).
@@ -304,24 +304,28 @@ Diferente das coleções sincronizáveis com provedores externos (que utilizam `
 - `createdAt` / `updatedAt`: Timestamps locais.
 
 ### kanbanColumns & kanbanTaskColumns
+
 - **`_id`**: Chave primária local (UUID).
 - `workspaceId`: Identificador do workspace.
 - `name`, `order`, `color`: Configuração visual das colunas do quadro Kanban.
 - `taskId`, `columnId`, `order`: Ordenação e posicionamento local de tarefas no Kanban.
-
 
 ---
 
 # Diagrama de Classes
 
 <!--<BEGIN_CLASSES_DIAGRAM> -->
+
 ###### diagram-classes-001-tasks.puml
+
 <img src="./diagrams/puml-images/classes/diagram-classes-001-tasks.png" alt="CLASSES_DIAGRAM" />
 
 ###### diagram-classes-002-timeEntries.puml
+
 <img src="./diagrams/puml-images/classes/diagram-classes-002-timeEntries.png" alt="CLASSES_DIAGRAM" />
 
 ###### diagram-classes-003-metadata.puml
+
 <img src="./diagrams/puml-images/classes/diagram-classes-003-metadata.png" alt="CLASSES_DIAGRAM" />
 <!--END_CLASSES_DIAGRAM -->
 
@@ -640,25 +644,31 @@ Configurar integração com a fonte externa e sincronizar dados.
 ### Diagrama de Fluxos
 
 <!--<BEGIN_FLOW> -->
+
 ###### diagram-flow-001-timer.puml
+
 <img src="./diagrams/puml-images/flow/diagram-flow-001-timer.png" alt="FLOW" />
 
 ###### diagram-flow-002-task-creation.puml
+
 <img src="./diagrams/puml-images/flow/diagram-flow-002-task-creation.png" alt="FLOW" />
 
 ###### diagram-flow-003-task-edit.puml
+
 <img src="./diagrams/puml-images/flow/diagram-flow-003-task-edit.png" alt="FLOW" />
 
 ###### diagram-flow-004-plugin-activation.puml
+
 <img src="./diagrams/puml-images/flow/diagram-flow-004-plugin-activation.png" alt="FLOW" />
 
 ###### diagram-flow-005-sync-success.puml
+
 <img src="./diagrams/puml-images/flow/diagram-flow-005-sync-success.png" alt="FLOW" />
 
 ###### diagram-flow-006-sync-conflict.puml
+
 <img src="./diagrams/puml-images/flow/diagram-flow-006-sync-conflict.png" alt="FLOW" />
 <!--END_FLOW -->
-
 
 ## UC002 — Rastreamento de Tempo
 
@@ -789,13 +799,17 @@ App abre
 ### Diagrama de Componentes
 
 <!--<BEGIN_COMPONENT_DIAGRAM> -->
+
 ###### diagram-component-001-custom-extensions.puml
+
 <img src="./diagrams/puml-images/component/diagram-component-001-custom-extensions.png" alt="COMPONENT_DIAGRAM" />
 
 ###### diagram-component-002-addons-market.puml
+
 <img src="./diagrams/puml-images/component/diagram-component-002-addons-market.png" alt="COMPONENT_DIAGRAM" />
 
 ###### diagram-component-003-shared-ui.puml
+
 <img src="./diagrams/puml-images/component/diagram-component-003-shared-ui.png" alt="COMPONENT_DIAGRAM" />
 <!--END_COMPONENT_DIAGRAM -->
 
@@ -818,16 +832,21 @@ Instalar e ativar extensões multicapacidade (DataSources, Watchers, Menus e Tem
 # Diagrama de Infraestrutura
 
 <!--<BEGIN_INFRA_DIAGRAM> -->
+
 ###### diagram-infra-001-architecture.puml
+
 <img src="./diagrams/puml-images/infra/diagram-infra-001-architecture.png" alt="INFRA_DIAGRAM" />
 
 ###### diagram-infra-002-deployment-desktop.puml
+
 <img src="./diagrams/puml-images/infra/diagram-infra-002-deployment-desktop.png" alt="INFRA_DIAGRAM" />
 
 ###### diagram-infra-003-sync-engine.puml
+
 <img src="./diagrams/puml-images/infra/diagram-infra-003-sync-engine.png" alt="INFRA_DIAGRAM" />
 
 ###### diagram-infra-004-rxdb-setup.puml
+
 <img src="./diagrams/puml-images/infra/diagram-infra-004-rxdb-setup.png" alt="INFRA_DIAGRAM" />
 <!--END_INFRA_DIAGRAM -->
 
@@ -836,19 +855,25 @@ Instalar e ativar extensões multicapacidade (DataSources, Watchers, Menus e Tem
 # Diagrama de Integrações
 
 <!--<BEGIN_INTEGRATION_DIAGRAM> -->
+
 ###### diagram-integration-001-jira.puml
+
 <img src="./diagrams/puml-images/integration/diagram-integration-001-jira.png" alt="INTEGRATION_DIAGRAM" />
 
 ###### diagram-integration-002-redmine.puml
+
 <img src="./diagrams/puml-images/integration/diagram-integration-002-redmine.png" alt="INTEGRATION_DIAGRAM" />
 
 ###### diagram-integration-003-other-datasources.puml
+
 <img src="./diagrams/puml-images/integration/diagram-integration-003-other-datasources.png" alt="INTEGRATION_DIAGRAM" />
 
 ###### diagram-integration-004-sync-pull.puml
+
 <img src="./diagrams/puml-images/integration/diagram-integration-004-sync-pull.png" alt="INTEGRATION_DIAGRAM" />
 
 ###### diagram-integration-005-sync-replication.puml
+
 <img src="./diagrams/puml-images/integration/diagram-integration-005-sync-replication.png" alt="INTEGRATION_DIAGRAM" />
 <!--END_INTEGRATION_DIAGRAM -->
 
@@ -857,16 +882,21 @@ Instalar e ativar extensões multicapacidade (DataSources, Watchers, Menus e Tem
 # Diagrama de UML
 
 <!--<BEGIN_UML_DIAGRAM> -->
+
 ###### diagram-uml-001-use-case-setup.puml
+
 <img src="./diagrams/puml-images/uml/diagram-uml-001-use-case-setup.png" alt="UML_DIAGRAM" />
 
 ###### diagram-uml-002-use-case-timer.puml
+
 <img src="./diagrams/puml-images/uml/diagram-uml-002-use-case-timer.png" alt="UML_DIAGRAM" />
 
 ###### diagram-uml-003-sequence-sync.puml
+
 <img src="./diagrams/puml-images/uml/diagram-uml-003-sequence-sync.png" alt="UML_DIAGRAM" />
 
 ###### diagram-uml-004-component-overview.puml
+
 <img src="./diagrams/puml-images/uml/diagram-uml-004-component-overview.png" alt="UML_DIAGRAM" />
 <!--END_UML_DIAGRAM -->
 

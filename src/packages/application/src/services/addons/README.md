@@ -10,14 +10,14 @@ Gerencia o catálogo, a governança, as configurações declaradas e o licenciam
 
 ## 📦 Serviços Contidos
 
-| Serviço | Caso de Uso |
-| :--- | :--- |
-| `AddonAccessService` | Verifica se o workspace/usuário tem permissão para acionar capacidades do addon |
-| `ImportAddonService` | Processa o pacote do addon, valida o manifesto e registra o plugin no sistema |
-| `UpdateAddonService` | Atualiza a versão física do addon respeitando compatibilidade de contratos |
-| `LicensingService` | Consulta e valida a licença do produto para addons que exigem tiers superiores |
-| `GetAddonSettingsService` | Recupera as configurações aplicadas com projeção/redação de segredos |
-| `SaveAddonSettingsService` | Salva patches de configurações isoladas por escopo declarado |
+| Serviço                    | Caso de Uso                                                                     |
+| :------------------------- | :------------------------------------------------------------------------------ |
+| `AddonAccessService`       | Verifica se o workspace/usuário tem permissão para acionar capacidades do addon |
+| `ImportAddonService`       | Processa o pacote do addon, valida o manifesto e registra o plugin no sistema   |
+| `UpdateAddonService`       | Atualiza a versão física do addon respeitando compatibilidade de contratos      |
+| `LicensingService`         | Consulta e valida a licença do produto para addons que exigem tiers superiores  |
+| `GetAddonSettingsService`  | Recupera as configurações aplicadas com projeção/redação de segredos            |
+| `SaveAddonSettingsService` | Salva patches de configurações isoladas por escopo declarado                    |
 
 ## 🛡️ Invariantes e Regras de Negócio
 
@@ -26,6 +26,7 @@ Gerencia o catálogo, a governança, as configurações declaradas e o licenciam
 3. **Addon não é Conexão:** O Addon é o código reutilizável. Múltiplas conexões podem apontar para o mesmo Addon (ex: duas contas diferentes do mesmo addon Redmine).
 
 ## 🚫 O que NÃO deve ficar aqui
+
 - Chamadas HTTP diretas para servidores de terceiros (pertencem ao próprio Addon ou a `connections/`).
 - Gerenciamento de tokens de autenticação ou fluxo OAuth (pertencem a `connections/`).
 - Armazenamento em arquivos locais diretos sem passar por repositórios tipados.

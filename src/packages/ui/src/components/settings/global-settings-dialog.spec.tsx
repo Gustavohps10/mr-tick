@@ -24,6 +24,10 @@ const hostBridgeMocks = vi.hoisted(() => ({
   listThemes: vi.fn().mockResolvedValue({ isSuccess: true, data: [] }),
   setActiveTheme: vi.fn().mockResolvedValue({ isSuccess: true }),
   eventsOn: vi.fn().mockReturnValue(vi.fn()),
+  diagnosticsGetSnapshot: vi.fn(),
+  diagnosticsRunChecks: vi.fn(),
+  diagnosticsGenerateReport: vi.fn(),
+  diagnosticsOpenDataDirectory: vi.fn(),
 }))
 
 vi.mock('sonner', () => ({
@@ -35,47 +39,55 @@ vi.mock('sonner', () => ({
   },
 }))
 
+const mockHostBridgeInstance = {
+  diagnostics: {
+    getSnapshot: hostBridgeMocks.diagnosticsGetSnapshot,
+    runChecks: hostBridgeMocks.diagnosticsRunChecks,
+    generateReport: hostBridgeMocks.diagnosticsGenerateReport,
+    openDataDirectory: hostBridgeMocks.diagnosticsOpenDataDirectory,
+  },
+  system: {
+    getSdkVersion: hostBridgeMocks.getSdkVersion,
+    getSettings: hostBridgeMocks.getSettings,
+    saveSettings: hostBridgeMocks.saveSettings,
+    toggleTheme: vi.fn(),
+  },
+  addons: {
+    listAvailable: hostBridgeMocks.listAvailable,
+    listInstalled: hostBridgeMocks.listInstalled,
+    install: hostBridgeMocks.install,
+    uninstall: hostBridgeMocks.uninstall,
+    update: hostBridgeMocks.update,
+    getActiveTheme: hostBridgeMocks.getActiveTheme,
+    listThemes: hostBridgeMocks.listThemes,
+    setActiveTheme: hostBridgeMocks.setActiveTheme,
+    getSchema: vi.fn().mockResolvedValue({ isSuccess: true, data: [] }),
+    getSettings: vi.fn().mockResolvedValue({ isSuccess: true, data: {} }),
+    getConnectionSchema: vi
+      .fn()
+      .mockResolvedValue({ isSuccess: true, data: [] }),
+    getConnectionProfiles: hostBridgeMocks.getConnectionProfiles,
+  },
+  workspaces: {
+    listAll: hostBridgeMocks.workspacesListAll,
+    linkDataSource: hostBridgeMocks.linkDataSource,
+    unlinkDataSource: hostBridgeMocks.unlinkDataSource,
+    submitCredentials: hostBridgeMocks.submitCredentials,
+    disconnectDataSource: hostBridgeMocks.disconnectDataSource,
+  },
+  updater: {
+    checkForUpdates: hostBridgeMocks.checkForUpdates,
+  },
+  licensing: {
+    refresh: vi.fn(),
+    activate: vi.fn(),
+    deactivate: vi.fn(),
+  },
+  events: { on: hostBridgeMocks.eventsOn },
+}
+
 vi.mock('@/hooks/use-host-bridge', () => ({
-  useHostBridge: () => ({
-    system: {
-      getSdkVersion: hostBridgeMocks.getSdkVersion,
-      getSettings: hostBridgeMocks.getSettings,
-      saveSettings: hostBridgeMocks.saveSettings,
-      toggleTheme: vi.fn(),
-    },
-    addons: {
-      listAvailable: hostBridgeMocks.listAvailable,
-      listInstalled: hostBridgeMocks.listInstalled,
-      install: hostBridgeMocks.install,
-      uninstall: hostBridgeMocks.uninstall,
-      update: hostBridgeMocks.update,
-      getActiveTheme: hostBridgeMocks.getActiveTheme,
-      listThemes: hostBridgeMocks.listThemes,
-      setActiveTheme: hostBridgeMocks.setActiveTheme,
-      getSchema: vi.fn().mockResolvedValue({ isSuccess: true, data: [] }),
-      getSettings: vi.fn().mockResolvedValue({ isSuccess: true, data: {} }),
-      getConnectionSchema: vi
-        .fn()
-        .mockResolvedValue({ isSuccess: true, data: [] }),
-      getConnectionProfiles: hostBridgeMocks.getConnectionProfiles,
-    },
-    workspaces: {
-      listAll: hostBridgeMocks.workspacesListAll,
-      linkDataSource: hostBridgeMocks.linkDataSource,
-      unlinkDataSource: hostBridgeMocks.unlinkDataSource,
-      submitCredentials: hostBridgeMocks.submitCredentials,
-      disconnectDataSource: hostBridgeMocks.disconnectDataSource,
-    },
-    updater: {
-      checkForUpdates: hostBridgeMocks.checkForUpdates,
-    },
-    licensing: {
-      refresh: vi.fn(),
-      activate: vi.fn(),
-      deactivate: vi.fn(),
-    },
-    events: { on: hostBridgeMocks.eventsOn },
-  }),
+  useHostBridge: () => mockHostBridgeInstance,
 }))
 
 vi.mock('@/components/addons-manager/license-settings-card', () => ({
@@ -116,6 +128,46 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
     window.HTMLElement.prototype.scrollIntoView = vi.fn()
     useSettingsModalStore.getState().openModal('about')
     hostBridgeMocks.getSdkVersion.mockResolvedValue('0.6.0')
+    hostBridgeMocks.diagnosticsGetSnapshot.mockResolvedValue({
+      isSuccess: true,
+      data: {
+        formatVersion: '1.0',
+        sessionId: 'test-session',
+        revision: 1,
+        emittedAt: new Date().toISOString(),
+        observedGeneration: 'gen-test-1',
+        dispatcher: {
+          state: 'ready',
+          generation: 'gen-test-1',
+          startupStage: 'ready',
+          pendingRequestsByChannel: {},
+        },
+        checks: [],
+        storages: [],
+        workspaces: [],
+        recentEvents: [],
+        discardedEventsCount: 0,
+      },
+    })
+    hostBridgeMocks.diagnosticsRunChecks.mockResolvedValue({
+      isSuccess: true,
+      data: [],
+    })
+    hostBridgeMocks.diagnosticsGenerateReport.mockResolvedValue({
+      isSuccess: true,
+      data: {
+        formatVersion: '1.0',
+        generatedAt: new Date().toISOString(),
+        sessionId: 'test-session',
+        appVersion: '1.0.0',
+        platform: 'win32',
+        snapshot: {},
+        bootJournal: [],
+      },
+    })
+    hostBridgeMocks.diagnosticsOpenDataDirectory.mockResolvedValue({
+      isSuccess: true,
+    })
     hostBridgeMocks.listAvailable.mockResolvedValue({
       isSuccess: true,
       data: [],
@@ -152,11 +204,17 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
     expect(
       screen.getByPlaceholderText('Localizar configurações...'),
     ).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /configurações/i })).toBeTruthy()
+    expect(
+      screen.getByRole('heading', { name: /extensões & addons/i }),
+    ).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /sistema/i })).toBeTruthy()
     expect(screen.getByTestId('settings-nav-tab-about')).toBeTruthy()
     expect(screen.getByTestId('settings-nav-tab-general')).toBeTruthy()
     expect(screen.getByTestId('settings-nav-tab-appearance')).toBeTruthy()
     expect(screen.getByTestId('settings-nav-tab-updates')).toBeTruthy()
     expect(screen.getByTestId('settings-nav-tab-license')).toBeTruthy()
+    expect(screen.getByTestId('settings-nav-tab-system-data')).toBeTruthy()
     expect(screen.getByTestId('settings-nav-tab-addons-browse')).toBeTruthy()
     expect(screen.getByTestId('settings-nav-tab-addons-installed')).toBeTruthy()
   })
@@ -193,6 +251,19 @@ describe('GlobalSettingsDialog (Obsidian Style)', () => {
 
     expect(screen.getByText('Inicialização Automática')).toBeTruthy()
     expect(screen.getByText('Minimizar para a Bandeja')).toBeTruthy()
+  })
+
+  it('navigates to system-data tab and renders diagnostics content', async () => {
+    renderDialog()
+
+    const systemDataBtn = screen.getByTestId('settings-nav-tab-system-data')
+    fireEvent.click(systemDataBtn)
+
+    expect(
+      await screen.findByText('Saúde do Sistema e Diagnóstico'),
+    ).toBeTruthy()
+    expect(screen.getByTestId('system-data-settings-tab')).toBeTruthy()
+    expect(screen.getByTestId('system-lifecycle-card')).toBeTruthy()
   })
 
   it('navigates to addons tabs smoothly inside the unified settings dialog', () => {

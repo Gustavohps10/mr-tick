@@ -3,48 +3,48 @@
   "revision": 0,
   "lastOperationId": null,
   "workspaces": [
-  {
-    "id": "ws-15c9d402-b6da-48ac-9a75-1b948cd0ec92",
-    "name": "TESTE",
-    "avatarUrl": "",
-    "status": "configured",
-    "description": "",
-    "connections": [
-      {
-        "id": "mr-tick-datasource-fake-c3f15587",
-        "status": "connected",
-        "addonId": "mr-tick-datasource-fake",
-        "connectionProfileId": "fake-main",
-        "cardinality": "multi",
-        "generation": 1,
-        "authorizationId": "seed-auth-mr-tick-datasource-fake-c3f15587",
-        "identity": {
-          "kind": "human",
-          "providerId": "fake",
-          "tenantId": "fake.mr-tick-app.local",
-          "providerSubjectId": "1",
-          "displayName": "Alex Silva"
-        },
-        "config": {
-          "serverUrl": "https://fake.mr-tick-app.local",
-          "username": "Admin",
-          "password": "123"
+    {
+      "id": "ws-15c9d402-b6da-48ac-9a75-1b948cd0ec92",
+      "name": "TESTE",
+      "avatarUrl": "",
+      "status": "configured",
+      "description": "",
+      "connections": [
+        {
+          "id": "mr-tick-datasource-fake-c3f15587",
+          "status": "connected",
+          "addonId": "mr-tick-datasource-fake",
+          "connectionProfileId": "fake-main",
+          "cardinality": "multi",
+          "generation": 1,
+          "authorizationId": "seed-auth-mr-tick-datasource-fake-c3f15587",
+          "identity": {
+            "kind": "human",
+            "providerId": "fake",
+            "tenantId": "fake.mr-tick-app.local",
+            "providerSubjectId": "1",
+            "displayName": "Alex Silva"
+          },
+          "config": {
+            "serverUrl": "https://fake.mr-tick-app.local",
+            "username": "Admin",
+            "password": "123"
+          }
         }
-      }
-    ],
-    "createdAt": "2026-09-06T23:41:01.044Z",
-    "updatedAt": "2026-09-20T08:32:19.581Z"
-  },
-  {
-    "id": "ws-isolated-9999-8888-777766665555",
-    "name": "WORKSPACE ISOLADO",
-    "avatarUrl": "",
-    "status": "configured",
-    "description": "Workspace isolado para testes de multi-tenancy",
-    "connections": [],
-    "createdAt": "2026-09-20T10:00:00.000Z",
-    "updatedAt": "2026-09-20T10:00:00.000Z"
-  }
+      ],
+      "createdAt": "2026-09-06T23:41:01.044Z",
+      "updatedAt": "2026-09-20T08:32:19.581Z"
+    },
+    {
+      "id": "ws-isolated-9999-8888-777766665555",
+      "name": "WORKSPACE ISOLADO",
+      "avatarUrl": "",
+      "status": "configured",
+      "description": "Workspace isolado para testes de multi-tenancy",
+      "connections": [],
+      "createdAt": "2026-09-20T10:00:00.000Z",
+      "updatedAt": "2026-09-20T10:00:00.000Z"
+    }
   ],
   "workspaceCredentialReferences": [],
   "connectionReservations": [],

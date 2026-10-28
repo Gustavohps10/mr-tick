@@ -10,15 +10,15 @@ Gerencia a unidade primária de agrupamento de trabalho do usuário no Mr. Tick:
 
 ## 📦 Serviços Contidos
 
-| Serviço | Caso de Uso |
-| :--- | :--- |
-| `CreateWorkspaceService` | Criação com validação de regras de domínio e persistência inicial |
-| `DeleteWorkspaceService` | Exclusão do workspace e coordenação de limpeza de vínculos associados |
-| `GetWorkspaceService` | Consulta de detalhes de um workspace específico por ID |
-| `ListWorkspacesService` | Listagem paginada/filtrada de workspaces disponíveis |
-| `MarkWorkspaceAsConfiguredService` | Transição de estado para marcar workspace como pronto para uso |
-| `UpdateWorkspaceIdentityService` | Alteração de propriedades visuais e cadastrais (nome, cor, logo) |
-| `GetCurrentUserService` | Resolução da identidade do usuário no workspace |
+| Serviço                            | Caso de Uso                                                           |
+| :--------------------------------- | :-------------------------------------------------------------------- |
+| `CreateWorkspaceService`           | Criação com validação de regras de domínio e persistência inicial     |
+| `DeleteWorkspaceService`           | Exclusão do workspace e coordenação de limpeza de vínculos associados |
+| `GetWorkspaceService`              | Consulta de detalhes de um workspace específico por ID                |
+| `ListWorkspacesService`            | Listagem paginada/filtrada de workspaces disponíveis                  |
+| `MarkWorkspaceAsConfiguredService` | Transição de estado para marcar workspace como pronto para uso        |
+| `UpdateWorkspaceIdentityService`   | Alteração de propriedades visuais e cadastrais (nome, cor, logo)      |
+| `GetCurrentUserService`            | Resolução da identidade do usuário no workspace                       |
 
 ## 🛡️ Invariantes e Regras de Negócio
 
@@ -27,6 +27,7 @@ Gerencia a unidade primária de agrupamento de trabalho do usuário no Mr. Tick:
 3. **Nenhum Segredo na Entidade Workspace:** O workspace armazena apenas configurações públicas e metadados de identificação. Tokens e senhas pertencem exclusivamente ao subsistema de conexões e cofre (`connections/`).
 
 ## 🚫 O que NÃO deve ficar aqui
+
 - Regras de conexão com APIs externas ou OAuth (pertencem a `connections/`).
 - Criação e disparo de timers (pertencem a `local-runtime/`).
 - Sincronização de apontamentos ou tarefas (pertencem a `sync/`).

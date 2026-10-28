@@ -10,15 +10,16 @@ Esta camada orquestra os **Casos de Uso (Use Cases)** do ecossistema Mr. Tick.
 
 ## 📁 Subcontextos e Responsabilidades
 
-| Módulo | Responsabilidade | O que entra | O que sai |
-| :--- | :--- | :--- | :--- |
-| [`workspaces/`](./workspaces/) | Gerenciamento de áreas de trabalho do usuário | Criação, deleção, configuração e identificação de workspace | `WorkspaceDTO`, estados de configuração |
-| [`addons/`](./addons/) | Catálogo, ciclo de vida e settings de plugins | Importação, atualização, licença e configurações declaradas | Manifestos, snapshots de settings, autorizações |
-| [`connections/`](./connections/) | Vínculos com o mundo exterior | Fluxos OAuth, autenticação por conexão, cofre e cardinalidade | Identidades de autorização, tokens seguros no cofre |
-| [`sync/`](./sync/) | Sincronização de dados remotos | Puxar/empurrar tarefas, apontamentos e metadados de datasources | Snapshots locais atualizados e confirmados |
-| [`local-runtime/`](./local-runtime/) | Motor determinístico local de tempo real | Comandos de timer, pausas, deduplicação e resolução de conflitos | Estado do timer, eventos de ciclo de vida local |
+| Módulo                               | Responsabilidade                              | O que entra                                                      | O que sai                                           |
+| :----------------------------------- | :-------------------------------------------- | :--------------------------------------------------------------- | :-------------------------------------------------- |
+| [`workspaces/`](./workspaces/)       | Gerenciamento de áreas de trabalho do usuário | Criação, deleção, configuração e identificação de workspace      | `WorkspaceDTO`, estados de configuração             |
+| [`addons/`](./addons/)               | Catálogo, ciclo de vida e settings de plugins | Importação, atualização, licença e configurações declaradas      | Manifestos, snapshots de settings, autorizações     |
+| [`connections/`](./connections/)     | Vínculos com o mundo exterior                 | Fluxos OAuth, autenticação por conexão, cofre e cardinalidade    | Identidades de autorização, tokens seguros no cofre |
+| [`sync/`](./sync/)                   | Sincronização de dados remotos                | Puxar/empurrar tarefas, apontamentos e metadados de datasources  | Snapshots locais atualizados e confirmados          |
+| [`local-runtime/`](./local-runtime/) | Motor determinístico local de tempo real      | Comandos de timer, pausas, deduplicação e resolução de conflitos | Estado do timer, eventos de ciclo de vida local     |
 
 ## 🚫 O que NUNCA colocar aqui
+
 - Mocks ou drivers de bancos de dados específicos (pertencem a `@mr-tick/adapters`).
 - Componentes visuais, hooks React ou estilos (pertencem a `@mr-tick/ui` ou `apps/desktop`).
 - Definições de entidades puras sem orquestração (pertencem a `@mr-tick/domain`).

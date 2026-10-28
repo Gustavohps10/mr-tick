@@ -1,9 +1,13 @@
-import type { IHostBridge } from '@mr-tick/application'
+import type {
+  DiagnosticStorageAvailability,
+  IHostBridge,
+} from '@mr-tick/application'
 import { isWorkspaceScoped } from '@mr-tick/shared/helpers'
 import { createBrowserLocalRuntime } from '@mr-tick/ui/local-runtime'
 
 import type {
   RuntimeCorePacket,
+  RuntimeDiagnosticProbePacket,
   RuntimePersistencePacket,
   RuntimeRequestPacket,
   RuntimeSyncPacket,
@@ -55,6 +59,14 @@ export async function startLocalRuntimeRenderer(): Promise<void> {
   const started = await owner.start()
   if (started.isFailure()) {
     console.error('[LocalRuntime] Startup failed:', started.failure.messageKey)
+    await window.electron.ipcRenderer.invoke('local-runtime:failed', {
+      generation,
+      stage: 'owner.start',
+      error: {
+        messageKey: started.failure.messageKey,
+        statusCode: started.failure.statusCode,
+      },
+    })
     return
   }
   window.electron.ipcRenderer.on(
@@ -108,6 +120,79 @@ export async function startLocalRuntimeRenderer(): Promise<void> {
         requestId: packet.requestId,
         generation,
         response,
+      })
+    },
+  )
+  window.electron.ipcRenderer.on(
+    'local-runtime:execute-diagnostic-probe',
+    async (event, packet: RuntimeDiagnosticProbePacket) => {
+      if (packet.generation !== generation) return
+
+      const estimateCollectedAt = new Date().toISOString()
+      let storageEstimate: DiagnosticStorageAvailability = {
+        status: 'not-supported',
+        reason: 'NAVIGATOR_STORAGE_ESTIMATE_NOT_SUPPORTED',
+        collectedAt: estimateCollectedAt,
+      }
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.storage &&
+        typeof navigator.storage.estimate === 'function'
+      ) {
+        try {
+          const estimate = await navigator.storage.estimate()
+          if (typeof estimate.usage === 'number') {
+            storageEstimate = {
+              status: 'available',
+              bytes: estimate.usage,
+              precision: 'estimated',
+              coverage: 'origin',
+              unit: 'bytes',
+              collectedAt: estimateCollectedAt,
+            }
+          }
+          if (typeof estimate.usage !== 'number') {
+            storageEstimate = {
+              status: 'unavailable',
+              reason: 'STORAGE_ESTIMATE_USAGE_NOT_A_NUMBER',
+              collectedAt: estimateCollectedAt,
+            }
+          }
+        } catch (error) {
+          const reason =
+            error instanceof Error ? error.message : 'STORAGE_ESTIMATE_FAILED'
+          storageEstimate = {
+            status: 'unavailable',
+            reason,
+            collectedAt: estimateCollectedAt,
+          }
+        }
+      }
+      if (
+        typeof navigator === 'undefined' ||
+        !navigator.storage ||
+        typeof navigator.storage.estimate !== 'function'
+      ) {
+        storageEstimate = {
+          status: 'not-supported',
+          reason: 'NAVIGATOR_STORAGE_ESTIMATE_NOT_SUPPORTED',
+          collectedAt: estimateCollectedAt,
+        }
+      }
+
+      const diagnoseResult = await owner.diagnose()
+      window.electron.ipcRenderer.send('local-runtime:diagnostic-probe-reply', {
+        requestId: packet.requestId,
+        generation,
+        response: {
+          ok: true,
+          value: {
+            observedGeneration: generation,
+            workspaces: diagnoseResult.workspaces,
+            storageEstimate,
+            operationalReadChecks: diagnoseResult.operationalReadChecks,
+          },
+        },
       })
     },
   )

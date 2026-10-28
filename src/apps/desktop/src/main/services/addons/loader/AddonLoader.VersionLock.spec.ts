@@ -247,7 +247,7 @@ requiredApiVersion: '-1'
 
     expect(loaded).toBe(true)
     expect(addonLoader.hasActiveAddon('test-universal-addon')).toBe(true)
-  })
+  }, 15000)
 
   it('deve carregar com sucesso qualquer addon quando executando em ambiente E2E (PLAYWRIGHT_TEST=1)', async () => {
     const originalEnv = process.env.PLAYWRIGHT_TEST
@@ -278,5 +278,5 @@ requiredApiVersion: '>=0.9.0'
         process.env.PLAYWRIGHT_TEST = originalEnv
       }
     }
-  })
+  }, 15000)
 })

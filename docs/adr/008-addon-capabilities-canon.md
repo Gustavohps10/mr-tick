@@ -1,10 +1,13 @@
 # ADR-008: Padronização de Capacidades (AddonCapability) e Desacoplamento de Conexões e DataSources
 
 ## Status
+
 Aprovado
 
 ## Contexto
+
 Historicamente, o ecossistema Mr. Tick utilizava conceitos duplicados e ambíguos para classificar addons:
+
 - Existiam simultaneamente campos como `category` (singular), `categories` (plural) e `capabilities` em manifestos e DTOs.
 - Em alguns locais, foi introduzida uma tentativa de microversionamento granular por capacidade (`contractVersion`), que gerava complexidade desnecessária visto que o ecossistema já possui o campo `requiredApiVersion` para determinar a compatibilidade global com a API/SDK do Core.
 - Na camada de interface (`@mr-tick/ui`), todo vínculo de conta externa (`WorkspaceConnectionViewModel`) era tratado indistintamente como um `DataSource`, fazendo com que addons de captura e presença como o `mistertick-discord` fossem despachados para a esteira de sincronização de tarefas e apontamentos do RxDB/LocalRuntime, aparecendo erroneamente no popover do `Header`.
@@ -16,12 +19,7 @@ Historicamente, o ecossistema Mr. Tick utilizava conceitos duplicados e ambíguo
    - A união de capacidades canônicas é definida como:
      ```ts
      export type AddonCapability =
-       | 'auth'
-       | 'dataSource'
-       | 'watcher'
-       | 'calendar'
-       | 'punch'
-       | 'theme'
+       'auth' | 'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme'
      ```
    - A compatibilidade de cada addon com o Core passa a ser regida estritamente por `requiredApiVersion`, dispensando `contractVersion` por item de capacidade.
 
@@ -53,6 +51,7 @@ Historicamente, o ecossistema Mr. Tick utilizava conceitos duplicados e ambíguo
    - Telas de atribuição e busca de tarefas (`task-lookup`, `task-popover`) utilizam apenas `dataSourceConnections`.
 
 ## Consequências
+
 - Fim de verificações redundantes ou comparadores case-insensitive (`includes('Watcher') || includes('watchers')`).
 - Addons utilitários e watchers (como o Discord Presence) não entram mais na esteira de sincronização de banco de dados do Core nem geram ruído na interface do usuário.
 - Modelo mental limpo, extensível e orientado a contratos no SDK.

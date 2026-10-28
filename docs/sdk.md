@@ -2,17 +2,16 @@
 
 O SDK reúne ferramentas para criar extensões do Mr. Tick sem alterar o aplicativo. Ele permite conectar ferramentas de trabalho, consultar tarefas, registrar apontamentos e sugestões, adicionar ações e criar temas. Essas extensões são chamadas de addons.
 
-
 O pacote público `@mr-tick/sdk` é o ponto de entrada para addons. Os guias de schemas de conexão acompanham o SDK 0.12 publicado no npm e `requiredApiVersion: '>=0.12.0'`; o empacotamento deriva o intervalo da versão do SDK usado pela CLI.
 
 ## Conceitos
 
-| Conceito | Responsabilidade |
-| --- | --- |
-| Capability | Classificação no manifesto: auth, dataSource, watcher, calendar, punch ou theme |
+| Conceito     | Responsabilidade                                                                |
+| ------------ | ------------------------------------------------------------------------------- |
+| Capability   | Classificação no manifesto: auth, dataSource, watcher, calendar, punch ou theme |
 | Contribuição | Registro em runtime de comandos, menus, settings, conexões, datasource ou temas |
-| Conexão | Conta externa no escopo de um workspace, com identidade e autorizações |
-| Datasource | Providers de tarefas, apontamentos, membros e metadados |
+| Conexão      | Conta externa no escopo de um workspace, com identidade e autorizações          |
+| Datasource   | Providers de tarefas, apontamentos, membros e metadados                         |
 
 Uma conexão de watcher não é datasource e não entra na replicação de tarefas/apontamentos. O manifesto usa somente `capabilities`, sem descritores versionados por capacidade. Autenticação fica em `contributions.connections`; o core coordena tentativas, cofre e renovação.
 

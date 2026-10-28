@@ -5,7 +5,9 @@ Este documento consolida a evolução de produto, arquitetura e marcos técnicos
 ---
 
 ## 🎯 Proposta de Valor
+
 O Mr. Tick é o **cockpit de produtividade e time tracking local-first** para desenvolvedores e equipes técnicas:
+
 - **Zero Context-Switching:** Centraliza tarefas de múltiplos gerenciadores (Redmine, Jira, GitHub Issues) e calendário em uma timeline rápida e unificada.
 - **100% Offline-First:** Toda a persistência é local (RxDB), permitindo resposta instantânea com zero latência mesmo com APIs externas lentas ou indisponíveis.
 - **Extensibilidade Aberta (SDK):** Qualquer desenvolvedor pode plugar novas fontes de dados, watchers de atividade, temas e comandos.
@@ -15,6 +17,7 @@ O Mr. Tick é o **cockpit de produtividade e time tracking local-first** para de
 ## 🧭 Marcos de Evolução
 
 ### ✅ Fase 1: Fundação & Motor Local-First (Entregue)
+
 - [x] Arquitetura em Monorepo estruturada com Turborepo e Yarn 4.
 - [x] Motor de sincronização offline-first e persistência local reativa com **RxDB**.
 - [x] Reconciliação canônica, prevenção de conflitos e recuperação atômica de criação de apontamentos.
@@ -30,6 +33,7 @@ O Mr. Tick é o **cockpit de produtividade e time tracking local-first** para de
 ---
 
 ### 🚀 Fase 2: Distribuição, Auto-Update & Estabilidade de Addons (Próximo Marco)
+
 - [ ] **Homologação Completa do Auto-Update:**
   - Validação do fluxo de atualização transparente com tags monorepo (`@mr-tick/desktop@x.y.z`) via GitHub Releases.
   - Notificação não intrusiva na interface para reinicialização suave.
@@ -43,6 +47,7 @@ O Mr. Tick é o **cockpit de produtividade e time tracking local-first** para de
 ---
 
 ### 🧩 Fase 3: Expansão do Ecossistema de Plugins
+
 - [ ] **Novos Provedores de Tarefas (DataSources):**
   - Conector nativo para **Jira Cloud / Server**.
   - Conector para **GitHub Issues & Pull Requests**.
@@ -58,6 +63,7 @@ O Mr. Tick é o **cockpit de produtividade e time tracking local-first** para de
 ---
 
 ### 🏢 Fase 4: On-Premise & Enterprise Hub (Visão de Longo Prazo)
+
 - [ ] **Mr. Tick Server (Enterprise Container):**
   - Imagem Docker oficial para execução on-premise em servidores corporativos ou redes VPN.
   - Acesso 100% via navegador web para equipes que não podem instalar software local.

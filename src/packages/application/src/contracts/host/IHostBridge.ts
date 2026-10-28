@@ -40,6 +40,8 @@ import {
 
 import type { MappingFieldDefinition } from '../data/providers/IMetadataProvider'
 export type { MappingFieldDefinition } from '../data/providers/IMetadataProvider'
+import type { IDiagnosticsAPI } from '../diagnostics/IDiagnosticsAPI'
+export type { IDiagnosticsAPI } from '../diagnostics/IDiagnosticsAPI'
 import { FileData } from '../infra'
 import type {
   ILocalPersistenceAPI,
@@ -572,6 +574,7 @@ export interface ILicensingAPI {
 }
 
 export interface IHostBridge {
+  diagnostics: IDiagnosticsAPI
   localRuntime: ILocalRuntimeAPI
   localPersistence: ILocalPersistenceAPI
   localSync: ILocalSyncAPI

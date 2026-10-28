@@ -33,6 +33,7 @@ Origem, partição, userData e nomes dos bancos existentes permanecem estáveis.
 A fila de comandos locais serializa mutações e recuperação de receipts. Operações de sincronização manual usam outra fila por workspace: a espera de forceSync/reconcile por um provider não impede CRUD, timer ou consulta de status local. A replicação continua com um único dono; os updates remotos mantêm os controles de concorrência por documento existentes.
 
 Reset/drop/close fecham a entrada e aguardam operações remotas já admitidas antes de destruir o banco ou executor. O deadline do transporte não libera esse lease. Um provider que nunca responde pode adiar a manutenção/encerramento; não se declara cancelamento remoto que a infraestrutura não oferece. Evoluir cancelamento requer propagá-lo até o provider e confirmar que nenhuma escrita tardia continua possível.
+
 ## Evolução de ambiente
 
 Mover somente RxStorage ao main é diferente de mover RxDatabase, replicação e runtime completos. A segunda opção exige nova composição e adaptadores compatíveis. Backend REST local inicial depende do renderer executor vivo; backend Node autônomo exige armazenamento apropriado e migração validada.
@@ -52,21 +53,31 @@ Os contratos anteriores de timer/apontamentos não são mantidos como compatibil
 Exemplo de criação, usando IDs obtidos do contexto/tarefa selecionados:
 
 ```ts
-const operation = { commandId: crypto.randomUUID(), entryId: crypto.randomUUID() }
-const result = await context.core.timeEntries.create(workspaceId, {
-  connectionInstanceId,
-  dataSourceId,
-  taskId,
-  activityId,
-  timeSpentSeconds: 1800,
-  comments: 'Documentação revisada',
-}, operation)
+const operation = {
+  commandId: crypto.randomUUID(),
+  entryId: crypto.randomUUID(),
+}
+const result = await context.core.timeEntries.create(
+  workspaceId,
+  {
+    connectionInstanceId,
+    dataSourceId,
+    taskId,
+    activityId,
+    timeSpentSeconds: 1800,
+    comments: 'Documentação revisada',
+  },
+  operation,
+)
 ```
 
 Guardar operation junto à intenção antes da chamada. Se a resposta for perdida, repetir a mesma chamada com a mesma identidade e o mesmo conteúdo. Não gerar novo commandId/entryId para o retry. Usar a mesma identidade com conteúdo diferente é erro; uma edição intencional usa novo commandId e mantém entryId do registro.
 
 ```ts
-const pauseOperation = { commandId: crypto.randomUUID(), entryId: activeEntry.entryId }
+const pauseOperation = {
+  commandId: crypto.randomUUID(),
+  entryId: activeEntry.entryId,
+}
 const paused = await context.core.timer.pause(workspaceId, pauseOperation)
 ```
 

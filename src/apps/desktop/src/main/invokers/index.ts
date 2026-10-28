@@ -1,5 +1,6 @@
 export * from './addonsInvoker'
 export * from './credentialsVaultInvoker'
+export * from './diagnosticsInvoker'
 export * from './headersInvoker'
 export * from './licensingInvoker'
 export * from './metadataInvoker'

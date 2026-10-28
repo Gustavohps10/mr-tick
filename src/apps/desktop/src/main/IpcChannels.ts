@@ -88,6 +88,11 @@ export const IpcChannels = {
   UPDATER_CHECK: 'updater:check',
   UPDATER_DOWNLOAD: 'updater:download',
   UPDATER_INSTALL: 'updater:install',
+
+  DIAGNOSTICS_GET_SNAPSHOT: 'diagnostics:get-snapshot',
+  DIAGNOSTICS_RUN_CHECKS: 'diagnostics:run-checks',
+  DIAGNOSTICS_GENERATE_REPORT: 'diagnostics:generate-report',
+  DIAGNOSTICS_OPEN_DATA_DIRECTORY: 'diagnostics:open-data-directory',
 }
 
 export type IpcChannelType = keyof typeof IpcChannels

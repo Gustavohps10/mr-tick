@@ -12,6 +12,11 @@ import { Either } from '@mr-tick/shared/helpers'
 import { BrowserWindow } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type {
+  RuntimeDiagnosticProbeResponse,
+  RuntimeDiagnosticProbeResult,
+  RuntimeStartupFailurePacket,
+} from '../../../runtime-protocol'
 import { LocalRuntimeDispatcher } from './LocalRuntimeDispatcher'
 
 type TestInput =
@@ -19,6 +24,7 @@ type TestInput =
   | LocalPersistenceCommand
   | LocalRuntimeRequest
   | LocalSyncRequest
+  | RuntimeStartupFailurePacket
   | string
 interface TestEvent {
   sender: TestContents
@@ -32,7 +38,7 @@ type TestResponse =
   | null
 type Handler = (
   event: TestEvent,
-  input: TestInput,
+  input?: TestInput,
 ) => TestResponse | Promise<TestResponse>
 interface TestPacket {
   requestId: string
@@ -42,6 +48,8 @@ interface TestPacket {
     | LocalPersistenceResponse
     | LocalRuntimeResponse
     | LocalSyncResponse
+    | RuntimeDiagnosticProbeResult
+    | RuntimeDiagnosticProbeResponse
   channel: string
   data: { requestId: string; workspaceId: string }
 }
@@ -68,6 +76,7 @@ interface TestContents {
 
 const world = vi.hoisted(() => {
   const windowListeners = new Map<string, () => void>()
+  const contentsListeners = new Map<string, (...args: any[]) => void>()
   const handlers = new Map<string, Handler>()
   const listeners = new Map<string, Listener[]>()
   function contents(id: number, url: string): TestContents {
@@ -78,7 +87,9 @@ const world = vi.hoisted(() => {
       send(channel, packet) {
         this.messages.push({ channel, packet })
       },
-      on: () => undefined,
+      on: (event: string, listener: (...args: any[]) => void) => {
+        contentsListeners.set(event, listener)
+      },
       reload: () => undefined,
     }
   }
@@ -96,7 +107,14 @@ const world = vi.hoisted(() => {
     isDestroyed: () => false,
     on: () => undefined,
   }
-  return { handlers, listeners, runtime, main, windowListeners }
+  return {
+    handlers,
+    listeners,
+    runtime,
+    main,
+    windowListeners,
+    contentsListeners,
+  }
 })
 
 vi.mock('electron', () => ({
@@ -708,4 +726,281 @@ it('blocks lifecycle mutation when the selected connection has local pending wri
   const result = await guarded
   expect(result.isFailure()).toBe(true)
   expect(operation).not.toHaveBeenCalled()
+})
+
+describe('LocalRuntimeDispatcher diagnostic lifecycle (Block A)', () => {
+  it('resolves whenReady with false and records explicit failure when executor fails before deadline', async () => {
+    const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+    const generation = (await route('local-runtime:begin')(
+      { sender: world.runtime.webContents },
+      '',
+    )) as string
+    expect(typeof generation).toBe('string')
+
+    const readyPromise = dispatcher.whenReady()
+
+    const failurePacket: RuntimeStartupFailurePacket = {
+      generation,
+      stage: 'owner.start',
+      error: {
+        messageKey: 'WORKSPACE_REGISTRY_OPEN_FAILED',
+        statusCode: 500,
+      },
+    }
+    const result = await route('local-runtime:failed')(
+      { sender: world.runtime.webContents },
+      failurePacket,
+    )
+    expect(result).toBe(generation)
+
+    const readyResult = await readyPromise
+    expect(readyResult).toBe(false)
+
+    const diagnostic = dispatcher.getDiagnosticState()
+    expect(diagnostic.startupStage).toBe('failed')
+    expect(diagnostic.lastStartupFailure).toMatchObject({
+      kind: 'explicit',
+      stage: 'owner.start',
+      messageKey: 'WORKSPACE_REGISTRY_OPEN_FAILED',
+      statusCode: 500,
+    })
+  })
+
+  it('ignores failure packets and ready packets from unauthorized sender or obsolete generation', async () => {
+    const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+    const generation = (await route('local-runtime:begin')(
+      { sender: world.runtime.webContents },
+      '',
+    )) as string
+
+    const wrongSender = await route('local-runtime:failed')(
+      { sender: world.main.webContents },
+      {
+        generation,
+        stage: 'owner.start',
+        error: { messageKey: 'UNAUTHORIZED_FAIL', statusCode: 500 },
+      },
+    )
+    expect(wrongSender).toBeNull()
+    expect(dispatcher.getDiagnosticState().lastStartupFailure).toBeUndefined()
+
+    const wrongGeneration = await route('local-runtime:failed')(
+      { sender: world.runtime.webContents },
+      {
+        generation: 'stale-generation-uuid',
+        stage: 'owner.start',
+        error: { messageKey: 'STALE_FAIL', statusCode: 500 },
+      },
+    )
+    expect(wrongGeneration).toBeNull()
+    expect(dispatcher.getDiagnosticState().lastStartupFailure).toBeUndefined()
+
+    const wrongSenderReady = await route('local-runtime:ready')(
+      { sender: world.main.webContents },
+      generation,
+    )
+    expect(wrongSenderReady).toBeNull()
+    expect(dispatcher.getState()).toBe('starting')
+  })
+
+  it('distinguishes deadline expiration from explicit failure and records kind: deadline_exceeded', async () => {
+    vi.useFakeTimers()
+    const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+    await route('local-runtime:begin')(
+      { sender: world.runtime.webContents },
+      '',
+    )
+
+    const readyPromise = dispatcher.whenReady()
+    vi.advanceTimersByTime(30000)
+
+    const readyResult = await readyPromise
+    expect(readyResult).toBe(false)
+
+    const diagnostic = dispatcher.getDiagnosticState()
+    expect(diagnostic.startupStage).toBe('timed_out')
+    expect(diagnostic.lastStartupFailure).toMatchObject({
+      kind: 'deadline_exceeded',
+      stage: 'startup_timeout',
+      messageKey: 'localRuntime.startupDeadlineExceeded',
+    })
+  })
+
+  it('allows current generation to complete readiness after invalidation', async () => {
+    const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+    const gen1 = (await route('local-runtime:begin')(
+      { sender: world.runtime.webContents },
+      '',
+    )) as string
+
+    await route('local-runtime:failed')(
+      { sender: world.runtime.webContents },
+      {
+        generation: gen1,
+        stage: 'owner.start',
+        error: { messageKey: 'INITIAL_FAIL', statusCode: 500 },
+      },
+    )
+    expect(dispatcher.getDiagnosticState().startupStage).toBe('failed')
+
+    world.contentsListeners.get('did-start-navigation')?.({}, '', false, true)
+    expect(dispatcher.getDiagnosticState().startupStage).toBe('restarting')
+    expect(dispatcher.getDiagnosticState().lastStartupFailure).toBeUndefined()
+
+    const gen2 = (await route('local-runtime:begin')(
+      { sender: world.runtime.webContents },
+      '',
+    )) as string
+    expect(gen2).not.toBe(gen1)
+
+    await route('local-runtime:ready')(
+      { sender: world.runtime.webContents },
+      gen2,
+    )
+
+    expect(await dispatcher.whenReady()).toBe(true)
+    expect(dispatcher.getState()).toBe('ready')
+    expect(dispatcher.getDiagnosticState().startupStage).toBe('ready')
+    expect(dispatcher.getDiagnosticState().lastStartupFailure).toBeUndefined()
+  })
+
+  it('dispatches diagnostic probe to executor and receives reply', async () => {
+    const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+    await ready(dispatcher)
+
+    const probePromise = dispatcher.probeExecutor(5000)
+
+    const probeMessage = world.runtime.webContents.messages.find(
+      (item) => item.channel === 'local-runtime:execute-diagnostic-probe',
+    )
+    if (
+      probeMessage === undefined ||
+      probeMessage.packet.requestId === undefined ||
+      probeMessage.packet.generation === undefined
+    ) {
+      return expect.fail('Expected diagnostic probe request')
+    }
+
+    emit('local-runtime:diagnostic-probe-reply', world.runtime.webContents, {
+      requestId: probeMessage.packet.requestId,
+      generation: probeMessage.packet.generation,
+      response: {
+        ok: true,
+        value: {
+          observedGeneration: probeMessage.packet.generation,
+          workspaces: [
+            {
+              workspaceId: 'ws-1',
+              status: 'ready',
+              hasDb: true,
+            },
+          ],
+          storageEstimate: {
+            status: 'available',
+            bytes: 1048576,
+            precision: 'estimated',
+            coverage: 'origin',
+            unit: 'bytes',
+            collectedAt: '2026-10-27T00:00:00.000Z',
+          },
+          operationalReadChecks: [],
+        },
+      },
+      channel: '',
+      data: { requestId: '', workspaceId: '' },
+    })
+
+    const probeResult = await probePromise
+    expect(probeResult).toEqual({
+      ok: true,
+      value: {
+        observedGeneration: probeMessage.packet.generation,
+        workspaces: [
+          {
+            workspaceId: 'ws-1',
+            status: 'ready',
+            hasDb: true,
+          },
+        ],
+        storageEstimate: {
+          status: 'available',
+          bytes: 1048576,
+          precision: 'estimated',
+          coverage: 'origin',
+          unit: 'bytes',
+          collectedAt: '2026-10-27T00:00:00.000Z',
+        },
+        operationalReadChecks: [],
+      },
+    })
+  })
+
+  it('recovers to ready state when delayed ready arrives from the same generation after timeout', async () => {
+    vi.useFakeTimers()
+    const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+
+    const gen = (await route('local-runtime:begin')({
+      sender: world.runtime.webContents,
+    })) as string
+
+    const whenReadyPromise = dispatcher.whenReady()
+    vi.advanceTimersByTime(30000)
+
+    const readyBeforeDelayed = await whenReadyPromise
+    expect(readyBeforeDelayed).toBe(false)
+    expect(dispatcher.getDiagnosticState().startupStage).toBe('timed_out')
+    expect(dispatcher.getDiagnosticState().lastStartupFailure?.kind).toBe(
+      'deadline_exceeded',
+    )
+
+    await route('local-runtime:ready')(
+      { sender: world.runtime.webContents },
+      gen,
+    )
+
+    expect(dispatcher.getState()).toBe('ready')
+    expect(dispatcher.getDiagnosticState().startupStage).toBe('ready')
+    expect(dispatcher.getDiagnosticState().lastStartupFailure).toBeUndefined()
+    expect(await dispatcher.whenReady()).toBe(true)
+
+    vi.useRealTimers()
+  })
+
+  it('notifies registered diagnostic event listeners on failure and recovery', async () => {
+    const dispatcher = new LocalRuntimeDispatcher(new BrowserWindow())
+    const events: unknown[] = []
+    dispatcher.onDiagnosticEvent((event) => {
+      events.push(event)
+    })
+
+    const gen = (await route('local-runtime:begin')({
+      sender: world.runtime.webContents,
+    })) as string
+
+    await route('local-runtime:failed')(
+      { sender: world.runtime.webContents },
+      {
+        generation: gen,
+        stage: 'owner.start',
+        error: { messageKey: 'CUSTOM_BOOT_ERROR', statusCode: 500 },
+      },
+    )
+
+    expect(events).toHaveLength(2)
+    expect((events[0] as { stage: string })?.stage).toBe('bootstrapping')
+    expect((events[1] as { stage: string; code?: string })?.stage).toBe(
+      'failed',
+    )
+    expect((events[1] as { stage: string; code?: string })?.code).toBe(
+      'CUSTOM_BOOT_ERROR',
+    )
+
+    await route('local-runtime:ready')(
+      { sender: world.runtime.webContents },
+      gen,
+    )
+
+    expect(events).toHaveLength(3)
+    expect((events[2] as { stage: string })?.stage).toBe('ready')
+  })
 })

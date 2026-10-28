@@ -48,7 +48,6 @@ Billing success foi validado como página de confirmação e instruções, sem c
 
 O primeiro build da rodada anterior falhou por falta de espaço. Foram limpos somente .next da landing e .turbo, com autorização do usuário. A landing é ignorada pela configuração de Changesets; versões não foram alteradas.
 
-
 ## Troca de idioma e script do tema
 
 - Reproduzido no navegador: a navegação cliente PT → EN remontava o layout raiz e inseria novamente o script inline emitido pelo next-themes, gerando o aviso de React sobre scripts renderizados no cliente.

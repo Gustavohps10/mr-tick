@@ -35,7 +35,7 @@ Ao integrar com a Atlassian via OAuth 2.0 para acessar dados da API REST do Jira
 3. **A troca do código por tokens (`access_token` e `refresh_token`):** A Atlassian exige obrigatoriamente que a chamada HTTP POST para `https://auth.atlassian.com/oauth/token` contenha:
    - `grant_type: authorization_code`
    - `client_id: ...`
-   - `client_secret: ...` *(obrigatório no fluxo 3LO padrão)*
+   - `client_secret: ...` _(obrigatório no fluxo 3LO padrão)_
    - `code: ...`
    - `redirect_uri: ...`
 
@@ -91,26 +91,29 @@ Para addons desenvolvidos e mantidos oficialmente pela equipe do Mr. Tick:
 
 ### 4.2. Addons de Terceiros e Comunidade
 
-Addons desenvolvidos por autores externos ou empresas parceiras **não têm acesso de escrita nem podem injetar credenciais confidenciais na `mistertick-api`**. 
+Addons desenvolvidos por autores externos ou empresas parceiras **não têm acesso de escrita nem podem injetar credenciais confidenciais na `mistertick-api`**.
 
 A `mistertick-api` não atua como broker arbitrário para chaves de terceiros, pois isso criaria riscos de segurança, custos de infraestrutura não gerenciados e problemas de responsabilidade legal sobre abusos de API.
 
 Para desenvolver um addon de terceiro, o autor possui três caminhos arquiteturais canônicos:
 
 #### Estratégia 1: API Tokens / Personal Access Tokens (PAT) — Recomendada
+
 - O usuário gera seu próprio token de acesso na interface do serviço (ex: Jira API Token, Redmine API Key, GitLab Access Token).
 - O usuário informa o token diretamente nas configurações da conexão no Mr. Tick Desktop.
-- **Vantagens:** 
+- **Vantagens:**
   - Zero necessidade de backend para o desenvolvedor do addon.
   - Segurança total: a credencial pertence ao usuário e fica armazenada no cofre seguro local da máquina do usuário (`safeStorage`).
   - Sem limites de quota compartilhada entre múltiplos usuários do addon.
 
 #### Estratégia 2: OAuth 2.0 com PKCE Nativo (sem secret)
+
 - Provedores modernos permitem clientes públicos através de OAuth 2.0 Authorization Code Grant com **PKCE (Proof Key for Code Exchange - RFC 7636)** sem exigir `client_secret` (ex: GitHub, Azure AD com Public Client, GitLab, Auth0).
 - O Mr. Tick Core fornece via SDK os utilitários `context.host.oauth.generatePKCE()` e `context.host.oauth.authorize()`.
 - O próprio aplicativo desktop realiza a autorização e a troca direta de código com o provedor, com segurança criptográfica garantida pelo `code_verifier` e `code_challenge`.
 
 #### Estratégia 3: Backend Broker Próprio do Desenvolvedor do Addon
+
 - Caso o provedor externo exija impreterivelmente uma `client_secret` (como no caso da Atlassian 3LO), o desenvolvedor do addon deve disponibilizar seu próprio backend seguro.
 - Exemplos de arquitetura leve e de custo zero:
   - Cloudflare Worker
@@ -122,13 +125,13 @@ Para desenvolver um addon de terceiro, o autor possui três caminhos arquitetura
 
 ## 5. Matriz Comparativa de Modelos de Autenticação
 
-| Modelo | Necessita Backend Próprio? | Segurança de Segredos | Complexidade para o Usuário | Suporte em Provedores |
-| :--- | :---: | :---: | :---: | :--- |
-| **API Token / PAT** | **Não** | Alta (cofre local do OS) | Média (copiar/colar token) | Quase todos (Jira, Redmine, GitLab, GitHub) |
-| **IPC Local (Named Pipe)** | **Não** | Alta (processo local) | Baixíssima (transparente) | Apenas apps desktop com RPC (Discord) |
-| **OAuth 2.0 + PKCE Nativo** | **Não** | Alta (S256 verifier) | Baixa (login no navegador) | Provedores que aceitam Public Clients |
-| **OAuth 2.0 via Broker Oficial** | Sim (`mistertick-api`) | Alta (servidor seguro) | Baixa (login no navegador) | Exclusivo para Addons Oficiais do Mr. Tick |
-| **OAuth 2.0 via Broker de Terceiro** | Sim (Cloudflare/Lambda) | Alta (servidor do autor) | Baixa (login no navegador) | Qualquer provedor que exija `client_secret` |
+| Modelo                               | Necessita Backend Próprio? |  Segurança de Segredos   | Complexidade para o Usuário | Suporte em Provedores                       |
+| :----------------------------------- | :------------------------: | :----------------------: | :-------------------------: | :------------------------------------------ |
+| **API Token / PAT**                  |          **Não**           | Alta (cofre local do OS) | Média (copiar/colar token)  | Quase todos (Jira, Redmine, GitLab, GitHub) |
+| **IPC Local (Named Pipe)**           |          **Não**           |  Alta (processo local)   |  Baixíssima (transparente)  | Apenas apps desktop com RPC (Discord)       |
+| **OAuth 2.0 + PKCE Nativo**          |          **Não**           |   Alta (S256 verifier)   | Baixa (login no navegador)  | Provedores que aceitam Public Clients       |
+| **OAuth 2.0 via Broker Oficial**     |   Sim (`mistertick-api`)   |  Alta (servidor seguro)  | Baixa (login no navegador)  | Exclusivo para Addons Oficiais do Mr. Tick  |
+| **OAuth 2.0 via Broker de Terceiro** |  Sim (Cloudflare/Lambda)   | Alta (servidor do autor) | Baixa (login no navegador)  | Qualquer provedor que exija `client_secret` |
 
 ---
 

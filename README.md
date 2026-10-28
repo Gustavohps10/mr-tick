@@ -37,6 +37,7 @@ O **Mr. Tick** é um aplicativo desktop focado em produtividade e apontamento de
 ## 🚀 Como Executar
 
 ### Pré-requisitos
+
 - **Node.js** 20 LTS ou superior
 - **Yarn 4** habilitado
 

@@ -20,22 +20,25 @@ services/sync/
 ## 📦 Serviços Contidos
 
 ### 1. `metadata/`
-| Serviço | Responsabilidade |
-| :--- | :--- |
+
+| Serviço               | Responsabilidade                                                    |
+| :-------------------- | :------------------------------------------------------------------ |
 | `MetadataPullService` | Puxa tipos de atividades, categorias de tarefas e membros da equipe |
 
 ### 2. `tasks/`
-| Serviço | Responsabilidade |
-| :--- | :--- |
-| `TaskPullService` | Executa paginação e pull incremental de tarefas associadas à conexão |
+
+| Serviço            | Responsabilidade                                                         |
+| :----------------- | :----------------------------------------------------------------------- |
+| `TaskPullService`  | Executa paginação e pull incremental de tarefas associadas à conexão     |
 | `ListTasksService` | Consulta tarefas armazenadas localmente para busca e preenchimento na UI |
 
 ### 3. `time-entries/`
-| Serviço | Responsabilidade |
-| :--- | :--- |
-| `TimeEntriesPullService` | Puxa apontamentos realizados diretamente no servidor externo |
+
+| Serviço                  | Responsabilidade                                                              |
+| :----------------------- | :---------------------------------------------------------------------------- |
+| `TimeEntriesPullService` | Puxa apontamentos realizados diretamente no servidor externo                  |
 | `TimeEntriesPushService` | Envia apontamentos locais para o provedor remoto com garantia de idempotência |
-| `ListTimeEntriesService` | Consulta e projeta apontamentos consolidados |
+| `ListTimeEntriesService` | Consulta e projeta apontamentos consolidados                                  |
 
 ## 🛡️ Invariantes e Regras de Negócio
 
@@ -44,6 +47,7 @@ services/sync/
 3. **HTTP por Conexão:** Nenhuma sincronização compartilha cliente HTTP mutável global. Cada chamada utiliza a fábrica injetada (`IHttpClientFactory`) com a URL e credenciais específicas daquela conexão.
 
 ## 🚫 O que NÃO deve ficar aqui
+
 - Regras de transição de estado de timers ativos (pertencem a `local-runtime/`).
 - Manipulação do cofre de senhas (pertence a `connections/`).
 - Mapeamento de telas e componentes visuais (pertence a `@mr-tick/ui`).

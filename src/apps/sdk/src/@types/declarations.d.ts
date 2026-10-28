@@ -1,2 +1,2 @@
-declare module 'textile-js';
-declare module 'highlight.js';
+declare module 'textile-js'
+declare module 'highlight.js'

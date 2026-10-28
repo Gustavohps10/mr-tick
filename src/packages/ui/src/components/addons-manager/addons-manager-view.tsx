@@ -455,11 +455,11 @@ export function AddonsManagerView({
               key={addon.id}
               className="bg-card flex gap-4 rounded-lg border p-4 shadow-xs"
             >
-              <div className="bg-muted/50 flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border p-1.5 shadow-2xs">
+              <div className="bg-muted/50 flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border p-2 shadow-2xs">
                 <SafeAddonLogo
                   src={addon.logo}
                   alt={addon.name}
-                  className="size-full object-contain"
+                  className="size-full rounded-sm object-contain"
                   fallbackIconClassName="size-6 text-muted-foreground/60"
                 />
               </div>
@@ -551,7 +551,7 @@ export function AddonsManagerView({
                       <SafeAddonLogo
                         src={addon.logo}
                         alt={addon.name}
-                        className="h-full w-full object-contain"
+                        className="h-full w-full rounded-sm object-contain"
                         fallbackIconClassName="h-5 w-5 text-muted-foreground/60"
                       />
                     </div>
@@ -626,7 +626,7 @@ export function AddonsManagerView({
                   <SafeAddonLogo
                     src={activeBrowseAddon.logo}
                     alt={activeBrowseAddon.name}
-                    className="h-full w-full object-contain"
+                    className="h-full w-full rounded-sm object-contain"
                     fallbackIconClassName="h-10 w-10 text-muted-foreground/60"
                   />
                 </div>

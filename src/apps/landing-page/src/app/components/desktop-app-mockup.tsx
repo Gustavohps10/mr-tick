@@ -164,6 +164,28 @@ function mockPaginated<T>(data: T): PaginatedViewModel<T> {
 }
 
 const mockBridgeClient: IHostBridge = {
+  diagnostics: {
+    getSnapshot: async () => ({
+      isSuccess: false,
+      statusCode: 501,
+      error: 'DIAGNOSTICS_NOT_SUPPORTED_IN_WEB_DEMO',
+    }),
+    runChecks: async () => ({
+      isSuccess: false,
+      statusCode: 501,
+      error: 'DIAGNOSTICS_NOT_SUPPORTED_IN_WEB_DEMO',
+    }),
+    generateReport: async () => ({
+      isSuccess: false,
+      statusCode: 501,
+      error: 'DIAGNOSTICS_NOT_SUPPORTED_IN_WEB_DEMO',
+    }),
+    openDataDirectory: async () => ({
+      isSuccess: false,
+      statusCode: 501,
+      error: 'DIAGNOSTICS_NOT_SUPPORTED_IN_WEB_DEMO',
+    }),
+  },
   workspaces: {
     getById: async () => mockSuccess(mockWorkspace),
     listAll: async () => mockPaginated([mockWorkspace]),

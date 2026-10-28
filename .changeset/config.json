@@ -11,7 +11,5 @@
     "version": true,
     "tag": false
   },
-  "ignore": [
-    "@mr-tick/landing-page"
-  ]
+  "ignore": ["@mr-tick/landing-page"]
 }

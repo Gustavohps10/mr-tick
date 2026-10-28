@@ -117,14 +117,15 @@ export function resolveNativeBinding(): string | undefined {
   return undefined
 }
 
+export function resolveSQLiteFilename(storagePath: string): string {
+  if (storagePath === ':memory:') return ':memory:'
+  if (storagePath.endsWith('.sqlite') || storagePath.endsWith('.db'))
+    return storagePath
+  return path.join(storagePath, 'workspaces.sqlite')
+}
+
 export function createSQLiteConnection(storagePath: string): Knex {
-  let filename: string = path.join(storagePath, 'workspaces.sqlite')
-  if (storagePath === ':memory:') {
-    filename = ':memory:'
-  }
-  if (storagePath.endsWith('.sqlite') || storagePath.endsWith('.db')) {
-    filename = storagePath
-  }
+  const filename = resolveSQLiteFilename(storagePath)
 
   if (filename !== ':memory:') {
     const directory = path.dirname(filename)

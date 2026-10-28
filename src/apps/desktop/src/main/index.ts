@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import {
   existsSync,
   readFileSync,
@@ -15,6 +16,7 @@ import {
   SQLiteConnectionLifecycleRepository,
   SQLiteConnectionLifecycleTransactionBoundary,
   SQLiteConnectionReservationRepository,
+  SqliteMetadataDiagnosticAdapter,
   SQLiteWorkspaceCredentialReferenceRegistry,
   SQLiteWorkspacesRepository,
 } from '@mr-tick/adapters/data'
@@ -63,6 +65,7 @@ import {
   TokenHandler,
   UpdaterHandler,
 } from '@/main/handlers'
+import { DiagnosticsHandler } from '@/main/handlers'
 import { AddonsHandler } from '@/main/handlers/AddonsHandler'
 import { MetadataHandler } from '@/main/handlers/MetadataHandler'
 import { WorkspacesHandler } from '@/main/handlers/WorkspacesHandler'
@@ -82,6 +85,9 @@ import {
   offlineAuthorizationVerificationConfiguration,
 } from './securityConfiguration'
 import { AddonCoreCapabilities } from './services/addons/core/AddonCoreCapabilities'
+import { BootJournal } from './services/diagnostics/BootJournal'
+import { DiagnosticEventsBuffer } from './services/diagnostics/DiagnosticEventsBuffer'
+import { DiagnosticsService } from './services/diagnostics/DiagnosticsService'
 
 const requireNative = createRequire(import.meta.url)
 
@@ -587,6 +593,21 @@ if (gotTheLock) {
       handleProtocol()
 
       const userDataPath = app.getPath('userData')
+      const sessionId = randomUUID()
+      const diagnosticsDir = join(userDataPath, 'diagnostics')
+      const eventsBuffer = new DiagnosticEventsBuffer(sessionId)
+      const bootJournal = new BootJournal(
+        diagnosticsDir,
+        sessionId,
+        eventsBuffer,
+      )
+      await bootJournal.initialize()
+      bootJournal.recordPhase(
+        'boot:start',
+        'info',
+        'Application startup initialized',
+      )
+
       const credentialsVault = new KeytarCredentialsVault()
       const workspacesRepository = new SQLiteWorkspacesRepository(userDataPath)
       const lifecycleRepository = new SQLiteConnectionLifecycleRepository(
@@ -611,15 +632,33 @@ if (gotTheLock) {
         workspacesRepository,
         transactionBoundary,
       )
+      bootJournal.recordPhase(
+        'boot:storage_init',
+        'info',
+        'Metadata database initialized',
+      )
+
       const recoveryResult = await credentialRecovery.execute()
       if (recoveryResult.isFailure()) {
         console.error(
           'Credential recovery failed before desktop startup:',
           recoveryResult.failure.messageKey,
         )
+        bootJournal.recordPhase(
+          'boot:fatal',
+          'error',
+          'Credential recovery failed before desktop startup',
+          recoveryResult.failure.messageKey,
+        )
+        await bootJournal.flush()
         app.quit()
         return
       }
+      bootJournal.recordPhase(
+        'boot:credentials_recovery',
+        'info',
+        'Credentials recovery completed',
+      )
       const runtimeWindow = new BrowserWindow({
         show: false,
         webPreferences: {
@@ -631,6 +670,20 @@ if (gotTheLock) {
       })
       runtimeWindow.windowType = 'runtime'
       const localRuntime = new LocalRuntimeDispatcher(runtimeWindow)
+      const metadataDiagnosticAdapter = new SqliteMetadataDiagnosticAdapter(
+        workspacesRepository.db,
+        userDataPath,
+      )
+      const diagnosticsService = new DiagnosticsService(
+        localRuntime,
+        metadataDiagnosticAdapter,
+        eventsBuffer,
+        bootJournal,
+        userDataPath,
+        sessionId,
+        app.getVersion(),
+      )
+      const diagnosticsHandler = new DiagnosticsHandler(diagnosticsService)
       const nodeFileStorage = new HardDiskStorage(
         userDataPath,
         'mr-tick-app://',
@@ -774,7 +827,12 @@ if (gotTheLock) {
           updaterHandler: UpdaterHandler,
         })
 
-      serviceProvider.include({ addonLoader, updaterService })
+      serviceProvider.include({
+        addonLoader,
+        updaterService,
+        diagnosticsHandler,
+        diagnosticsService,
+      })
 
       const licensingFacade =
         serviceProvider.resolve<ILicensingFacade>('licensingFacade')
@@ -916,10 +974,27 @@ if (gotTheLock) {
         )
       }
       const runtimeReady = await localRuntime.whenReady()
-      if (!runtimeReady)
-        console.error(
-          '[LocalRuntime] Executor did not become ready before startup deadline',
+      if (!runtimeReady) {
+        const failure = localRuntime.getDiagnosticState().lastStartupFailure
+        const stage =
+          failure?.kind === 'explicit'
+            ? 'boot:runtime_failed'
+            : 'boot:runtime_timeout'
+        const level = failure?.kind === 'explicit' ? 'error' : 'warn'
+        const message =
+          failure?.kind === 'explicit'
+            ? `Executor failed during startup: ${failure.messageKey}`
+            : 'Executor did not become ready before startup deadline'
+        console.error(`[LocalRuntime] ${message}`)
+        bootJournal.recordPhase(stage, level, message)
+      }
+      if (runtimeReady) {
+        bootJournal.recordPhase(
+          'boot:runtime_ready',
+          'info',
+          'Local runtime executor became ready',
         )
+      }
       createWindow()
       if (
         process.env.NODE_ENV !== 'test' ||
@@ -934,6 +1009,7 @@ if (gotTheLock) {
       })
 
       app.on('before-quit', () => {
+        diagnosticsService.dispose()
         timerRuntime.dispose()
         updaterService.stopAutoCheck()
         if (process.platform === 'win32' && nativeOverlay) {
