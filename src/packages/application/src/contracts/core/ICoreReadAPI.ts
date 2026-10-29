@@ -1,4 +1,5 @@
 import type { ICoreConnectionsReadAPI } from './ICoreConnectionsAPI'
+import type { ICoreMembersAPI } from './ICoreMembersAPI'
 import type { ICoreMetadataAPI } from './ICoreMetadataAPI'
 import type { ICoreRuntimeAPI } from './ICoreRuntimeAPI'
 import type { ICoreTasksAPI } from './ICoreTasksAPI'
@@ -11,4 +12,5 @@ export interface ICoreReadAPI {
   readonly connections: ICoreConnectionsReadAPI
   readonly tasks: ICoreTasksAPI
   readonly metadata: ICoreMetadataAPI
+  readonly members: ICoreMembersAPI
 }

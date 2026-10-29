@@ -29,6 +29,7 @@ export function validateCoreCacheQuery(
         return Either.failure(AppError.ValidationError('TASK_REQUIRED'))
       return Either.success()
     case 'metadata':
+    case 'currentUser':
       return Either.success()
     case 'tasks':
       if (

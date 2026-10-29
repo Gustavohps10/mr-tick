@@ -309,4 +309,124 @@ describe('Durable local command receipts with a real RxDB collection', () => {
     })
     expect(next.ok).toBe(true)
   })
+
+  it('detects only native interval candidates and preserves the conflict token', async () => {
+    const conflict = entry(crypto.randomUUID())
+    const outside = {
+      ...entry(crypto.randomUUID()),
+      startDate: '2026-10-08T12:00:00.000Z',
+      endDate: '2026-10-08T13:00:00.000Z',
+    }
+    const deleted = {
+      ...entry(crypto.randomUUID()),
+      _deleted: true,
+    }
+    await database.timeEntries.bulkInsert([conflict, outside, deleted])
+
+    const result = await executor.query({
+      action: 'detectOverlaps',
+      workspaceId,
+      start: '2026-10-08T10:30:00.000Z',
+      end: '2026-10-08T10:45:00.000Z',
+    })
+
+    expect(result.isSuccess()).toBe(true)
+    if (result.isFailure()) return expect.fail('Expected overlap result')
+    expect(result.success.overlap?.hasOverlap).toBe(true)
+    expect(result.success.overlap?.conflicts.map((item) => item.id)).toEqual([
+      conflict.id,
+    ])
+    expect(result.success.overlap?.conflictToken).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('requires the current conflict token before accepting a suggestion', async () => {
+    const suggestion = {
+      ...entry(crypto.randomUUID()),
+      timeStatus: 'suggestion' as const,
+      source: 'addon' as const,
+      syncStatus: 'local_only' as const,
+    }
+    const conflict = entry(crypto.randomUUID())
+    const suggestionEnd = suggestion.endDate
+    if (suggestionEnd === undefined || suggestionEnd === null)
+      return expect.fail('Expected suggestion end')
+    await database.timeEntries.bulkInsert([suggestion, conflict])
+
+    const rejected = await executor.execute({
+      action: 'acceptSuggestion',
+      workspaceId,
+      commandId: crypto.randomUUID(),
+      entryId: suggestion.id,
+    })
+    expect(rejected.isFailure()).toBe(true)
+    if (rejected.isSuccess()) return expect.fail('Expected overlap rejection')
+    expect(rejected.failure.messageKey).toBe('TIME_ENTRY_OVERLAP_DETECTED')
+    expect(rejected.failure.statusCode).toBe(409)
+
+    const detected = await executor.query({
+      action: 'detectOverlaps',
+      workspaceId,
+      start: suggestion.startDate,
+      end: suggestionEnd,
+      excludeEntryId: suggestion.id,
+    })
+    expect(detected.isSuccess()).toBe(true)
+    if (detected.isFailure() || detected.success.overlap === undefined)
+      return expect.fail('Expected conflict token')
+    const token = detected.success.overlap.conflictToken
+    if (token === undefined) return expect.fail('Expected conflict token')
+
+    const accepted = await executor.execute({
+      action: 'acceptSuggestion',
+      workspaceId,
+      commandId: crypto.randomUUID(),
+      entryId: suggestion.id,
+      confirmation: { conflictToken: token },
+    })
+    expect(accepted.isSuccess()).toBe(true)
+  })
+
+  it('rejects a stale conflict token after the persisted candidate changes', async () => {
+    const suggestion = {
+      ...entry(crypto.randomUUID()),
+      timeStatus: 'suggestion' as const,
+      source: 'addon' as const,
+      syncStatus: 'local_only' as const,
+    }
+    const conflict = entry(crypto.randomUUID())
+    const suggestionEnd = suggestion.endDate
+    if (suggestionEnd === undefined || suggestionEnd === null)
+      return expect.fail('Expected suggestion end')
+    await database.timeEntries.bulkInsert([suggestion, conflict])
+    const detected = await executor.query({
+      action: 'detectOverlaps',
+      workspaceId,
+      start: suggestion.startDate,
+      end: suggestionEnd,
+      excludeEntryId: suggestion.id,
+    })
+    if (detected.isFailure() || detected.success.overlap === undefined)
+      return expect.fail('Expected conflict token')
+    const token = detected.success.overlap.conflictToken
+    if (token === undefined) return expect.fail('Expected conflict token')
+
+    const document = await database.timeEntries.findOne(conflict.id).exec()
+    if (document === null) return expect.fail('Expected conflict document')
+    await document.incrementalPatch({
+      updatedAt: '2026-10-08T11:01:00.000Z',
+    })
+
+    const accepted = await executor.execute({
+      action: 'acceptSuggestion',
+      workspaceId,
+      commandId: crypto.randomUUID(),
+      entryId: suggestion.id,
+      confirmation: { conflictToken: token },
+    })
+    expect(accepted.isFailure()).toBe(true)
+    if (accepted.isSuccess())
+      return expect.fail('Expected stale token rejection')
+    expect(accepted.failure.messageKey).toBe('TIME_ENTRY_OVERLAP_DETECTED')
+    expect(accepted.failure.statusCode).toBe(409)
+  })
 })

@@ -1,4 +1,15 @@
-import type { AddonVaultScope } from '@mr-tick/application'
+import type {
+  AddonEvaluateFormRequest,
+  AddonExecuteOperationalActionRequest,
+  AddonFormEvaluationResponse,
+  AddonOperationalListRequest,
+  AddonOperationalListResponse,
+  AddonResolveOptionsRequest,
+  AddonResolveOptionsResponse,
+  AddonSettingsValues,
+  AddonSettingsView,
+  AddonVaultScope,
+} from '@mr-tick/application'
 import {
   AddonManifest,
   FileData,
@@ -161,6 +172,18 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     }
   }
 
+  private async ensureAddonActive(addonId?: string): Promise<void> {
+    if (!addonId || !this.addonLoader || !this.addonsFacade) return
+    if (this.addonLoader.hasActiveAddon(addonId)) return
+    const installedResult = await this.addonsFacade.getInstalledById(addonId)
+    if (installedResult.isSuccess() && installedResult.success.path) {
+      await this.addonLoader.loadAndActivateFromDisk(
+        addonId,
+        installedResult.success.path,
+      )
+    }
+  }
+
   public async getSchema(
     event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string; scope?: AddonVaultScope }>,
@@ -169,17 +192,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       return { isSuccess: true, statusCode: 200, data: [] }
     }
     try {
-      if (body?.addonId && !this.addonLoader.hasActiveAddon(body.addonId)) {
-        const installedResult = await this.addonsFacade.getInstalledById(
-          body.addonId,
-        )
-        if (installedResult.isSuccess() && installedResult.success.path) {
-          await this.addonLoader.loadAndActivateFromDisk(
-            body.addonId,
-            installedResult.success.path,
-          )
-        }
-      }
+      await this.ensureAddonActive(body?.addonId)
 
       const schema = await this.addonLoader.getSettingsSchema(
         body.addonId,
@@ -264,9 +277,10 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
   public async getSettings(
     event: IpcMainInvokeEvent,
     { body }: IRequest<{ addonId: string; scope: AddonVaultScope }>,
-  ): Promise<ViewModel<import('@mr-tick/application').AddonSettingsView>> {
+  ): Promise<ViewModel<AddonSettingsView>> {
     if (!event || !this.addonLoader)
       return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
+    await this.ensureAddonActive(body.addonId)
     const result = await this.addonLoader.getAddonSettings(
       body.addonId,
       body.scope,
@@ -288,12 +302,13 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       addonId: string
       scope: AddonVaultScope
       expectedRevision: number
-      patch: Record<string, string | number | boolean | null>
+      patch: AddonSettingsValues
       credentials?: Record<string, string | null>
     }>,
-  ): Promise<ViewModel<import('@mr-tick/application').AddonSettingsView>> {
+  ): Promise<ViewModel<AddonSettingsView>> {
     if (!event || !this.addonLoader)
       return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
+    await this.ensureAddonActive(body.addonId)
     const result = await this.addonLoader.saveAddonSettings(
       body.addonId,
       body.scope,
@@ -308,6 +323,82 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         error: result.failure.messageKey,
       }
     return { isSuccess: true, statusCode: 200, data: result.success }
+  }
+
+  public async resolveSettingsOptions(
+    event: IpcMainInvokeEvent,
+    { body }: IRequest<AddonResolveOptionsRequest & { addonId: string }>,
+  ): Promise<ViewModel<AddonResolveOptionsResponse>> {
+    if (!event || !this.addonLoader)
+      return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
+    await this.ensureAddonActive(body.addonId)
+    const result = await this.addonLoader.resolveSettingsOptions(
+      body.addonId,
+      body,
+    )
+    return createResponseViewModel(result)
+  }
+
+  public async getOperationalList(
+    event: IpcMainInvokeEvent,
+    { body }: IRequest<AddonOperationalListRequest & { addonId: string }>,
+  ): Promise<ViewModel<AddonOperationalListResponse>> {
+    if (!event || !this.addonLoader)
+      return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
+    await this.ensureAddonActive(body.addonId)
+    const result = await this.addonLoader.getOperationalList(body.addonId, body)
+    return createResponseViewModel(result)
+  }
+
+  public async executeOperationalAction(
+    event: IpcMainInvokeEvent,
+    {
+      body,
+    }: IRequest<AddonExecuteOperationalActionRequest & { addonId: string }>,
+  ): Promise<ViewModel<void>> {
+    if (!event || !this.addonLoader)
+      return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
+    await this.ensureAddonActive(body.addonId)
+    const result = await this.addonLoader.executeOperationalAction(
+      body.addonId,
+      body,
+    )
+    return createResponseViewModel(result)
+  }
+
+  public async evaluateSettingsForm(
+    event: IpcMainInvokeEvent,
+    { body }: IRequest<AddonEvaluateFormRequest & { addonId: string }>,
+  ): Promise<ViewModel<AddonFormEvaluationResponse>> {
+    if (!event || !this.addonLoader)
+      return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
+    await this.ensureAddonActive(body.addonId)
+    const result = await this.addonLoader.evaluateSettingsForm(
+      body.addonId,
+      body,
+    )
+    return createResponseViewModel(result)
+  }
+
+  public async reapplySettings(
+    event: IpcMainInvokeEvent,
+    {
+      body,
+    }: IRequest<{
+      addonId: string
+      scope: AddonVaultScope
+      revision: number
+    }>,
+  ): Promise<ViewModel<AddonSettingsView>> {
+    if (!event || !this.addonLoader)
+      return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
+    await this.ensureAddonActive(body.addonId)
+    const result = await this.addonLoader.reapplySettings(
+      body.addonId,
+      body.scope,
+      body.revision,
+    )
+    return createResponseViewModel(result)
   }
 
   public async executeAction(
@@ -326,17 +417,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       return { isSuccess: false, statusCode: 404, error: 'LOADER_NOT_FOUND' }
     }
     try {
-      if (body?.addonId && !this.addonLoader.hasActiveAddon(body.addonId)) {
-        const installedResult = await this.addonsFacade.getInstalledById(
-          body.addonId,
-        )
-        if (installedResult.isSuccess() && installedResult.success.path) {
-          await this.addonLoader.loadAndActivateFromDisk(
-            body.addonId,
-            installedResult.success.path,
-          )
-        }
-      }
+      await this.ensureAddonActive(body?.addonId)
 
       const data = await this.addonLoader.executeAction(
         body.addonId,

@@ -69,7 +69,8 @@ export function applyTimeEntryEdit(
     updated.connectionInstanceId.length > 0 &&
     updated.connectionInstanceId !== '0'
   let syncStatus: LocalTimeEntrySnapshot['syncStatus'] = 'local_only'
-  if (isRemoteCandidate) syncStatus = 'pending_push'
+  if (isRemoteCandidate && updated.timeStatus !== 'suggestion')
+    syncStatus = 'pending_push'
   if (
     !connectionChanged &&
     (document.syncStatus === 'conflict' ||

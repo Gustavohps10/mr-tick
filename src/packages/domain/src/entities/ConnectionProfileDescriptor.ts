@@ -15,6 +15,7 @@ export type ConnectionProfileDescriptor = Readonly<{
   allowedAuthProfileIds?: readonly string[]
   defaultAuthProfileId?: string | null
   roles?: readonly AuthorizationRoleRequirement[]
+  capability?: string
 }>
 
 export function isValidConnectionProfileDescriptors(

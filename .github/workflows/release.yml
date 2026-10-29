@@ -73,6 +73,12 @@ jobs:
       - name: Build Desktop App
         run: yarn turbo run build --concurrency=100% --filter=@mr-tick/desktop --filter=@mr-tick/datasource-fake --summarize
 
+      - name: Build Observer Test Fixtures
+        run: |
+          yarn addon:build fake-watcher-for-tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          yarn addon:build datasource-alpha-for-tests
+
       - name: Upload Desktop Build Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -82,6 +88,8 @@ jobs:
             src/packages/*/dist
             src/apps/sdk/dist
             src/dev-addons/datasource-fake/dist
+            src/dev-addons/fake-watcher-for-tests/dist
+            src/dev-addons/datasource-alpha-for-tests/dist
           retention-days: 1
           compression-level: 1
           if-no-files-found: error

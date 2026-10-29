@@ -71,6 +71,7 @@ import {
   type CreateColumnsOptions,
   createTimeEntriesColumns,
 } from '@/pages/time-entries/components/time-entries-table-columns'
+import { TimeOverlapConfirmationDialog } from '@/pages/time-entries/components/time-overlap-confirmation-dialog'
 import { useTimeEntriesData } from '@/pages/time-entries/hooks/use-time-entries-data'
 import { useTimeEntryMutations } from '@/pages/time-entries/hooks/use-time-entry-mutations'
 import {
@@ -276,10 +277,13 @@ export function TimeEntriesTimesheetView({
     handleDuplicateEntry,
     handleAddNewEntry,
     handleAcceptSuggestion,
+    handleAcceptAllSuggestions,
     handleDismissSuggestion,
     handleResolveConflict,
     handleConfirmRetryAmbiguousCreation,
     handleOpenConflictResolution,
+    pendingOverlapResolution,
+    setPendingOverlapResolution,
   } = useTimeEntryMutations(db, memberIdsByConnection)
 
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
@@ -456,38 +460,6 @@ export function TimeEntriesTimesheetView({
   const dailyAverageHours = React.useMemo(() => {
     return daysWithEntriesCount > 0 ? totalWeekHours / daysWithEntriesCount : 0
   }, [daysWithEntriesCount, totalWeekHours])
-
-  const handleAcceptAllSuggestions = React.useCallback(
-    async (suggestions: SuggestionRow[]) => {
-      if (!db || suggestions.length === 0) return
-      try {
-        for (const sug of suggestions) {
-          const doc = await db.timeEntries.findOne(sug.id).exec()
-          if (doc) {
-            const accepted = await requestEntryPersistence(bridge, db, {
-              action: 'editRecord',
-              entryId: doc.id,
-              changes: { timeStatus: 'finished' },
-            })
-            if (accepted.isFailure()) {
-              toast.error(accepted.failure.messageKey)
-              return
-            }
-          }
-        }
-        toast.success(
-          `${suggestions.length} sugestões confirmadas com sucesso!`,
-        )
-        await queryClient.invalidateQueries({
-          queryKey: ['time-entries-range'],
-        })
-      } catch (err) {
-        console.error('Erro ao aceitar todas sugestoes:', err)
-        toast.error('Erro ao aceitar sugestões')
-      }
-    },
-    [db, queryClient, bridge],
-  )
 
   const handleDismissAllSuggestions = React.useCallback(
     async (suggestions: SuggestionRow[]) => {
@@ -1257,6 +1229,22 @@ export function TimeEntriesTimesheetView({
               setTaskLookupOpen(false)
               setRowBeingEdited(null)
             }}
+          />
+        )}
+
+        {pendingOverlapResolution && (
+          <TimeOverlapConfirmationDialog
+            open={Boolean(pendingOverlapResolution)}
+            onOpenChange={(open) => {
+              if (!open) setPendingOverlapResolution(null)
+            }}
+            conflicts={pendingOverlapResolution.conflicts}
+            conflictToken={pendingOverlapResolution.conflictToken}
+            targetInterval={pendingOverlapResolution.targetInterval}
+            onConfirm={(token) => {
+              handleAcceptSuggestion(pendingOverlapResolution.row, token)
+            }}
+            onCancel={() => setPendingOverlapResolution(null)}
           />
         )}
       </div>

@@ -30,6 +30,9 @@ test-results*/
 src/dev-addons/*
 !src/dev-addons/*.md
 !src/dev-addons/datasource-fake/
+!src/dev-addons/fake-watcher-for-tests/
+!src/dev-addons/datasource-alpha-for-tests/
+src/dev-addons/fake-watcher-for-tests/tsup.config.bundled_*.mjs
 
 # E2E Native Test Harness Executables
 src/apps/desktop/e2e/harness/*.exe

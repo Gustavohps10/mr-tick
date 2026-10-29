@@ -4,17 +4,25 @@ import path from 'node:path'
 import {
   AddonSettingsSnapshot,
   AddonSettingsValues,
+  AddonSettingValue,
   IAddonSettingsRepository,
 } from '@mr-tick/application'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import { z } from 'zod'
 
-const settingValueSchema = z.union([
+const settingScalarSchema = z.union([
   z.string(),
   z.number().finite(),
   z.boolean(),
   z.null(),
 ])
+const settingValueSchema: z.ZodType<AddonSettingValue> = z.lazy(() =>
+  z.union([
+    settingScalarSchema,
+    z.array(settingValueSchema),
+    z.record(settingValueSchema.optional()),
+  ]),
+)
 const settingsEntrySchema = z
   .object({
     addonId: z.string().min(1),

@@ -26,5 +26,10 @@ export interface TimeEntryDTO {
   createdAt: Date
   updatedAt: Date
   source?: 'manual' | 'timer' | 'ai_suggestion' | 'addon'
-  addonSource?: { id: string; name: string; imageUrl?: string }
+  addonSource?: {
+    id: string
+    name: string
+    imageUrl?: string
+    metadata?: Readonly<Record<string, string | number | boolean>>
+  }
 }

@@ -30,6 +30,7 @@ import {
 import {
   emptyAddonCredentialsVault,
   emptyAddonSettingsRepository,
+  emptyAddonStorageRepository,
   emptyWorkspaceReferenceRegistry,
 } from '../core/addon-workspace-reference-test-fixture'
 import { AddonLoader } from './AddonLoader'
@@ -85,6 +86,7 @@ describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
         EMPTY_HTTP_CONFIG,
         new NodeFetchTransport(),
       ),
+      emptyAddonStorageRepository,
     )
 
     // Cria diretório temporário para simular addon no disco

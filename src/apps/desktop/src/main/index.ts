@@ -13,6 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import {
   JSONAddonSettingsRepository,
+  SQLiteAddonStorageRepository,
   SQLiteConnectionLifecycleRepository,
   SQLiteConnectionLifecycleTransactionBoundary,
   SQLiteConnectionReservationRepository,
@@ -32,6 +33,7 @@ import {
   IConnectionLifecycleCoordinator,
   ICoreAddonCapabilities,
   IDisconnectAddonConnectionUseCase,
+  IGetCurrentUserUseCase,
   ILinkConnectionUseCase,
   IOAuthAttemptCoordinator,
   IUnlinkConnectionUseCase,
@@ -58,6 +60,7 @@ import {
 import { ElectronJobEventEmitter } from '@/main/adapters/ElectronJobEventEmitter'
 import { TimerRuntime } from '@/main/adapters/TimerRuntime'
 import {
+  CoreHandler,
   LicensingHandler,
   SessionHandler,
   TasksHandler,
@@ -105,6 +108,7 @@ export interface NativeOverlay {
 }
 
 export type IHandlersScope = {
+  coreHandler: typeof CoreHandler
   sessionHandler: typeof SessionHandler
   tasksHandler: typeof TasksHandler
   timeEntriesHandler: typeof TimeEntriesHandler
@@ -746,6 +750,9 @@ if (gotTheLock) {
             ),
             oauthAttemptCoordinator,
             addonLoader.systemEventEmitter,
+            serviceProvider.resolve<IGetCurrentUserUseCase>(
+              'getCurrentUserService',
+            ),
           ),
         addonAccessService,
         credentialRegistry,
@@ -758,6 +765,7 @@ if (gotTheLock) {
         ),
         oauthAttemptCoordinator,
         electronHttpClientFactory,
+        new SQLiteAddonStorageRepository(userDataPath),
       )
       globalAddonLoader = addonLoader
 
@@ -816,6 +824,7 @@ if (gotTheLock) {
       containerBuilder
         .addPlatformDependencies(platformDeps)
         .addScoped<IHandlersScope>({
+          coreHandler: CoreHandler,
           sessionHandler: SessionHandler,
           tasksHandler: TasksHandler,
           timeEntriesHandler: TimeEntriesHandler,
@@ -832,6 +841,7 @@ if (gotTheLock) {
         updaterService,
         diagnosticsHandler,
         diagnosticsService,
+        localRuntime,
       })
 
       const licensingFacade =

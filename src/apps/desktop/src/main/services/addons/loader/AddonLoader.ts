@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import {
   AddonCapabilityOwnershipValidator,
   AddonConnectionAuthenticator,
+  AddonScopedStorage,
   AddonSettingsView,
   CoreAddonScopeOwnershipValidator,
   GetAddonSettingsService,
@@ -13,6 +14,7 @@ import {
   IAddonAuthenticatorRegistry,
   IAddonConnectionProfilesRegistry,
   IAddonSettingsRepository,
+  IAddonStorageRepository,
   isFlatSettingsFieldList,
   SaveAddonSettingsService,
 } from '@mr-tick/application'
@@ -32,12 +34,24 @@ import {
   AddonActionResponse,
   AddonCapability,
   AddonContext,
+  AddonEvaluateFormRequest,
+  AddonExecuteOperationalActionRequest,
+  AddonFormEvaluationResponse,
+  AddonOperationalListRequest,
+  AddonOperationalListResponse,
+  AddonResolveOptionsRequest,
+  AddonResolveOptionsResponse,
   AddonRuntimeCapabilities,
   AddonSettingsApplyHandler,
+  AddonSettingsFormEvaluatorHandler,
+  AddonSettingsOperationalActionHandler,
+  AddonSettingsOperationalListProviderHandler,
+  AddonSettingsOptionsProviderHandler,
   AddonSettingsRegisterOptions,
   AddonSettingsSchema,
   AddonSettingsSchemaProvider,
   AddonSettingsTab,
+  AddonSettingsValidateHandler,
   AddonSettingsValues,
   AddonTheme,
   AddonTimerControlLock,
@@ -261,6 +275,26 @@ export class AddonLoader implements IAddonReloader {
     string,
     AddonSettingsApplyHandler
   >()
+  private addonSettingsValidateHandlers = new Map<
+    string,
+    AddonSettingsValidateHandler
+  >()
+  private addonSettingsOptionsProviders = new Map<
+    string,
+    Record<string, AddonSettingsOptionsProviderHandler>
+  >()
+  private addonSettingsOperationalListProviders = new Map<
+    string,
+    Record<string, AddonSettingsOperationalListProviderHandler>
+  >()
+  private addonSettingsOperationalActionHandlers = new Map<
+    string,
+    Record<string, AddonSettingsOperationalActionHandler>
+  >()
+  private addonSettingsFormEvaluators = new Map<
+    string,
+    Record<string, AddonSettingsFormEvaluatorHandler>
+  >()
   public readonly dataSourceRegistry = new MemoryRegistry<
     IDataSource & { id?: string }
   >()
@@ -280,6 +314,7 @@ export class AddonLoader implements IAddonReloader {
 
   private readonly getAddonSettingsService: GetAddonSettingsService
   private readonly saveAddonSettingsService: SaveAddonSettingsService
+  private readonly ownershipValidator: CoreAddonScopeOwnershipValidator
 
   constructor(
     private credentialsVault: ICredentialsVault & IConnectionCredentialsVault,
@@ -293,6 +328,7 @@ export class AddonLoader implements IAddonReloader {
     private readonly profilesResolver: IAddonConnectionProfilesRegistry,
     private readonly oauthAttemptCoordinator: IOAuthAttemptCoordinator,
     private readonly httpClientFactory: IHttpClientFactory,
+    private readonly addonStorageRepository: IAddonStorageRepository,
   ) {
     const capabilityOwnershipValidator = new AddonCapabilityOwnershipValidator(
       (addonId, capabilityId) => {
@@ -313,6 +349,7 @@ export class AddonLoader implements IAddonReloader {
       (addonId) => this.coreForAddon(addonId).connections,
       capabilityOwnershipValidator,
     )
+    this.ownershipValidator = ownershipValidator
     this.getAddonSettingsService = new GetAddonSettingsService(
       (addonId) => this.vaultFor(addonId),
       ownershipValidator,
@@ -560,6 +597,7 @@ export class AddonLoader implements IAddonReloader {
   }
 
   private readonly addonVaults = new Map<string, AddonScopedVault>()
+  private readonly addonStorages = new Map<string, AddonScopedStorage>()
   private readonly lifetimes = new Map<string, AddonLifetime>()
   private vaultFor(addonId: string): AddonScopedVault {
     const existing = this.addonVaults.get(addonId)
@@ -575,9 +613,25 @@ export class AddonLoader implements IAddonReloader {
     return vault
   }
 
+  private storageFor(addonId: string): AddonScopedStorage {
+    const existing = this.addonStorages.get(addonId)
+    if (existing !== undefined) return existing
+    const storage = new AddonScopedStorage(addonId, this.addonStorageRepository)
+    this.addonStorages.set(addonId, storage)
+    return storage
+  }
+
   private activeWorkspaceId: string | null = null
   private readonly appliedSettingsRevisions = new Map<string, number>()
   private readonly latestStartedSettingsRevisions = new Map<string, number>()
+  private readonly settingsApplicationStatus = new Map<
+    string,
+    {
+      revision: number
+      status: 'applied' | 'pending' | 'failed'
+      error?: string
+    }
+  >()
 
   public getAppliedSettingsRevision(
     addonId: string,
@@ -799,16 +853,46 @@ export class AddonLoader implements IAddonReloader {
         if (options?.onApply !== undefined) {
           this.addonSettingsApplyHandlers.set(addonId, options.onApply)
         }
+        if (options?.onValidate !== undefined) {
+          this.addonSettingsValidateHandlers.set(addonId, options.onValidate)
+        }
+        if (options?.optionsProviders !== undefined) {
+          this.addonSettingsOptionsProviders.set(
+            addonId,
+            options.optionsProviders,
+          )
+        }
+        if (options?.operationalListProviders !== undefined) {
+          this.addonSettingsOperationalListProviders.set(
+            addonId,
+            options.operationalListProviders,
+          )
+        }
+        if (options?.operationalActionHandlers !== undefined) {
+          this.addonSettingsOperationalActionHandlers.set(
+            addonId,
+            options.operationalActionHandlers,
+          )
+        }
+        if (options?.formEvaluators !== undefined) {
+          this.addonSettingsFormEvaluators.set(addonId, options.formEvaluators)
+        }
         lifetime.track(() => {
           this.addonSettingsSchemas.delete(addonId)
           this.addonSettingsApplyHandlers.delete(addonId)
+          this.addonSettingsValidateHandlers.delete(addonId)
+          this.addonSettingsOptionsProviders.delete(addonId)
+          this.addonSettingsOperationalListProviders.delete(addonId)
+          this.addonSettingsOperationalActionHandlers.delete(addonId)
+          this.addonSettingsFormEvaluators.delete(addonId)
         })
       },
       getSchema: (context) => {
         const item = this.addonSettingsSchemas.get(addonId)
         if (!item) return undefined
         if (Array.isArray(item)) return item
-        return item(context)
+        if (typeof item === 'function') return item(context)
+        return undefined
       },
     }
 
@@ -1085,6 +1169,7 @@ export class AddonLoader implements IAddonReloader {
         connections: addonCore.connections,
         tasks: addonCore.tasks,
         metadata: addonCore.metadata,
+        members: addonCore.members,
         timer,
         timeEntries,
       },
@@ -1100,6 +1185,7 @@ export class AddonLoader implements IAddonReloader {
         events: lifetime.events(this.systemEventEmitter),
         notifications,
         vault,
+        storage: this.storageFor(addonId),
         oauth,
         http: addonHttpClient,
       },
@@ -1519,7 +1605,7 @@ export class AddonLoader implements IAddonReloader {
     if (Array.isArray(provider)) {
       schema = provider
     }
-    if (provider && !Array.isArray(provider)) {
+    if (typeof provider === 'function') {
       schema = await provider({
         scope: resolvedScope,
         workspaceId: resolvedWorkspaceId,
@@ -1581,7 +1667,31 @@ export class AddonLoader implements IAddonReloader {
     scope: AddonVaultScope,
   ): Promise<Either<AppError, AddonSettingsView>> {
     const schema = await this.getSettingsSchema(addonId, scope)
-    return this.getAddonSettingsService.execute({ addonId, scope, schema })
+    const result = await this.getAddonSettingsService.execute({
+      addonId,
+      scope,
+      schema,
+    })
+    if (result.isFailure()) return result
+    const revKey = this.buildSettingsRevisionKey(addonId, scope)
+    const appState = this.settingsApplicationStatus.get(revKey)
+    if (
+      appState !== undefined &&
+      appState.revision === result.success.revision
+    ) {
+      return Either.success({
+        ...result.success,
+        applicationStatus: appState.status,
+        applicationError: appState.error,
+      })
+    }
+    if (result.success.revision > 0) {
+      return Either.success({
+        ...result.success,
+        applicationStatus: 'applied',
+      })
+    }
+    return result
   }
 
   private resolveSettingsScopeBinding(
@@ -1614,6 +1724,25 @@ export class AddonLoader implements IAddonReloader {
     credentials?: Record<string, string | null>,
   ): Promise<Either<AppError, AddonSettingsView>> {
     const schema = await this.getSettingsSchema(addonId, scope)
+    const validateHandler = this.addonSettingsValidateHandlers.get(addonId)
+    if (validateHandler !== undefined) {
+      const currentRes = await this.vaultFor(addonId).getSettings(scope)
+      let currentValues: AddonSettingsValues = {}
+      if (currentRes.isSuccess()) {
+        currentValues = currentRes.success.values
+      }
+      const mergedValues: AddonSettingsValues = {
+        ...currentValues,
+        ...settings,
+      }
+      const validateResult = await validateHandler({
+        scope,
+        values: mergedValues,
+      })
+      if (validateResult.isFailure()) {
+        return validateResult.forwardFailure()
+      }
+    }
     const result = await this.saveAddonSettingsService.execute({
       addonId,
       scope,
@@ -1652,6 +1781,10 @@ export class AddonLoader implements IAddonReloader {
       return result
     }
     this.latestStartedSettingsRevisions.set(revKey, persistedRevision)
+    this.settingsApplicationStatus.set(revKey, {
+      revision: persistedRevision,
+      status: 'pending',
+    })
 
     const binding = this.resolveSettingsScopeBinding(addonId, scope)
     const applyHandler = this.addonSettingsApplyHandlers.get(addonId)
@@ -1690,6 +1823,11 @@ export class AddonLoader implements IAddonReloader {
 
       if (!binding.isCurrentGeneration(capturedGen)) {
         binding.stopIfGeneration(capturedGen)
+        this.settingsApplicationStatus.set(revKey, {
+          revision: persistedRevision,
+          status: 'failed',
+          error: 'CONNECTION_DISCONNECTED_OR_CHANGED',
+        })
         if (result.isFailure()) {
           return result
         }
@@ -1700,6 +1838,11 @@ export class AddonLoader implements IAddonReloader {
 
       if (applyResult.isFailure()) {
         binding.stopIfGeneration(capturedGen)
+        this.settingsApplicationStatus.set(revKey, {
+          revision: persistedRevision,
+          status: 'failed',
+          error: applyResult.failure.messageKey,
+        })
         if (result.isFailure()) {
           return result
         }
@@ -1707,6 +1850,10 @@ export class AddonLoader implements IAddonReloader {
       }
     }
 
+    this.settingsApplicationStatus.set(revKey, {
+      revision: persistedRevision,
+      status: 'applied',
+    })
     const latestApplied = this.appliedSettingsRevisions.get(revKey)
     if (latestApplied === undefined || persistedRevision > latestApplied) {
       this.appliedSettingsRevisions.set(revKey, persistedRevision)
@@ -1718,7 +1865,188 @@ export class AddonLoader implements IAddonReloader {
       })
     }
 
+    if (result.isSuccess()) {
+      return Either.success({
+        ...result.success,
+        applicationStatus: 'applied',
+      })
+    }
     return result
+  }
+
+  public async resolveSettingsOptions(
+    addonId: string,
+    request: AddonResolveOptionsRequest,
+  ): Promise<Either<AppError, AddonResolveOptionsResponse>> {
+    if (!this.hasActiveAddon(addonId)) {
+      return Either.failure(AppError.NotFound('ADDON_NOT_FOUND'))
+    }
+    const scopeCheck = await this.ownershipValidator.validateScope(
+      addonId,
+      request.scope,
+    )
+    if (scopeCheck.isFailure()) return scopeCheck.forwardFailure()
+    const providers = this.addonSettingsOptionsProviders.get(addonId)
+    const handler = providers?.[request.providerId]
+    if (!handler) {
+      return Either.failure(AppError.NotFound('OPTIONS_PROVIDER_NOT_FOUND'))
+    }
+    try {
+      const result = await handler(request)
+      return result
+    } catch (err) {
+      if (err instanceof Error) {
+        return Either.failure(AppError.Internal(err.message))
+      }
+      return Either.failure(AppError.Internal('RESOLVE_OPTIONS_FAILED'))
+    }
+  }
+
+  public async getOperationalList(
+    addonId: string,
+    request: AddonOperationalListRequest,
+  ): Promise<Either<AppError, AddonOperationalListResponse>> {
+    if (!this.hasActiveAddon(addonId)) {
+      return Either.failure(AppError.NotFound('ADDON_NOT_FOUND'))
+    }
+    const scopeCheck = await this.ownershipValidator.validateScope(
+      addonId,
+      request.scope,
+    )
+    if (scopeCheck.isFailure()) return scopeCheck.forwardFailure()
+    const providers = this.addonSettingsOperationalListProviders.get(addonId)
+    const handler = providers?.[request.providerId]
+    if (!handler) {
+      return Either.failure(
+        AppError.NotFound('OPERATIONAL_LIST_PROVIDER_NOT_FOUND'),
+      )
+    }
+    try {
+      const result = await handler(request)
+      return result
+    } catch (err) {
+      if (err instanceof Error) {
+        return Either.failure(AppError.Internal(err.message))
+      }
+      return Either.failure(AppError.Internal('GET_OPERATIONAL_LIST_FAILED'))
+    }
+  }
+
+  public async executeOperationalAction(
+    addonId: string,
+    request: AddonExecuteOperationalActionRequest,
+  ): Promise<Either<AppError, void>> {
+    if (!this.hasActiveAddon(addonId)) {
+      return Either.failure(AppError.NotFound('ADDON_NOT_FOUND'))
+    }
+    const scopeCheck = await this.ownershipValidator.validateScope(
+      addonId,
+      request.scope,
+    )
+    if (scopeCheck.isFailure()) return scopeCheck.forwardFailure()
+    const handlers = this.addonSettingsOperationalActionHandlers.get(addonId)
+    let handler = handlers?.[request.actionId]
+    if (handler === undefined) {
+      handler = handlers?.[request.providerId]
+    }
+    if (!handler) {
+      return Either.failure(
+        AppError.NotFound('OPERATIONAL_ACTION_HANDLER_NOT_FOUND'),
+      )
+    }
+    try {
+      const result = await handler(request)
+      return result
+    } catch (err) {
+      if (err instanceof Error) {
+        return Either.failure(AppError.Internal(err.message))
+      }
+      return Either.failure(
+        AppError.Internal('EXECUTE_OPERATIONAL_ACTION_FAILED'),
+      )
+    }
+  }
+
+  public async evaluateSettingsForm(
+    addonId: string,
+    request: AddonEvaluateFormRequest,
+  ): Promise<Either<AppError, AddonFormEvaluationResponse>> {
+    if (!this.hasActiveAddon(addonId)) {
+      return Either.failure(AppError.NotFound('ADDON_NOT_FOUND'))
+    }
+    const scopeCheck = await this.ownershipValidator.validateScope(
+      addonId,
+      request.scope,
+    )
+    if (scopeCheck.isFailure()) return scopeCheck.forwardFailure()
+    const evaluators = this.addonSettingsFormEvaluators.get(addonId)
+    const handler = evaluators?.[request.evaluatorId]
+    if (!handler) {
+      return Either.failure(AppError.NotFound('FORM_EVALUATOR_NOT_FOUND'))
+    }
+    try {
+      const result = await handler(request)
+      return result
+    } catch (err) {
+      if (err instanceof Error) {
+        return Either.failure(AppError.Internal(err.message))
+      }
+      return Either.failure(AppError.Internal('FORM_EVALUATOR_FAILED'))
+    }
+  }
+
+  public async reapplySettings(
+    addonId: string,
+    scope: AddonVaultScope,
+    revision: number,
+  ): Promise<Either<AppError, AddonSettingsView>> {
+    if (!this.hasActiveAddon(addonId)) {
+      return Either.failure(AppError.NotFound('ADDON_NOT_FOUND'))
+    }
+    const scopeCheck = await this.ownershipValidator.validateScope(
+      addonId,
+      scope,
+    )
+    if (scopeCheck.isFailure()) return scopeCheck.forwardFailure()
+    const snapshotRes = await this.vaultFor(addonId).getSettings(scope)
+    if (snapshotRes.isFailure()) return snapshotRes.forwardFailure()
+    if (snapshotRes.success.revision !== revision) {
+      return Either.failure(AppError.Http(409, 'SETTINGS_REVISION_CONFLICT'))
+    }
+
+    const revKey = this.buildSettingsRevisionKey(addonId, scope)
+    const binding = this.resolveSettingsScopeBinding(addonId, scope)
+    const applyHandler = this.addonSettingsApplyHandlers.get(addonId)
+
+    if (applyHandler !== undefined && binding !== undefined) {
+      const capturedGen = binding.startNextGeneration()
+      const applyResult = await applyHandler({
+        scope,
+        revision,
+        values: snapshotRes.success.values,
+        events: binding.eventsForGeneration(
+          this.systemEventEmitter,
+          capturedGen,
+        ),
+        track: (cleanup) => binding.trackForGeneration(capturedGen, cleanup),
+      })
+      if (applyResult.isFailure()) {
+        binding.stopIfGeneration(capturedGen)
+        this.settingsApplicationStatus.set(revKey, {
+          revision,
+          status: 'failed',
+          error: applyResult.failure.messageKey,
+        })
+        return applyResult.forwardFailure()
+      }
+    }
+
+    this.settingsApplicationStatus.set(revKey, {
+      revision,
+      status: 'applied',
+    })
+    this.appliedSettingsRevisions.set(revKey, revision)
+    return this.getAddonSettings(addonId, scope)
   }
 
   public async executeAction(

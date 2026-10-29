@@ -128,15 +128,24 @@ function ConnectionFields({
   const requiresAuthSelection =
     authTabs.length > 1 && activeAuthTab === undefined
 
+  function extractDefaultPrimitiveValue(
+    field: AddonSettingsField,
+  ): FieldPrimitiveValue | undefined {
+    if (!('defaultValue' in field)) return undefined
+    const defVal = field.defaultValue
+    if (defVal === undefined) return undefined
+    if (typeof defVal === 'object' && defVal !== null) {
+      return JSON.stringify(defVal)
+    }
+    return defVal
+  }
+
   function fieldValue(
     field: AddonSettingsField,
   ): FieldPrimitiveValue | undefined {
     const value = methods.watch(field.id)
     if (value !== undefined) return value
-    if (field.defaultValue === undefined) return undefined
-    if (typeof field.defaultValue === 'object')
-      return JSON.stringify(field.defaultValue)
-    return field.defaultValue
+    return extractDefaultPrimitiveValue(field)
   }
 
   function submit(values: Record<string, FieldPrimitiveValue>) {
@@ -147,11 +156,9 @@ function ConnectionFields({
     for (const field of fields) {
       let value = values[field.id]
       if (value === undefined) {
-        if (field.defaultValue === undefined) continue
-        if (typeof field.defaultValue === 'object') {
-          value = JSON.stringify(field.defaultValue)
-        }
-        if (typeof field.defaultValue !== 'object') value = field.defaultValue
+        const defVal = extractDefaultPrimitiveValue(field)
+        if (defVal === undefined) continue
+        value = defVal
       }
       if (field.scope === 'credential') {
         credentials[field.id] = value
@@ -181,7 +188,9 @@ function ConnectionFields({
             methods.unregister(fieldId)
             return
           }
-          methods.setValue(fieldId, value, {
+          const nextValue: FieldPrimitiveValue =
+            typeof value === 'object' ? JSON.stringify(value) : value
+          methods.setValue(fieldId, nextValue, {
             shouldValidate: true,
             shouldDirty: true,
           })

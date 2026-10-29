@@ -16,8 +16,10 @@ import type {
   ICoreAddonCapabilities,
   ICoreCacheTransport,
   ICoreConnectionsAPI,
+  ICoreMembersAPI,
   ICoreReadAPI,
   IDisconnectAddonConnectionUseCase,
+  IGetCurrentUserUseCase,
   ILinkConnectionUseCase,
   IOAuthAttemptCoordinator,
   IUnlinkConnectionUseCase,
@@ -40,6 +42,7 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
   readonly connections: ICoreConnectionsAPI
   readonly tasks: ICoreReadAPI['tasks']
   readonly metadata: ICoreReadAPI['metadata']
+  readonly members: ICoreMembersAPI
 
   constructor(
     private readonly repository: IWorkspacesRepository,
@@ -54,6 +57,7 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
     private readonly profilesResolver: IAddonConnectionProfilesResolver,
     private readonly oauthAttemptCoordinator: IOAuthAttemptCoordinator,
     private readonly systemEventEmitter: ISystemEventEmitter,
+    private readonly getCurrentUserService: IGetCurrentUserUseCase,
   ) {
     this.runtime = {
       getState: () => transport.getState(),
@@ -92,6 +96,7 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
         return Either.success({
           tasks: result.success.tasks,
           hasMore: result.success.hasMore,
+          nextCursor: result.success.nextCursor,
         })
       },
       get: async (reference) => {
@@ -107,6 +112,22 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
         if (result.isFailure()) return result.forwardFailure()
         if (result.success.kind !== 'metadata') return invalidReply()
         return Either.success(result.success.metadata)
+      },
+    }
+    this.members = {
+      getCurrentUser: async (scope) => {
+        const scopeValidation = validateCoreScope(scope)
+        if (scopeValidation.isFailure()) return scopeValidation.forwardFailure()
+        const userResult = await this.getCurrentUserService.execute({
+          workspaceId: scope.workspaceId,
+          connectionInstanceId: scope.connectionInstanceId,
+        })
+        if (userResult.isFailure()) return userResult.forwardFailure()
+        return Either.success({
+          id: String(userResult.success.id),
+          name: `${userResult.success.firstname} ${userResult.success.lastname}`.trim(),
+          avatarUrl: userResult.success.avatarUrl,
+        })
       },
     }
   }

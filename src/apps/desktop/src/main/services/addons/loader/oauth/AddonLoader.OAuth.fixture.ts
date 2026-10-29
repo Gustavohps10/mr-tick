@@ -19,6 +19,7 @@ import {
 import {
   emptyAddonCredentialsVault,
   emptyAddonSettingsRepository,
+  emptyAddonStorageRepository,
   emptyWorkspaceReferenceRegistry,
 } from '../../core/addon-workspace-reference-test-fixture'
 import { AddonLoader } from '../AddonLoader'
@@ -48,6 +49,7 @@ export function createOAuthTestSetup(): {
     new AddonConnectionProfilesResolver(),
     new OAuthAttemptCoordinator(),
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
+    emptyAddonStorageRepository,
   )
 
   return { addonLoader, fakeCredentialsVault }

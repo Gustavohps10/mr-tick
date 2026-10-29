@@ -58,7 +58,8 @@ export class SaveAddonSettingsService {
           field.scope !== 'credential' &&
           field.type !== 'button' &&
           field.type !== 'info-card' &&
-          field.type !== 'datasource-instances',
+          field.type !== 'datasource-instances' &&
+          field.type !== 'operational-list',
       )
       .map((field) => field.id)
 

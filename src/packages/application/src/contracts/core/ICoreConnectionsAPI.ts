@@ -11,7 +11,10 @@ import type {
 } from './CoreContext'
 
 export interface ICoreConnectionsReadAPI {
-  list(workspaceId: string): Promise<Either<AppError, CoreConnection[]>>
+  list(
+    workspaceId: string,
+    filter?: { capability?: string },
+  ): Promise<Either<AppError, CoreConnection[]>>
   get(scope: CoreConnectionScope): Promise<Either<AppError, CoreConnection>>
 }
 export interface ICoreConnectionsAPI extends ICoreConnectionsReadAPI {

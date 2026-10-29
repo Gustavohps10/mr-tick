@@ -544,6 +544,7 @@ export class LocalRuntimeDispatcher
       return await operation()
     } finally {
       this.maintenanceWorkspaces.delete(workspaceId)
+      this.resumeReaders(workspaceId)
     }
   }
 

@@ -21,6 +21,7 @@ export interface AddonSourceInfo {
   imageUrl?: string
   rawId?: string
   lastSyncedAt?: string
+  metadata?: Readonly<Record<string, string | number | boolean>>
 }
 
 export type RecordSyncStatus =

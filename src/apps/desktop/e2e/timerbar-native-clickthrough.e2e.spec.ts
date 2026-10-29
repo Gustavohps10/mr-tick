@@ -612,9 +612,7 @@ test.describe('Timerbar Native Win32 Click-Through & Focus Contract', () => {
       },
     }
 
-    const evidencePath = resolve(
-      'C:/myapps/metric-context/evidencias_qa_timerbar/rodada-03/native-clickthrough.json',
-    )
+    const evidencePath = testInfo.outputPath('native-clickthrough.json')
     const reportJson = JSON.stringify(report, null, 2)
     await testInfo.attach('native-clickthrough.json', {
       body: reportJson,

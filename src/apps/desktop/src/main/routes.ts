@@ -13,6 +13,7 @@ import { app, BrowserWindow, screen } from 'electron'
 import { NativeOverlay } from '@/main'
 import { IpcHandler } from '@/main/adapters/IpcHandler'
 import {
+  CoreHandler,
   DiagnosticsHandler,
   LicensingHandler,
   SessionHandler,
@@ -65,6 +66,7 @@ export function openIpcRoutes(
     serviceProvider.resolve<UpdaterHandler>('updaterHandler')
   const diagnosticsHandler =
     serviceProvider.resolve<DiagnosticsHandler>('diagnosticsHandler')
+  const coreHandler = serviceProvider.resolve<CoreHandler>('coreHandler')
 
   function isAuthorizedDiagnosticsClient(
     event: Electron.IpcMainInvokeEvent,
@@ -283,6 +285,31 @@ export function openIpcRoutes(
   )
   IpcHandler.register('ADDON_SAVE_SETTINGS', (e, req) =>
     addonsHandler.saveSettings(e, req),
+  )
+  IpcHandler.register('ADDON_RESOLVE_SETTINGS_OPTIONS', (e, req) =>
+    addonsHandler.resolveSettingsOptions(e, req),
+  )
+  IpcHandler.register('ADDON_GET_OPERATIONAL_LIST', (e, req) =>
+    addonsHandler.getOperationalList(e, req),
+  )
+  IpcHandler.register('ADDON_EXECUTE_OPERATIONAL_ACTION', (e, req) =>
+    addonsHandler.executeOperationalAction(e, req),
+  )
+  IpcHandler.register('ADDON_EVALUATE_SETTINGS_FORM', (e, req) =>
+    addonsHandler.evaluateSettingsForm(e, req),
+  )
+  IpcHandler.register('ADDON_REAPPLY_SETTINGS', (e, req) =>
+    addonsHandler.reapplySettings(e, req),
+  )
+  IpcHandler.register('CORE_CONNECTIONS_LIST', (e, req) =>
+    coreHandler.listConnections(e, req),
+  )
+  IpcHandler.register('CORE_TASKS_LIST', (e, req) =>
+    coreHandler.listTasks(e, req),
+  )
+  IpcHandler.register('CORE_TASK_GET', (e, req) => coreHandler.getTask(e, req))
+  IpcHandler.register('CORE_METADATA_GET', (e, req) =>
+    coreHandler.getMetadata(e, req),
   )
   IpcHandler.register('ADDON_EXECUTE_ACTION', (e, req) =>
     addonsHandler.executeAction(e, req),

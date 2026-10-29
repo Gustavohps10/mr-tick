@@ -1,0 +1,13 @@
+id: mr-tick-datasource-alpha
+name: Alpha DataSource (Second Test Fixture)
+version: 1.0.0
+requiredApiVersion: '-1'
+capabilities:
+  - auth
+  - dataSource
+author: Mr-tick
+shortDescription: Segundo DataSource simulado para teste de isolamento e tarefas alpha.
+description: Segundo provedor com tarefas alfanuméricas (#ALPHA-101, #ALPHA-102) e autor independente para provar desacoplamento.
+tags:
+  - teste
+  - dataSource

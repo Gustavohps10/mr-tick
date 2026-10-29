@@ -63,6 +63,7 @@ import {
 import {
   ReplicationStatus,
   useConnectionsWithSync,
+  useSyncInitializationError,
   useSyncStore,
 } from '@/stores/syncStore'
 
@@ -104,6 +105,7 @@ interface GlobalSyncState {
 }
 
 export function Header({ className }: HeaderProps = {}) {
+  const initializationError = useSyncInitializationError()
   const { workspace } = useWorkspace()
   const connections = useConnectionsWithSync()
   const dbName = useSyncStore((s) => s.db?.name)
@@ -137,6 +139,14 @@ export function Header({ className }: HeaderProps = {}) {
   }
 
   const getGlobalState = (): GlobalSyncState => {
+    if (initializationError !== null)
+      return {
+        status: 'technical_error',
+        color: 'bg-destructive',
+        label: 'Falha ao inicializar workspace',
+        icon: 'sync',
+      }
+
     if (!isInitialized)
       return {
         status: 'initializing',
@@ -826,9 +836,11 @@ export function Header({ className }: HeaderProps = {}) {
                       className="text-muted-foreground/20 mx-auto mb-2"
                     />
                     <p className="text-muted-foreground text-[10px] italic opacity-60">
-                      {isInitialized
-                        ? 'Somente dados locais ativados'
-                        : 'Inicializando motor...'}
+                      {initializationError !== null && initializationError}
+                      {initializationError === null &&
+                        (isInitialized
+                          ? 'Somente dados locais ativados'
+                          : 'Inicializando motor...')}
                     </p>
                   </div>
                 )}

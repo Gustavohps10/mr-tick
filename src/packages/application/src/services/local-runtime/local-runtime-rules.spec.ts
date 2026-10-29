@@ -57,6 +57,30 @@ describe('Portable local-runtime business rules', () => {
     expect(updated.success.syncStatus).toBe('pending_push')
   })
 
+  it('preserves typed addon origin metadata in the public record mapper', () => {
+    const metadata = {
+      segmentId: 'segment-7',
+      ruleId: 'rule-3',
+      revision: 4,
+      enabled: true,
+    }
+
+    const publicRecord = toPublicRecord({
+      ...record(),
+      addonSource: {
+        pluginId: 'discord-addon',
+        name: 'Discord',
+        metadata,
+      },
+    })
+
+    expect(publicRecord.addonSource).toEqual({
+      id: 'discord-addon',
+      name: 'Discord',
+      metadata,
+    })
+  })
+
   it('does not retarget an entry with an unconfirmed operation', () => {
     const previous: LocalTimeEntrySnapshot = {
       ...record(),
@@ -186,5 +210,136 @@ describe('Portable local-runtime business rules', () => {
         Date.parse('2026-10-09T00:15:00.000Z'),
       ),
     ).toBe(300)
+  })
+
+  it('rejects implicit acceptance via update on a suggestion with 409', () => {
+    const suggestion = planLocalRuntimeCommand(
+      {
+        action: 'suggest',
+        commandId: 'suggestion-op',
+        workspaceId: 'workspace',
+        entryId: 'sug-1',
+        payload: {
+          taskId: '123',
+          activityId: 'dev',
+          userId: 'user-1',
+          connectionInstanceId: 'conn-1',
+          dataSourceId: 'ds-1',
+          timeSpentSeconds: 300,
+        },
+      },
+      null,
+      '2026-10-08T12:00:00.000Z',
+      false,
+    )
+    expect(suggestion.isSuccess()).toBe(true)
+
+    const updateAttempt = planLocalRuntimeCommand(
+      {
+        action: 'update',
+        commandId: 'update-op',
+        workspaceId: 'workspace',
+        entryId: 'sug-1',
+        payload: {
+          timeStatus: 'finished',
+        },
+      },
+      suggestion.success,
+      '2026-10-08T12:01:00.000Z',
+      false,
+    )
+    expect(updateAttempt.isFailure()).toBe(true)
+    expect(updateAttempt.failure.statusCode).toBe(409)
+    expect(updateAttempt.failure.messageKey).toBe(
+      'SUGGESTION_REQUIRES_EXPLICIT_ACCEPTANCE',
+    )
+  })
+
+  it('rejects implicit acceptance via editRecord persistence command on a suggestion with 409', () => {
+    const suggestion = planLocalRuntimeCommand(
+      {
+        action: 'suggest',
+        commandId: 'suggestion-op',
+        workspaceId: 'workspace',
+        entryId: 'sug-2',
+        payload: {
+          taskId: '123',
+          activityId: 'dev',
+          userId: 'user-1',
+          connectionInstanceId: 'conn-1',
+          dataSourceId: 'ds-1',
+          timeSpentSeconds: 300,
+        },
+      },
+      null,
+      '2026-10-08T12:00:00.000Z',
+      false,
+    )
+    expect(suggestion.isSuccess()).toBe(true)
+
+    const editAttempt = planLocalRuntimeCommand(
+      {
+        action: 'editRecord',
+        commandId: 'edit-op',
+        workspaceId: 'workspace',
+        entryId: 'sug-2',
+        changes: {
+          timeStatus: 'finished',
+        },
+      },
+      suggestion.success,
+      '2026-10-08T12:01:00.000Z',
+      false,
+    )
+    expect(editAttempt.isFailure()).toBe(true)
+    expect(editAttempt.failure.statusCode).toBe(409)
+    expect(editAttempt.failure.messageKey).toBe(
+      'SUGGESTION_REQUIRES_EXPLICIT_ACCEPTANCE',
+    )
+  })
+
+  it('preserves suggestion status and local_only syncStatus when updating comments on a suggestion', () => {
+    const suggestion = planLocalRuntimeCommand(
+      {
+        action: 'suggest',
+        commandId: 'suggestion-op',
+        workspaceId: 'workspace',
+        entryId: 'sug-3',
+        payload: {
+          taskId: '123',
+          activityId: 'dev',
+          userId: 'user-1',
+          connectionInstanceId: 'conn-1',
+          dataSourceId: 'ds-1',
+          timeSpentSeconds: 300,
+        },
+      },
+      null,
+      '2026-10-08T12:00:00.000Z',
+      false,
+    )
+    expect(suggestion.isSuccess()).toBe(true)
+    expect(suggestion.success.syncStatus).toBe('local_only')
+
+    const updateAttempt = planLocalRuntimeCommand(
+      {
+        action: 'update',
+        commandId: 'update-op',
+        workspaceId: 'workspace',
+        entryId: 'sug-3',
+        payload: {
+          comments: 'Updated comment without accepting',
+        },
+      },
+      suggestion.success,
+      '2026-10-08T12:01:00.000Z',
+      false,
+    )
+    expect(updateAttempt.isSuccess()).toBe(true)
+    expect(updateAttempt.success.timeStatus).toBe('suggestion')
+    expect(updateAttempt.success.syncStatus).toBe('local_only')
+    expect(updateAttempt.success.comments).toBe(
+      'Updated comment without accepting',
+    )
   })
 })

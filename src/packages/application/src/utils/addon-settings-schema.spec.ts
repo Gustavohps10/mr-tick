@@ -69,9 +69,9 @@ describe('addon-settings-schema', () => {
     ]
     expect(hasUnclassifiedPassword(validFields)).toBe(false)
 
-    const invalidFields: AddonSettingsField[] = [
+    const invalidFields = [
       { id: 'secret', label: 'Secret', type: 'password' },
-    ]
+    ] as unknown as AddonSettingsField[]
     expect(hasUnclassifiedPassword(invalidFields)).toBe(true)
   })
 })

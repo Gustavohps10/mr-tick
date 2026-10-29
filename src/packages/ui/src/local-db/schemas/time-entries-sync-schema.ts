@@ -100,6 +100,16 @@ export const legacyTimeEntriesSyncSchema: RxJsonSchema<
         imageUrl: { type: 'string', maxLength: 500 },
         rawId: { type: 'string', maxLength: 100 },
         lastSyncedAt: { type: 'string', format: 'date-time', maxLength: 30 },
+        metadata: {
+          type: 'object',
+          additionalProperties: {
+            anyOf: [
+              { type: 'string' },
+              { type: 'number' },
+              { type: 'boolean' },
+            ],
+          },
+        },
       },
       required: ['pluginId'],
     },

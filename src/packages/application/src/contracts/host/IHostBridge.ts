@@ -4,6 +4,16 @@ import { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
 
 import { TimeEntryPullCheckpointDTO, TimeEntryPullPageDTO } from '@/dtos'
 
+import type {
+  AddonFieldAddress,
+  AddonSettingsSchema,
+} from '../addons/settings/AddonSettingsSchema'
+import type {
+  AddonFormEvaluationResponse,
+  AddonOperationalListResponse,
+  AddonResolvedDependencyEntry,
+  AddonResolveOptionsResponse,
+} from '../addons/settings/IAddonSettingsAPI'
 import type { AddonSettingsView } from '../addons/settings/IAddonSettingsRepository'
 import type { AddonVaultScope } from '../addons/vault/IAddonVaultAPI'
 import type { AddonSettingValue } from '../addons/vault/IAddonVaultAPI'
@@ -38,6 +48,24 @@ import {
   WorkspaceViewModel,
 } from '@mr-tick/shared/view-models'
 
+import type {
+  CoreConnection,
+  CoreConnectionScope,
+  CoreMetadata,
+  CoreTask,
+  CoreTaskListRequest,
+  CoreTaskPage,
+  CoreTaskReference,
+} from '../core/CoreContext'
+export type {
+  CoreConnection,
+  CoreConnectionScope,
+  CoreMetadata,
+  CoreTask,
+  CoreTaskListRequest,
+  CoreTaskPage,
+  CoreTaskReference,
+} from '../core/CoreContext'
 import type { MappingFieldDefinition } from '../data/providers/IMetadataProvider'
 export type { MappingFieldDefinition } from '../data/providers/IMetadataProvider'
 import type { IDiagnosticsAPI } from '../diagnostics/IDiagnosticsAPI'
@@ -297,83 +325,55 @@ export interface AddonTimerbarPopoverItem {
 export type AddonTimerbarMenuItem =
   AddonTimerbarActionItem | AddonTimerbarPopoverItem
 
-export type AddonSettingsFieldType =
-  | 'text'
-  | 'textarea'
-  | 'json'
-  | 'mapping'
-  | 'password'
-  | 'number'
-  | 'date'
-  | 'boolean'
-  | 'select'
-  | 'button'
-  | 'file'
-  | 'directory'
-  | 'datasource-instances'
-  | 'info-card'
-
-export interface AddonSettingsOption {
-  label: string
-  value: string | number | boolean
-}
-
-export type AddonSettingsFieldScope = 'credential' | 'configuration'
-
-export interface ConfiguredFieldMapping {
-  icon: string
-  color: string
-  customValue?: string
-}
-
-export type AddonMappingPreset = Record<string, ConfiguredFieldMapping>
-
-export interface AddonSettingsField {
-  id: string
-  type: AddonSettingsFieldType
-  label: string
-  scope?: AddonSettingsFieldScope
-  required?: boolean
-  defaultValue?: string | number | boolean | AddonMappingPreset
-  description?: string
-  placeholder?: string
-  options?: AddonSettingsOption[]
-  actionId?: string
-  variant?:
-    'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
-  display?: {
-    title?: string
-    message?: string
-    avatarUrl?: string
-    data?: Record<string, string>
-  }
-}
-
-export type AddonSettingsTabKind = 'auth' | 'capability'
-
-export type AddonSettingsAuthType = 'credentials' | 'oauth2'
-
-export interface AddonSettingsGroup {
-  id: string
-  label: string
-  description?: string
-  authType?: AddonSettingsAuthType
-  fields: AddonSettingsField[]
-}
-
-export interface AddonSettingsTab {
-  id: string
-  label: string
-  description?: string
-  kind?: AddonSettingsTabKind
-  requiresAuth?: boolean
-  isAuthenticated?: boolean
-  authType?: AddonSettingsAuthType
-  groups?: AddonSettingsGroup[]
-  fields?: AddonSettingsField[]
-}
-
-export type AddonSettingsSchema = AddonSettingsTab[] | AddonSettingsField[]
+export type {
+  AddonBaseSettingsField,
+  AddonFieldAddress,
+  AddonMappingPreset,
+  AddonOperationalActionDefinition,
+  AddonSettingsAuthType,
+  AddonSettingsBooleanField,
+  AddonSettingsButtonField,
+  AddonSettingsCollectionField,
+  AddonSettingsDataSourceInstancesField,
+  AddonSettingsDateField,
+  AddonSettingsDirectoryField,
+  AddonSettingsField,
+  AddonSettingsFieldDependency,
+  AddonSettingsFieldScope,
+  AddonSettingsFieldType,
+  AddonSettingsFileField,
+  AddonSettingsGroup,
+  AddonSettingsGroupField,
+  AddonSettingsInfoCardField,
+  AddonSettingsJsonField,
+  AddonSettingsMappingField,
+  AddonSettingsMultiSelectField,
+  AddonSettingsNumberField,
+  AddonSettingsOperationalListField,
+  AddonSettingsOption,
+  AddonSettingsPasswordField,
+  AddonSettingsSchema,
+  AddonSettingsSelectField,
+  AddonSettingsSelectSource,
+  AddonSettingsTab,
+  AddonSettingsTabKind,
+  AddonSettingsTaskReferenceField,
+  AddonSettingsTextareaField,
+  AddonSettingsTextField,
+  AddonSettingsTimeField,
+  AddonSettingsTimezoneField,
+  ConfiguredFieldMapping,
+  DataSourceConfigPreset,
+} from '../addons/settings/AddonSettingsSchema'
+export type {
+  AddonFormEvaluationResponse,
+  AddonOperationalItem,
+  AddonOperationalListRequest,
+  AddonOperationalListResponse,
+  AddonResolvedDependencyEntry,
+  AddonResolveOptionsRequest,
+  AddonResolveOptionsResponse,
+} from '../addons/settings/IAddonSettingsAPI'
 
 export interface AddonActionResponse {
   isSuccess: boolean
@@ -482,6 +482,54 @@ export interface IAddonsAPI {
       credentials?: Record<string, string | null>
     }>,
   ): Promise<ViewModel<AddonSettingsView>>
+  resolveSettingsOptions(
+    payload: IRequest<{
+      addonId: string
+      scope: AddonVaultScope
+      providerId: string
+      fieldAddress: AddonFieldAddress
+      dependencies: readonly AddonResolvedDependencyEntry[]
+      draftValues: Record<string, AddonSettingValue>
+      search?: string
+      cursor?: string
+      limit?: number
+    }>,
+  ): Promise<ViewModel<AddonResolveOptionsResponse>>
+  getOperationalList(
+    payload: IRequest<{
+      addonId: string
+      scope: AddonVaultScope
+      providerId: string
+      cursor?: string
+      limit?: number
+    }>,
+  ): Promise<ViewModel<AddonOperationalListResponse>>
+  executeOperationalAction(
+    payload: IRequest<{
+      addonId: string
+      scope: AddonVaultScope
+      providerId: string
+      itemId: string
+      actionId: string
+      payload?: Record<string, AddonSettingValue>
+    }>,
+  ): Promise<ViewModel<void>>
+  evaluateSettingsForm(
+    payload: IRequest<{
+      addonId: string
+      scope: AddonVaultScope
+      evaluatorId: string
+      draftValues: Record<string, AddonSettingValue>
+      targetAddress?: AddonFieldAddress
+    }>,
+  ): Promise<ViewModel<AddonFormEvaluationResponse>>
+  reapplySettings(
+    payload: IRequest<{
+      addonId: string
+      scope: AddonVaultScope
+      revision: number
+    }>,
+  ): Promise<ViewModel<AddonSettingsView>>
   executeAction(
     payload: IRequest<{
       addonId: string
@@ -573,6 +621,22 @@ export interface ILicensingAPI {
   deactivate(): Promise<ViewModel<LicensingStatusViewModel>>
 }
 
+export interface ICoreBridgeAPI {
+  listConnections(
+    request: IRequest<{ workspaceId: string; capability?: string }>,
+  ): Promise<ViewModel<CoreConnection[]>>
+
+  listTasks(
+    request: IRequest<CoreTaskListRequest>,
+  ): Promise<ViewModel<CoreTaskPage>>
+
+  getTask(request: IRequest<CoreTaskReference>): Promise<ViewModel<CoreTask>>
+
+  getMetadata(
+    request: IRequest<CoreConnectionScope>,
+  ): Promise<ViewModel<CoreMetadata>>
+}
+
 export interface IHostBridge {
   diagnostics: IDiagnosticsAPI
   localRuntime: ILocalRuntimeAPI
@@ -590,4 +654,5 @@ export interface IHostBridge {
   addons: IAddonsAPI
   licensing: ILicensingAPI
   events: IEventsAPI
+  core: ICoreBridgeAPI
 }

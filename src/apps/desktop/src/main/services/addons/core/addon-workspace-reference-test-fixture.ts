@@ -1,6 +1,7 @@
 import type {
   AddonSettingsSnapshot,
   IAddonSettingsRepository,
+  IAddonStorageRepository,
   IConnectionCredentialsVault,
   ICredentialsVault,
   IWorkspaceCredentialReferenceRegistry,
@@ -57,4 +58,11 @@ export function emptyAddonCredentialsVault(): ICredentialsVault &
     writeCredential: async () => ({ kind: 'completed' }),
     removeCredential: async () => ({ kind: 'completed' }),
   }
+}
+
+export const emptyAddonStorageRepository: IAddonStorageRepository = {
+  get: async () => Either.success(null),
+  set: async () => Either.success(),
+  delete: async () => Either.success(),
+  list: async () => Either.success({ entries: [], hasMore: false }),
 }

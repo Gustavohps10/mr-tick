@@ -7,17 +7,49 @@ import type {
 } from '../../host/vault/IAddonVaultAPI'
 import type { AddonSettingsSchema } from './AddonSettingsSchema'
 
-export interface AddonSettingsContext {
-  scope?: AddonVaultScope
-  workspaceId?: string
-}
+export type {
+  AddonEvaluateFormRequest,
+  AddonExecuteOperationalActionRequest,
+  AddonFieldDisabledEntry,
+  AddonFieldMessageEntry,
+  AddonFieldVisibilityEntry,
+  AddonFormEvaluationResponse,
+  AddonOperationalItem,
+  AddonOperationalListPagination,
+  AddonOperationalListRequest,
+  AddonOperationalListResponse,
+  AddonResolvedDependencyEntry,
+  AddonResolveOptionsPagination,
+  AddonResolveOptionsRequest,
+  AddonResolveOptionsResponse,
+  AddonSettingsApplyState,
+  AddonSettingsApplyStatus,
+  AddonSettingsContext,
+  AddonSettingsFormEvaluatorHandler,
+  AddonSettingsOperationalActionHandler,
+  AddonSettingsOperationalListProviderHandler,
+  AddonSettingsOptionsProviderHandler,
+  AddonSettingsSchemaProvider,
+  AddonSettingsValidateHandler,
+  AddonValidateSettingsRequest,
+} from '@mr-tick/application'
+
+import type {
+  AddonSettingsContext,
+  AddonSettingsFormEvaluatorHandler,
+  AddonSettingsOperationalActionHandler,
+  AddonSettingsOperationalListProviderHandler,
+  AddonSettingsOptionsProviderHandler,
+  AddonSettingsSchemaProvider,
+  AddonSettingsValidateHandler,
+} from '@mr-tick/application'
 
 export interface AddonSettingsApplyContext {
-  scope: AddonVaultScope
-  revision: number
-  values: AddonSettingsValues
-  events: IAddonEventsAPI
-  track: (cleanup: () => void) => () => void
+  readonly scope: AddonVaultScope
+  readonly revision: number
+  readonly values: AddonSettingsValues
+  readonly events: IAddonEventsAPI
+  readonly track: (cleanup: () => void) => () => void
 }
 
 export type AddonSettingsApplyHandler = (
@@ -25,14 +57,22 @@ export type AddonSettingsApplyHandler = (
 ) => Promise<Either<AppError, void>> | Either<AppError, void>
 
 export interface AddonSettingsRegisterOptions {
-  onApply?: AddonSettingsApplyHandler
+  readonly onApply?: AddonSettingsApplyHandler
+  readonly onValidate?: AddonSettingsValidateHandler
+  readonly optionsProviders?: Record<
+    string,
+    AddonSettingsOptionsProviderHandler
+  >
+  readonly operationalListProviders?: Record<
+    string,
+    AddonSettingsOperationalListProviderHandler
+  >
+  readonly operationalActionHandlers?: Record<
+    string,
+    AddonSettingsOperationalActionHandler
+  >
+  readonly formEvaluators?: Record<string, AddonSettingsFormEvaluatorHandler>
 }
-
-export type AddonSettingsSchemaProvider =
-  | AddonSettingsSchema
-  | ((
-      context?: AddonSettingsContext,
-    ) => Promise<AddonSettingsSchema> | AddonSettingsSchema)
 
 export interface IAddonSettingsAPI {
   register(

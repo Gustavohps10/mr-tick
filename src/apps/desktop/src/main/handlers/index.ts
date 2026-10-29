@@ -1,3 +1,4 @@
+export * from './CoreHandler'
 export * from './DiagnosticsHandler'
 export * from './LicensingHandler'
 export * from './SessionHandler'

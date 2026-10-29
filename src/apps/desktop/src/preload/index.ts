@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import {
   addonsInvoker,
+  coreInvoker,
   credentialsVaultInvoker,
   diagnosticsInvoker,
   headersInvoker,
@@ -40,6 +41,7 @@ const api: IHostBridge = {
   updater: updaterInvoker,
   addons: addonsInvoker,
   licensing: licensingInvoker,
+  core: coreInvoker,
 
   events: {
     on: <T = void>(channel: string, handler: (data: T) => void) => {

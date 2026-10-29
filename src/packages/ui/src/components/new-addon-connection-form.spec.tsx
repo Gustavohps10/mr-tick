@@ -45,7 +45,6 @@ const mockSampleSchema: AddonSettingsTab[] = [
             type: 'password',
             label: 'Chave de API',
             placeholder: 'sua-chave',
-            defaultValue: 'secret-token-123',
           },
         ],
       },
@@ -76,10 +75,13 @@ const mockSampleSchema: AddonSettingsTab[] = [
             type: 'select',
             label: 'Filtro de Tarefas',
             defaultValue: 'assigned_to_me',
-            options: [
-              { label: 'Atribuídas a mim', value: 'assigned_to_me' },
-              { label: 'Todas as tarefas', value: 'all_tasks' },
-            ],
+            source: {
+              kind: 'static',
+              options: [
+                { label: 'Atribuídas a mim', value: 'assigned_to_me' },
+                { label: 'Todas as tarefas', value: 'all_tasks' },
+              ],
+            },
           },
         ],
       },
@@ -168,7 +170,7 @@ describe('Unit - NewAddonConnectionForm e AddonFieldRenderer (SDK Schema Dinâmi
 
     const apiKeyInput = screen.getByTestId('addon-field-input-apiKey')
     if (apiKeyInput instanceof HTMLInputElement) {
-      expect(apiKeyInput.value).toBe('secret-token-123')
+      expect(apiKeyInput.value).toBe('')
       expect(apiKeyInput.type).toBe('password')
     }
 
@@ -212,6 +214,9 @@ describe('Unit - NewAddonConnectionForm e AddonFieldRenderer (SDK Schema Dinâmi
     })
 
     // Altera valores no formulário
+    fireEvent.change(screen.getByTestId('addon-field-input-apiKey'), {
+      target: { value: 'secret-token-123' },
+    })
     const serverUrlInput = screen.getByTestId('addon-field-input-serverUrl')
     fireEvent.change(serverUrlInput, {
       target: { value: 'https://producao.empresa.com' },

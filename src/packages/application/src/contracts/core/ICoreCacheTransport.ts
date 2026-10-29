@@ -1,5 +1,6 @@
 import type {
   CoreConnectionScope,
+  CoreMember,
   CoreMetadata,
   CoreTask,
   CoreTaskListRequest,
@@ -13,10 +14,12 @@ export type CoreCacheQuery =
   | ({ action: 'tasks' } & CoreTaskListRequest)
   | ({ action: 'task' } & CoreTaskReference)
   | ({ action: 'metadata' } & CoreConnectionScope)
+  | ({ action: 'currentUser' } & CoreConnectionScope)
 export type CoreCacheValue =
   | ({ kind: 'tasks' } & CoreTaskPage)
   | { kind: 'task'; task: CoreTask }
   | { kind: 'metadata'; metadata: CoreMetadata }
+  | { kind: 'currentUser'; member: CoreMember }
 export type CoreCacheResponse =
   | { ok: true; value: CoreCacheValue }
   | { ok: false; error: { messageKey: string; statusCode: number } }

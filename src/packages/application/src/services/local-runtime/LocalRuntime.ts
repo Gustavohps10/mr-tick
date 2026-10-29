@@ -51,7 +51,8 @@ export class LocalRuntime implements ILocalRuntimeAPI {
       if (
         input.action === 'list' ||
         input.action === 'get' ||
-        input.action === 'timerState'
+        input.action === 'timerState' ||
+        input.action === 'detectOverlaps'
       ) {
         return this.response(await executor.query(input))
       }
@@ -184,6 +185,19 @@ export function validateLocalRuntimeRequest(
 
   if (input.action === 'timerState') return Either.success()
 
+  if (input.action === 'detectOverlaps') {
+    if (!validDate(input.start)) return invalid('START_DATE_INVALID')
+    if (!validDate(input.end)) return invalid('END_DATE_INVALID')
+    if (Date.parse(input.end) < Date.parse(input.start))
+      return invalid('DATE_RANGE_INVALID')
+    if (
+      input.excludeEntryId !== undefined &&
+      !isNonEmptyString(input.excludeEntryId)
+    )
+      return invalid('ENTRY_ID_REQUIRED')
+    return Either.success()
+  }
+
   if (input.action === 'get') {
     if (!isNonEmptyString(input.entryId)) return invalid('ENTRY_ID_REQUIRED')
     return Either.success()
@@ -194,6 +208,15 @@ export function validateLocalRuntimeRequest(
   if (!isNonEmptyString(input.entryId)) return invalid('ENTRY_ID_REQUIRED')
   if (!isNonEmptyString(input.commandId) || input.commandId.length > 200)
     return invalid('COMMAND_ID_REQUIRED')
+
+  if (input.action === 'acceptSuggestion') {
+    if (input.confirmation !== undefined) {
+      const rawConfirmation: unknown = input.confirmation
+      if (!isRecord(rawConfirmation)) return invalid('CONFIRMATION_INVALID')
+      if (!isNonEmptyString(input.confirmation.conflictToken))
+        return invalid('CONFLICT_TOKEN_REQUIRED')
+    }
+  }
 
   if (!hasPayload(input)) return Either.success()
 

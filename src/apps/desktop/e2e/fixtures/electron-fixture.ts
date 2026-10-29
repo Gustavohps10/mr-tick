@@ -71,7 +71,10 @@ function cleanTestStorage(userDataPath: string): void {
   }
 }
 
-async function ensureSeedWorkspaces(userDataPath: string): Promise<void> {
+async function ensureSeedWorkspaces(
+  userDataPath: string,
+  configurableObserversFixture = false,
+): Promise<void> {
   const targetWorkspacesFile = join(userDataPath, 'workspaces.json')
 
   mkdirSync(userDataPath, { recursive: true })
@@ -84,69 +87,168 @@ async function ensureSeedWorkspaces(userDataPath: string): Promise<void> {
   )
   const vault = new KeytarCredentialsVault()
   for (const rawWs of seedWorkspaces.workspaces) {
+    const connections = rawWs.connections.map((c) => ({
+      id: c.id,
+      status:
+        c.status === 'connected'
+          ? ('connected' as const)
+          : c.status === 'archived'
+            ? ('archived' as const)
+            : ('disconnected' as const),
+      addonId: c.addonId,
+      connectionProfileId: c.connectionProfileId,
+      cardinality:
+        c.cardinality === 'single' ? ('single' as const) : ('multi' as const),
+      generation: c.generation,
+      authorizations:
+        c.status === 'connected'
+          ? [
+              {
+                authorizationId: `seed-auth-${c.id}`,
+                authorizationRole: 'primary' as const,
+                authProfileId: c.connectionProfileId,
+                credentialReferenceId: CredentialReferenceFactory.create({
+                  ownerId: c.addonId,
+                  workspaceId: rawWs.id,
+                  connectionId: c.id,
+                  authorizationId: `seed-auth-${c.id}`,
+                }).id,
+                identity: {
+                  kind: 'human' as const,
+                  providerId: 'fake',
+                  tenantId: 'fake.mr-tick-app.local',
+                  providerSubjectId: '1',
+                  displayName: 'Alex Silva',
+                },
+                generation: 1,
+                status: 'active' as const,
+                createdAt: rawWs.createdAt,
+                updatedAt: rawWs.updatedAt,
+              },
+            ]
+          : [],
+      ...(c.status === 'connected'
+        ? {
+            authorizationId: `seed-auth-${c.id}`,
+            identity: {
+              kind: 'human' as const,
+              providerId: 'fake',
+              tenantId: 'fake.mr-tick-app.local',
+              providerSubjectId: '1',
+              displayName: 'Alex Silva',
+            },
+            config: c.config,
+          }
+        : {}),
+    }))
+
+    if (
+      configurableObserversFixture &&
+      rawWs.id === 'ws-15c9d402-b6da-48ac-9a75-1b948cd0ec92'
+    ) {
+      const alphaConnId = 'mr-tick-datasource-alpha-c1'
+      const alphaAuthId = `seed-auth-${alphaConnId}`
+      const alphaCredRef = CredentialReferenceFactory.create({
+        ownerId: 'mr-tick-datasource-alpha',
+        workspaceId: rawWs.id,
+        connectionId: alphaConnId,
+        authorizationId: alphaAuthId,
+      })
+      connections.push({
+        id: alphaConnId,
+        status: 'connected',
+        addonId: 'mr-tick-datasource-alpha',
+        connectionProfileId: 'alpha-main',
+        cardinality: 'multi',
+        generation: 1,
+        authorizations: [
+          {
+            authorizationId: alphaAuthId,
+            authorizationRole: 'primary',
+            authProfileId: 'alpha-main',
+            credentialReferenceId: alphaCredRef.id,
+            identity: {
+              kind: 'human',
+              providerId: 'alpha',
+              tenantId: 'alpha.corp',
+              providerSubjectId: '201',
+              displayName: 'Beatriz Alpha',
+            },
+            generation: 1,
+            status: 'active',
+            createdAt: rawWs.createdAt,
+            updatedAt: rawWs.updatedAt,
+          },
+        ],
+        authorizationId: alphaAuthId,
+        identity: {
+          kind: 'human',
+          providerId: 'alpha',
+          tenantId: 'alpha.corp',
+          providerSubjectId: '201',
+          displayName: 'Beatriz Alpha',
+        },
+        config: { serverUrl: 'https://alpha.corp', apiKey: 'sec_alpha_123' },
+      })
+
+      const discordConnId = 'mistertick-discord-c1'
+      const discordAuthId = `seed-auth-${discordConnId}`
+      const discordCredRef = CredentialReferenceFactory.create({
+        ownerId: 'mistertick-discord',
+        workspaceId: rawWs.id,
+        connectionId: discordConnId,
+        authorizationId: discordAuthId,
+      })
+      connections.push({
+        id: discordConnId,
+        status: 'connected',
+        addonId: 'mistertick-discord',
+        connectionProfileId: 'discord-presence',
+        cardinality: 'single',
+        generation: 1,
+        authorizations: [
+          {
+            authorizationId: discordAuthId,
+            authorizationRole: 'primary',
+            authProfileId: 'discord-oauth',
+            credentialReferenceId: discordCredRef.id,
+            identity: {
+              kind: 'human',
+              providerId: 'discord',
+              tenantId: '999111222333444555',
+              providerSubjectId: '999111222333444555',
+              displayName: 'Discord Tester User',
+            },
+            generation: 1,
+            status: 'active',
+            createdAt: rawWs.createdAt,
+            updatedAt: rawWs.updatedAt,
+          },
+        ],
+        authorizationId: discordAuthId,
+        identity: {
+          kind: 'human',
+          providerId: 'discord',
+          tenantId: '999111222333444555',
+          providerSubjectId: '999111222333444555',
+          displayName: 'Discord Tester User',
+        },
+        config: {},
+      })
+    }
+
     const ws = Workspace.hydrate({
       id: rawWs.id,
       name: rawWs.name,
       description: rawWs.description || undefined,
       avatarUrl: rawWs.avatarUrl || undefined,
       status: rawWs.status === 'configured' ? 'configured' : 'draft',
-      connections: rawWs.connections.map((c) => ({
-        id: c.id,
-        status:
-          c.status === 'connected'
-            ? 'connected'
-            : c.status === 'archived'
-              ? 'archived'
-              : 'disconnected',
-        addonId: c.addonId,
-        connectionProfileId: c.connectionProfileId,
-        cardinality: c.cardinality === 'single' ? 'single' : 'multi',
-        generation: c.generation,
-        authorizations:
-          c.status === 'connected'
-            ? [
-                {
-                  authorizationId: `seed-auth-${c.id}`,
-                  authorizationRole: 'primary',
-                  authProfileId: c.connectionProfileId,
-                  credentialReferenceId: CredentialReferenceFactory.create({
-                    ownerId: c.addonId,
-                    workspaceId: rawWs.id,
-                    connectionId: c.id,
-                    authorizationId: `seed-auth-${c.id}`,
-                  }).id,
-                  identity: {
-                    kind: 'human',
-                    providerId: 'fake',
-                    tenantId: 'fake.mr-tick-app.local',
-                    providerSubjectId: '1',
-                    displayName: 'Alex Silva',
-                  },
-                  generation: 1,
-                  status: 'active',
-                  createdAt: rawWs.createdAt,
-                  updatedAt: rawWs.updatedAt,
-                },
-              ]
-            : [],
-        ...(c.status === 'connected'
-          ? {
-              authorizationId: `seed-auth-${c.id}`,
-              identity: {
-                kind: 'human',
-                providerId: 'fake',
-                tenantId: 'fake.mr-tick-app.local',
-                providerSubjectId: '1',
-                displayName: 'Alex Silva',
-              },
-              config: c.config,
-            }
-          : {}),
-      })),
+      connections,
       createdAt: new Date(rawWs.createdAt),
       updatedAt: new Date(rawWs.updatedAt),
     })
-    for (const c of rawWs.connections) {
+
+    for (const c of connections) {
       await reservationRepo.reserveConnectionSlot({
         reservationId: `seed-reservation-${c.id}`,
         workspaceId: rawWs.id,
@@ -154,18 +256,27 @@ async function ensureSeedWorkspaces(userDataPath: string): Promise<void> {
         connectionProfileId: c.connectionProfileId,
         connectionId: c.id,
         cardinality: c.cardinality === 'single' ? 'single' : 'multi',
-        default: true,
+        default: c.id === 'mr-tick-datasource-fake-c3f15587',
       })
       if (c.status === 'connected') {
-        await vault.writeCredential(
-          CredentialReferenceFactory.create({
-            ownerId: c.addonId,
-            workspaceId: rawWs.id,
-            connectionId: c.id,
-            authorizationId: `seed-auth-${c.id}`,
-          }),
-          JSON.stringify({ apiKey: 'fake-api-key' }),
-        )
+        const credRef = CredentialReferenceFactory.create({
+          ownerId: c.addonId,
+          workspaceId: rawWs.id,
+          connectionId: c.id,
+          authorizationId: `seed-auth-${c.id}`,
+        })
+        let credentialPayload = JSON.stringify({ apiKey: 'fake-api-key' })
+        if (c.addonId === 'mistertick-discord') {
+          credentialPayload = JSON.stringify({
+            accessToken: 'test-discord-oauth-token',
+            discordUser: JSON.stringify({
+              id: '999111222333444555',
+              username: 'discord.tester',
+              global_name: 'Discord Tester User',
+            }),
+          })
+        }
+        await vault.writeCredential(credRef, credentialPayload)
       }
     }
     const createRes = await repo.create(ws)
@@ -181,6 +292,7 @@ function ensureTestAddon(
   userDataPath: string,
   includePendingWorkArchiveProbe: boolean,
   includeSingleCardinalityProbe: boolean,
+  includeConfigurableObserversFixture: boolean = false,
 ): void {
   const addonsDir = join(userDataPath, 'addons')
   const targetAddonDir = join(addonsDir, 'mr-tick-datasource-fake')
@@ -260,20 +372,134 @@ function ensureTestAddon(
     )
   }
 
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir'
+  let hasFakeSymlink = false
   if (existsSync(targetAddonDir)) {
     try {
       const stat = lstatSync(targetAddonDir)
-      if (stat.isSymbolicLink()) return
+      hasFakeSymlink = stat.isSymbolicLink()
+      if (!hasFakeSymlink) {
+        cleanDirectoryIfExists(targetAddonDir)
+      }
     } catch {
       // continua para recriar se necessário
     }
   }
 
-  const linkType = process.platform === 'win32' ? 'junction' : 'dir'
-  try {
-    symlinkSync(sourceAddonDir, targetAddonDir, linkType)
-  } catch {
-    // Silencia se já existir
+  if (!hasFakeSymlink) {
+    try {
+      symlinkSync(sourceAddonDir, targetAddonDir, linkType)
+    } catch {
+      // Silencia se já existir
+    }
+  }
+
+  if (includeConfigurableObserversFixture) {
+    const watcherSourceDir = resolve(
+      desktopRoot,
+      '../../dev-addons/fake-watcher-for-tests',
+    )
+    if (!existsSync(watcherSourceDir)) {
+      throw new Error(
+        `CONFIGURABLE_OBSERVERS_FIXTURE_MISSING: fake-watcher-for-tests source directory not found at ${watcherSourceDir}`,
+      )
+    }
+    if (!existsSync(join(watcherSourceDir, 'manifest.yaml'))) {
+      throw new Error(
+        `CONFIGURABLE_OBSERVERS_FIXTURE_MISSING: fake-watcher-for-tests manifest.yaml missing at ${watcherSourceDir}`,
+      )
+    }
+    if (!existsSync(join(watcherSourceDir, 'dist', 'index.js'))) {
+      throw new Error(
+        `CONFIGURABLE_OBSERVERS_FIXTURE_MISSING: fake-watcher-for-tests dist/index.js missing at ${watcherSourceDir}. Run tsup build first.`,
+      )
+    }
+    const targetWatcherDir = join(addonsDir, 'mr-tick-fake-watcher-for-tests')
+    if (existsSync(targetWatcherDir)) {
+      try {
+        const stat = lstatSync(targetWatcherDir)
+        if (!stat.isSymbolicLink()) {
+          cleanDirectoryIfExists(targetWatcherDir)
+        }
+      } catch {
+        // continua para recriar se necessário
+      }
+    }
+    try {
+      symlinkSync(watcherSourceDir, targetWatcherDir, linkType)
+    } catch {
+      // Silencia se já existir
+    }
+
+    const alphaSourceDir = resolve(
+      desktopRoot,
+      '../../dev-addons/datasource-alpha-for-tests',
+    )
+    if (!existsSync(alphaSourceDir)) {
+      throw new Error(
+        `CONFIGURABLE_OBSERVERS_FIXTURE_MISSING: datasource-alpha-for-tests source directory not found at ${alphaSourceDir}`,
+      )
+    }
+    if (!existsSync(join(alphaSourceDir, 'manifest.yaml'))) {
+      throw new Error(
+        `CONFIGURABLE_OBSERVERS_FIXTURE_MISSING: datasource-alpha-for-tests manifest.yaml missing at ${alphaSourceDir}`,
+      )
+    }
+    if (!existsSync(join(alphaSourceDir, 'dist', 'index.js'))) {
+      throw new Error(
+        `CONFIGURABLE_OBSERVERS_FIXTURE_MISSING: datasource-alpha-for-tests dist/index.js missing at ${alphaSourceDir}. Run tsup build first.`,
+      )
+    }
+    const targetAlphaDir = join(addonsDir, 'mr-tick-datasource-alpha')
+    if (existsSync(targetAlphaDir)) {
+      try {
+        const stat = lstatSync(targetAlphaDir)
+        if (!stat.isSymbolicLink()) {
+          cleanDirectoryIfExists(targetAlphaDir)
+        }
+      } catch {
+        // continua para recriar se necessário
+      }
+    }
+    try {
+      symlinkSync(alphaSourceDir, targetAlphaDir, linkType)
+    } catch {
+      // Silencia se já existir
+    }
+
+    const discordSourceDir = resolve(desktopRoot, '../../../../discord-addon')
+    if (
+      existsSync(discordSourceDir) &&
+      existsSync(join(discordSourceDir, 'dist', 'index.js'))
+    ) {
+      const targetDiscordDir = join(addonsDir, 'mistertick-discord')
+      cleanDirectoryIfExists(targetDiscordDir)
+      mkdirSync(join(targetDiscordDir, 'dist'), { recursive: true })
+      copyFileSync(
+        join(discordSourceDir, 'dist', 'index.js'),
+        join(targetDiscordDir, 'dist', 'index.js'),
+      )
+      writeFileSync(
+        join(targetDiscordDir, 'package.json'),
+        JSON.stringify({
+          name: 'mistertick-discord',
+          version: '0.5.1',
+          type: 'module',
+          main: 'dist/index.js',
+        }),
+      )
+      const rawManifest = readFileSync(
+        join(discordSourceDir, 'manifest.yaml'),
+        'utf8',
+      )
+      const adaptedManifest = rawManifest
+        .replace(
+          /requiredApiVersion:\s*['"]?[^'"\r\n]+['"]?/g,
+          "requiredApiVersion: '-1'",
+        )
+        .replace(/tier:\s*plus/g, 'tier: free')
+      writeFileSync(join(targetDiscordDir, 'manifest.yaml'), adaptedManifest)
+    }
   }
 }
 
@@ -285,6 +511,8 @@ interface ElectronTestFixtures {
   runtimeProbeConnectionId: string
   pendingWorkArchiveProbe: boolean
   singleCardinalityProbe: boolean
+  configurableObserversFixture: boolean
+  openWidgetInTest: boolean
 }
 
 async function findMainWindow(
@@ -307,6 +535,8 @@ export const test = baseTest.extend<ElectronTestFixtures>({
   runtimeProbeConnectionId: ['', { option: true }],
   pendingWorkArchiveProbe: [false, { option: true }],
   singleCardinalityProbe: [false, { option: true }],
+  configurableObserversFixture: [false, { option: true }],
+  openWidgetInTest: [false, { option: true }],
   electronApp: async (
     {
       electronNodeEnv,
@@ -314,21 +544,28 @@ export const test = baseTest.extend<ElectronTestFixtures>({
       runtimeProbeConnectionId,
       pendingWorkArchiveProbe,
       singleCardinalityProbe,
+      configurableObserversFixture,
+      openWidgetInTest,
     },
     use,
     testInfo,
   ) => {
     const userDataPath = getElectronUserDataPath(testInfo.workerIndex)
     cleanTestStorage(userDataPath)
-    await ensureSeedWorkspaces(userDataPath)
+    await ensureSeedWorkspaces(userDataPath, configurableObserversFixture)
     ensureTestAddon(
       userDataPath,
       pendingWorkArchiveProbe,
       singleCardinalityProbe,
+      configurableObserversFixture,
     )
 
     const isVerbose = process.env.E2E_VERBOSE === 'true'
     const logs: string[] = []
+    const defaultIsolatedDiscordPipe =
+      process.platform === 'win32'
+        ? `\\\\.\\pipe\\mr-tick-discord-isolated-${testInfo.workerIndex}`
+        : `/tmp/mr-tick-discord-isolated-${testInfo.workerIndex}`
     const appEnv = {
       ...process.env,
       NODE_ENV: electronNodeEnv,
@@ -337,9 +574,11 @@ export const test = baseTest.extend<ElectronTestFixtures>({
       MR_TICK_RUNTIME_PROBE_WORKSPACE: runtimeProbeWorkspaceId,
       MR_TICK_RUNTIME_PROBE_CONNECTION: runtimeProbeConnectionId,
       MR_TICK_TEST_USER_DATA_DIR: userDataPath,
+      MR_TICK_DISCORD_RPC_PIPE_OVERRIDE: defaultIsolatedDiscordPipe,
     }
     delete appEnv.MR_TICK_OPEN_WIDGET_IN_TEST
     if (
+      openWidgetInTest ||
       testInfo.file.includes('timerbar-') ||
       testInfo.file.includes('suggestions')
     )
@@ -364,7 +603,7 @@ export const test = baseTest.extend<ElectronTestFixtures>({
       logs.push(`[MAIN ERROR]: ${text}`)
     })
 
-    app.on('window', async (win) => {
+    const attachWindowLogs = (win: Page) => {
       const url = win.url()
       if (isVerbose) console.log(`[WIN OPENED]: ${url}`)
       logs.push(`[WIN OPENED]: ${url}`)
@@ -383,6 +622,14 @@ export const test = baseTest.extend<ElectronTestFixtures>({
         if (isVerbose) console.log(`[WIN CLOSED]: ${url}`)
         logs.push(`[WIN CLOSED]: ${url}`)
       })
+    }
+
+    for (const existingWin of await app.windows()) {
+      attachWindowLogs(existingWin)
+    }
+
+    app.on('window', async (win) => {
+      attachWindowLogs(win)
     })
 
     await use(app)
@@ -443,4 +690,4 @@ export const test = baseTest.extend<ElectronTestFixtures>({
   },
 })
 
-export { expect }
+export { electronLauncher, expect, findMainWindow, getElectronUserDataPath }

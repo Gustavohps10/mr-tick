@@ -5,6 +5,7 @@ import type {
   TimeEntryRecordDTO,
   TimerStateDTO,
 } from '../../dtos'
+import type { TimeOverlapDetectionResult } from '../runtime/ITimeOverlapDetectionAPI'
 
 export interface LocalEntryInput extends CreateTimeEntryDTO {
   activityName?: string
@@ -24,6 +25,7 @@ export interface LocalEntryChanges {
   pauseSeconds?: number
   startDate?: string
   endDate?: string
+  timeStatus?: 'finished' | 'suggestion' | 'running'
 }
 export interface LocalTimerInput extends LocalEntryInput {
   mode: 'countup' | 'countdown'
@@ -41,9 +43,14 @@ export type LocalRuntimeCommand =
   | (LocalCommandIdentity & { action: 'update'; payload: LocalEntryChanges })
   | (LocalCommandIdentity & { action: 'timerStart'; payload: LocalTimerInput })
   | (LocalCommandIdentity & {
+      action: 'acceptSuggestion'
+      confirmation?: {
+        conflictToken: string
+      }
+    })
+  | (LocalCommandIdentity & {
       action:
         | 'delete'
-        | 'acceptSuggestion'
         | 'dismissSuggestion'
         | 'timerPause'
         | 'timerResume'
@@ -60,6 +67,13 @@ export type LocalRuntimeQuery =
   | { action: 'list'; workspaceId: string; filter: LocalEntryFilter }
   | { action: 'get'; workspaceId: string; entryId: string }
   | { action: 'timerState'; workspaceId: string }
+  | {
+      action: 'detectOverlaps'
+      workspaceId: string
+      start: string
+      end: string
+      excludeEntryId?: string
+    }
 export type LocalRuntimeRequest = LocalRuntimeCommand | LocalRuntimeQuery
 export interface LocalRuntimeResult {
   /** A durable replay does not emit a second notification or addon event. */
@@ -69,6 +83,7 @@ export interface LocalRuntimeResult {
   timer: TimerStateDTO | null
   deleted: boolean
   pendingWrites: boolean
+  overlap?: TimeOverlapDetectionResult
 }
 export interface LocalRuntimeFailure {
   messageKey: string

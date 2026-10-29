@@ -26,7 +26,12 @@ import {
   isNonEmptyString,
   isRecord,
 } from '@mr-tick/shared/helpers'
-import { normalizeMangoQuery, prepareQuery, removeRxDatabase } from 'rxdb'
+import {
+  normalizeMangoQuery,
+  prepareQuery,
+  removeRxDatabase,
+  RxError,
+} from 'rxdb'
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { getRxStorageMemory } from 'rxdb/plugins/storage-memory'
 
@@ -73,6 +78,10 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
   private readonly statusSubscriptions = new Map<string, () => void>()
   private readonly receipts = new Map<string, BrowserCommandReceipts>()
   private readonly accessOrder: string[] = []
+  private readonly openingFailures = new Map<
+    string,
+    { reason: string; at: string }
+  >()
 
   constructor(
     private readonly bridge: BrowserRuntimeBridge,
@@ -121,8 +130,18 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
 
     const result = await this.initialize(workspaceId)
     if (result.isSuccess()) {
+      this.openingFailures.delete(workspaceId)
       this.touchAccess(workspaceId)
     }
+
+    if (result.isFailure()) {
+      this.openingFailures.set(workspaceId, {
+        reason: result.failure.messageKey,
+        at: new Date().toISOString(),
+      })
+    }
+
+    this.safeEmit('local-runtime:diagnostics-invalidated', {})
 
     return result
   }
@@ -164,6 +183,25 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
   }> {
     const list: DiagnosticOperationalWorkspaceStatus[] = []
     const operationalReadChecks: DiagnosticCheckResult[] = []
+
+    for (const [workspaceId, failure] of this.openingFailures) {
+      if (this.workspaces.has(workspaceId) || this.openings.has(workspaceId))
+        continue
+
+      list.push({ workspaceId, status: 'unavailable', hasDb: false })
+      operationalReadChecks.push({
+        id: `probe-workspace-storage-${workspaceId}`,
+        name: `Workspace Initialization (${workspaceId})`,
+        capability: 'storage.read',
+        source: 'executor',
+        scope: { type: 'workspace', workspaceId },
+        status: 'fail',
+        reason: failure.reason,
+        startedAt: failure.at,
+        finishedAt: failure.at,
+        durationMs: 0,
+      })
+    }
 
     for (const [workspaceId, executor] of this.workspaces.entries()) {
       const storeState = executor.store.getState()
@@ -326,6 +364,19 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
         workspaceId,
         status: 'opening',
         hasDb: false,
+      })
+      const collectedAt = new Date().toISOString()
+      operationalReadChecks.push({
+        id: `probe-workspace-storage-${workspaceId}`,
+        name: `Workspace Initialization (${workspaceId})`,
+        capability: 'storage.read',
+        source: 'executor',
+        scope: { type: 'workspace', workspaceId },
+        status: 'unavailable',
+        reason: 'WORKSPACE_INITIALIZING',
+        startedAt: collectedAt,
+        finishedAt: collectedAt,
+        durationMs: 0,
       })
     }
 
@@ -765,6 +816,16 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
     if (input.action === 'editRecord') {
       if (input.changes.id !== undefined && input.changes.id !== input.entryId)
         return Either.failure(AppError.ValidationError('ENTRY_ID_IMMUTABLE'))
+      if (
+        before !== null &&
+        before.timeStatus === 'suggestion' &&
+        input.changes.timeStatus !== undefined &&
+        input.changes.timeStatus !== 'suggestion'
+      ) {
+        return Either.failure(
+          AppError.Http(409, 'SUGGESTION_REQUIRES_EXPLICIT_ACCEPTANCE'),
+        )
+      }
       return Either.success(input)
     }
     if (
@@ -1028,6 +1089,9 @@ export function createBrowserLocalRuntime(
 }
 
 function runtimeFailure(error: Error): Either<AppError, never> {
+  if (error instanceof RxError)
+    return Either.failure(AppError.Internal(`WORKSPACE_STORAGE_${error.code}`))
+
   return Either.failure(AppError.Internal(error.message))
 }
 function syncFailure(error: AppError): LocalSyncResponse {

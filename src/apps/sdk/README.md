@@ -6,9 +6,9 @@ SDK público para addons do Mr. Tick. Instale o pacote publicado no npm; não im
 
 ## Modelo público
 
-- `AddonContext.core`: runtime, workspaces, connections, tasks, metadata, timer e timeEntries.
+- `AddonContext.core`: runtime, workspaces, connections, tasks, members, metadata, timer e timeEntries.
 - `AddonContext.contributions`: commands, menus, settings, connections, dataSources e themes.
-- `AddonContext.host`: events, notifications, vault e oauth.
+- `AddonContext.host`: events, notifications, vault, storage e oauth.
 - `IDataSourceInstance`: tasksProvider, timeEntriesProvider, membersProvider e metadataProvider.
 
 O manifesto declara `capabilities` e `requiredApiVersion`. Addons que conectam contas declaram `auth`; perfis e autenticadores são registrados em runtime por `contributions.connections`, com retorno `Either`. `IDataSource` não fornece perfis de conexão. `IHttpClient` exige validador de resposta. APIs funcionais retornam `Either`; os helpers OAuth de baixo nível mantêm seus contratos de Promise específicos.
@@ -20,6 +20,7 @@ O manifesto declara `capabilities` e `requiredApiVersion`. Addons que conectam c
 - [Autenticação](https://mistertick.com/docs/capabilities/auth)
 - [OAuth PKCE](https://mistertick.com/docs/apis/oauth-pkce)
 - [Cofre, settings e eventos](https://mistertick.com/docs/apis/vault-and-events)
+- [Observadores configuráveis e settings declarativos](../../docs/sdk-configurable-observers.md)
 - [Sincronização](https://mistertick.com/docs/sync-engine)
 
 Registre contribuições em `activate` e retorne sem aguardar o runtime. Feche recursos próprios em `deactivate`. Addons executam código confiável no main do Electron, sem sandbox para código não confiável. Versões são publicadas pelo fluxo de Changesets/CI; não faça bump manual.

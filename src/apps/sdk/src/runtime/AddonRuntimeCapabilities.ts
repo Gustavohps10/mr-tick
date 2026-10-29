@@ -163,7 +163,16 @@ export class AddonRuntimeCapabilities {
         workspaceId,
         commandId: operation.commandId,
         entryId: operation.entryId,
-        payload: { ...payload, source: 'addon', addonSource: this.addon },
+        payload: {
+          ...payload,
+          source: 'addon',
+          addonSource: {
+            ...this.addon,
+            ...(payload.addonSource?.metadata !== undefined
+              ? { metadata: payload.addonSource.metadata }
+              : {}),
+          },
+        },
       }),
     )
   }
@@ -236,7 +245,16 @@ export class AddonRuntimeCapabilities {
       workspaceId,
       commandId: operation.commandId,
       entryId: operation.entryId,
-      payload: { ...payload, source: 'addon', addonSource: this.addon },
+      payload: {
+        ...payload,
+        source: 'addon',
+        addonSource: {
+          ...this.addon,
+          ...(payload.addonSource?.metadata !== undefined
+            ? { metadata: payload.addonSource.metadata }
+            : {}),
+        },
+      },
     })
     if (result.isFailure()) return result.forwardFailure()
     return Either.success()

@@ -4,6 +4,7 @@ import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const hostBridgeMocks = vi.hoisted(() => ({
+  initializationError: null as string | null,
   getSnapshot: vi.fn(),
   eventsOn: vi.fn().mockReturnValue(vi.fn()),
 }))
@@ -22,6 +23,9 @@ const mockHostBridge = {
 
 vi.mock('@/hooks/use-host-bridge', () => ({
   useHostBridge: () => mockHostBridge,
+}))
+vi.mock('@/stores/syncStore', () => ({
+  useSyncInitializationError: () => hostBridgeMocks.initializationError,
 }))
 
 import { RuntimeStatusIndicator } from '@/components/settings/system-diagnostics/runtime-status-indicator'
@@ -47,8 +51,67 @@ function renderIndicator() {
 describe('RuntimeStatusIndicator', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    hostBridgeMocks.initializationError = null
+    mockHostBridge.diagnostics.runChecks.mockImplementation(() =>
+      hostBridgeMocks.getSnapshot(),
+    )
     useSettingsModalStore.getState().closeModal()
   })
+
+  it.each(['reader', 'diagnostic'])(
+    'uses the title bar warning for a workspace failure from %s while the global runtime is ready',
+    async (source) => {
+      if (source === 'reader')
+        hostBridgeMocks.initializationError = 'WORKSPACE_STORAGE_DB6'
+      const workspaces = []
+      if (source === 'diagnostic')
+        workspaces.push({
+          workspaceId: 'workspace-failed',
+          status: 'unavailable',
+          hasDb: false,
+        })
+      hostBridgeMocks.getSnapshot.mockResolvedValue({
+        isSuccess: true,
+        statusCode: 200,
+        data: {
+          formatVersion: '1.0',
+          sessionId: 'workspace-failure',
+          revision: 1,
+          emittedAt: new Date().toISOString(),
+          observedGeneration: 'ready-generation',
+          dispatcher: {
+            state: 'ready',
+            generation: 'ready-generation',
+            startupStage: 'ready',
+            pendingRequestsByChannel: {},
+          },
+          checks: [],
+          storages: [],
+          workspaces,
+          recentEvents: [],
+          discardedEventsCount: 0,
+        },
+      })
+      renderIndicator()
+      await waitFor(() =>
+        expect(screen.getByTestId('runtime-status-indicator-btn')).toBeTruthy(),
+      )
+      if (source === 'reader')
+        expect(mockHostBridge.diagnostics.runChecks).toHaveBeenCalledOnce()
+      if (source === 'diagnostic') {
+        const subscription = hostBridgeMocks.eventsOn.mock.calls.find(
+          ([channel]) => channel === 'local-runtime:diagnostics-invalidated',
+        )
+        expect(subscription).toBeDefined()
+        const listener = subscription?.[1]
+        await listener()
+        expect(mockHostBridge.diagnostics.runChecks).toHaveBeenCalledOnce()
+      }
+      fireEvent.click(screen.getByTestId('runtime-status-indicator-btn'))
+      expect(useSettingsModalStore.getState().activeTab).toBe('system-data')
+      expect(useSettingsModalStore.getState().isOpen).toBe(true)
+    },
+  )
 
   it('renders nothing when the runtime is ready and operational', async () => {
     hostBridgeMocks.getSnapshot.mockResolvedValue({

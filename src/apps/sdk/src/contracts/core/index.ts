@@ -1,5 +1,6 @@
 export * from './connections'
 export * from './ICoreAPI'
+export * from './members'
 export * from './metadata'
 export * from './runtime'
 export * from './tasks'

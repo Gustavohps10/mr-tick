@@ -1,3 +1,4 @@
+import type { ConflictingTimeEntry, TimeInterval } from '@mr-tick/application'
 import { useQueryClient } from '@tanstack/react-query'
 import { addSeconds, parseISO } from 'date-fns'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -6,7 +7,10 @@ import { toast } from 'sonner'
 import { useHostBridge } from '@/hooks'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
-import { requestEntryPersistence } from '@/local-runtime/persistence-client'
+import {
+  getDatabaseScope,
+  requestEntryPersistence,
+} from '@/local-runtime/persistence-client'
 import {
   cleanTaskId,
   SuggestionRow,
@@ -14,6 +18,13 @@ import {
 import { useConflictModalStore } from '@/stores/conflictModalStore'
 import { AppDatabase, useSyncStore } from '@/stores/syncStore'
 import { useTimeEntryStore } from '@/stores/timeEntryStore'
+
+export interface PendingOverlapResolution {
+  readonly row: SuggestionRow
+  readonly conflicts: readonly ConflictingTimeEntry[]
+  readonly conflictToken: string
+  readonly targetInterval?: TimeInterval
+}
 
 export function useTimeEntryMutations(
   db: AppDatabase | null | undefined,
@@ -28,6 +39,8 @@ export function useTimeEntryMutations(
 
   const [draftEntries, setDraftEntries] = useState<SuggestionRow[]>([])
   const [editingRows, setEditingRows] = useState<Record<string, boolean>>({})
+  const [pendingOverlapResolution, setPendingOverlapResolution] =
+    useState<PendingOverlapResolution | null>(null)
   const [tempData, setTempData] = useState<
     Record<string, Partial<SyncTimeEntryRxDBDTO>>
   >({})
@@ -502,7 +515,6 @@ export function useTimeEntryMutations(
 
         const isSuggestion = docJson.timeStatus === 'suggestion'
         let nextTimeStatus = docJson.timeStatus
-        if (isSuggestion) nextTimeStatus = 'finished'
         if (!isSuggestion && changes.timeStatus)
           nextTimeStatus = changes.timeStatus
 
@@ -692,44 +704,133 @@ export function useTimeEntryMutations(
     [db, queryClient, bridge, activeTimeEntry, clearActive],
   )
 
+  const pendingOverlapResolutionRef = useRef<PendingOverlapResolution | null>(
+    null,
+  )
+  pendingOverlapResolutionRef.current = pendingOverlapResolution
+
   const handleAcceptSuggestion = useCallback(
-    async (row: SuggestionRow) => {
-      if (!db) return
+    async (
+      row: SuggestionRow,
+      confirmationToken?: string,
+    ): Promise<boolean> => {
+      if (!db) return false
       try {
         const doc = await db.timeEntries.findOne(row.id).exec()
         if (!doc) {
           toast.error('Sugestão não encontrada')
-          return
+          return false
         }
 
-        let edited: Partial<SyncTimeEntryRxDBDTO> = {}
-        if (tempDataRef.current[row.id]) {
-          edited = tempDataRef.current[row.id]
+        const workspaceScope = getDatabaseScope(db)
+        if (workspaceScope.isFailure()) {
+          toast.error('Workspace scope indisponível')
+          return false
+        }
+        const workspaceId = workspaceScope.success
+
+        if (!confirmationToken && doc.startDate && doc.endDate) {
+          const overlapCheck = await bridge.localRuntime.request({
+            action: 'detectOverlaps',
+            workspaceId,
+            start: doc.startDate,
+            end: doc.endDate,
+            excludeEntryId: doc.id,
+          })
+
+          if (!overlapCheck.ok) {
+            toast.error(overlapCheck.error.messageKey)
+            return false
+          }
+
+          const overlap = overlapCheck.value.overlap
+          if (overlap && overlap.hasOverlap) {
+            const resolution: PendingOverlapResolution = {
+              row,
+              conflicts: overlap.conflicts || [],
+              conflictToken: overlap.conflictToken || '',
+              targetInterval: { start: doc.startDate, end: doc.endDate },
+            }
+            pendingOverlapResolutionRef.current = resolution
+            setPendingOverlapResolution(resolution)
+            return false
+          }
         }
 
-        const acceptance = await requestEntryPersistence(bridge, db, {
-          action: 'editRecord',
+        const runtimeResult = await bridge.localRuntime.request({
+          action: 'acceptSuggestion',
+          workspaceId,
           entryId: doc.id,
-          changes: { ...edited, timeStatus: 'finished' },
+          commandId: crypto.randomUUID(),
+          confirmation: confirmationToken
+            ? { conflictToken: confirmationToken }
+            : undefined,
         })
-        if (acceptance.isFailure()) {
-          toast.error(acceptance.failure.messageKey)
-          return
+
+        if (!runtimeResult.ok) {
+          if (
+            runtimeResult.error.statusCode === 409 &&
+            runtimeResult.error.messageKey === 'TIME_ENTRY_OVERLAP_DETECTED'
+          ) {
+            if (doc.startDate && doc.endDate) {
+              const overlapCheck = await bridge.localRuntime.request({
+                action: 'detectOverlaps',
+                workspaceId,
+                start: doc.startDate,
+                end: doc.endDate,
+                excludeEntryId: doc.id,
+              })
+              if (overlapCheck.ok && overlapCheck.value.overlap?.hasOverlap) {
+                const resolution: PendingOverlapResolution = {
+                  row,
+                  conflicts: overlapCheck.value.overlap.conflicts,
+                  conflictToken: overlapCheck.value.overlap.conflictToken || '',
+                  targetInterval: { start: doc.startDate, end: doc.endDate },
+                }
+                pendingOverlapResolutionRef.current = resolution
+                setPendingOverlapResolution(resolution)
+                return false
+              }
+            }
+          }
+          toast.error(runtimeResult.error.messageKey)
+          return false
         }
-        const updatedJson = acceptance.success
-        if (!updatedJson) return
+
+        pendingOverlapResolutionRef.current = null
+        setPendingOverlapResolution(null)
         toast.success('Sugestão confirmada com sucesso!')
-        queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
-          { queryKey: ['time-entries-range'] },
-          (previous) => {
-            if (!previous) return [updatedJson]
-            return previous.map((item) =>
-              item.id === updatedJson.id || item.id === row.id
-                ? updatedJson
-                : item,
-            )
-          },
-        )
+
+        const inMemoryEdits = tempDataRef.current[row.id]
+        if (inMemoryEdits) {
+          const changesToPersist: Partial<SyncTimeEntryRxDBDTO> = {
+            ...inMemoryEdits,
+          }
+          delete changesToPersist.timeStatus
+          if (Object.keys(changesToPersist).length > 0) {
+            await requestEntryPersistence(bridge, db, {
+              action: 'editRecord',
+              entryId: doc.id,
+              changes: changesToPersist,
+            })
+          }
+        }
+
+        const updatedDoc = await db.timeEntries.findOne(row.id).exec()
+        if (updatedDoc) {
+          const updatedJson = updatedDoc.toMutableJSON()
+          queryClient.setQueriesData<SyncTimeEntryRxDBDTO[]>(
+            { queryKey: ['time-entries-range'] },
+            (previous) => {
+              if (!previous) return [updatedJson]
+              return previous.map((item) =>
+                item.id === updatedJson.id || item.id === row.id
+                  ? updatedJson
+                  : item,
+              )
+            },
+          )
+        }
 
         setEditingRows((prev) => {
           const next = { ...prev }
@@ -741,13 +842,27 @@ export function useTimeEntryMutations(
           delete next[row.id]
           return next
         })
-        bridge.events.emit('time-entry:sync', updatedJson)
+        return true
       } catch (err) {
-        console.error('Erro ao aceitar sugestao:', err)
-        toast.error('Erro ao aceitar sugestão')
+        console.error('Erro ao aceitar sugestão:', err)
+        toast.error('Erro ao processar aceite da sugestão')
+        return false
       }
     },
-    [db, queryClient, bridge],
+    [bridge.localRuntime, bridge, db, queryClient],
+  )
+
+  const handleAcceptAllSuggestions = useCallback(
+    async (suggestions: SuggestionRow[]) => {
+      if (!db || suggestions.length === 0) return
+      for (const sug of suggestions) {
+        const accepted = await handleAcceptSuggestion(sug)
+        if (!accepted) {
+          break
+        }
+      }
+    },
+    [db, handleAcceptSuggestion],
   )
 
   const handleDismissSuggestion = useCallback(
@@ -1068,6 +1183,7 @@ export function useTimeEntryMutations(
     handleAddNewEntry,
     handleCancelEdit,
     handleAcceptSuggestion,
+    handleAcceptAllSuggestions,
     handleDismissSuggestion,
     handleResolveConflict,
     handleConfirmRetryAmbiguousCreation,
@@ -1076,5 +1192,7 @@ export function useTimeEntryMutations(
     handleOpenConflictResolution,
     handleCloseConflictResolution,
     handleResolveConflictAndClose,
+    pendingOverlapResolution,
+    setPendingOverlapResolution,
   }
 }

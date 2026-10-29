@@ -4,7 +4,7 @@
 
 Esta pasta foi projetada para criação, teste e desenvolvimento isolado de addons para o **Mr-tick**, completamente desacoplada do código central do monorepo.
 
-Addons locais seguem as regras de ignore do monorepo. A fixture canônica `datasource-fake` e as documentações são versionadas; não presuma que toda a pasta é ignorada.
+Addons locais seguem as regras de ignore do monorepo. As fixtures canônicas `datasource-fake`, `fake-watcher-for-tests` e `datasource-alpha-for-tests`, além das documentações, são versionadas; não presuma que toda a pasta é ignorada.
 
 ---
 

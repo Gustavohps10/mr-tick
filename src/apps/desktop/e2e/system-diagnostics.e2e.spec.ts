@@ -40,11 +40,124 @@ function getTargetWorkspaceScope() {
   return { workspace, connection }
 }
 
+test.describe('E2E - Alerta de inicialização e widget transparente', () => {
+  test.use({ openWidgetInTest: true })
+  test('falha ao abrir workspace aparece no diagnostico mesmo com executor global pronto', async ({
+    electronApp,
+    page,
+  }) => {
+    const { workspace } = getTargetWorkspaceScope()
+    await expect
+      .poll(async () => (await findRuntimeWindow(electronApp)) !== null)
+      .toBe(true)
+    const runtimePage = await findRuntimeWindow(electronApp)
+    if (!runtimePage) throw new Error('RUNTIME_WINDOW_NOT_FOUND')
+    const runtimeWindow = await electronApp.browserWindow(runtimePage)
+    const runtimeContentsId = await runtimeWindow.evaluate(
+      (window) => window.webContents.id,
+    )
+    await runtimeWindow.dispose()
+    const metadata = await page.evaluate(
+      async (workspaceId) =>
+        window.api.workspaces.getById({ body: { workspaceId } }),
+      workspace.id,
+    )
+    expect(metadata.isSuccess).toBe(true)
+
+    // Simulates the storage failure at the runtime boundary; the UI still receives workspace metadata.
+    await electronApp.evaluate(
+      ({ ipcMain }, input) => {
+        ipcMain.removeHandler('WORKSPACES_GET_BY_ID')
+        ipcMain.handle('WORKSPACES_GET_BY_ID', (event) => {
+          if (event.sender.id === input.runtimeContentsId)
+            return {
+              isSuccess: false,
+              statusCode: 500,
+              error: 'WORKSPACE_STORAGE_DB6',
+            }
+          return input.metadata
+        })
+      },
+      { runtimeContentsId, metadata },
+    )
+
+    await page
+      .locator(`nav a[href*="/workspaces/${workspace.id}"]`)
+      .first()
+      .click()
+    await expect(page.getByTestId('runtime-status-indicator-btn')).toBeVisible()
+    // The existing title-bar indicator refreshes diagnostics when startup fails.
+    await expect
+      .poll(async () => {
+        const response = await page.evaluate(async () =>
+          window.api.diagnostics.getSnapshot(),
+        )
+        return response.data?.checks.some(
+          (check) =>
+            check.reason === 'WORKSPACE_STORAGE_DB6' && check.status === 'fail',
+        )
+      })
+      .toBe(true)
+    const snapshot = await page.evaluate(async () =>
+      window.api.diagnostics.getSnapshot(),
+    )
+    expect(snapshot.data?.dispatcher.state).toBe('ready')
+    expect(snapshot.data?.workspaces).toContainEqual(
+      expect.objectContaining({
+        workspaceId: workspace.id,
+        status: 'unavailable',
+      }),
+    )
+    await expect(
+      page.getByTestId('workspace-initialization-error'),
+    ).toHaveCount(0)
+    await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
+      'data-status',
+      'technical_error',
+    )
+
+    await expect
+      .poll(() =>
+        electronApp
+          .windows()
+          .some((window) => window.url().includes('/widgets/timer')),
+      )
+      .toBe(true)
+    const widget = electronApp
+      .windows()
+      .find((window) => window.url().includes('/widgets/timer'))
+    if (!widget) throw new Error('WIDGET_WINDOW_NOT_FOUND')
+    await expect(widget.locator('[data-widget-drag-boundary]')).toBeAttached()
+    await expect(
+      widget.getByTestId('workspace-initialization-error'),
+    ).toHaveCount(0)
+    await expect(widget.locator('body')).not.toContainText(
+      'WORKSPACE_STORAGE_DB6',
+    )
+
+    await page.getByTestId('runtime-status-indicator-btn').click()
+    await expect(page.getByTestId('system-data-settings-tab')).toContainText(
+      'WORKSPACE_STORAGE_DB6',
+    )
+  })
+})
+
 test.describe('E2E - Saúde do Sistema e Diagnóstico de Runtime (Bloco C)', () => {
   test('cenario saudavel: executa verificacao manual, valida envelopes reais, leitura operacional e responsividade visual', async ({
     page,
   }, testInfo) => {
     const { workspace } = getTargetWorkspaceScope()
+
+    const workspaceLink = page
+      .locator(`nav a[href*="/workspaces/${workspace.id}"]`)
+      .first()
+    await expect(workspaceLink).toBeVisible({ timeout: 15000 })
+    await workspaceLink.click()
+    await expect(
+      page.locator(
+        '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
+      ),
+    ).toBeVisible({ timeout: 15000 })
 
     // 1. Obtém métricas de sincronização antes da verificação (não indução de escrita)
     const syncBefore = await fakeSyncDiagnostics(page)

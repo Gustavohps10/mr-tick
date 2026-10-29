@@ -58,4 +58,14 @@ export const addonsInvoker: IAddonsAPI = {
   listThemes: () => IpcInvoker.invoke('ADDONS_LIST_THEMES'),
   setActiveTheme: (payload: Parameters<IAddonsAPI['setActiveTheme']>[0]) =>
     IpcInvoker.invoke('ADDONS_SET_ACTIVE_THEME', payload),
+  resolveSettingsOptions: (payload) =>
+    IpcInvoker.invoke('ADDON_RESOLVE_SETTINGS_OPTIONS', payload),
+  getOperationalList: (payload) =>
+    IpcInvoker.invoke('ADDON_GET_OPERATIONAL_LIST', payload),
+  executeOperationalAction: (payload) =>
+    IpcInvoker.invoke('ADDON_EXECUTE_OPERATIONAL_ACTION', payload),
+  evaluateSettingsForm: (payload) =>
+    IpcInvoker.invoke('ADDON_EVALUATE_SETTINGS_FORM', payload),
+  reapplySettings: (payload) =>
+    IpcInvoker.invoke('ADDON_REAPPLY_SETTINGS', payload),
 }

@@ -16,6 +16,7 @@ const ipcClient: IHostBridge = {
   updater: window.api.updater,
   addons: window.api.addons,
   licensing: window.api.licensing,
+  core: window.api.core,
   events: window.api.events,
 }
 

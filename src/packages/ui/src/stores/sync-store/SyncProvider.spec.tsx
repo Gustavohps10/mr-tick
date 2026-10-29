@@ -47,7 +47,11 @@ vi.mock('@/hooks/use-host-bridge', () => ({
 }))
 vi.mock('./createSyncStore', () => ({ createSyncStore: context.create }))
 
-import { SyncProvider, useSyncStore } from './SyncProvider'
+import {
+  SyncProvider,
+  useSyncInitializationError,
+  useSyncStore,
+} from './SyncProvider'
 
 const gates: Array<{ release: () => void }> = []
 function gate() {
@@ -128,6 +132,8 @@ function fixture(
 }
 function Probe() {
   const id = useSyncStore((state) => Object.keys(state.statuses).join(','))
+  const error = useSyncInitializationError()
+  if (error !== null) return <div data-testid="active-workspace">{error}</div>
   return <div data-testid="active-workspace">{id ? id : 'initializing'}</div>
 }
 function container(queryClient: QueryClient) {
@@ -141,6 +147,48 @@ function container(queryClient: QueryClient) {
 }
 
 describe('SyncProvider workspace lifecycle ownership', () => {
+  it('exposes a rejected workspace startup instead of leaving initialization pending', async () => {
+    context.bridge.localSync.request.mockResolvedValue({
+      ok: false,
+      error: { messageKey: 'WORKSPACE_STORAGE_DB6', statusCode: 500 },
+    })
+    render(container(new QueryClient()))
+    await waitFor(() =>
+      expect(screen.getByTestId('active-workspace').textContent).toContain(
+        'WORKSPACE_STORAGE_DB6',
+      ),
+    )
+    expect(context.create).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('exposes a reader database failure without adding visual elements and clears it after reopening', async () => {
+    const failedReader = fixture('A')
+    failedReader.store.setState({
+      init: async () =>
+        Promise.reject(new Error('READER_DATABASE_UNAVAILABLE')),
+    })
+    const recoveredReader = fixture('A')
+    context.create
+      .mockReturnValueOnce(failedReader.store)
+      .mockReturnValueOnce(recoveredReader.store)
+    const view = render(container(new QueryClient()))
+    await waitFor(() =>
+      expect(screen.getByTestId('active-workspace').textContent).toContain(
+        'READER_DATABASE_UNAVAILABLE',
+      ),
+    )
+    expect(failedReader.destroy).toHaveBeenCalledOnce()
+
+    expect(screen.queryByRole('alert')).toBeNull()
+    view.unmount()
+    render(container(new QueryClient()))
+    await waitFor(() =>
+      expect(screen.getByTestId('active-workspace').textContent).toBe('A'),
+    )
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   beforeEach(() => {
     context.workspaceId = 'A'
     context.connections = []

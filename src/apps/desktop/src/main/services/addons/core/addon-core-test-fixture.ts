@@ -53,6 +53,10 @@ export const unavailableCore: ICoreAddonCapabilities = {
     get: async () =>
       Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
   },
+  members: {
+    getCurrentUser: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
+  },
 }
 
 function readRequiredApiVersionFromManifest(

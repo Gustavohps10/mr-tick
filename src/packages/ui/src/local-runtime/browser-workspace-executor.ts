@@ -8,8 +8,11 @@ import type {
   LocalRuntimeCommand,
   LocalRuntimeQuery,
   LocalRuntimeResult,
+  LocalTimeEntrySnapshot,
+  TimeOverlapDetectionResult,
 } from '@mr-tick/application'
 import {
+  detectTimeOverlap,
   emptyResult,
   planLocalRuntimeCommand,
   resultFor,
@@ -20,7 +23,7 @@ import type { MangoQuery } from 'rxdb'
 import type { StoreApi } from 'zustand'
 
 import type { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
-import type { SyncStore } from '@/stores/sync-store/types'
+import type { AppDatabase, SyncStore } from '@/stores/sync-store/types'
 
 import {
   type BrowserCommand,
@@ -115,6 +118,11 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
           sort: [{ sourceId: 'asc' }],
           limit: input.limit + 1,
         }
+        if (input.cursor !== undefined)
+          query.selector = {
+            ...query.selector,
+            sourceId: { $gt: input.cursor },
+          }
         if (input.search !== undefined && input.search.length > 0) {
           const literal = input.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
           query.selector = {
@@ -126,14 +134,25 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
           }
         }
         const documents = await db.tasks.find(query).exec()
+        const hasMore = documents.length > input.limit
+        const pageDocuments = documents.slice(0, input.limit)
+        const lastDocument = pageDocuments[pageDocuments.length - 1]
+        if (hasMore && lastDocument === undefined)
+          return Either.failure(AppError.Internal('CORE_TASK_PAGE_INVALID'))
+        let nextCursor: string | undefined = undefined
+        if (lastDocument !== undefined) {
+          nextCursor = toCoreTask(
+            input.workspaceId,
+            lastDocument.toMutableJSON(),
+          ).taskId
+        }
         return Either.success({
           kind: 'tasks',
-          tasks: documents
-            .slice(0, input.limit)
-            .map((document) =>
-              toCoreTask(input.workspaceId, document.toMutableJSON()),
-            ),
-          hasMore: documents.length > input.limit,
+          tasks: pageDocuments.map((document) =>
+            toCoreTask(input.workspaceId, document.toMutableJSON()),
+          ),
+          hasMore,
+          nextCursor,
         })
       } catch (error) {
         if (error instanceof Error)
@@ -170,6 +189,40 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
           const document = await db.timeEntries.findOne(input.entryId).exec()
           if (!document) return Either.success(emptyResult())
           return Either.success(resultFor(document.toMutableJSON(true)))
+        }
+        if (input.action === 'detectOverlaps') {
+          const query: MangoQuery<LocalTimeEntrySnapshot> = {
+            selector: {
+              _deleted: false,
+              timeStatus: { $ne: 'suggestion' },
+              startDate: { $lt: input.end },
+              $or: [
+                { endDate: { $gt: input.start } },
+                { endDate: null },
+                { endDate: { $exists: false } },
+              ],
+            },
+          }
+          if (input.excludeEntryId !== undefined)
+            query.selector = {
+              ...query.selector,
+              id: { $ne: input.excludeEntryId },
+            }
+          const documents = await db.timeEntries.find(query).exec()
+          const detected = await detectTimeOverlap(
+            {
+              workspaceId: input.workspaceId,
+              interval: { start: input.start, end: input.end },
+              excludeEntryId: input.excludeEntryId,
+            },
+            documents.map((document) => document.toMutableJSON(true)),
+            () => new Date().toISOString(),
+          )
+          if (detected.isFailure()) return detected.forwardFailure()
+          return Either.success({
+            ...emptyResult(),
+            overlap: detected.success,
+          })
         }
         const documents = await db.timeEntries.find().exec()
         const records = documents.map((document) =>
@@ -318,7 +371,10 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
           AppError.Http(503, 'WORKSPACE_DATABASE_UNAVAILABLE'),
         )
       const document = await db.timeEntries.findOne(input.entryId).exec()
-      const before = document ? document.toMutableJSON(true) : null
+      let before: LocalTimeEntrySnapshot | null = null
+      if (document) {
+        before = document.toMutableJSON(true)
+      }
       let hasActiveTimer = false
       if (input.action === 'timerStart') {
         const active = await db.timeEntries
@@ -328,6 +384,17 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
       }
       const authorized = await this.authorize(input, before)
       if (authorized.isFailure()) return authorized.forwardFailure()
+      if (input.action === 'acceptSuggestion' && before !== null) {
+        const overlap = await this.detectAcceptanceOverlap(db, before)
+        if (overlap.isFailure()) return overlap.forwardFailure()
+        if (overlap.success.hasOverlap) {
+          const token = input.confirmation?.conflictToken
+          if (token === undefined || token !== overlap.success.conflictToken)
+            return Either.failure(
+              AppError.Http(409, 'TIME_ENTRY_OVERLAP_DETECTED'),
+            )
+        }
+      }
       const planned = planLocalRuntimeCommand(
         authorized.success,
         before,
@@ -335,11 +402,15 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
         hasActiveTimer,
       )
       if (planned.isFailure()) return planned.forwardFailure()
+      let beforeFp: string | null = null
+      if (before !== null) {
+        beforeFp = recordFingerprint(before)
+      }
       const receipt: CommandReceipt = {
         id: input.commandId,
         fingerprint,
         entryId: input.entryId,
-        before: before === null ? null : recordFingerprint(before),
+        before: beforeFp,
         after: { ...planned.success, lastLocalCommandId: input.commandId },
         status: 'prepared',
         result: resultFor(planned.success),
@@ -369,6 +440,7 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
       await db.timeEntries.insert(receipt.after)
       return this.confirmReceipt(receipt)
     }
+
     const current = document.toMutableJSON(true)
     if (current.lastLocalCommandId === receipt.id)
       return this.confirmReceipt(receipt)
@@ -386,6 +458,40 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
     if (updated.lastLocalCommandId !== receipt.id)
       return this.rejectReceipt(receipt)
     return this.confirmReceipt(receipt)
+  }
+
+  private async detectAcceptanceOverlap(
+    db: AppDatabase,
+    before: LocalTimeEntrySnapshot,
+  ): Promise<Either<AppError, TimeOverlapDetectionResult>> {
+    const end = before.endDate
+    if (end === undefined || end === null)
+      return Either.failure(AppError.ValidationError('INVALID_TIME_INTERVAL'))
+    const query: MangoQuery<LocalTimeEntrySnapshot> = {
+      selector: {
+        _deleted: false,
+        timeStatus: { $ne: 'suggestion' },
+        id: { $ne: before.id },
+        startDate: { $lt: end },
+        $or: [
+          { endDate: { $gt: before.startDate } },
+          { endDate: null },
+          { endDate: { $exists: false } },
+        ],
+      },
+    }
+    const documents = await db.timeEntries.find(query).exec()
+    const detected = await detectTimeOverlap(
+      {
+        workspaceId: this.workspaceId,
+        interval: { start: before.startDate, end },
+        excludeEntryId: before.id,
+      },
+      documents.map((document) => document.toMutableJSON(true)),
+      () => new Date().toISOString(),
+    )
+    if (detected.isFailure()) return detected.forwardFailure()
+    return Either.success(detected.success)
   }
 
   private async rejectReceipt(

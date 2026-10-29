@@ -20,6 +20,54 @@ afterEach(async () => {
 })
 
 describe('JSON addon settings repository', () => {
+  it('persists nested task references with omitted optional metadata', async () => {
+    temporaryDirectory = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'addon-settings-repository-'),
+    )
+    const repository = new JSONAddonSettingsRepository(temporaryDirectory)
+    const patched = await repository.patch(
+      'observer',
+      'workspace:ws-1',
+      0,
+      {
+        rules: [
+          {
+            itemId: 'daily-rule',
+            values: {
+              destination: {
+                workspaceId: 'ws-1',
+                connectionInstanceId: 'conn-alpha',
+                taskId: 'ALPHA-101',
+                metadataValues: undefined,
+              },
+            },
+          },
+        ],
+      },
+      ['rules'],
+    )
+
+    expect(patched.isSuccess()).toBe(true)
+    if (patched.isFailure()) return expect.fail(patched.failure.messageKey)
+    const reloaded = await repository.read('observer', 'workspace:ws-1')
+    expect(reloaded.isSuccess()).toBe(true)
+    if (reloaded.isFailure()) return expect.fail(reloaded.failure.messageKey)
+    expect(reloaded.success.values).toStrictEqual({
+      rules: [
+        {
+          itemId: 'daily-rule',
+          values: {
+            destination: {
+              workspaceId: 'ws-1',
+              connectionInstanceId: 'conn-alpha',
+              taskId: 'ALPHA-101',
+            },
+          },
+        },
+      ],
+    })
+  })
+
   it('composes independent field patches and conflicts on stale same-field patches', async () => {
     temporaryDirectory = await fs.mkdtemp(
       path.join(os.tmpdir(), 'addon-settings-repository-'),
@@ -132,5 +180,46 @@ describe('JSON addon settings repository', () => {
     ])
     expect(exposed.values).toEqual({ theme: 'dark' })
     expect(JSON.stringify(exposed)).not.toContain('SECRET_SENTINEL')
+  })
+
+  it('persists and reloads structured setting values (collection, task-reference, multiselect)', async () => {
+    temporaryDirectory = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'addon-settings-repository-'),
+    )
+    const repository = new JSONAddonSettingsRepository(temporaryDirectory)
+    const structuredPatch = {
+      defaultTask: {
+        workspaceId: 'ws-1',
+        connectionInstanceId: 'conn-alpha',
+        taskId: 'TASK-101',
+        titleSnapshot: 'Reunião diária',
+      },
+      allowedDays: [1, 2, 3, 4, 5],
+      rules: [
+        {
+          itemId: 'rule-1',
+          values: {
+            ruleName: 'Standup',
+            guildId: 'guild-1',
+            channelId: 'chan-1',
+          },
+        },
+      ],
+    }
+    const patched = await repository.patch(
+      'discord-addon',
+      'workspace:ws-1',
+      0,
+      structuredPatch,
+      ['defaultTask', 'allowedDays', 'rules'],
+    )
+    expect(patched.isSuccess()).toBe(true)
+    if (patched.isFailure()) return expect.fail(patched.failure.messageKey)
+    expect(patched.success.revision).toBe(1)
+
+    const reloaded = await repository.read('discord-addon', 'workspace:ws-1')
+    expect(reloaded.isSuccess()).toBe(true)
+    if (reloaded.isFailure()) return expect.fail(reloaded.failure.messageKey)
+    expect(reloaded.success.values).toEqual(structuredPatch)
   })
 })

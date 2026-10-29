@@ -28,6 +28,7 @@ import { unavailableCore } from '../core/addon-core-test-fixture'
 import {
   emptyAddonCredentialsVault,
   emptyAddonSettingsRepository,
+  emptyAddonStorageRepository,
   emptyWorkspaceReferenceRegistry,
 } from '../core/addon-workspace-reference-test-fixture'
 import { AddonLoader } from './AddonLoader'
@@ -97,6 +98,7 @@ describe('AddonLoader security', () => {
         EMPTY_HTTP_CONFIG,
         new NodeFetchTransport(),
       ),
+      emptyAddonStorageRepository,
     )
     const activated = await loader.activateAddon(addonId, {
       activate: (context) =>
@@ -109,7 +111,7 @@ describe('AddonLoader security', () => {
                 id: 'passwordSentinel',
                 type: 'password',
                 label: 'Password',
-              },
+              } as unknown as import('@mr-tick/sdk').AddonSettingsField,
             ],
           },
         ]),
@@ -169,6 +171,7 @@ describe('AddonLoader security', () => {
         EMPTY_HTTP_CONFIG,
         new NodeFetchTransport(),
       ),
+      emptyAddonStorageRepository,
     )
     const addonId = 'password-scope-security'
     const activated = await loader.activateAddon(addonId, {
@@ -182,7 +185,7 @@ describe('AddonLoader security', () => {
                 id: 'passwordSentinel',
                 type: 'password',
                 label: 'Password',
-              },
+              } as unknown as import('@mr-tick/sdk').AddonSettingsField,
             ],
           },
         ]),
@@ -249,6 +252,7 @@ describe('AddonLoader security', () => {
         EMPTY_HTTP_CONFIG,
         new NodeFetchTransport(),
       ),
+      emptyAddonStorageRepository,
     )
     expect(await loader.loadAndActivateFromDisk('unknown', directory)).toBe(
       false,

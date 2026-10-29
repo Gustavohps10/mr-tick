@@ -2,6 +2,7 @@ import type { IAddonEventsAPI } from './events'
 import type { IHttpClient } from './http'
 import type { IAddonNotificationsAPI } from './notifications'
 import type { IAddonOAuthAPI } from './oauth'
+import type { IAddonStorageAPI } from './storage'
 import type { IAddonVaultAPI } from './vault'
 
 /** Host facilities scoped to the current addon. */
@@ -9,6 +10,7 @@ export interface IAddonHostAPI {
   readonly events: IAddonEventsAPI
   readonly notifications: IAddonNotificationsAPI
   readonly vault: IAddonVaultAPI
+  readonly storage: IAddonStorageAPI
   readonly oauth: IAddonOAuthAPI
   readonly http: IHttpClient
 }

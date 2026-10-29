@@ -52,6 +52,15 @@ export function planLocalRuntimeCommand(
     return Either.failure(AppError.NotFound('TIME_ENTRY_NOT_FOUND'))
   switch (input.action) {
     case 'editRecord': {
+      if (
+        before.timeStatus === 'suggestion' &&
+        input.changes.timeStatus !== undefined &&
+        input.changes.timeStatus !== 'suggestion'
+      ) {
+        return Either.failure(
+          AppError.Http(409, 'SUGGESTION_REQUIRES_EXPLICIT_ACCEPTANCE'),
+        )
+      }
       const updated = applyTimeEntryEdit(before, input.changes, now)
       if (updated === before)
         return Either.failure(
@@ -96,6 +105,15 @@ export function planLocalRuntimeCommand(
     }
     case 'update': {
       if (
+        before.timeStatus === 'suggestion' &&
+        input.payload.timeStatus !== undefined &&
+        input.payload.timeStatus !== 'suggestion'
+      ) {
+        return Either.failure(
+          AppError.Http(409, 'SUGGESTION_REQUIRES_EXPLICIT_ACCEPTANCE'),
+        )
+      }
+      if (
         input.payload.connectionInstanceId !== undefined &&
         input.payload.connectionInstanceId !== before.connectionInstanceId &&
         hasUnconfirmedRemoteOperation(before)
@@ -105,6 +123,8 @@ export function planLocalRuntimeCommand(
         )
       const changes: Partial<LocalTimeEntrySnapshot> = {}
       const payload = input.payload
+      if (payload.timeStatus !== undefined)
+        changes.timeStatus = payload.timeStatus
       if (payload.taskId !== undefined) changes.task = { id: payload.taskId }
       if (payload.activityId !== undefined)
         changes.activity = {
@@ -204,6 +224,7 @@ export function createLocalRuntimeRecord(
       pluginId: payload.addonSource.id,
       name: payload.addonSource.name,
       imageUrl: payload.addonSource.imageUrl,
+      metadata: payload.addonSource.metadata,
     }
   if (input.action === 'timerStart') {
     record.startDate = now
@@ -315,6 +336,7 @@ export function toPublicRecord(
       id: record.addonSource.pluginId,
       name: record.addonSource.name,
       imageUrl: record.addonSource.imageUrl,
+      metadata: record.addonSource.metadata,
     }
   return item
 }

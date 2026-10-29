@@ -13,6 +13,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { RxError } from 'rxdb'
 import { toast } from 'sonner'
 import { type StoreApi, useStore } from 'zustand'
 
@@ -59,6 +60,18 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
   >(new Map())
   const transitionTail = useRef<Promise<void>>(Promise.resolve())
   const [runtimeGeneration, setRuntimeGeneration] = useState('')
+  const [initializationFailure, setInitializationFailure] = useState<{
+    workspaceId: string
+    message: string
+  } | null>(null)
+  let initializationError: string | null = null
+
+  if (
+    initializationFailure !== null &&
+    initializationFailure.workspaceId === workspace?.id
+  ) {
+    initializationError = initializationFailure.message
+  }
 
   useEffect(
     () =>
@@ -142,12 +155,21 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
       if (cancelled) return
       await releaseActiveStore()
       if (cancelled || !workspaceId) return
+      setInitializationFailure(null)
 
       const readiness = await bridge.localSync.request({
         action: 'status',
         workspaceId,
       })
-      if (!readiness.ok || cancelled) return
+      if (cancelled) return
+
+      if (!readiness.ok) {
+        setInitializationFailure({
+          workspaceId,
+          message: readiness.error.messageKey,
+        })
+        return
+      }
 
       const resolvedRetryTime = retryTime ?? (isTest ? 3000 : 30000)
       const store = createSyncStore(
@@ -157,8 +179,21 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
         useMemoryStorage,
         resolvedRetryTime,
       )
-      await store.getState().init()
-      if (cancelled || !store.getState().isInitialized) {
+      const initialized = await store
+        .getState()
+        .init()
+        .then(
+          () => true,
+          (error: Error) => {
+            let message = error.message
+            if (error instanceof RxError)
+              message = `WORKSPACE_STORAGE_${error.code}`
+            if (!cancelled) setInitializationFailure({ workspaceId, message })
+            return false
+          },
+        )
+
+      if (cancelled || !initialized || !store.getState().isInitialized) {
         await store.getState().destroy()
         return
       }
@@ -361,12 +396,23 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
     }
   }, [activeStore, bridge, workspace?.id, runtimeGeneration])
 
-  if (!activeStore) return <>{children}</>
+  const content = (
+    <SyncInitializationErrorContext.Provider value={initializationError}>
+      {children}
+    </SyncInitializationErrorContext.Provider>
+  )
+
+  if (!activeStore) return content
   return (
     <SyncStoreContext.Provider value={activeStore}>
-      {children}
+      {content}
     </SyncStoreContext.Provider>
   )
+}
+const SyncInitializationErrorContext = createContext<string | null>(null)
+
+export function useSyncInitializationError(): string | null {
+  return useContext(SyncInitializationErrorContext)
 }
 const SyncStoreContext = createContext<StoreApi<SyncStore> | undefined>(
   undefined,

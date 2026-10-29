@@ -1,7 +1,13 @@
 import {
   AddonActionResponse,
+  type AddonCollectionItemEnvelope,
+  type AddonFieldAddress,
   type AddonMappingPreset,
   AddonSettingsField,
+  type AddonSettingsValues,
+  type AddonSettingValue,
+  type AddonTaskReferenceValue,
+  type AddonVaultScope,
   type ConfiguredFieldMapping,
 } from '@mr-tick/application'
 import { useQueryClient } from '@tanstack/react-query'
@@ -22,46 +28,81 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib/utils'
 
+import { AddonCollectionControl } from './addon-collection-control'
 import { AddonDateField } from './addon-date-field'
+import { AddonDynamicSelectControl } from './addon-dynamic-select-control'
+import { AddonOperationalRecordsCard } from './addon-operational-records-card'
+import { AddonTaskDestinationControl } from './addon-task-destination-control'
+import { serializeFieldAddress } from './address-helpers'
 
 export interface AddonFieldRendererProps {
   field: AddonSettingsField
   addonId?: string
-  value: string | number | boolean | null | undefined
-  onChange: (fieldId: string, value: string | number | boolean | null) => void
+  value: AddonSettingValue | undefined
+  onChange: (fieldId: string, value: AddonSettingValue) => void
   disabled?: boolean
   renderDataSourceInstances?: (addonId: string) => ReactNode
   workspaceId?: string
   connectionInstanceId?: string
   credentialConfigured?: boolean
   errors?: readonly string[]
+  fieldAddress?: AddonFieldAddress
+  scope?: AddonVaultScope
+  draftValues?: AddonSettingsValues
+  fieldErrorsMap?: ReadonlyMap<string, readonly string[]>
+  fieldVisibilityMap?: ReadonlyMap<string, boolean>
+  fieldDisabledMap?: ReadonlyMap<string, boolean>
 }
 
-export function AddonFieldRenderer({
-  errors,
-  ...props
-}: AddonFieldRendererProps) {
-  if (errors === undefined || errors.length === 0)
-    return <AddonFieldControl {...props} />
+export function AddonFieldRenderer(props: AddonFieldRendererProps) {
+  const currentAddress: AddonFieldAddress = props.fieldAddress || {
+    path: [{ kind: 'field', fieldId: props.field.id }],
+  }
+  const fieldKey = serializeFieldAddress(currentAddress)
+
+  const isVisible =
+    props.fieldVisibilityMap?.get(fieldKey) !== false &&
+    (props.fieldAddress
+      ? true
+      : props.fieldVisibilityMap?.get(props.field.id) !== false)
+
+  if (!isVisible) return null
+
+  const isFieldDisabled =
+    props.disabled ||
+    props.fieldDisabledMap?.get(fieldKey) === true ||
+    (!props.fieldAddress &&
+      props.fieldDisabledMap?.get(props.field.id) === true)
+
+  const effectiveErrors =
+    props.errors ||
+    props.fieldErrorsMap?.get(fieldKey) ||
+    (!props.fieldAddress
+      ? props.fieldErrorsMap?.get(props.field.id)
+      : undefined)
+
+  const controlProps = {
+    ...props,
+    disabled: isFieldDisabled,
+    fieldAddress: currentAddress,
+  }
+
+  if (effectiveErrors === undefined || effectiveErrors.length === 0) {
+    return <AddonFieldControl {...controlProps} />
+  }
+
   return (
     <div
       className="flex flex-col"
       data-testid={`addon-field-errors-${props.field.id}`}
     >
-      <AddonFieldControl {...props} />
-      {errors.map((message) => (
+      <AddonFieldControl {...controlProps} />
+      {effectiveErrors.map((message) => (
         <p key={message} role="alert" className="text-destructive text-xs">
           {message}
         </p>
@@ -69,6 +110,40 @@ export function AddonFieldRenderer({
     </div>
   )
 }
+
+function isObjectSettingValue(
+  val: AddonSettingValue | undefined,
+): val is { readonly [key: string]: AddonSettingValue | undefined } {
+  return typeof val === 'object' && val !== null && !Array.isArray(val)
+}
+
+function isTaskReferenceValue(
+  val: AddonSettingValue | undefined,
+): val is AddonTaskReferenceValue {
+  if (!isObjectSettingValue(val)) return false
+  const ws = val['workspaceId']
+  if (typeof ws !== 'string') return false
+  const conn = val['connectionInstanceId']
+  if (typeof conn !== 'string') return false
+  const task = val['taskId']
+  if (typeof task !== 'string') return false
+  return true
+}
+
+function isCollectionArray(
+  val: AddonSettingValue | undefined,
+): val is readonly AddonCollectionItemEnvelope[] {
+  if (!Array.isArray(val)) return false
+  return true
+}
+
+function isMappingPreset(
+  val: AddonSettingValue | undefined,
+): val is AddonMappingPreset {
+  if (!isObjectSettingValue(val)) return false
+  return true
+}
+
 function AddonFieldControl({
   field,
   addonId = '',
@@ -79,6 +154,12 @@ function AddonFieldControl({
   workspaceId,
   connectionInstanceId,
   credentialConfigured = false,
+  fieldAddress,
+  scope = { kind: 'addon' },
+  draftValues = {},
+  fieldErrorsMap,
+  fieldVisibilityMap,
+  fieldDisabledMap,
 }: Omit<AddonFieldRendererProps, 'errors'>) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
@@ -88,10 +169,29 @@ function AddonFieldControl({
     result?: AddonActionResponse
   }>({ isOpen: false, isLoading: false })
 
-  let fieldValue:
-    string | number | boolean | null | AddonMappingPreset | undefined = value
-  if (fieldValue === undefined && field.scope !== 'credential')
-    fieldValue = field.defaultValue
+  let fieldValue: AddonSettingValue | undefined = value
+  if (fieldValue === undefined && field.scope !== 'credential') {
+    if ('defaultValue' in field) {
+      const defVal = field.defaultValue
+      if (
+        typeof defVal === 'string' ||
+        typeof defVal === 'number' ||
+        typeof defVal === 'boolean'
+      ) {
+        fieldValue = defVal
+      }
+      if (Array.isArray(defVal)) {
+        fieldValue = defVal
+      }
+      if (defVal !== null && typeof defVal === 'object') {
+        fieldValue = defVal
+      }
+    }
+  }
+
+  const currentAddress: AddonFieldAddress = fieldAddress || {
+    path: [{ kind: 'field', fieldId: field.id }],
+  }
 
   if (field.type === 'datasource-instances') {
     if (renderDataSourceInstances) return renderDataSourceInstances(addonId)
@@ -153,8 +253,8 @@ function AddonFieldControl({
               if (!field.actionId) return
               setActionState({ isOpen: true, isLoading: true })
               try {
-                const effectiveScope = workspaceId
-                  ? { kind: 'workspace' as const, workspaceId }
+                const effectiveScope: AddonVaultScope | undefined = workspaceId
+                  ? { kind: 'workspace', workspaceId }
                   : undefined
                 const res = await bridge.addons.executeAction({
                   body: {
@@ -318,38 +418,164 @@ function AddonFieldControl({
       </div>
     )
   }
-  if (field.type === 'select') {
+
+  if (field.type === 'select' || field.type === 'multiselect') {
     return (
-      <div className="flex flex-col gap-1.5 py-2">
-        <label className="text-sm font-medium">{field.label}</label>
-        <Select
-          disabled={disabled}
-          value={
-            fieldValue !== undefined && fieldValue !== null
-              ? String(fieldValue)
-              : ''
-          }
-          onValueChange={(val) => onChange(field.id, val)}
-        >
-          <SelectTrigger
-            className="w-full"
-            data-testid={`addon-field-select-${field.id}`}
-          >
-            <SelectValue
-              placeholder={field.placeholder || 'Selecione uma opção'}
-            />
-          </SelectTrigger>
-          <SelectContent>
-            {field.options?.map((opt) => (
-              <SelectItem key={String(opt.value)} value={String(opt.value)}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {field.description && (
-          <p className="text-muted-foreground text-xs">{field.description}</p>
+      <AddonDynamicSelectControl
+        field={field}
+        addonId={addonId}
+        scope={scope}
+        fieldAddress={currentAddress}
+        value={
+          Array.isArray(fieldValue)
+            ? fieldValue
+            : typeof fieldValue === 'string' ||
+                typeof fieldValue === 'number' ||
+                typeof fieldValue === 'boolean'
+              ? fieldValue
+              : null
+        }
+        onChange={(val) => onChange(field.id, val)}
+        disabled={disabled}
+        draftValues={draftValues}
+      />
+    )
+  }
+
+  if (field.type === 'collection') {
+    const collectionItems = isCollectionArray(fieldValue) ? fieldValue : []
+
+    return (
+      <AddonCollectionControl
+        field={field}
+        addonId={addonId}
+        scope={scope}
+        parentAddress={currentAddress}
+        value={collectionItems}
+        onChange={(items) => onChange(field.id, items)}
+        disabled={disabled}
+        draftValues={draftValues}
+        renderField={({
+          field: nestedField,
+          itemAddress,
+          value: nestedVal,
+          onChange: onNestedChange,
+          disabled: nestedDisabled,
+        }) => (
+          <AddonFieldRenderer
+            field={nestedField}
+            addonId={addonId}
+            value={nestedVal}
+            onChange={onNestedChange}
+            disabled={nestedDisabled}
+            workspaceId={workspaceId}
+            fieldAddress={itemAddress}
+            scope={scope}
+            draftValues={draftValues}
+            fieldErrorsMap={fieldErrorsMap}
+            fieldVisibilityMap={fieldVisibilityMap}
+            fieldDisabledMap={fieldDisabledMap}
+          />
         )}
+      />
+    )
+  }
+
+  if (field.type === 'task-reference') {
+    return (
+      <AddonTaskDestinationControl
+        field={field}
+        workspaceId={workspaceId || ''}
+        value={isTaskReferenceValue(fieldValue) ? fieldValue : null}
+        onChange={(taskVal) => onChange(field.id, taskVal)}
+        disabled={disabled}
+      />
+    )
+  }
+
+  if (field.type === 'operational-list') {
+    return (
+      <AddonOperationalRecordsCard
+        field={field}
+        addonId={addonId}
+        scope={scope}
+        workspaceId={workspaceId}
+        disabled={disabled}
+        renderField={({
+          field: actionField,
+          value: actionVal,
+          onChange: onActionChange,
+          disabled: actionDisabled,
+        }) => (
+          <AddonFieldRenderer
+            field={actionField}
+            addonId={addonId}
+            value={actionVal}
+            onChange={onActionChange}
+            disabled={actionDisabled}
+            workspaceId={workspaceId}
+            scope={scope}
+            draftValues={draftValues}
+            fieldErrorsMap={fieldErrorsMap}
+            fieldVisibilityMap={fieldVisibilityMap}
+            fieldDisabledMap={fieldDisabledMap}
+          />
+        )}
+      />
+    )
+  }
+
+  if (field.type === 'group') {
+    return (
+      <div
+        className="border-border/60 bg-muted/10 space-y-3 rounded-lg border p-4"
+        data-testid={`addon-group-${field.id}`}
+      >
+        <div>
+          <h4 className="text-sm font-semibold">{field.label}</h4>
+          {field.description && (
+            <p className="text-muted-foreground text-xs">{field.description}</p>
+          )}
+        </div>
+        <div className="grid gap-3">
+          {field.fields.map((subField) => (
+            <AddonFieldRenderer
+              key={subField.id}
+              field={subField}
+              addonId={addonId}
+              value={
+                isObjectSettingValue(fieldValue)
+                  ? fieldValue[subField.id]
+                  : undefined
+              }
+              onChange={(subFieldId, subFieldVal) => {
+                const currentGroup: Record<string, AddonSettingValue> = {}
+                if (isObjectSettingValue(fieldValue)) {
+                  for (const [k, v] of Object.entries(fieldValue)) {
+                    if (v !== undefined) {
+                      currentGroup[k] = v
+                    }
+                  }
+                }
+                currentGroup[subFieldId] = subFieldVal
+                onChange(field.id, currentGroup)
+              }}
+              disabled={disabled}
+              workspaceId={workspaceId}
+              fieldAddress={{
+                path: [
+                  ...currentAddress.path,
+                  { kind: 'field', fieldId: subField.id },
+                ],
+              }}
+              scope={scope}
+              draftValues={draftValues}
+              fieldErrorsMap={fieldErrorsMap}
+              fieldVisibilityMap={fieldVisibilityMap}
+              fieldDisabledMap={fieldDisabledMap}
+            />
+          ))}
+        </div>
       </div>
     )
   }
@@ -394,11 +620,19 @@ function AddonFieldControl({
   }
 
   if (field.type === 'mapping') {
+    let mappingValue: AddonMappingPreset | string | undefined
+    if (typeof fieldValue === 'string') {
+      mappingValue = fieldValue
+    }
+    if (isMappingPreset(fieldValue)) {
+      mappingValue = fieldValue
+    }
+
     return (
       <MappingFieldItem
         field={field}
         addonId={addonId}
-        value={fieldValue}
+        value={mappingValue}
         onChange={(val) => onChange(field.id, val)}
         disabled={disabled}
         workspaceId={workspaceId}
@@ -424,6 +658,29 @@ function AddonFieldControl({
             'min-h-[80px]',
             field.type === 'json' && 'font-mono text-xs',
           )}
+          data-testid={`addon-field-input-${field.id}`}
+        />
+        {field.description && (
+          <p className="text-muted-foreground text-xs">{field.description}</p>
+        )}
+      </div>
+    )
+  }
+
+  if (field.type === 'time' || field.type === 'timezone') {
+    return (
+      <div className="flex flex-col gap-1.5 py-2">
+        <label className="text-sm font-medium">{field.label}</label>
+        <Input
+          type={field.type === 'time' ? 'time' : 'text'}
+          disabled={disabled}
+          value={
+            fieldValue !== undefined && fieldValue !== null
+              ? String(fieldValue)
+              : ''
+          }
+          onChange={(e) => onChange(field.id, e.target.value)}
+          placeholder={field.placeholder}
           data-testid={`addon-field-input-${field.id}`}
         />
         {field.description && (
@@ -483,7 +740,7 @@ function MappingFieldItem({
 }: {
   field: AddonSettingsField
   addonId: string
-  value: string | number | boolean | AddonMappingPreset | null | undefined
+  value: string | AddonMappingPreset | undefined
   onChange: (val: string) => void
   disabled?: boolean
   workspaceId?: string

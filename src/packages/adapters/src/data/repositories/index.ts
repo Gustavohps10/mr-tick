@@ -1,5 +1,6 @@
 export * from './JSONAddonSettingsRepository'
 export * from './sqlite-connection'
+export * from './SQLiteAddonStorageRepository'
 export * from './SQLiteConnectionLifecycleRepository'
 export * from './SQLiteConnectionLifecycleTransactionBoundary'
 export * from './SQLiteConnectionReservationRepository'

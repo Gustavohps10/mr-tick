@@ -34,6 +34,7 @@ import { unavailableCore } from '../../core/addon-core-test-fixture'
 import {
   emptyAddonCredentialsVault,
   emptyAddonSettingsRepository,
+  emptyAddonStorageRepository,
   emptyWorkspaceReferenceRegistry,
 } from '../../core/addon-workspace-reference-test-fixture'
 import { AddonLoader } from '../AddonLoader'
@@ -117,6 +118,7 @@ function createLoader(
     profilesResolver,
     new OAuthAttemptCoordinator(),
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
+    emptyAddonStorageRepository,
   )
 }
 

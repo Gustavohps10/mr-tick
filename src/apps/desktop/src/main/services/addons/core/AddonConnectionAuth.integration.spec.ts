@@ -11,6 +11,7 @@ import {
   type IConnectionLifecycleCoordinator,
   type ICoreCacheTransport,
   type IDisconnectAddonConnectionUseCase,
+  type IGetCurrentUserUseCase,
   type ILinkConnectionUseCase,
   type ILocalRuntimeAPI,
   type IUnlinkConnectionUseCase,
@@ -35,9 +36,21 @@ import { permissiveAddonAccessService } from './addon-core-test-fixture'
 import {
   emptyAddonCredentialsVault,
   emptyAddonSettingsRepository,
+  emptyAddonStorageRepository,
   emptyWorkspaceReferenceRegistry,
 } from './addon-workspace-reference-test-fixture'
 import { AddonCoreCapabilities } from './AddonCoreCapabilities'
+
+const fakeGetCurrentUserService: IGetCurrentUserUseCase = {
+  execute: async () =>
+    Either.success({
+      id: 'user-1',
+      login: 'test-user',
+      firstname: 'Test',
+      lastname: 'User',
+      customFields: [],
+    }),
+}
 
 function setupIntegrationFixture() {
   const created = Workspace.create({ name: 'Integration Fixture Workspace' })
@@ -239,6 +252,7 @@ function setupIntegrationFixture() {
     profilesResolver,
     new OAuthAttemptCoordinator(),
     new NoOpSystemEventEmitter(),
+    fakeGetCurrentUserService,
   )
 
   return {
@@ -434,6 +448,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
       profilesResolver,
       oauthAttemptCoordinator,
       new NoOpSystemEventEmitter(),
+      fakeGetCurrentUserService,
     )
 
     const fakeCredentialsVault = emptyAddonCredentialsVault()
@@ -459,6 +474,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
         EMPTY_HTTP_CONFIG,
         new NodeFetchTransport(),
       ),
+      emptyAddonStorageRepository,
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
@@ -685,6 +701,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
       profilesResolver,
       oauthAttemptCoordinator,
       new NoOpSystemEventEmitter(),
+      fakeGetCurrentUserService,
     )
 
     const fakeCredentialsVault = emptyAddonCredentialsVault()
@@ -710,6 +727,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
         EMPTY_HTTP_CONFIG,
         new NodeFetchTransport(),
       ),
+      emptyAddonStorageRepository,
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
@@ -886,6 +904,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
       profilesResolver,
       oauthAttemptCoordinator,
       new NoOpSystemEventEmitter(),
+      fakeGetCurrentUserService,
     )
 
     const fakeCredentialsVault = emptyAddonCredentialsVault()
@@ -911,6 +930,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
         EMPTY_HTTP_CONFIG,
         new NodeFetchTransport(),
       ),
+      emptyAddonStorageRepository,
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
@@ -1170,6 +1190,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
       profilesResolver,
       oauthAttemptCoordinator,
       new NoOpSystemEventEmitter(),
+      fakeGetCurrentUserService,
     )
 
     const fakeCredentialsVault = emptyAddonCredentialsVault()
@@ -1195,6 +1216,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
         EMPTY_HTTP_CONFIG,
         new NodeFetchTransport(),
       ),
+      emptyAddonStorageRepository,
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])

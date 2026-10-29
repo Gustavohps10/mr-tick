@@ -1,0 +1,26 @@
+{
+  "name": "@mr-tick/datasource-alpha",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@mr-tick/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  }
+}

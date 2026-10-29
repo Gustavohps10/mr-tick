@@ -2,7 +2,12 @@ import 'fake-indexeddb/auto'
 
 import { LocalRuntime } from '@mr-tick/application/local-runtime'
 import type { WorkspaceViewModel } from '@mr-tick/shared/view-models'
+import { createRxDatabase, removeRxDatabase } from 'rxdb'
+import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'
 import { describe, expect, it, vi } from 'vitest'
+
+import { timeEntriesSyncSchema } from '@/local-db/schemas/time-entries-sync-schema'
+import { ensurePlugins, getDatabaseName } from '@/stores/sync-store/storage'
 
 import type { BrowserRuntimeBridge } from './browser-workspace-registry'
 import {
@@ -84,6 +89,90 @@ const options = { isDevelopment: false, useMemoryStorage: true }
 const remoteActions: ('forceSync' | 'reconcile')[] = ['forceSync', 'reconcile']
 
 describe('Browser workspace owner lifecycle', () => {
+  it('reports an actual persistent RxDB schema mismatch as DB6 without deleting the database', async () => {
+    const workspaceId = crypto.randomUUID()
+    const databaseName = getDatabaseName(workspaceId, false)
+    await ensurePlugins(false)
+    const storage = getRxStorageDexie()
+    const existing = await createRxDatabase({
+      name: databaseName,
+      storage,
+      multiInstance: true,
+    })
+    await existing.addCollections({
+      timeEntries: {
+        schema: {
+          ...timeEntriesSyncSchema,
+          title: 'Different stored schema at the same version',
+        },
+        migrationStrategies: { 1: (document) => document },
+      },
+    })
+    await existing.close()
+    const { bridge } = bridgeFor(workspaceId)
+    const registry = new BrowserWorkspaceRegistry(bridge, {
+      ...options,
+      useMemoryStorage: false,
+    })
+
+    try {
+      const opened = await registry.open(workspaceId)
+      expect(opened.isFailure()).toBe(true)
+      if (opened.isSuccess())
+        return expect.fail('A different schema must not open successfully')
+      expect(opened.failure.messageKey).toBe('WORKSPACE_STORAGE_DB6')
+      expect((await registry.diagnose()).operationalReadChecks).toContainEqual(
+        expect.objectContaining({
+          status: 'fail',
+          reason: 'WORKSPACE_STORAGE_DB6',
+        }),
+      )
+      expect(
+        (await indexedDB.databases()).some((database) =>
+          database.name?.includes(databaseName),
+        ),
+      ).toBe(true)
+    } finally {
+      await registry.close()
+      await removeRxDatabase(databaseName, storage)
+    }
+  })
+
+  it('retains a failed workspace opening in diagnostics and clears it after recovery', async () => {
+    const workspaceId = crypto.randomUUID()
+    const { bridge, getById } = bridgeFor(workspaceId)
+    getById.mockResolvedValueOnce({
+      isSuccess: false,
+      statusCode: 503,
+      error: 'WORKSPACE_STORAGE_DB6',
+    })
+    const registry = new BrowserWorkspaceRegistry(bridge, options)
+
+    expect((await registry.open(workspaceId)).isFailure()).toBe(true)
+    const failed = await registry.diagnose()
+    expect(failed.workspaces).toContainEqual(
+      expect.objectContaining({
+        workspaceId,
+        status: 'unavailable',
+        hasDb: false,
+      }),
+    )
+    expect(failed.operationalReadChecks).toContainEqual(
+      expect.objectContaining({
+        status: 'fail',
+        reason: 'WORKSPACE_STORAGE_DB6',
+        scope: { type: 'workspace', workspaceId },
+      }),
+    )
+
+    expect((await registry.open(workspaceId)).isSuccess()).toBe(true)
+    const recovered = await registry.diagnose()
+    expect(
+      recovered.operationalReadChecks.every((check) => check.status === 'pass'),
+    ).toBe(true)
+    await registry.close()
+  })
+
   it('does not initialize storage or contact a provider during a cache query', async () => {
     const workspaceId = crypto.randomUUID()
     const { bridge, workspace } = bridgeFor(workspaceId)

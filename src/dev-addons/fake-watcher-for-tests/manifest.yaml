@@ -1,0 +1,13 @@
+id: mr-tick-fake-watcher-for-tests
+name: Meeting Room Observer (Fake Watcher)
+version: 1.0.1
+requiredApiVersion: '-1'
+capabilities:
+  - watcher
+author: Mr-tick
+shortDescription: Watcher simulado neutro para testes de observadores configuráveis e timerbar.
+description: Simula observador de salas com resolução relativa de dependências, listas operacionais e geração de apontamentos.
+tags:
+  - watcher
+  - teste
+  - automacao

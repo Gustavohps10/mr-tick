@@ -250,6 +250,19 @@ const mockBridgeClient: IHostBridge = {
         values: {},
         credentialStates: {},
       }),
+    resolveSettingsOptions: async () =>
+      mockSuccess({ availability: 'empty', options: [], hasMore: false }),
+    getOperationalList: async () => mockSuccess({ items: [], hasMore: false }),
+    executeOperationalAction: async () => mockSuccess(undefined),
+    evaluateSettingsForm: async () => mockSuccess({}),
+    reapplySettings: async () =>
+      mockSuccess({
+        schemaVersion: 1,
+        revision: 0,
+        values: {},
+        credentialStates: {},
+        applicationStatus: 'applied',
+      }),
     executeAction: async () => mockSuccess({ isSuccess: true }),
     setActiveWorkspace: async () => mockSuccess(undefined),
     getActiveTheme: async () => mockSuccess(null),
@@ -368,6 +381,41 @@ const mockBridgeClient: IHostBridge = {
         },
       }
     },
+  },
+  core: {
+    listConnections: async () => ({
+      isSuccess: true,
+      statusCode: 200,
+      data: [],
+    }),
+    listTasks: async () => ({
+      isSuccess: true,
+      statusCode: 200,
+      data: { tasks: [], hasMore: false },
+    }),
+    getTask: async () => ({
+      isSuccess: false,
+      statusCode: 404,
+      error: 'TASK_NOT_FOUND',
+    }),
+    getMetadata: async ({ body }) => ({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        workspaceId: body.workspaceId,
+        connectionInstanceId: body.connectionInstanceId,
+        dataSourceId: 'demo',
+        lastPulledAt: null,
+        values: {
+          taskStatuses: [],
+          taskPriorities: [],
+          activities: [],
+          trackStatuses: [],
+          participantRoles: [],
+          estimationTypes: [],
+        },
+      },
+    }),
   },
   events: {
     on: () => () => {},

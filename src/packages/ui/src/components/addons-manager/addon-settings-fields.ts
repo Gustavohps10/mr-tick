@@ -1,11 +1,15 @@
 import type { AddonSettingsField, AddonSettingsTab } from '@mr-tick/sdk'
 
 function isEditable(field: AddonSettingsField): boolean {
-  return (
-    field.type !== 'button' &&
-    field.type !== 'info-card' &&
-    field.type !== 'datasource-instances'
-  )
+  if (
+    field.type === 'button' ||
+    field.type === 'info-card' ||
+    field.type === 'datasource-instances' ||
+    field.type === 'operational-list'
+  ) {
+    return false
+  }
+  return true
 }
 
 export function tabHasEditableFields(tab: AddonSettingsTab): boolean {

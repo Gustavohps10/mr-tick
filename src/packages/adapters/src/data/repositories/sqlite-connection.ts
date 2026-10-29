@@ -367,6 +367,19 @@ export async function ensureDatabaseSchema(
       )
     }
 
+    const hasAddonStorage = await db.schema.hasTable('addon_storage')
+    if (!hasAddonStorage) {
+      await db.schema.createTable('addon_storage', (table) => {
+        table.string('addon_id').notNullable()
+        table.string('scope_key').notNullable()
+        table.string('key').notNullable()
+        table.text('value').notNullable()
+        table.string('updated_at').notNullable()
+        table.primary(['addon_id', 'scope_key', 'key'])
+        table.index(['addon_id', 'scope_key', 'key'])
+      })
+    }
+
     initializedDatabases.add(db)
     return Either.success(undefined)
   } catch (error) {

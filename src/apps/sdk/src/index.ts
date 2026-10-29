@@ -51,6 +51,15 @@ export type { ConnectionProfileDescriptor } from '@mr-tick/domain'
 export {
   AppError,
   Either,
+  hasProperty,
+  isArray,
+  isBoolean,
+  isFunction,
+  isNonEmptyString,
+  isNumber,
+  isRecord,
+  isString,
+  isWorkspaceScoped,
   TokenRefreshError,
   type TokenRefreshErrorOptions,
 } from '@mr-tick/shared/helpers'

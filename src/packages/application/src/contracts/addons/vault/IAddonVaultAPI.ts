@@ -12,8 +12,35 @@ export type AddonVaultScope =
       connectionInstanceId: string
       capabilityId: string
     }
-export type AddonSettingValue = string | number | boolean | null
+
+export type AddonSettingScalarValue = string | number | boolean | null
+
+export type AddonSettingValue =
+  AddonSettingScalarValue | AddonSettingObjectValue | AddonSettingArrayValue
+
+export interface AddonSettingObjectValue {
+  readonly [key: string]: AddonSettingValue | undefined
+}
+
+export type AddonSettingArrayValue = readonly AddonSettingValue[]
+
 export type AddonSettingsValues = Record<string, AddonSettingValue>
+
+export type AddonCollectionItemRecord = {
+  readonly itemId: string
+  readonly values: AddonSettingsValues
+}
+
+export type AddonCollectionItemEnvelope = AddonCollectionItemRecord
+
+export type AddonTaskReferenceValue = {
+  readonly workspaceId: string
+  readonly connectionInstanceId: string
+  readonly taskId: string
+  readonly titleSnapshot?: string
+  readonly projectNameSnapshot?: string
+  readonly metadataValues?: Readonly<Record<string, string | number | boolean>>
+}
 
 export interface IAddonVaultAPI {
   get(

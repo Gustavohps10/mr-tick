@@ -1,5 +1,5 @@
 import { AlertTriangle } from 'lucide-react'
-import React from 'react'
+import React, { useEffect } from 'react'
 
 import {
   Tooltip,
@@ -7,19 +7,55 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useHostBridge } from '@/hooks/use-host-bridge'
 import { useSystemDiagnostics } from '@/hooks/use-system-diagnostics'
 import { useSettingsModalStore } from '@/stores/settingsModalStore'
+import { useSyncInitializationError } from '@/stores/syncStore'
 
 export function RuntimeStatusIndicator() {
-  const { isRuntimeUnavailable, snapshot } = useSystemDiagnostics()
+  const { isRuntimeUnavailable, snapshot, runManualChecks } =
+    useSystemDiagnostics()
+  const initializationError = useSyncInitializationError()
+  const bridge = useHostBridge()
   const openModal = useSettingsModalStore((s) => s.openModal)
 
-  if (!isRuntimeUnavailable) return null
+  useEffect(() => {
+    if (initializationError === null) return
+    void runManualChecks()
+  }, [initializationError, runManualChecks])
+
+  useEffect(
+    () =>
+      bridge.events.on('local-runtime:diagnostics-invalidated', () => {
+        void runManualChecks()
+      }),
+    [bridge, runManualChecks],
+  )
+
+  const unavailableWorkspace = snapshot?.workspaces.find(
+    (workspace) => workspace.status === 'unavailable',
+  )
+
+  if (
+    !isRuntimeUnavailable &&
+    initializationError === null &&
+    unavailableWorkspace === undefined
+  )
+    return null
 
   const failure = snapshot?.dispatcher?.lastStartupFailure
-  const tooltipText = failure
-    ? `Motor local indisponível: ${failure.messageKey} (${failure.kind})`
-    : 'Motor local indisponível — clique para abrir diagnóstico'
+  const getTooltipText = (): string => {
+    if (initializationError !== null)
+      return `Workspace indisponível: ${initializationError} — clique para abrir diagnóstico`
+
+    if (!isRuntimeUnavailable)
+      return 'Workspace indisponível — clique para abrir diagnóstico'
+
+    if (failure)
+      return `Motor local indisponível: ${failure.messageKey} (${failure.kind})`
+
+    return 'Motor local indisponível — clique para abrir diagnóstico'
+  }
 
   const handleClick = () => {
     openModal('system-data')
@@ -41,7 +77,7 @@ export function RuntimeStatusIndicator() {
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs">
-          {tooltipText}
+          {getTooltipText()}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

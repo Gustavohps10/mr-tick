@@ -10,6 +10,7 @@ import {
   type IConnectionLifecycleCoordinator,
   type ICoreCacheTransport,
   type IDisconnectAddonConnectionUseCase,
+  type IGetCurrentUserUseCase,
   type ILinkConnectionUseCase,
   type IUnlinkConnectionUseCase,
   type IWorkspacesRepository,
@@ -232,6 +233,17 @@ function fixture() {
     getConnectionProfiles: async () => Either.success([profile]),
   }
   const oauthAttemptCoordinator = new OAuthAttemptCoordinator()
+  const fakeGetCurrentUserService: IGetCurrentUserUseCase = {
+    execute: vi.fn<IGetCurrentUserUseCase['execute']>(async () =>
+      Either.success({
+        id: 'member-1',
+        login: 'fixture-member',
+        firstname: 'Fixture',
+        lastname: 'Member',
+        customFields: [],
+      }),
+    ),
+  }
 
   return {
     workspace,
@@ -245,6 +257,7 @@ function fixture() {
     authenticatorRegistry,
     profile,
     oauthAttemptCoordinator,
+    getCurrentUserService: fakeGetCurrentUserService,
     core: new AddonCoreCapabilities(
       repository,
       transport,
@@ -258,6 +271,7 @@ function fixture() {
       profilesResolver,
       oauthAttemptCoordinator,
       new NoOpSystemEventEmitter(),
+      fakeGetCurrentUserService,
     ),
   }
 }
@@ -346,6 +360,58 @@ describe('Public core read capabilities', () => {
       connectionInstanceId: 'foreign-connection',
     })
     expect(foreign.isFailure()).toBe(true)
+  })
+  it('delegates members.getCurrentUser to getCurrentUserService with validated scope', async () => {
+    const { core, getCurrentUserService, workspace } = fixture()
+    const scope = {
+      workspaceId: workspace.id,
+      connectionInstanceId: 'connection',
+    }
+    const result = await core.members.getCurrentUser(scope)
+    expect(result.isSuccess()).toBe(true)
+    if (result.isFailure()) return expect.fail(result.failure.messageKey)
+    expect(result.success).toEqual({
+      id: 'member-1',
+      name: 'Fixture Member',
+    })
+    expect(getCurrentUserService.execute).toHaveBeenCalledWith(scope)
+  })
+  it('propagates tasks.list pagination with nextCursor and hasMore', async () => {
+    const { core, queryCore, workspace } = fixture()
+    const scope = {
+      workspaceId: workspace.id,
+      connectionInstanceId: 'connection',
+    }
+    queryCore.mockResolvedValue({
+      ok: true,
+      value: {
+        kind: 'tasks',
+        tasks: [
+          {
+            workspaceId: workspace.id,
+            connectionInstanceId: 'connection',
+            taskId: 'task-1',
+            dataSourceId: 'provider',
+            title: 'Task One',
+            status: { id: 'open', name: 'Open' },
+            createdAt: '2026-10-28T09:00:00.000Z',
+            updatedAt: '2026-10-28T09:00:00.000Z',
+          },
+        ],
+        hasMore: true,
+        nextCursor: 'cursor-token-page-2',
+      },
+    })
+    const result = await core.tasks.list({
+      ...scope,
+      limit: 10,
+      cursor: 'start',
+    })
+    expect(result.isSuccess()).toBe(true)
+    if (result.isFailure()) return expect.fail(result.failure.messageKey)
+    expect(result.success.hasMore).toBe(true)
+    expect(result.success.nextCursor).toBe('cursor-token-page-2')
+    expect(result.success.tasks).toHaveLength(1)
   })
   it('derives connection ownership from the addon capability', async () => {
     const { core, createLifecycle, workspace } = fixture()

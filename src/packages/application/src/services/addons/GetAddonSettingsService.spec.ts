@@ -110,9 +110,9 @@ describe('GetAddonSettingsService', () => {
       () => gateway,
       new NoOpAddonScopeOwnershipValidator(),
     )
-    const schema: AddonSettingsField[] = [
+    const schema = [
       { id: 'badPassword', label: 'Pass', type: 'password' },
-    ]
+    ] as unknown as AddonSettingsField[]
 
     const result = await service.execute({
       addonId: 'my-addon',

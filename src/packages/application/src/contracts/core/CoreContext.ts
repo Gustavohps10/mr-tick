@@ -27,6 +27,7 @@ export interface CoreConnection extends CoreConnectionScope {
   cardinality: 'single' | 'multi'
   status: 'connected' | 'disabled' | 'disconnected' | 'archived'
   identity: CoreConnectionIdentity | null
+  capability?: string
 }
 export interface CoreConnectionIdentity {
   kind: 'human' | 'bot' | 'installation'
@@ -74,10 +75,19 @@ export interface CoreTaskListRequest extends CoreConnectionScope {
   limit: number
   /** Case-insensitive substring of title or source task ID. */
   search?: string
+  /** Opaque cursor for continuation beyond the initial limit. */
+  cursor?: string
 }
 export interface CoreTaskPage {
   tasks: CoreTask[]
   hasMore: boolean
+  nextCursor?: string
+}
+export interface CoreMember {
+  id: string
+  name: string
+  email?: string
+  avatarUrl?: string
 }
 export interface CoreMetadata extends CoreConnectionScope {
   dataSourceId: string

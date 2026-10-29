@@ -1,8 +1,11 @@
 import {
+  type AddonFieldAddress,
+  type AddonFormEvaluationResponse,
   AddonSettingsField,
   AddonSettingsSchema,
   AddonSettingsValues,
   AddonSettingsView,
+  type AddonSettingValue,
   AddonVaultScope,
   rebaseAddonSettings,
 } from '@mr-tick/application'
@@ -16,13 +19,21 @@ import { hasCapability, isDataSource } from '@mr-tick/shared/helpers'
 import { isString } from '@mr-tick/shared/helpers'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  AlertCircle,
   Check,
   FolderKanban,
   Loader2,
   Plus,
   SlidersHorizontal,
 } from 'lucide-react'
-import { useContext, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { toast } from 'sonner'
 
 import { MappingConfigModal } from '@/components/mapping-config-modal'
@@ -51,6 +62,7 @@ import { cn } from '@/lib/utils'
 import { AddonFieldRenderer } from './addon-field-renderer'
 import { tabHasEditableFields } from './addon-settings-fields'
 import { AddonThemeSettingsPanel } from './addon-theme-settings-panel'
+import { clearValueAtAddress, serializeFieldAddress } from './address-helpers'
 import {
   AddonConnection,
   ConnectionCard,
@@ -83,7 +95,7 @@ function firstWorkspace(
 }
 
 function resolveConnectionName(
-  config: Record<string, unknown> | undefined,
+  config: WorkspaceViewModel['connections'][number]['config'],
   fallbackId: string,
 ): string {
   if (config && isString(config.name) && config.name.trim().length > 0) {
@@ -93,7 +105,7 @@ function resolveConnectionName(
 }
 
 function resolveConnectionUrl(
-  config: Record<string, unknown> | undefined,
+  config: WorkspaceViewModel['connections'][number]['config'],
 ): string | undefined {
   if (!config) return undefined
   if (isString(config.url) && config.url.trim().length > 0) {
@@ -444,14 +456,12 @@ function ScopedAddonSettingsRenderer({
     Record<
       string,
       {
-        formValues: Record<string, string | number | boolean | null>
+        formValues: AddonSettingsValues
         credentialValues: Record<string, string>
       }
     >
   >({})
-  const [formValues, setFormValues] = useState<
-    Record<string, string | number | boolean | null>
-  >({})
+  const [formValues, setFormValues] = useState<AddonSettingsValues>({})
   const [credentialValues, setCredentialValues] = useState<
     Record<string, string>
   >({})
@@ -490,25 +500,58 @@ function ScopedAddonSettingsRenderer({
     }
   }, [savedSettings, currentScopeStr])
 
-  type SettingsSaveFailureReason =
-    | { kind: 'conflict'; statusCode: 409; messageKey: string }
-    | { kind: 'credential_partial'; fieldId: string; error: string }
-    | { kind: 'generic'; error: string }
+  const [activeTabId, setActiveTabId] = useState<string>('')
 
-  function resolveSettingsSaveErrorMessage(
-    reason: SettingsSaveFailureReason,
-  ): string {
-    if (reason.kind === 'generic') {
-      return reason.error
-    }
-    return reason.kind
-  }
+  const allTabs = useMemo(() => settingsTabs(schema || []), [schema])
+  const capabilityTabs = useMemo(
+    () => allTabs.filter((t) => t.kind !== 'auth'),
+    [allTabs],
+  )
+  const authTabs = useMemo(
+    () => allTabs.filter((t) => t.kind === 'auth'),
+    [allTabs],
+  )
 
-  class SettingsSaveError extends Error {
-    constructor(public readonly reason: SettingsSaveFailureReason) {
-      super(resolveSettingsSaveErrorMessage(reason))
+  const matchingTab = useMemo(() => {
+    if (!activeCapability) return undefined
+    return capabilityTabs.find((t) => t.id === activeCapability)
+  }, [activeCapability, capabilityTabs])
+
+  const tabs: AddonSettingsTab[] = useMemo(() => {
+    if (matchingTab) return [matchingTab]
+    return capabilityTabs
+  }, [matchingTab, capabilityTabs])
+
+  const defaultTab = useMemo(() => initialSettingsTab(tabs), [tabs])
+
+  const currentActiveTab = useMemo(() => {
+    if (
+      activeTabId &&
+      (matchingTab
+        ? matchingTab.id === activeTabId
+        : capabilityTabs.some((t) => t.id === activeTabId))
+    ) {
+      return activeTabId
     }
-  }
+    if (activeCapability && matchingTab) {
+      return matchingTab.id
+    }
+    return defaultTab
+  }, [activeTabId, matchingTab, capabilityTabs, activeCapability, defaultTab])
+
+  const activeTabEvaluatorId = useMemo(() => {
+    if (!schema) return undefined
+    if (activeCapability === 'auth') {
+      const authTab = allTabs.find((t) => t.kind === 'auth')
+      return authTab?.evaluatorId
+    }
+    const currentTab = allTabs.find((t) => t.id === currentActiveTab)
+    if (currentTab?.evaluatorId) return currentTab.evaluatorId
+    const matching = activeCapability
+      ? allTabs.find((t) => t.id === activeCapability)
+      : allTabs[0]
+    return matching?.evaluatorId
+  }, [schema, allTabs, currentActiveTab, activeCapability])
 
   const saveMutation = useMutation({
     mutationFn: async (input: {
@@ -526,7 +569,7 @@ function ScopedAddonSettingsRenderer({
         submittedCredentials[fieldId] = submittedValue
       }
 
-      const res = await bridge.addons.saveSettings({
+      return bridge.addons.saveSettings({
         body: {
           addonId,
           scope: input.scope,
@@ -535,52 +578,18 @@ function ScopedAddonSettingsRenderer({
           credentials: submittedCredentials,
         },
       })
-      if (!res.isSuccess) {
-        if (res.statusCode === 409) {
-          let conflictMessage = 'REVISION_CONFLICT'
-          if (res.error !== undefined && res.error.length > 0) {
-            conflictMessage = res.error
-          }
-          throw new SettingsSaveError({
-            kind: 'conflict',
-            statusCode: 409,
-            messageKey: conflictMessage,
-          })
-        }
-        if (
-          res.statusCode === 207 ||
-          res.error === 'ADDON_CREDENTIAL_PARTIAL_FAILURE'
-        ) {
-          let partialError = 'ADDON_CREDENTIAL_PARTIAL_FAILURE'
-          if (res.error !== undefined && res.error.length > 0) {
-            partialError = res.error
-          }
-          throw new SettingsSaveError({
-            kind: 'credential_partial',
-            fieldId: '',
-            error: partialError,
-          })
-        }
-        let genericError = 'FAILED_TO_SAVE_SETTINGS'
-        if (res.error !== undefined && res.error.length > 0) {
-          genericError = res.error
-        }
-        throw new SettingsSaveError({
-          kind: 'generic',
-          error: genericError,
+    },
+    onSuccess: async (res, input) => {
+      if (res.isSuccess) {
+        toast.success('Configurações salvas com sucesso!')
+        delete draftsByScope.current[JSON.stringify(input.scope)]
+        queryClient.invalidateQueries({
+          queryKey: ['addon-settings', addonId, input.scope],
         })
+        return
       }
-      return res
-    },
-    onSuccess: (result, input) => {
-      toast.success('Configurações salvas com sucesso!')
-      delete draftsByScope.current[JSON.stringify(input.scope)]
-      queryClient.invalidateQueries({
-        queryKey: ['addon-settings', addonId, input.scope],
-      })
-    },
-    onError: async (err: Error, input) => {
-      if (err instanceof SettingsSaveError && err.reason.kind === 'conflict') {
+
+      if (res.statusCode === 409) {
         pendingRebasePatch.current = input.patch
         await queryClient.invalidateQueries({ queryKey: settingsQueryKey })
         const latest = await queryClient.fetchQuery({
@@ -589,14 +598,17 @@ function ScopedAddonSettingsRenderer({
         })
         const rebased = rebaseAddonSettings(latest.values, input.patch)
         setFormValues(rebased)
-        toast.error(
-          'As configurações mudaram. Seus campos foram reaplicados sobre a revisão atual; revise e salve novamente.',
-        )
+        const conflictMsg =
+          res.error && res.error.length > 0
+            ? res.error
+            : 'As configurações mudaram. Seus campos foram reaplicados sobre a revisão atual; revise e salve novamente.'
+        toast.error(conflictMsg)
         return
       }
+
       if (
-        err instanceof SettingsSaveError &&
-        err.reason.kind === 'credential_partial'
+        res.statusCode === 207 ||
+        res.error === 'ADDON_CREDENTIAL_PARTIAL_FAILURE'
       ) {
         setCredentialValues({})
         await queryClient.invalidateQueries({ queryKey: settingsQueryKey })
@@ -605,19 +617,32 @@ function ScopedAddonSettingsRenderer({
           queryFn: loadSettings,
         })
         setFormValues({ ...latest.values })
-        toast.error(
-          'As configurações foram salvas, mas uma credencial falhou. O estado foi recarregado; confira os indicadores antes de tentar novamente.',
-        )
+        const partialMsg =
+          res.error && res.error.length > 0
+            ? res.error
+            : 'As configurações foram salvas, mas uma credencial falhou. O estado foi recarregado; confira os indicadores antes de tentar novamente.'
+        toast.error(partialMsg)
         return
       }
-      toast.error(err.message)
+
+      if (
+        res.statusCode !== 400 &&
+        res.statusCode !== 409 &&
+        res.statusCode !== 422
+      ) {
+        await queryClient.invalidateQueries({
+          queryKey: ['addon-settings', addonId, input.scope],
+        })
+      }
+      const genericMsg =
+        res.error && res.error.length > 0
+          ? res.error
+          : 'Falha ao salvar configurações'
+      toast.error(genericMsg)
     },
   })
 
-  const handleFieldChange = (
-    fieldId: string,
-    value: string | number | boolean | null,
-  ) => {
+  const handleFieldChange = (fieldId: string, value: AddonSettingValue) => {
     const field = findSettingsField(schema || [], fieldId)
     if (field?.scope === 'credential') {
       setCredentialValues((previous) => ({
@@ -630,6 +655,230 @@ function ScopedAddonSettingsRenderer({
       ...prev,
       [fieldId]: value,
     }))
+  }
+
+  const reapplyMutation = useMutation({
+    mutationFn: async () => {
+      return bridge.addons.reapplySettings({
+        body: {
+          addonId,
+          scope,
+          revision: savedSettings.revision,
+        },
+      })
+    },
+    onSuccess: (res) => {
+      if (!res.isSuccess) {
+        const errorMsg =
+          res.error && res.error.length > 0
+            ? res.error
+            : 'Falha ao reaplicar configurações'
+        toast.error(errorMsg)
+        return
+      }
+
+      if (
+        res.data &&
+        res.data.revision === savedSettings.revision &&
+        res.data.applicationStatus === 'applied'
+      ) {
+        toast.success('Configurações reaplicadas com sucesso!')
+        queryClient.setQueryData<AddonSettingsView>(settingsQueryKey, res.data)
+        queryClient.invalidateQueries({
+          queryKey: ['addon-settings', addonId, scope],
+        })
+        return
+      }
+
+      if (res.data && res.data.applicationStatus === 'failed') {
+        const appErr =
+          res.data.applicationError && res.data.applicationError.length > 0
+            ? res.data.applicationError
+            : 'Falha ao aplicar configurações'
+        toast.error(appErr)
+        queryClient.setQueryData<AddonSettingsView>(settingsQueryKey, res.data)
+        return
+      }
+
+      queryClient.invalidateQueries({
+        queryKey: ['addon-settings', addonId, scope],
+      })
+    },
+  })
+
+  const [evaluationResult, setEvaluationResult] =
+    useState<AddonFormEvaluationResponse | null>(null)
+
+  const evaluationSequenceRef = useRef<number>(0)
+  const activeEvaluationTokenRef = useRef<string>('')
+
+  useEffect(() => {
+    return () => {
+      activeEvaluationTokenRef.current = ''
+    }
+  }, [])
+
+  const evaluateForm = useCallback(
+    async (currentDraft: AddonSettingsValues) => {
+      if (!activeTabEvaluatorId) return
+
+      evaluationSequenceRef.current += 1
+      const requestId = evaluationSequenceRef.current
+      const requestToken = `${addonId}::${JSON.stringify(scope)}::${activeTabEvaluatorId}::${requestId}`
+      activeEvaluationTokenRef.current = requestToken
+
+      const res = await bridge.addons.evaluateSettingsForm({
+        body: {
+          addonId,
+          scope,
+          evaluatorId: activeTabEvaluatorId,
+          draftValues: currentDraft,
+        },
+      })
+
+      if (activeEvaluationTokenRef.current !== requestToken) return
+      if (!res.isSuccess || !res.data) return
+
+      const evalData = res.data
+      setEvaluationResult(evalData)
+
+      if (evalData.clearFields && evalData.clearFields.length > 0) {
+        setFormValues((prev) => {
+          let next = prev
+          for (const addr of evalData.clearFields!) {
+            next = clearValueAtAddress(next, addr)
+          }
+          return next
+        })
+      }
+    },
+    [activeTabEvaluatorId, addonId, bridge.addons, scope],
+  )
+
+  useEffect(() => {
+    if (!activeTabEvaluatorId) return
+    evaluateForm(formValues)
+  }, [activeTabEvaluatorId, formValues, evaluateForm])
+
+  const fieldErrorsMap = useMemo(() => {
+    const map = new Map<string, string[]>()
+    if (!evaluationResult?.fieldMessages) return map
+    for (const entry of evaluationResult.fieldMessages) {
+      const key = serializeFieldAddress(entry.address)
+      map.set(key, [...entry.messages])
+      if (
+        entry.address.path.length === 1 &&
+        entry.address.path[0]?.kind === 'field'
+      ) {
+        map.set(entry.address.path[0].fieldId, [...entry.messages])
+      }
+    }
+    return map
+  }, [evaluationResult])
+
+  const fieldVisibilityMap = useMemo(() => {
+    const map = new Map<string, boolean>()
+    if (!evaluationResult?.fieldVisibility) return map
+    for (const entry of evaluationResult.fieldVisibility) {
+      const key = serializeFieldAddress(entry.address)
+      map.set(key, entry.visible)
+      if (
+        entry.address.path.length === 1 &&
+        entry.address.path[0]?.kind === 'field'
+      ) {
+        map.set(entry.address.path[0].fieldId, entry.visible)
+      }
+    }
+    return map
+  }, [evaluationResult])
+
+  const fieldDisabledMap = useMemo(() => {
+    const map = new Map<string, boolean>()
+    if (!evaluationResult?.fieldDisabled) return map
+    for (const entry of evaluationResult.fieldDisabled) {
+      const key = serializeFieldAddress(entry.address)
+      map.set(key, entry.disabled)
+      if (
+        entry.address.path.length === 1 &&
+        entry.address.path[0]?.kind === 'field'
+      ) {
+        map.set(entry.address.path[0].fieldId, entry.disabled)
+      }
+    }
+    return map
+  }, [evaluationResult])
+
+  const renderApplicationStatusBanner = () => {
+    const status = savedSettings.applicationStatus
+    if (!status) return null
+
+    if (status === 'applied') {
+      return (
+        <div
+          data-testid="addon-settings-status-applied"
+          className="mb-4 flex items-center justify-between rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-600 dark:text-emerald-400"
+        >
+          <div className="flex items-center gap-2">
+            <Check className="size-4 shrink-0" />
+            <span>
+              Configurações aplicadas com sucesso (Revisão{' '}
+              {savedSettings.revision})
+            </span>
+          </div>
+        </div>
+      )
+    }
+
+    if (status === 'pending') {
+      return (
+        <div
+          data-testid="addon-settings-status-pending"
+          className="mb-4 flex items-center justify-between rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400"
+        >
+          <div className="flex items-center gap-2">
+            <Loader2 className="size-4 shrink-0 animate-spin" />
+            <span>Aplicação das configurações em andamento...</span>
+          </div>
+        </div>
+      )
+    }
+
+    if (status === 'failed') {
+      return (
+        <div
+          data-testid="addon-settings-status-failed"
+          className="border-destructive/30 bg-destructive/10 text-destructive mb-4 flex items-center justify-between rounded-md border p-3 text-xs"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <AlertCircle className="size-4 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-semibold">Falha ao aplicar configurações</p>
+              {savedSettings.applicationError && (
+                <p className="truncate text-[11px] opacity-90">
+                  {savedSettings.applicationError}
+                </p>
+              )}
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={reapplyMutation.isPending}
+            data-testid="reapply-settings-btn"
+            onClick={() => reapplyMutation.mutate()}
+            className="ml-3 h-7 shrink-0 text-xs"
+          >
+            {reapplyMutation.isPending && (
+              <Loader2 className="mr-1.5 size-3 animate-spin" />
+            )}
+            Reaplicar
+          </Button>
+        </div>
+      )
+    }
+
+    return null
   }
 
   const handleReset = () => {
@@ -702,11 +951,6 @@ function ScopedAddonSettingsRenderer({
     )
   }
 
-  const allTabs = settingsTabs(schema || [])
-  const isAuthTab = (t: AddonSettingsTab) => t.kind === 'auth'
-
-  const authTabs = allTabs.filter(isAuthTab)
-  const capabilityTabs = allTabs.filter((t) => !isAuthTab(t))
   const saveActions = (
     <div className="bg-muted/20 flex shrink-0 justify-end gap-2 border-t px-6 py-3">
       <Button
@@ -780,38 +1024,88 @@ function ScopedAddonSettingsRenderer({
                           )}
                         </div>
                         <div className="grid w-full gap-4">
-                          {group.fields.map((field) => (
-                            <FieldRenderer
-                              key={field.id}
-                              field={field}
-                              addonId={addonId}
-                              workspaceId={workspaceId}
-                              value={fieldValue(field)}
-                              credentialConfigured={
-                                savedSettings.credentialStates[field.id] ===
-                                'configured'
-                              }
-                              onChange={handleFieldChange}
-                            />
-                          ))}
+                          {group.fields.map((field) => {
+                            const fieldAddress: AddonFieldAddress = {
+                              path: [{ kind: 'field', fieldId: field.id }],
+                            }
+                            const fieldKey = serializeFieldAddress(fieldAddress)
+                            const isVisible =
+                              fieldVisibilityMap.get(fieldKey) !== false &&
+                              fieldVisibilityMap.get(field.id) !== false
+                            if (!isVisible) return null
+                            const isDisabled =
+                              fieldDisabledMap.get(fieldKey) === true ||
+                              fieldDisabledMap.get(field.id) === true
+                            const fieldErrors =
+                              fieldErrorsMap.get(fieldKey) ||
+                              fieldErrorsMap.get(field.id)
+
+                            return (
+                              <FieldRenderer
+                                key={field.id}
+                                field={field}
+                                addonId={addonId}
+                                workspaceId={workspaceId}
+                                value={fieldValue(field)}
+                                credentialConfigured={
+                                  savedSettings.credentialStates[field.id] ===
+                                  'configured'
+                                }
+                                onChange={handleFieldChange}
+                                disabled={isDisabled}
+                                fieldAddress={fieldAddress}
+                                scope={scope}
+                                draftValues={formValues}
+                                errors={fieldErrors}
+                                fieldErrorsMap={fieldErrorsMap}
+                                fieldVisibilityMap={fieldVisibilityMap}
+                                fieldDisabledMap={fieldDisabledMap}
+                              />
+                            )
+                          })}
                         </div>
                       </div>
                     ))
-                  : authTab.fields?.map((field) => (
-                      <div key={field.id} className="grid w-full gap-4">
-                        <FieldRenderer
-                          field={field}
-                          addonId={addonId}
-                          workspaceId={workspaceId}
-                          value={fieldValue(field)}
-                          credentialConfigured={
-                            savedSettings.credentialStates[field.id] ===
-                            'configured'
-                          }
-                          onChange={handleFieldChange}
-                        />
-                      </div>
-                    ))}
+                  : authTab.fields?.map((field) => {
+                      const fieldAddress: AddonFieldAddress = {
+                        path: [{ kind: 'field', fieldId: field.id }],
+                      }
+                      const fieldKey = serializeFieldAddress(fieldAddress)
+                      const isVisible =
+                        fieldVisibilityMap.get(fieldKey) !== false &&
+                        fieldVisibilityMap.get(field.id) !== false
+                      if (!isVisible) return null
+                      const isDisabled =
+                        fieldDisabledMap.get(fieldKey) === true ||
+                        fieldDisabledMap.get(field.id) === true
+                      const fieldErrors =
+                        fieldErrorsMap.get(fieldKey) ||
+                        fieldErrorsMap.get(field.id)
+
+                      return (
+                        <div key={field.id} className="grid w-full gap-4">
+                          <FieldRenderer
+                            field={field}
+                            addonId={addonId}
+                            workspaceId={workspaceId}
+                            value={fieldValue(field)}
+                            credentialConfigured={
+                              savedSettings.credentialStates[field.id] ===
+                              'configured'
+                            }
+                            onChange={handleFieldChange}
+                            disabled={isDisabled}
+                            fieldAddress={fieldAddress}
+                            scope={scope}
+                            draftValues={formValues}
+                            errors={fieldErrors}
+                            fieldErrorsMap={fieldErrorsMap}
+                            fieldVisibilityMap={fieldVisibilityMap}
+                            fieldDisabledMap={fieldDisabledMap}
+                          />
+                        </div>
+                      )
+                    })}
               </div>
             ))}
           </div>
@@ -820,12 +1114,6 @@ function ScopedAddonSettingsRenderer({
       </div>
     )
   }
-
-  const matchingTab = activeCapability
-    ? capabilityTabs.find((t) => t.id === activeCapability)
-    : undefined
-
-  const tabs: AddonSettingsTab[] = matchingTab ? [matchingTab] : capabilityTabs
 
   if (tabs.length === 0) {
     if (
@@ -853,8 +1141,6 @@ function ScopedAddonSettingsRenderer({
     )
   }
 
-  const defaultTab = initialSettingsTab(tabs)
-
   const hasEditableFields = tabs.some(tabHasEditableFields)
 
   let headerTitle = addonId
@@ -873,7 +1159,12 @@ function ScopedAddonSettingsRenderer({
       )}
 
       <div className="flex-1 space-y-6 overflow-auto px-6 py-5">
-        <Tabs defaultValue={defaultTab} className="w-full">
+        {renderApplicationStatusBanner()}
+        <Tabs
+          value={currentActiveTab}
+          onValueChange={setActiveTabId}
+          className="w-full"
+        >
           {tabs.length > 1 && (
             <TabsList className="mb-4">
               {tabs.map((tab) => (
@@ -931,40 +1222,91 @@ function ScopedAddonSettingsRenderer({
                             )}
                           </div>
                           <div className="grid w-full gap-4">
-                            {group.fields.map((field) => (
-                              <FieldRenderer
-                                key={field.id}
-                                field={field}
-                                addonId={addonId}
-                                workspaceId={workspaceId}
-                                value={fieldValue(field)}
-                                credentialConfigured={
-                                  savedSettings.credentialStates[field.id] ===
-                                  'configured'
-                                }
-                                onChange={handleFieldChange}
-                                disabled={isAuthLocked}
-                              />
-                            ))}
+                            {group.fields.map((field) => {
+                              const fieldAddress: AddonFieldAddress = {
+                                path: [{ kind: 'field', fieldId: field.id }],
+                              }
+                              const fieldKey =
+                                serializeFieldAddress(fieldAddress)
+                              const isVisible =
+                                fieldVisibilityMap.get(fieldKey) !== false &&
+                                fieldVisibilityMap.get(field.id) !== false
+                              if (!isVisible) return null
+                              const isDisabled =
+                                fieldDisabledMap.get(fieldKey) === true ||
+                                fieldDisabledMap.get(field.id) === true ||
+                                isAuthLocked
+                              const fieldErrors =
+                                fieldErrorsMap.get(fieldKey) ||
+                                fieldErrorsMap.get(field.id)
+
+                              return (
+                                <FieldRenderer
+                                  key={field.id}
+                                  field={field}
+                                  addonId={addonId}
+                                  workspaceId={workspaceId}
+                                  value={fieldValue(field)}
+                                  credentialConfigured={
+                                    savedSettings.credentialStates[field.id] ===
+                                    'configured'
+                                  }
+                                  onChange={handleFieldChange}
+                                  disabled={isDisabled}
+                                  fieldAddress={fieldAddress}
+                                  scope={scope}
+                                  draftValues={formValues}
+                                  errors={fieldErrors}
+                                  fieldErrorsMap={fieldErrorsMap}
+                                  fieldVisibilityMap={fieldVisibilityMap}
+                                  fieldDisabledMap={fieldDisabledMap}
+                                />
+                              )
+                            })}
                           </div>
                         </div>
                       ))
-                    : tab.fields?.map((field) => (
-                        <div key={field.id} className="grid w-full gap-4">
-                          <FieldRenderer
-                            field={field}
-                            addonId={addonId}
-                            workspaceId={workspaceId}
-                            value={fieldValue(field)}
-                            credentialConfigured={
-                              savedSettings.credentialStates[field.id] ===
-                              'configured'
-                            }
-                            onChange={handleFieldChange}
-                            disabled={isAuthLocked}
-                          />
-                        </div>
-                      ))}
+                    : tab.fields?.map((field) => {
+                        const fieldAddress: AddonFieldAddress = {
+                          path: [{ kind: 'field', fieldId: field.id }],
+                        }
+                        const fieldKey = serializeFieldAddress(fieldAddress)
+                        const isVisible =
+                          fieldVisibilityMap.get(fieldKey) !== false &&
+                          fieldVisibilityMap.get(field.id) !== false
+                        if (!isVisible) return null
+                        const isDisabled =
+                          fieldDisabledMap.get(fieldKey) === true ||
+                          fieldDisabledMap.get(field.id) === true ||
+                          isAuthLocked
+                        const fieldErrors =
+                          fieldErrorsMap.get(fieldKey) ||
+                          fieldErrorsMap.get(field.id)
+
+                        return (
+                          <div key={field.id} className="grid w-full gap-4">
+                            <FieldRenderer
+                              field={field}
+                              addonId={addonId}
+                              workspaceId={workspaceId}
+                              value={fieldValue(field)}
+                              credentialConfigured={
+                                savedSettings.credentialStates[field.id] ===
+                                'configured'
+                              }
+                              onChange={handleFieldChange}
+                              disabled={isDisabled}
+                              fieldAddress={fieldAddress}
+                              scope={scope}
+                              draftValues={formValues}
+                              errors={fieldErrors}
+                              fieldErrorsMap={fieldErrorsMap}
+                              fieldVisibilityMap={fieldVisibilityMap}
+                              fieldDisabledMap={fieldDisabledMap}
+                            />
+                          </div>
+                        )
+                      })}
                 </div>
               </TabsContent>
             )
@@ -1244,14 +1586,28 @@ function FieldRenderer({
   onChange,
   disabled,
   credentialConfigured,
+  fieldAddress,
+  scope,
+  draftValues,
+  errors,
+  fieldErrorsMap,
+  fieldVisibilityMap,
+  fieldDisabledMap,
 }: {
   field: AddonSettingsField
   addonId: string
   workspaceId: string | undefined
-  value: string | number | boolean | null | undefined
-  onChange: (fieldId: string, value: string | number | boolean | null) => void
+  value: AddonSettingValue | undefined
+  onChange: (fieldId: string, value: AddonSettingValue) => void
   disabled?: boolean
   credentialConfigured: boolean
+  fieldAddress?: AddonFieldAddress
+  scope?: AddonVaultScope
+  draftValues?: AddonSettingsValues
+  errors?: readonly string[]
+  fieldErrorsMap?: ReadonlyMap<string, readonly string[]>
+  fieldVisibilityMap?: ReadonlyMap<string, boolean>
+  fieldDisabledMap?: ReadonlyMap<string, boolean>
 }) {
   return (
     <AddonFieldRenderer
@@ -1262,6 +1618,13 @@ function FieldRenderer({
       onChange={onChange}
       disabled={disabled}
       credentialConfigured={credentialConfigured}
+      fieldAddress={fieldAddress}
+      scope={scope}
+      draftValues={draftValues}
+      errors={errors}
+      fieldErrorsMap={fieldErrorsMap}
+      fieldVisibilityMap={fieldVisibilityMap}
+      fieldDisabledMap={fieldDisabledMap}
       renderDataSourceInstances={(id) => (
         <DataSourceInstancesManager addonId={id} />
       )}

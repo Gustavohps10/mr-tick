@@ -19,6 +19,7 @@ import {
 import {
   emptyAddonCredentialsVault,
   emptyAddonSettingsRepository,
+  emptyAddonStorageRepository,
   emptyWorkspaceReferenceRegistry,
 } from '../core/addon-workspace-reference-test-fixture'
 import { AddonLoader } from '../loader/AddonLoader'
@@ -79,6 +80,7 @@ describe('Addon ownership and lifecycle', () => {
         EMPTY_HTTP_CONFIG,
         new NodeFetchTransport(),
       ),
+      emptyAddonStorageRepository,
     )
     const first = new ProbeAddon('first')
     const second = new ProbeAddon('second')
@@ -122,6 +124,7 @@ describe('Addon ownership and lifecycle', () => {
         EMPTY_HTTP_CONFIG,
         new NodeFetchTransport(),
       ),
+      emptyAddonStorageRepository,
     )
     const addon = new ProbeAddon('probe')
     vi.spyOn(addon, 'activate').mockImplementation((context) => {
@@ -162,6 +165,7 @@ it('releases availability subscriptions and registrations even when deactivate f
     profilesResolver,
     oauthAttemptCoordinator,
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
+    emptyAddonStorageRepository,
   )
   const addon = new ProbeAddon('probe')
   await loader.activateAddon('probe', addon)
@@ -187,6 +191,7 @@ it('keeps reused datasource definitions owned by distinct addons without mutatin
     profilesResolver,
     oauthAttemptCoordinator,
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
+    emptyAddonStorageRepository,
   )
   const source: IDataSource = {
     createInstance: vi.fn<IDataSource['createInstance']>(),
@@ -223,6 +228,7 @@ it('preserves the built-in theme command while resolving addon themes by their o
     profilesResolver,
     oauthAttemptCoordinator,
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
+    emptyAddonStorageRepository,
   )
   const first = new ProbeAddon('first')
   const second = new ProbeAddon('second')
@@ -248,6 +254,7 @@ it('never resolves another addon alias when the selected addon has no such actio
     profilesResolver,
     oauthAttemptCoordinator,
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
+    emptyAddonStorageRepository,
   )
   const first = new ProbeAddon('first')
   const second = new ProbeAddon('second')

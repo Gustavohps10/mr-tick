@@ -14,5 +14,6 @@ export interface CreateTimeEntryDTO {
     id: string
     name: string
     imageUrl?: string
+    metadata?: Readonly<Record<string, string | number | boolean>>
   }
 }
