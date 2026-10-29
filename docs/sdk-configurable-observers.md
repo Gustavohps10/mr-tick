@@ -135,6 +135,30 @@ function resolveRooms(
 
 ---
 
+### 2.2.1. Subgrupos e Mídia em Opções (`group` e `imageUrl`)
+
+As opções de `select` e `multiselect` (`AddonSettingsOption` e `AddonSettingsMultiSelectOption`) aceitam opcionalmente campos de apresentação declarativa:
+
+```typescript
+export interface AddonSettingsOptionGroup {
+  readonly id: string      // identidade estável do subgrupo, definida pelo addon
+  readonly label: string   // rótulo de exibição; nunca é identidade
+}
+
+export interface AddonSettingsOptionPresentation {
+  readonly group?: AddonSettingsOptionGroup
+  readonly imageUrl?: string
+}
+```
+
+**Semântica normativa:**
+1. **Identidade e Ordem:** O Core não deriva grupo de rótulos nem reordena o array. A ordem retornada pelo provider é soberana. O renderer exibe um cabeçalho de grupo sempre que a identidade (`group.id`) transicionar na lista visível acumulada. Se o provider agrupar opções contíguas, elas formarão um bloco com cabeçalho único; se o grupo continuar em uma página seguinte, o cabeçalho não é duplicado.
+2. **Isolamento de Persistência:** `group` e `imageUrl` são puramente apresentacionais. O valor salvo na configuração ou no journal é exclusivamente o `value` escalar (string/number/boolean).
+3. **Mídia e Segurança:** `imageUrl` aceita apenas esquemas `https:` ou `data:image/*`. URLs não seguras (`http:`, `file:`, relativas) ou imagens com falha de carregamento (`onError`) degradam imediatamente para placeholder com iniciais do `label`, memorizando o erro para evitar loops ou layout shifts.
+4. **Contexto no Selecionado:** O trigger de seleção única exibe o rótulo do grupo como prefixo secundário (`group.label · label`) quando disponível no cache de contexto. Em `multiselect`, badges exibem o texto composto `group.label · label`. Quando não houver apresentação no cache, preserva-se o fallback textual do `value`.
+
+---
+
 ### 2.3. Seletor de Tarefa de Destino (`task-reference`)
 
 O campo `task-reference` permite ao usuário escolher uma tarefa associada a uma conexão no mesmo workspace:

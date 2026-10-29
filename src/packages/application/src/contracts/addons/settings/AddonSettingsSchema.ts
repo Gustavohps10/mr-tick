@@ -1,13 +1,23 @@
 export type AddonSettingsFieldScope = 'credential' | 'configuration'
 
-export interface AddonSettingsOption {
+export interface AddonSettingsOptionGroup {
+  readonly id: string
+  readonly label: string
+}
+
+export interface AddonSettingsOptionPresentation {
+  readonly group?: AddonSettingsOptionGroup
+  readonly imageUrl?: string
+}
+
+export interface AddonSettingsOption extends AddonSettingsOptionPresentation {
   readonly label: string
   readonly value: string | number | boolean
   readonly description?: string
   readonly disabled?: boolean
 }
 
-export interface AddonSettingsMultiSelectOption {
+export interface AddonSettingsMultiSelectOption extends AddonSettingsOptionPresentation {
   readonly label: string
   readonly value: string | number
   readonly description?: string

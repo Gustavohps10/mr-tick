@@ -351,6 +351,8 @@ export type {
   AddonSettingsNumberField,
   AddonSettingsOperationalListField,
   AddonSettingsOption,
+  AddonSettingsOptionGroup,
+  AddonSettingsOptionPresentation,
   AddonSettingsPasswordField,
   AddonSettingsSchema,
   AddonSettingsSelectField,

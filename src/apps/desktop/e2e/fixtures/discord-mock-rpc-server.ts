@@ -26,6 +26,9 @@ export interface DiscordRpcServerStats {
   authenticationsCount: number
   subscriptionsCount: number
   commandsCount: number
+  getGuildsCount: number
+  getGuildCount: number
+  getChannelsCount: number
   eventsDispatchedCount: number
   receivedNonces: string[]
 }
@@ -45,6 +48,9 @@ export class DiscordMockRpcServer extends EventEmitter {
     authenticationsCount: 0,
     subscriptionsCount: 0,
     commandsCount: 0,
+    getGuildsCount: 0,
+    getGuildCount: 0,
+    getChannelsCount: 0,
     eventsDispatchedCount: 0,
     receivedNonces: [],
   }
@@ -243,28 +249,78 @@ export class DiscordMockRpcServer extends EventEmitter {
     this.stats.commandsCount++
 
     if (payload.cmd === 'GET_GUILDS') {
+      this.stats.getGuildsCount++
       this.sendFrame(1, {
         cmd: 'GET_GUILDS',
         nonce: payload.nonce,
         data: {
           guilds: [
-            { id: 'guild-eng-100', name: 'Engenharia de Software' },
-            { id: 'guild-ops-200', name: 'Operações e Infra' },
+            {
+              id: 'guild-eng-100',
+              name: 'Engenharia de Software',
+              icon_url:
+                'https://cdn.discordapp.com/icons/guild-eng-100/icon.png',
+            },
+            {
+              id: 'guild-ops-200',
+              name: 'Operações e Infra',
+              // Sem icon nem icon_url em GET_GUILDS, forçando enriquecimento via GET_GUILD
+            },
           ],
         },
       })
       return
     }
 
+    if (payload.cmd === 'GET_GUILD') {
+      this.stats.getGuildCount++
+      const guildId = payload.args?.guild_id
+      let icon_url: string | null = null
+      if (guildId === 'guild-ops-200') {
+        icon_url = 'https://cdn.discordapp.com/icons/guild-ops-200/ops-icon.png'
+      }
+      this.sendFrame(1, {
+        cmd: 'GET_GUILD',
+        nonce: payload.nonce,
+        data: {
+          id: guildId,
+          name: guildId === 'guild-ops-200' ? 'Operações e Infra' : 'Guild',
+          icon_url,
+        },
+      })
+      return
+    }
+
     if (payload.cmd === 'GET_CHANNELS') {
+      this.stats.getChannelsCount++
       const guildId = payload.args?.guild_id
       let channels = [
         { id: 'chan-warroom-201', name: 'War Room Incidents', type: 2 },
       ]
       if (guildId === 'guild-eng-100') {
         channels = [
-          { id: 'chan-daily-101', name: 'Daily Standup', type: 2 },
-          { id: 'chan-pair-102', name: 'Pair Programming', type: 2 },
+          {
+            id: 'cat-reunioes',
+            name: 'Reuniões & Sync',
+            type: 4,
+            position: 10,
+          },
+          { id: 'cat-foco', name: 'Salas de Foco', type: 4, position: 20 },
+          {
+            id: 'chan-daily-101',
+            name: 'Daily Standup',
+            type: 2,
+            parent_id: 'cat-reunioes',
+            position: 1,
+          },
+          {
+            id: 'chan-pair-102',
+            name: 'Pair Programming',
+            type: 2,
+            parent_id: 'cat-foco',
+            position: 2,
+          },
+          { id: 'chan-lobby-100', name: 'Lobby Geral', type: 2 },
         ]
       }
 

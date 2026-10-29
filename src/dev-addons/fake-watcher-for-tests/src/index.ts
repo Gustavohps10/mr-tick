@@ -417,8 +417,20 @@ export default class FakeWatcherAddon implements IAddon {
 
     if (buildingValue === 'building-north') {
       const options: readonly AddonSettingsOption[] = [
-        { label: '1º Andar (Norte - Lab Software)', value: 'floor-n1' },
-        { label: '2º Andar (Norte - Lab Hardware)', value: 'floor-n2' },
+        {
+          label: '1º Andar (Norte - Lab Software)',
+          value: 'floor-n1',
+          group: { id: 'grp-software', label: 'Engenharia de Software' },
+          imageUrl:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        },
+        {
+          label: '2º Andar (Norte - Lab Hardware)',
+          value: 'floor-n2',
+          group: { id: 'grp-hardware', label: 'Infraestrutura e Hardware' },
+          imageUrl:
+            'https://invalid-non-existent-domain.internal/broken-image.png',
+        },
       ]
       return Either.success({
         availability: 'available',
@@ -429,8 +441,16 @@ export default class FakeWatcherAddon implements IAddon {
 
     if (buildingValue === 'building-south') {
       const options: readonly AddonSettingsOption[] = [
-        { label: '3º Andar (Sul - Operações e Suporte)', value: 'floor-s3' },
-        { label: '4º Andar (Sul - Diretoria)', value: 'floor-s4' },
+        {
+          label: '3º Andar (Sul - Operações e Suporte)',
+          value: 'floor-s3',
+          group: { id: 'grp-operations', label: 'Operações' },
+        },
+        {
+          label: '4º Andar (Sul - Diretoria)',
+          value: 'floor-s4',
+          group: { id: 'grp-exec', label: 'Diretoria' },
+        },
       ]
       return Either.success({
         availability: 'available',

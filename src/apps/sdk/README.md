@@ -11,6 +11,13 @@ SDK público para addons do Mr. Tick. Instale o pacote publicado no npm; não im
 - `AddonContext.host`: events, notifications, vault, storage e oauth.
 - `IDataSourceInstance`: tasksProvider, timeEntriesProvider, membersProvider e metadataProvider.
 
+### Contratos de Opções Declarativas (`select` e `multiselect`)
+
+As opções de seletores (`AddonSettingsOption` e `AddonSettingsMultiSelectOption`) suportam atributos opcionais de apresentação:
+- `group?: { id: string; label: string }`: declara o subgrupo/categoria visual ao qual a opção pertence. A identidade do grupo é estritamente `group.id` no escopo da resposta; cabeçalhos são renderizados quando a identidade transiciona no array visível.
+- `imageUrl?: string`: URL absoluta da mídia (`https:` ou `data:image/*`). Esquemas não autorizados ou falhas de carregamento degradam automaticamente para placeholder determinístico por iniciais do rótulo, sem quebrar a seleção nem efetuar requisições extras.
+- Valores selecionados preservam apresentação enriquecida a partir do cache de contexto sem alterar o valor escalar persistido.
+
 O manifesto declara `capabilities` e `requiredApiVersion`. Addons que conectam contas declaram `auth`; perfis e autenticadores são registrados em runtime por `contributions.connections`, com retorno `Either`. `IDataSource` não fornece perfis de conexão. `IHttpClient` exige validador de resposta. APIs funcionais retornam `Either`; os helpers OAuth de baixo nível mantêm seus contratos de Promise específicos.
 
 ## Guias

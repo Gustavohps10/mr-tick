@@ -3,6 +3,7 @@ import type {
   AddonResolveOptionsResponse,
   AddonSettingsMultiSelectField,
   AddonSettingsOption,
+  AddonSettingsOptionGroup,
   AddonSettingsSelectField,
   AddonSettingsValues,
   AddonVaultScope,
@@ -14,7 +15,7 @@ import {
   Loader2,
   Search,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,6 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib/utils'
 
+import { AddonSelectOptionMedia } from './addon-select-option-media'
 import {
   extractResolvedDependencies,
   serializeFieldAddress,
@@ -52,6 +54,12 @@ export interface AddonDynamicSelectControlProps {
 type SelectAvailabilityState =
   'available' | 'empty' | 'no-permission' | 'disconnected' | 'error'
 
+interface KnownOptionPresentation {
+  readonly label: string
+  readonly groupLabel?: string
+  readonly imageUrl?: string
+}
+
 function isSameOptionValue(
   a: string | number | boolean | null | undefined,
   b: string | number | boolean | null | undefined,
@@ -63,6 +71,15 @@ function isSameOptionValue(
 
 function formatOptionKey(val: string | number | boolean): string {
   return `${typeof val}:${String(val)}`
+}
+
+function getValidGroup(
+  group: AddonSettingsOptionGroup | undefined,
+): AddonSettingsOptionGroup | undefined {
+  if (!group) return undefined
+  if (group.id.trim().length === 0) return undefined
+  if (group.label.trim().length === 0) return undefined
+  return group
 }
 
 export function AddonDynamicSelectControl({
@@ -88,9 +105,9 @@ export function AddonDynamicSelectControl({
   const [statusMessage, setStatusMessage] = useState<string>('')
   const [nextCursor, setNextCursor] = useState<string | null>(null)
 
-  const knownLabelsMap = useRef<Map<string | number | boolean, string>>(
-    new Map(),
-  )
+  const knownPresentationMap = useRef<
+    Map<string | number | boolean, KnownOptionPresentation>
+  >(new Map())
 
   const source = field.source
 
@@ -133,12 +150,26 @@ export function AddonDynamicSelectControl({
   useEffect(() => {
     if (activeIdentityRef.current !== serializedIdentity) {
       activeIdentityRef.current = serializedIdentity
+      knownPresentationMap.current.clear()
+
+      // Preservar metadados de fonte estática no mapa após limpeza de identidade
+      if (source.kind === 'static') {
+        for (const opt of source.options) {
+          const validGroup = getValidGroup(opt.group)
+          knownPresentationMap.current.set(opt.value, {
+            label: opt.label,
+            groupLabel: validGroup?.label,
+            imageUrl: opt.imageUrl,
+          })
+        }
+      }
+
       setOptions([])
       setNextCursor(null)
       setAvailability('available')
       setStatusMessage('')
     }
-  }, [serializedIdentity])
+  }, [serializedIdentity, source])
 
   useEffect(() => {
     return () => {
@@ -149,7 +180,12 @@ export function AddonDynamicSelectControl({
   useEffect(() => {
     if (source.kind === 'static') {
       for (const opt of source.options) {
-        knownLabelsMap.current.set(opt.value, opt.label)
+        const validGroup = getValidGroup(opt.group)
+        knownPresentationMap.current.set(opt.value, {
+          label: opt.label,
+          groupLabel: validGroup?.label,
+          imageUrl: opt.imageUrl,
+        })
       }
     }
   }, [source])
@@ -222,7 +258,12 @@ export function AddonDynamicSelectControl({
         }
 
         for (const opt of data.options) {
-          knownLabelsMap.current.set(opt.value, opt.label)
+          const validGroup = getValidGroup(opt.group)
+          knownPresentationMap.current.set(opt.value, {
+            label: opt.label,
+            groupLabel: validGroup?.label,
+            imageUrl: opt.imageUrl,
+          })
         }
 
         if (isPaging) {
@@ -312,7 +353,12 @@ export function AddonDynamicSelectControl({
   const handleSelectOption = (opt: AddonSettingsOption) => {
     if (disabled || opt.disabled) return
 
-    knownLabelsMap.current.set(opt.value, opt.label)
+    const validGroup = getValidGroup(opt.group)
+    knownPresentationMap.current.set(opt.value, {
+      label: opt.label,
+      groupLabel: validGroup?.label,
+      imageUrl: opt.imageUrl,
+    })
 
     if (isMulti) {
       const alreadySelected = selectedValuesList.some((v) =>
@@ -364,9 +410,11 @@ export function AddonDynamicSelectControl({
         <div className="flex flex-wrap gap-1">
           {selectedValuesList.map((val) => {
             let label = String(val)
-            const mapped = knownLabelsMap.current.get(val)
+            let groupLabel: string | undefined
+            const mapped = knownPresentationMap.current.get(val)
             if (mapped !== undefined) {
-              label = mapped
+              label = mapped.label
+              groupLabel = mapped.groupLabel
             }
             return (
               <Badge
@@ -374,7 +422,7 @@ export function AddonDynamicSelectControl({
                 variant="secondary"
                 className="text-xs font-normal"
               >
-                {label}
+                {groupLabel ? `${groupLabel} · ${label}` : label}
               </Badge>
             )
           })}
@@ -398,11 +446,23 @@ export function AddonDynamicSelectControl({
     }
 
     let label = String(value)
-    const mapped = knownLabelsMap.current.get(value)
+    let groupLabel: string | undefined
+    let imageUrl: string | undefined
+    const mapped = knownPresentationMap.current.get(value)
     if (mapped !== undefined) {
-      label = mapped
+      label = mapped.label
+      groupLabel = mapped.groupLabel
+      imageUrl = mapped.imageUrl
     }
-    return <span>{label}</span>
+
+    return (
+      <div className="flex min-w-0 items-center gap-2">
+        <AddonSelectOptionMedia label={label} imageUrl={imageUrl} size="sm" />
+        <span className="truncate">
+          {groupLabel ? `${groupLabel} · ${label}` : label}
+        </span>
+      </div>
+    )
   }
 
   const renderAvailabilityNotice = () => {
@@ -538,46 +598,67 @@ export function AddonDynamicSelectControl({
           {!isLoading && availability === 'available' && (
             <ScrollArea className="max-h-56">
               <div className="space-y-0.5 p-0.5">
-                {options.map((opt) => {
+                {options.map((opt, index) => {
                   const isChecked = isOptionChecked(opt.value)
+                  const validGroup = getValidGroup(opt.group)
+                  const prevOpt = index > 0 ? options[index - 1] : undefined
+                  const prevGroup = getValidGroup(prevOpt?.group)
+                  const prevGroupId = prevGroup ? prevGroup.id : null
+                  const currentGroupId = validGroup ? validGroup.id : null
+                  const isNewGroup = currentGroupId !== prevGroupId
 
                   return (
-                    <button
-                      key={formatOptionKey(opt.value)}
-                      type="button"
-                      disabled={opt.disabled}
-                      onClick={() => handleSelectOption(opt)}
-                      data-testid={`addon-select-option-${opt.value}`}
-                      className={cn(
-                        'flex w-full cursor-pointer items-center justify-between rounded px-2 py-1.5 text-left text-xs transition-colors',
-                        isChecked
-                          ? 'bg-primary/10 text-primary font-medium'
-                          : 'hover:bg-muted/70 text-foreground',
-                        opt.disabled && 'pointer-events-none opacity-40',
-                      )}
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-2">
-                        {isMulti && (
-                          <Checkbox
-                            checked={isChecked}
-                            disabled={opt.disabled}
-                            className="size-3.5"
-                          />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate">{opt.label}</p>
-                          {opt.description && (
-                            <p className="text-muted-foreground truncate text-[10px]">
-                              {opt.description}
-                            </p>
-                          )}
+                    <React.Fragment key={formatOptionKey(opt.value)}>
+                      {isNewGroup && validGroup && (
+                        <div
+                          role="presentation"
+                          data-testid={`addon-select-group-${validGroup.id}`}
+                          className="text-muted-foreground px-2 pt-2 pb-1 text-[10px] font-semibold tracking-wider uppercase select-none"
+                        >
+                          {validGroup.label}
                         </div>
-                      </div>
-
-                      {!isMulti && isChecked && (
-                        <Check className="text-primary size-3.5 shrink-0" />
                       )}
-                    </button>
+                      <button
+                        type="button"
+                        disabled={opt.disabled}
+                        onClick={() => handleSelectOption(opt)}
+                        data-testid={`addon-select-option-${opt.value}`}
+                        className={cn(
+                          'flex w-full cursor-pointer items-center justify-between rounded px-2 py-1.5 text-left text-xs transition-colors',
+                          isChecked
+                            ? 'bg-primary/10 text-primary font-medium'
+                            : 'hover:bg-muted/70 text-foreground',
+                          opt.disabled && 'pointer-events-none opacity-40',
+                        )}
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          {isMulti && (
+                            <Checkbox
+                              checked={isChecked}
+                              disabled={opt.disabled}
+                              className="size-3.5 shrink-0"
+                            />
+                          )}
+                          <AddonSelectOptionMedia
+                            label={opt.label}
+                            imageUrl={opt.imageUrl}
+                            size="sm"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate">{opt.label}</p>
+                            {opt.description && (
+                              <p className="text-muted-foreground truncate text-[10px]">
+                                {opt.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {!isMulti && isChecked && (
+                          <Check className="text-primary size-3.5 shrink-0" />
+                        )}
+                      </button>
+                    </React.Fragment>
                   )
                 })}
               </div>

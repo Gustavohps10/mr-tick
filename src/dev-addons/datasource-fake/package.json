@@ -19,6 +19,7 @@
   ],
   "scripts": {
     "build": "tsup --format esm --dts",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "clean": "rimraf dist"
   },
   "dependencies": {

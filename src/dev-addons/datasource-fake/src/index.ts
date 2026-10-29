@@ -52,7 +52,6 @@ const configFields: {
           type: 'password',
           label: 'Senha de Acesso',
           placeholder: '123',
-          defaultValue: '123',
         },
       ],
     },

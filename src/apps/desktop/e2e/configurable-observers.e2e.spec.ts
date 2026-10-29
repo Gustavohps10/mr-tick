@@ -163,10 +163,23 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
     )
     await expect(item1FloorTrigger).toBeVisible({ timeout: 5000 })
     await item1FloorTrigger.click()
+
+    // Validação de grupos e mídia declarativa (Andar N1 tem grupo e imagem em data:image)
+    const softwareGroup = page.locator(
+      '[data-testid="addon-select-group-grp-software"]',
+    )
+    await expect(softwareGroup).toBeVisible({ timeout: 5000 })
+    await expect(softwareGroup).toHaveText('Engenharia de Software')
+
     const item1FloorN1Opt = page.locator(
       '[data-testid="addon-select-option-floor-n1"]',
     )
     await expect(item1FloorN1Opt).toBeVisible({ timeout: 5000 })
+    // Mídia com data:image
+    await expect(
+      item1FloorN1Opt.locator('[data-testid="addon-select-media-avatar"]'),
+    ).toBeVisible({ timeout: 5000 })
+
     await item1FloorN1Opt.click()
 
     // Sala depende do Andar N1 (base: 'parent')
@@ -828,6 +841,19 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
       }
       await win.waitForLoadState('domcontentloaded')
 
+      // Interceptar requisições de imagem de ícone do Discord no Playwright para retornar imagem válida
+      const transparentPngBuffer = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      )
+      await win.route('https://cdn.discordapp.com/**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'image/png',
+          body: transparentPngBuffer,
+        })
+      })
+
       // Aguardar handshake + AUTHENTICATE + SUBSCRIBE no named pipe mock
       await expect
         .poll(() => mockRpcServer.stats.subscriptionsCount, {
@@ -899,22 +925,138 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
       )
       await expect(guildTrigger).toBeVisible({ timeout: 5000 })
       await guildTrigger.click()
+
+      // Asserções de cache e contadores RPC do mock:
+      // guild-eng-100 já possui icon_url em GET_GUILDS; guild-ops-200 não tem icon original e exige GET_GUILD
+      const opsGuildOpt = win.locator(
+        '[data-testid="addon-select-option-guild-ops-200"]',
+      )
+      await expect(opsGuildOpt).toBeVisible({ timeout: 10000 })
+
+      // guild-ops-200 carrega imagem enriquecida via HTTPS interceptado (naturalWidth > 0)
+      const opsGuildImg = opsGuildOpt.locator(
+        '[data-testid="addon-select-media-img"]',
+      )
+      await expect(opsGuildImg).toBeVisible({ timeout: 5000 })
+      await expect
+        .poll(
+          async () =>
+            opsGuildImg.evaluate(
+              (img: HTMLImageElement) => img.complete && img.naturalWidth > 0,
+            ),
+          { timeout: 5000 },
+        )
+        .toBe(true)
+
+      // Exatamente 1 GET_GUILD gerado para guild-ops-200; guild-eng-100 não gerou detalhe extra
+      await expect
+        .poll(() => mockRpcServer.stats.getGuildCount, { timeout: 5000 })
+        .toBe(1)
+
       const engGuildOpt = win.locator(
         '[data-testid="addon-select-option-guild-eng-100"]',
       )
       await expect(engGuildOpt).toBeVisible({ timeout: 10000 })
+
+      // Asserção de imagem renderizada com HTTPS interceptado (naturalWidth > 0)
+      const guildImg = engGuildOpt.locator(
+        '[data-testid="addon-select-media-img"]',
+      )
+      await expect(guildImg).toBeVisible({ timeout: 5000 })
+      await expect
+        .poll(
+          async () =>
+            guildImg.evaluate(
+              (img: HTMLImageElement) => img.complete && img.naturalWidth > 0,
+            ),
+          { timeout: 5000 },
+        )
+        .toBe(true)
+
+      // Reabrir o seletor na mesma sessão para verificar que getGuildCount não aumenta para IDs já memorizados
       await engGuildOpt.click()
+      await expect(guildTrigger).toContainText('Engenharia de Software')
+      await expect(
+        guildTrigger.locator('[data-testid="addon-select-media-avatar"]'),
+      ).toBeVisible({ timeout: 5000 })
+
+      // Reabre seletor de guild para conferir cache
+      await guildTrigger.click()
+      await expect(opsGuildOpt).toBeVisible({ timeout: 5000 })
+      // Contador getGuildCount permanece estável em 1 (sem chamadas redundantes)
+      expect(mockRpcServer.stats.getGuildCount).toBe(1)
+
+      // Prova de falha de carregamento HTTPS abort -> fallback e ausência de parent_id -> lista plana sem cabeçalho
+      // 1. Interceptar a URL do ícone de Ops para falhar/abortar
+      await win.route(
+        'https://cdn.discordapp.com/icons/guild-ops-200/ops-icon.png',
+        async (route) => {
+          await route.abort('failed')
+        },
+      )
+
+      // Seleciona guild-ops-200
+      await opsGuildOpt.click()
+      await expect(guildTrigger).toContainText('Operações e Infra')
+      // Com a rota abortada, o avatar de Operações e Infra degrada para o fallback determinístico (iniciais 'OE' das 2 primeiras palavras)
+      const opsFallback = guildTrigger.locator(
+        '[data-testid="addon-select-media-fallback"]',
+      )
+      await expect(opsFallback).toBeVisible({ timeout: 5000 })
+      await expect(opsFallback).toHaveText('OE')
+
+      // Abre o seletor de canais de Operações e Infra: GET_CHANNELS retorna apenas War Room Incidents sem parent_id
+      const opsChannelTrigger = ruleCard.locator(
+        '[data-testid="addon-dynamic-select-channel"]',
+      )
+      await expect(opsChannelTrigger).toBeVisible({ timeout: 5000 })
+      await opsChannelTrigger.click()
+
+      // Asserção: War Room visível, nenhum cabeçalho de categoria/subgrupo é renderizado (lista plana)
+      const warRoomOpt = win.locator(
+        '[data-testid="addon-select-option-chan-warroom-201"]',
+      )
+      await expect(warRoomOpt).toBeVisible({ timeout: 10000 })
+      await expect(
+        win.locator('[data-testid^="addon-select-group-"]'),
+      ).toHaveCount(0)
+
+      // Fecha seletor de canais de Ops
+      await opsChannelTrigger.click()
+      await expect(warRoomOpt).toBeHidden({ timeout: 5000 })
+
+      // Retoma fluxo com Engenharia de Software
+      await guildTrigger.click()
+      await expect(engGuildOpt).toBeVisible({ timeout: 5000 })
+      await engGuildOpt.click()
+      await expect(guildTrigger).toContainText('Engenharia de Software')
+      await expect(
+        guildTrigger.locator('[data-testid="addon-select-media-avatar"]'),
+      ).toBeVisible({ timeout: 5000 })
 
       const channelTrigger = ruleCard.locator(
         '[data-testid="addon-dynamic-select-channel"]',
       )
       await expect(channelTrigger).toBeVisible({ timeout: 5000 })
       await channelTrigger.click()
+
+      // Asserção de cabeçalho de categoria/subgrupo renderizado
+      const meetingCatHeader = win.locator(
+        '[data-testid="addon-select-group-cat-reunioes"]',
+      )
+      await expect(meetingCatHeader).toBeVisible({ timeout: 5000 })
+      await expect(meetingCatHeader).toHaveText('Reuniões & Sync')
+
       const dailyChannelOpt = win.locator(
         '[data-testid="addon-select-option-chan-daily-101"]',
       )
       await expect(dailyChannelOpt).toBeVisible({ timeout: 10000 })
       await dailyChannelOpt.click()
+
+      // Asserção do contexto de subgrupo no trigger selecionado ('Reuniões & Sync · Daily Standup')
+      await expect(channelTrigger).toContainText(
+        'Reuniões & Sync · Daily Standup',
+      )
 
       // Selecionar DataSource Alpha e tarefa ALPHA-101 como destino da regra
       const connSelect = ruleCard.locator(
