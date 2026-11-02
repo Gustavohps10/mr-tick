@@ -841,7 +841,9 @@ export function Header({ className }: HeaderProps = {}) {
                                           {explanation.technicalDetails && (
                                             <p className="text-muted-foreground/80 border-border/40 mt-1 border-t pt-1 font-mono text-[10px] break-words">
                                               Detalhe:{' '}
-                                              {explanation.technicalDetails}
+                                              <span>
+                                                {explanation.technicalDetails}
+                                              </span>
                                             </p>
                                           )}
                                         </TooltipContent>
