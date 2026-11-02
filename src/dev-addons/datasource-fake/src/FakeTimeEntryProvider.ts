@@ -67,24 +67,8 @@ export class FakeTimeEntryProvider implements ITimeEntryProvider {
     if (this.store.getSimulateAuthError())
       return Either.failure(AppError.Unauthorized('TOKEN_EXPIRED'))
     const entries = this.store.getTimeEntries()
-    const enriched = entries.map((entry) => {
-      if (entry.task.id && !entry.taskData) {
-        const task = this.store.findTaskById(entry.task.id)
-        if (task)
-          return {
-            ...entry,
-            taskData: {
-              id: task.id,
-              title: task.title,
-              tracker: task.tracker,
-              status: task.status,
-            },
-          }
-      }
-      return entry
-    })
     const page = await createTimeEntrySnapshotPage(
-      enriched,
+      entries,
       checkpoint,
       batch,
       memberId,

@@ -112,7 +112,7 @@ export function LookupInput({
         placeholder={placeholder}
         disabled={disabled}
         className={cn(
-          'border-input/40 bg-background/50 focus-visible:ring-primary/20 font-mono shadow-xs backdrop-blur-xs transition-all focus-visible:ring-2 [&::-webkit-search-cancel-button]:appearance-none',
+          'border-input/40 bg-background/50 focus-visible:ring-primary/20 shadow-xs backdrop-blur-xs transition-all focus-visible:ring-2 [&::-webkit-search-cancel-button]:appearance-none',
           value
             ? 'border-primary/30 bg-primary/5'
             : 'hover:border-primary/20 hover:bg-background',

@@ -28,7 +28,7 @@ export class FakeMemberProvider implements IMemberProvider {
     password: string,
   ): Promise<Either<AppError, MemberDTO>> {
     const members = this.store.getMembers()
-    const member = members.find((m) => m.email === login) ?? members[0]
+    const member = members.find((m) => m.login === login) ?? members[0]
     if (!member)
       return Either.failure(AppError.NotFound('USUARIO_NAO_ENCONTRADO'))
     return Either.success(member)

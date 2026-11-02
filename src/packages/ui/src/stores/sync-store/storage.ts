@@ -146,10 +146,30 @@ export const removeDatabaseFromCache = (
 ): void => {
   const dbName = getDatabaseName(workspaceId, useMemoryStorage)
   dbPromiseCache.delete(dbName)
+  dbRefCounts.delete(dbName)
+}
+
+export const releaseDatabase = async (
+  workspaceId: string,
+  useMemoryStorage: boolean = false,
+  db: AppDatabase,
+): Promise<void> => {
+  const dbName = getDatabaseName(workspaceId, useMemoryStorage)
+  const currentRefs = dbRefCounts.get(dbName)
+
+  if (currentRefs !== undefined && currentRefs > 1) {
+    dbRefCounts.set(dbName, currentRefs - 1)
+    return
+  }
+
+  dbRefCounts.delete(dbName)
+  dbPromiseCache.delete(dbName)
+  await db.close()
 }
 
 // --- DATABASE CACHE (Singleton para evitar DB9) ---
 export const dbPromiseCache = new Map<string, Promise<AppDatabase>>()
+const dbRefCounts = new Map<string, number>()
 
 export const getOrCreateDatabase = async (
   workspaceId: string,
@@ -171,6 +191,9 @@ export const getOrCreateDatabase = async (
     try {
       const cachedDb = await cachedPromise
       if (!cachedDb.closed) {
+        const existingRefs = dbRefCounts.get(dbName)
+        const nextRefs = existingRefs !== undefined ? existingRefs + 1 : 1
+        dbRefCounts.set(dbName, nextRefs)
         console.log('[SYNC][db] retornando database ativa do cache', dbName)
         return cachedDb
       }
@@ -178,6 +201,7 @@ export const getOrCreateDatabase = async (
       // Se a promise falhou, expurga do cache e recria
     }
     dbPromiseCache.delete(dbName)
+    dbRefCounts.delete(dbName)
   }
 
   const promise = (async () => {
@@ -259,11 +283,13 @@ export const getOrCreateDatabase = async (
   })()
 
   dbPromiseCache.set(dbName, promise)
+  dbRefCounts.set(dbName, 1)
 
   promise.catch(() => {
     console.log('[SYNC][db] removendo entrada do cache após falha:', dbName)
     if (dbPromiseCache.get(dbName) === promise) {
       dbPromiseCache.delete(dbName)
+      dbRefCounts.delete(dbName)
     }
   })
 

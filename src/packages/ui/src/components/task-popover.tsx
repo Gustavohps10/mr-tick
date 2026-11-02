@@ -2,25 +2,30 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  CheckSquare2,
   CircleDashed,
   ExternalLink,
   MessageSquareDiff,
   Pin,
   PinOff,
+  Search,
   X,
 } from 'lucide-react'
-import * as LucideIcons from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MangoQuery } from 'rxdb'
 import { toast } from 'sonner'
 import { useDebounce } from 'use-debounce'
 
-import { LookupInput } from '@/components/lookup-input'
 import { DynamicIcon } from '@/components/mapping-config-modal'
+import {
+  getTaskConnectionOption,
+  TaskConnectionOption,
+  TaskConnectionSelect,
+} from '@/components/task-connection-select'
 import { TaskLookup } from '@/components/task-lookup'
+import { TaskLookupResults } from '@/components/task-lookup-results'
 import { useOptionalTrackerContext } from '@/components/time-bar/ultimate-entry-bar'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
   Popover,
   PopoverContent,
@@ -33,6 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { AddonConnectionView } from '@/contexts/DataSourceConnectionsContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useHostBridge } from '@/hooks'
@@ -42,19 +48,10 @@ import {
 } from '@/hooks/use-field-mappings'
 import { fetchAndPersistTasks } from '@/lib/tasks-enrichment'
 import { cn } from '@/lib/utils'
+import { SyncMetadataRxDBDTO } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { extractPureTaskId } from '@/pages/time-entries/lib/time-entries-utils'
 import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
-
-const DEFAULT_ACTIVITIES: Array<{
-  id: string
-  name: string
-  icon?: React.ElementType
-}> = [
-  { id: 'dev', name: 'Desenvolvimento' },
-  { id: 'design', name: 'Design' },
-  { id: 'fix', name: 'Correção' },
-]
 
 const PINNED_TASKS_STORAGE_KEY = 'mr-tick:pinned-task-ids'
 
@@ -97,9 +94,23 @@ export interface TaskPopoverProps {
   onConnectionChange?: (connectionId: string) => void
   activities?: Array<{ id: string; name: string; icon?: React.ElementType }>
   syncConnections?: AddonConnectionView[]
-  onSelectTask?: (task: SyncTaskRxDBDTO) => void
+  connections?: readonly TaskConnectionOption[]
+  onSelectTask?: (
+    task: SyncTaskRxDBDTO,
+    context?: { activityId?: string; comment?: string },
+  ) => void
   onCommitAndClose?: () => void
   isRemote?: boolean
+  title?: string
+  hideComment?: boolean
+  getTestId?: (task: SyncTaskRxDBDTO) => string
+  tasks?: SyncTaskRxDBDTO[]
+  loadingTasks?: boolean
+  footer?: React.ReactNode
+  searchInputTestId?: string
+  onSearchChange?: (query: string) => void
+  allowLocal?: boolean
+  workspaceId?: string
 }
 
 export function TaskPopover({
@@ -110,6 +121,16 @@ export function TaskPopover({
   sideOffset = 12,
   align = 'start',
   className,
+  title,
+  hideComment = false,
+  getTestId,
+  tasks: propTasks,
+  loadingTasks: propLoadingTasks,
+  footer: propFooter,
+  searchInputTestId,
+  onSearchChange: propOnSearchChange,
+  allowLocal = true,
+  workspaceId: propWorkspaceId,
   taskId: propTaskId,
   onTaskIdChange: propOnTaskIdChange,
   description: propDescription,
@@ -120,6 +141,7 @@ export function TaskPopover({
   onConnectionChange: propOnConnectionChange,
   activities: propActivities,
   syncConnections: propSyncConnections,
+  connections: propConnections,
   onSelectTask: propOnSelectTask,
   onCommitAndClose: propOnCommitAndClose,
   isRemote: propIsRemote,
@@ -220,20 +242,136 @@ export function TaskPopover({
     [propOnConnectionChange, trackerContext],
   )
 
-  const activities =
-    propActivities !== undefined
-      ? propActivities
-      : trackerContext?.activities && trackerContext.activities.length > 0
-        ? trackerContext.activities
-        : []
+  const hostBridge = useHostBridge()
+  const { workspace } = useWorkspace()
+  const workspaceId = propWorkspaceId ?? workspace?.id ?? ''
+
+  const db = useSyncStore((s) => s.db)
+  const queryClient = useQueryClient()
+
+  const metadataActivitiesQuery = useQuery({
+    queryKey: [
+      'popover-metadata-activities',
+      selectedConnectionId,
+      workspaceId,
+    ],
+    queryFn: async () => {
+      const loaded: Array<{
+        id: string
+        name: string
+        icon?: React.ElementType
+      }> = []
+
+      if (db?.metadata) {
+        try {
+          const matchedDocs: SyncMetadataRxDBDTO[] = []
+
+          if (selectedConnectionId && selectedConnectionId !== 'none') {
+            const docById = await db.metadata
+              .findOne(`${selectedConnectionId}::metadata`)
+              .exec()
+
+            if (docById) {
+              const json = docById.toMutableJSON
+                ? docById.toMutableJSON()
+                : docById
+              matchedDocs.push(json)
+            }
+          }
+
+          if (matchedDocs.length === 0) {
+            const allDocs = await db.metadata.find().exec()
+
+            allDocs.forEach((doc) => {
+              const json = doc.toMutableJSON ? doc.toMutableJSON() : doc
+
+              if (
+                !selectedConnectionId ||
+                selectedConnectionId === 'none' ||
+                json.connectionInstanceId === selectedConnectionId ||
+                json.dataSourceId === selectedConnectionId ||
+                json.id === `${selectedConnectionId}::metadata`
+              ) {
+                matchedDocs.push(json)
+              }
+            })
+          }
+
+          matchedDocs.forEach((json) => {
+            const items = json.activities ?? []
+
+            items.forEach((item) => {
+              if (!loaded.some((a) => a.id === item.id)) {
+                loaded.push({
+                  id: item.id,
+                  name: item.name,
+                })
+              }
+            })
+          })
+        } catch (err) {
+          console.error(
+            '[METADATA] Erro ao carregar atividades no popover:',
+            err,
+          )
+        }
+      }
+
+      if (
+        loaded.length === 0 &&
+        hostBridge?.core?.getMetadata &&
+        workspaceId &&
+        selectedConnectionId &&
+        selectedConnectionId !== 'none'
+      ) {
+        try {
+          const res = await hostBridge.core.getMetadata({
+            body: {
+              workspaceId,
+              connectionInstanceId: selectedConnectionId,
+            },
+          })
+          if (res?.isSuccess && res.data?.values?.activities) {
+            res.data.values.activities.forEach((act) => {
+              if (!loaded.some((a) => a.id === act.id)) {
+                loaded.push({
+                  id: act.id,
+                  name: act.name,
+                })
+              }
+            })
+          }
+        } catch (err) {
+          console.error(
+            '[METADATA] Erro ao carregar atividades via hostBridge:',
+            err,
+          )
+        }
+      }
+
+      return loaded
+    },
+    enabled: Boolean(db?.metadata || hostBridge?.core?.getMetadata),
+  })
+
+  const activities = useMemo(() => {
+    if (propActivities && propActivities.length > 0) return propActivities
+    if (trackerContext?.activities && trackerContext.activities.length > 0) {
+      return trackerContext.activities
+    }
+    if (
+      metadataActivitiesQuery.data &&
+      metadataActivitiesQuery.data.length > 0
+    ) {
+      return metadataActivitiesQuery.data
+    }
+    return []
+  }, [propActivities, trackerContext?.activities, metadataActivitiesQuery.data])
 
   const handleSelectTask =
     propOnSelectTask ?? trackerContext?.handleSelectTask ?? (() => {})
 
   const onCommitAndClose = propOnCommitAndClose
-
-  const db = useSyncStore((s) => s.db)
-  const queryClient = useQueryClient()
   const [internalOpen, setInternalOpen] = useState(false)
   const isOpen = propOpen ?? internalOpen
   const setIsOpen = propOnOpenChange ?? setInternalOpen
@@ -282,16 +420,16 @@ export function TaskPopover({
       ]
     }
 
-    const query = db.tasks.find({ selector })
+    const query = db.tasks.find({
+      selector,
+      sort: [{ updatedAt: 'desc' }],
+      limit: 50,
+    })
     const subscription = query.$.subscribe((docs) => {
-      const mapped = docs.map((docItem) => docItem.toMutableJSON())
-      const sorted = mapped
-        .sort(
-          (a, b) =>
-            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-        )
-        .slice(0, 50)
-      queryClient.setQueryData(miniTasksQueryKey, sorted)
+      queryClient.setQueryData(
+        miniTasksQueryKey,
+        docs.map((doc) => doc.toMutableJSON()),
+      )
     })
 
     return () => {
@@ -306,8 +444,6 @@ export function TaskPopover({
     queryClient,
   ])
 
-  const hostBridge = useHostBridge()
-  const { workspace } = useWorkspace()
   const searchedTermsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
@@ -356,7 +492,9 @@ export function TaskPopover({
   ])
 
   // Buscar tarefas no RxDB de forma otimizada
-  const { data: tasksList = [] } = useQuery<SyncTaskRxDBDTO[]>({
+  const { data: tasksList = [], isLoading: isLoadingTasks } = useQuery<
+    SyncTaskRxDBDTO[]
+  >({
     queryKey: miniTasksQueryKey,
     queryFn: async () => {
       if (!db?.tasks) return []
@@ -379,17 +517,20 @@ export function TaskPopover({
         ]
       }
 
-      const docs = await db.tasks.find({ selector }).exec()
-
-      const mapped = docs.map((docItem) => docItem.toMutableJSON())
-      const sorted = mapped.sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      )
-      return sorted.slice(0, 50)
+      const docs = await db.tasks
+        .find({ selector, sort: [{ updatedAt: 'desc' }], limit: 50 })
+        .exec()
+      return docs.map((docItem) => docItem.toMutableJSON())
     },
-    enabled: isOpen && !!db?.tasks,
+    enabled: isOpen && !!db?.tasks && !propTasks,
   })
+
+  const effectiveTasks = useMemo(() => {
+    if (propTasks) return propTasks
+    return tasksList
+  }, [propTasks, tasksList])
+
+  const effectiveLoading = propLoadingTasks ?? isLoadingTasks
 
   // Organiza: Fixadas no topo, seguidas por recentes/filtradas
   const sortedTasks = useMemo(() => {
@@ -397,22 +538,29 @@ export function TaskPopover({
     const pinned: SyncTaskRxDBDTO[] = []
     const others: SyncTaskRxDBDTO[] = []
 
-    tasksList.forEach((t) => {
+    effectiveTasks.forEach((t) => {
       if (pinnedSet.has(t.id)) {
         pinned.push(t)
-      } else {
-        others.push(t)
+        return
       }
+
+      others.push(t)
     })
 
     return [...pinned, ...others]
-  }, [tasksList, pinnedIds])
+  }, [effectiveTasks, pinnedIds])
 
   const handlePickTask = (t: SyncTaskRxDBDTO) => {
     const cleanId = extractPureTaskId(t.sourceId || t.id)
     setTaskId(cleanId)
     setSearchQuery(cleanId)
-    handleSelectTask(t)
+    commitDescription()
+    handleSelectTask(t, {
+      activityId: selectedActivity ? selectedActivity : undefined,
+      comment: latestDescriptionRef.current
+        ? latestDescriptionRef.current
+        : undefined,
+    })
     setIsOpen(false)
   }
 
@@ -468,7 +616,12 @@ export function TaskPopover({
     }
 
     if (matched) {
-      handleSelectTask(matched)
+      handleSelectTask(matched, {
+        activityId: selectedActivity ? selectedActivity : undefined,
+        comment: latestDescriptionRef.current
+          ? latestDescriptionRef.current
+          : undefined,
+      })
       onCommitAndClose?.()
       setIsOpen(false)
       return
@@ -497,6 +650,45 @@ export function TaskPopover({
     },
     [commitDescription, setIsOpen],
   )
+
+  const connectionOptions: TaskConnectionOption[] = useMemo(() => {
+    if (propConnections) {
+      const list: TaskConnectionOption[] = []
+
+      if (allowLocal) {
+        list.push({
+          id: 'none',
+          label: 'Local',
+          description: 'Sem conexão externa',
+        })
+      }
+
+      return [...list, ...propConnections]
+    }
+
+    const list: TaskConnectionOption[] = []
+
+    if (allowLocal) {
+      list.push({
+        id: 'none',
+        label: 'Local',
+        description: 'Sem conexão externa',
+      })
+    }
+
+    syncConnections.forEach((connection) => {
+      list.push(
+        getTaskConnectionOption({
+          id: connection.connectionId,
+          addon: connection.addon,
+          identityName: connection.identity?.displayName,
+          memberName: connection.member?.name,
+        }),
+      )
+    })
+
+    return list
+  }, [allowLocal, propConnections, syncConnections])
 
   return (
     <>
@@ -564,21 +756,22 @@ export function TaskPopover({
             }
           }}
           className={cn(
-            'border-border/50 bg-card flex w-[285px] flex-col gap-1.5 rounded-xl border p-2.5 shadow-xl backdrop-blur-md',
+            'border-border/50 bg-card flex max-h-[var(--radix-popover-content-available-height)] w-[460px] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-lg border p-3 shadow-xl backdrop-blur-md',
             className,
           )}
         >
           {/* Header com X para fechar */}
-          <div className="border-border/40 flex items-center justify-between border-b pb-1.5">
+          <div className="flex shrink-0 items-center justify-between">
             <div className="text-foreground/90 flex items-center gap-1.5 text-xs font-semibold">
               <MessageSquareDiff className="text-primary h-3.5 w-3.5" />
-              <span>Detalhes da Tarefa</span>
+              <span>{title || 'Detalhes da Tarefa'}</span>
             </div>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="text-muted-foreground hover:text-foreground h-5 w-5 rounded-md transition-colors"
+              aria-label="Fechar detalhes da tarefa"
+              className="text-muted-foreground hover:text-foreground h-8 w-8 rounded-md transition-colors"
               onClick={handleCommitAndClose}
               title="Fechar (Salvar)"
             >
@@ -591,333 +784,339 @@ export function TaskPopover({
               e.preventDefault()
               handleCommitAndClose()
             }}
-            className="flex flex-col gap-1.5"
+            className="flex min-h-0 flex-1 flex-col gap-2.5"
           >
-            {/* LINHA 1: Atividade + Conexão/Datasource */}
-            <div className="flex items-center gap-1.5">
-              <Select
-                value={selectedActivity || (isRemote ? '' : '__NONE__')}
-                onValueChange={(val) => {
-                  if (val === '__NONE__') {
-                    if (!isRemote) setSelectedActivity('')
+            {/* 1. Conexão */}
+            <div className="flex shrink-0 flex-col gap-1">
+              <span className="text-muted-foreground text-[11px] font-medium">
+                Conexão
+              </span>
+              <TaskConnectionSelect
+                connections={connectionOptions}
+                value={
+                  selectedConnectionId
+                    ? selectedConnectionId
+                    : allowLocal
+                      ? 'none'
+                      : ''
+                }
+                onChange={(value) => {
+                  if (value === 'none') {
+                    setSelectedConnectionId('')
                     return
                   }
-                  setSelectedActivity(val)
+                  setSelectedConnectionId(value)
                 }}
-              >
-                <SelectTrigger className="h-7 flex-1 text-[11px] font-medium">
-                  <SelectValue placeholder="Selecione uma atividade..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {!isRemote && (
-                    <SelectItem
-                      value="__NONE__"
-                      className="text-muted-foreground text-xs italic"
-                    >
-                      <span className="flex items-center gap-2">
-                        <CircleDashed className="text-muted-foreground h-3.5 w-3.5" />
-                        <span>Sem atividade</span>
-                      </span>
-                    </SelectItem>
-                  )}
-                  {activities.map((act) => {
-                    const resolved = resolveEntityMapping(
-                      act,
-                      'activity',
-                      mappings,
-                    )
-                    return (
-                      <SelectItem
-                        key={act.id}
-                        value={act.id}
-                        className="text-xs"
-                      >
-                        <span className="flex items-center gap-2">
-                          {resolved.icon && (
-                            <DynamicIcon
-                              name={resolved.icon}
-                              color={resolved.badgeColor}
-                              className="h-3.5 w-3.5"
-                            />
-                          )}
-                          {act.name}
-                        </span>
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={selectedConnectionId ? selectedConnectionId : 'none'}
-                onValueChange={(val) =>
-                  setSelectedConnectionId(val === 'none' ? '' : val)
-                }
-              >
-                <SelectTrigger className="border-input bg-background hover:bg-accent hover:text-accent-foreground flex !h-7 !w-7 shrink-0 items-center justify-center rounded-md border !p-0 shadow-sm transition-colors focus:ring-1 [&>svg]:hidden">
-                  <SelectValue>
-                    {(() => {
-                      if (!selectedConnectionId) {
-                        return <span className="text-xs">💻</span>
-                      }
-                      const conn = syncConnections.find(
-                        (connItem) =>
-                          connItem.connectionId === selectedConnectionId ||
-                          connItem.dataSourceId === selectedConnectionId,
-                      )
-                      const logoUrl = conn?.addon?.logo
-                      if (logoUrl) {
-                        return (
-                          <img
-                            src={logoUrl}
-                            className="h-3.5 w-3.5 object-contain"
-                            alt=""
-                          />
-                        )
-                      }
-                      return <span className="text-xs">💻</span>
-                    })()}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent align="end" className="min-w-[170px]">
-                  <SelectItem value="none" className="py-1.5 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs">💻</span>
-                      <span className="truncate font-medium">
-                        Local (Sem conexão)
-                      </span>
-                    </div>
-                  </SelectItem>
-                  {syncConnections.map((connItem) => {
-                    const itemLogo = connItem.addon?.logo
-                    return (
-                      <SelectItem
-                        key={connItem.connectionId}
-                        value={connItem.connectionId}
-                        className="py-1.5 text-xs"
-                      >
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
-                            {itemLogo ? (
-                              <img
-                                src={itemLogo}
-                                className="h-4 w-4 shrink-0 object-contain"
-                                alt=""
-                              />
-                            ) : (
-                              <span className="text-xs">📦</span>
-                            )}
-                            <span className="truncate font-medium">
-                              {connItem.addon?.name ?? connItem.connectionId}
-                            </span>
-                          </div>
-                          {connItem.member && (
-                            <div className="ml-6 flex items-center gap-1.5">
-                              {connItem.member.avatarUrl ? (
-                                <img
-                                  src={connItem.member.avatarUrl}
-                                  alt=""
-                                  className="h-3.5 w-3.5 rounded-full"
-                                />
-                              ) : (
-                                <LucideIcons.User2 className="h-3 w-3 opacity-60" />
-                              )}
-                              <span className="text-muted-foreground truncate text-[10px]">
-                                {connItem.member.name ?? connItem.member.login}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
+              />
             </div>
 
-            {/* LINHA 2: Input de Busca Compacto (h-7) + Botão de Busca Detalhada */}
-            <div className="flex items-center gap-1.5">
-              <LookupInput
-                data-testid="time-entry-task-lookup-input"
-                value={taskId}
-                onChange={(val) => {
-                  setTaskId(val)
-                  setSearchQuery(val)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleCommitAndClose()
+            {/* 2. Detalhes do apontamento */}
+            <div
+              role="group"
+              aria-label="Detalhes do apontamento"
+              className="border-border/30 bg-muted/20 flex shrink-0 flex-col gap-2 rounded-lg border p-2.5"
+            >
+              <span className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+                Detalhes do apontamento
+              </span>
+              <div
+                className={cn(
+                  'grid grid-cols-1 gap-2.5',
+                  !hideComment && 'min-[440px]:grid-cols-[145px_minmax(0,1fr)]',
+                )}
+              >
+                <label className="flex min-w-0 flex-col gap-1 text-xs font-medium">
+                  <span className="text-muted-foreground text-[11px]">
+                    Atividade
+                  </span>
+                  <Select
+                    value={selectedActivity || (isRemote ? '' : '__NONE__')}
+                    onValueChange={(val) => {
+                      if (val === '__NONE__') {
+                        if (!isRemote) setSelectedActivity('')
+                        return
+                      }
+                      setSelectedActivity(val)
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      aria-label="Atividade"
+                      className="border-input/40 h-8 w-full text-xs font-medium"
+                    >
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {!isRemote && (
+                        <SelectItem
+                          value="__NONE__"
+                          className="text-muted-foreground text-xs italic"
+                        >
+                          <span className="flex items-center gap-2">
+                            <CircleDashed className="text-muted-foreground h-3.5 w-3.5" />
+                            <span>Sem atividade</span>
+                          </span>
+                        </SelectItem>
+                      )}
+                      {activities.map((act) => {
+                        const resolved = resolveEntityMapping(
+                          act,
+                          'activity',
+                          mappings,
+                        )
+                        return (
+                          <SelectItem
+                            key={act.id}
+                            value={act.id}
+                            className="text-xs"
+                          >
+                            <span className="flex items-center gap-2">
+                              {resolved.icon && (
+                                <DynamicIcon
+                                  name={resolved.icon}
+                                  color={resolved.badgeColor}
+                                  className="h-3.5 w-3.5"
+                                />
+                              )}
+                              <span>{act.name}</span>
+                            </span>
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
+                </label>
+                {!hideComment && (
+                  <label className="flex min-w-0 flex-col gap-1 text-xs font-medium">
+                    <span className="text-muted-foreground text-[11px]">
+                      Comentário
+                    </span>
+                    <Textarea
+                      data-testid="time-entry-popover-comment-input"
+                      value={localDescription}
+                      onFocus={() => {
+                        isDescriptionFocusedRef.current = true
+                      }}
+                      onChange={(e) => {
+                        e.currentTarget.setAttribute('value', e.target.value)
+                        setLocalDescription(e.target.value)
+                      }}
+                      onBlur={() => {
+                        isDescriptionFocusedRef.current = false
+                        commitDescription()
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter' || e.shiftKey) return
+                        e.preventDefault()
+                        commitDescription()
+                        handleCommitAndClose()
+                      }}
+                      placeholder="Descreva o trabalho realizado..."
+                      rows={1}
+                      aria-label="Comentário do apontamento"
+                      className="border-input/40 h-8 max-h-8 min-h-8 w-full resize-none overflow-y-auto px-3 py-1.5 text-xs leading-4 focus-visible:ring-1 md:text-xs"
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* 3. Tarefas: Header + Busca compacta sem borda + Resultados */}
+            <div className="border-border/30 bg-muted/10 flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border">
+              <div className="text-muted-foreground border-border/30 flex shrink-0 items-center justify-between border-b px-2.5 py-1 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-foreground/85 text-[11px] font-medium">
+                    Tarefas ({sortedTasks.length})
+                  </span>
+                  {pinnedIds.length > 0 && (
+                    <span className="text-[10px] opacity-75">
+                      {pinnedIds.length} fixada(s)
+                    </span>
+                  )}
+                </div>
+                <Button
+                  data-testid="time-entry-task-lookup-modal-btn"
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground hover:text-foreground size-6 rounded-md transition-colors"
+                  title="Busca detalhada (Modal)"
+                  onClick={() => setIsLookupModalOpen(true)}
+                >
+                  <ExternalLink className="size-3.5" />
+                </Button>
+              </div>
+
+              {/* Input menor, fonte menor, sem borda e abaixo de Tarefas (50) */}
+              <div className="border-border/20 bg-background/30 relative flex shrink-0 items-center border-b px-2 py-0.5">
+                <Search className="text-muted-foreground/60 pointer-events-none size-3 shrink-0" />
+                <input
+                  data-testid={
+                    searchInputTestId
+                      ? searchInputTestId
+                      : 'time-entry-task-lookup-input'
                   }
-                }}
-                size="xs"
-                placeholder="Buscar ou digitar ID..."
-                className="flex-1"
-                sourceIcon={(() => {
-                  if (!selectedConnectionId) return undefined
-                  const activeConn = syncConnections.find(
-                    (connItem) =>
-                      connItem.connectionId === selectedConnectionId ||
-                      connItem.dataSourceId === selectedConnectionId,
+                  type="text"
+                  value={taskId}
+                  onChange={(e) => {
+                    setTaskId(e.target.value)
+                    setSearchQuery(e.target.value)
+                    if (propOnSearchChange) {
+                      propOnSearchChange(e.target.value)
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleCommitAndClose()
+                    }
+                  }}
+                  aria-label="Buscar tarefa"
+                  placeholder="Buscar por título ou ID da tarefa..."
+                  className="text-foreground placeholder:text-muted-foreground/50 h-6.5 w-full bg-transparent px-1.5 text-[11px] outline-none"
+                />
+                {taskId && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setTaskId('')
+                      setSearchQuery('')
+                    }}
+                    className="text-muted-foreground hover:text-foreground size-4 shrink-0 p-0"
+                  >
+                    <X className="size-2.5" />
+                  </Button>
+                )}
+              </div>
+
+              <TaskLookupResults
+                tasks={sortedTasks}
+                loading={effectiveLoading}
+                footer={propFooter}
+                getKey={(task) => task.id}
+                getTestId={getTestId}
+                selectedKey={
+                  sortedTasks.find((task) => {
+                    let id = task.id
+                    if (task.sourceId) id = task.sourceId
+                    return extractPureTaskId(id) === extractPureTaskId(taskId)
+                  })?.id
+                }
+                present={(task) => {
+                  const tracker = resolveEntityMapping(
+                    task.tracker,
+                    'tracker',
+                    mappings,
                   )
-                  const logoUrl = activeConn?.addon?.logo
-                  if (logoUrl) {
-                    return (
-                      <img
-                        src={logoUrl}
-                        alt={activeConn?.addon?.name}
-                        className="h-3.5 w-3.5 rounded-xs object-contain"
+                  const priority = resolveEntityMapping(
+                    task.priority,
+                    'priority',
+                    mappings,
+                  )
+                  let id = task.id
+                  if (task.sourceId) id = task.sourceId
+                  const pureId = extractPureTaskId(id)
+
+                  let taskIcon: React.ReactNode = undefined
+                  if (tracker.icon) {
+                    taskIcon = (
+                      <DynamicIcon
+                        name={tracker.icon}
+                        color={tracker.badgeColor}
+                        className="size-4"
                       />
                     )
                   }
-                  return undefined
-                })()}
-              />
-              <Button
-                data-testid="time-entry-task-lookup-modal-btn"
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-7 w-7 shrink-0 rounded-md transition-colors"
-                title="Busca detalhada (Modal)"
-                onClick={() => setIsLookupModalOpen(true)}
-              >
-                <ExternalLink className="text-muted-foreground hover:text-foreground h-3.5 w-3.5" />
-              </Button>
-            </div>
+                  if (!taskIcon) {
+                    const targetConnId =
+                      task.connectionInstanceId || selectedConnectionId
 
-            {/* LINHA 3: Mini Lista de Tarefas (Fixadas no Topo) */}
-            <div className="border-border/40 bg-muted/20 flex flex-col gap-1 rounded-lg border p-1">
-              <div className="text-muted-foreground flex items-center justify-between px-1.5 py-0.5 text-[9px] font-semibold tracking-wider uppercase">
-                <span>Tarefas ({sortedTasks.length})</span>
-                {pinnedIds.length > 0 && (
-                  <span className="text-primary text-[9px] font-medium">
-                    📌 {pinnedIds.length} fixada(s)
-                  </span>
-                )}
-              </div>
+                    if (targetConnId) {
+                      const activeConn = syncConnections.find(
+                        (c) =>
+                          c.connectionId === targetConnId ||
+                          c.dataSourceId === targetConnId,
+                      )
 
-              <div className="flex max-h-[150px] scrollbar-thin flex-col gap-0.5 overflow-y-auto pr-0.5">
-                {sortedTasks.length === 0 ? (
-                  <div className="text-muted-foreground py-3 text-center text-[11px]">
-                    Nenhuma tarefa encontrada
-                  </div>
-                ) : (
-                  sortedTasks.map((t) => {
-                    const isPinned = pinnedIds.includes(t.id)
-                    const pureId = extractPureTaskId(t.sourceId || t.id)
-                    const isSelected = extractPureTaskId(taskId) === pureId
-                    const ticketId = /^\d+$/.test(pureId)
-                      ? `#${pureId}`
-                      : pureId
-                    const trackerMapping = resolveEntityMapping(
-                      t.tracker,
-                      'tracker',
-                      mappings,
+                      if (activeConn?.addon?.logo) {
+                        taskIcon = (
+                          <img
+                            src={activeConn.addon.logo}
+                            alt=""
+                            className="size-4 rounded-xs object-contain"
+                          />
+                        )
+                      }
+
+                      if (!taskIcon) {
+                        const matchedOption = connectionOptions.find(
+                          (opt) => opt.id === targetConnId,
+                        )
+
+                        if (matchedOption?.logo) {
+                          taskIcon = (
+                            <img
+                              src={matchedOption.logo}
+                              alt=""
+                              className="size-4 rounded-xs object-contain"
+                            />
+                          )
+                        }
+                      }
+                    }
+                  }
+
+                  if (!taskIcon) {
+                    taskIcon = (
+                      <CheckSquare2 className="text-muted-foreground/50 size-4" />
                     )
-                    const priorityMapping = resolveEntityMapping(
-                      t.priority,
-                      'priority',
-                      mappings,
-                    )
+                  }
 
-                    return (
-                      <div
-                        key={t.id}
-                        onClick={() => handlePickTask(t)}
-                        title={`${ticketId}${t.title ? ` - ${t.title}` : ''}`}
-                        className={cn(
-                          'group flex cursor-pointer items-center justify-between gap-1.5 rounded-md px-1.5 py-0.5 text-xs transition-colors',
-                          isSelected
-                            ? 'bg-primary/15 text-primary font-medium'
-                            : 'hover:bg-accent/60 text-foreground',
-                          isPinned && !isSelected && 'bg-accent/30',
+                  return {
+                    id: pureId,
+                    title: task.title,
+                    icon: taskIcon,
+                    metadata: (
+                      <>
+                        {priority.icon && (
+                          <DynamicIcon
+                            name={priority.icon}
+                            color={priority.badgeColor}
+                            className="size-3.5"
+                          />
                         )}
-                      >
-                        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-                          {trackerMapping.icon && (
-                            <DynamicIcon
-                              name={trackerMapping.icon}
-                              color={trackerMapping.badgeColor}
-                              className="h-3 w-3 shrink-0"
-                            />
-                          )}
-                          <span className="shrink-0 font-mono text-[10px] font-bold opacity-80">
-                            {ticketId}
-                          </span>
-                          {t.title && (
-                            <span className="text-muted-foreground/60 shrink-0 text-[10px]">
-                              -
-                            </span>
-                          )}
-                          <span className="truncate text-[11px] leading-snug">
-                            {t.title}
-                          </span>
-                        </div>
+                        {task.projectName && <span>{task.projectName}</span>}
+                        {task.assignedTo?.name && (
+                          <span>{task.assignedTo.name}</span>
+                        )}
+                      </>
+                    ),
+                  }
+                }}
+                onSelect={handlePickTask}
+                renderAction={(task) => {
+                  const pinned = pinnedIds.includes(task.id)
 
-                        <div className="flex shrink-0 items-center gap-1">
-                          {priorityMapping.icon && (
-                            <DynamicIcon
-                              name={priorityMapping.icon}
-                              color={priorityMapping.badgeColor}
-                              className="h-3 w-3 shrink-0"
-                            />
-                          )}
-                          {t.assignedTo?.name && (
-                            <span className="bg-muted text-muted-foreground max-w-[50px] truncate rounded px-1 text-[9px]">
-                              {t.assignedTo.name.split(' ')[0]}
-                            </span>
-                          )}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className={cn(
-                              'h-5 w-5 p-0 transition-opacity hover:bg-transparent',
-                              isPinned
-                                ? 'text-primary opacity-100'
-                                : 'text-muted-foreground opacity-0 group-hover:opacity-100',
-                            )}
-                            onClick={(e) => togglePin(t.id, e)}
-                            title={
-                              isPinned ? 'Desafixar tarefa' : 'Fixar no topo'
-                            }
-                          >
-                            {isPinned ? (
-                              <Pin className="h-3 w-3 fill-current" />
-                            ) : (
-                              <PinOff className="h-3 w-3" />
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    )
-                  })
-                )}
-              </div>
+                  return (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground h-8 w-8"
+                      onClick={(event) => togglePin(task.id, event)}
+                      title={pinned ? 'Desafixar tarefa' : 'Fixar no topo'}
+                    >
+                      {pinned && (
+                        <Pin className="text-primary size-3.5 fill-current" />
+                      )}
+                      {!pinned && <PinOff className="size-3.5" />}
+                    </Button>
+                  )
+                }}
+              />
             </div>
-
-            {/* LINHA 4 (NO FIM DO POPOVER): Input "No que está trabalhando?" */}
-            <Input
-              data-testid="time-entry-popover-comment-input"
-              value={localDescription}
-              onFocus={() => {
-                isDescriptionFocusedRef.current = true
-              }}
-              onChange={(e) => setLocalDescription(e.target.value)}
-              onBlur={() => {
-                isDescriptionFocusedRef.current = false
-                commitDescription()
-              }}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return
-                e.preventDefault()
-                commitDescription()
-                handleCommitAndClose()
-              }}
-              placeholder="No que está trabalhando?"
-              className="h-7 text-[11px] focus-visible:ring-1"
-            />
           </form>
         </PopoverContent>
       </Popover>

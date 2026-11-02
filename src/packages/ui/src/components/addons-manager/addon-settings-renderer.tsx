@@ -7,6 +7,7 @@ import {
   AddonSettingsView,
   type AddonSettingValue,
   AddonVaultScope,
+  flattenSettingsFields,
   rebaseAddonSettings,
 } from '@mr-tick/application'
 import type {
@@ -54,15 +55,20 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useDataSourceConnections } from '@/contexts/DataSourceConnectionsContext'
+import {
+  DataSourceConnectionsProvider,
+  useDataSourceConnections,
+} from '@/contexts/DataSourceConnectionsContext'
 import { WorkspaceContext } from '@/contexts/WorkspaceContext'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib/utils'
+import { SyncProvider } from '@/stores/syncStore'
 
 import { AddonFieldRenderer } from './addon-field-renderer'
 import { tabHasEditableFields } from './addon-settings-fields'
 import { AddonThemeSettingsPanel } from './addon-theme-settings-panel'
 import { clearValueAtAddress, serializeFieldAddress } from './address-helpers'
+import { findDependentFieldIds, isFieldValueEqual } from './collection-helpers'
 import {
   AddonConnection,
   ConnectionCard,
@@ -193,6 +199,17 @@ function WorkspaceSubSidebarSettingsManager({
   const activeRouteWorkspaceId = workspaceContext?.workspace?.id
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('')
 
+  useEffect(() => {
+    return () => {
+      if (activeRouteWorkspaceId && bridge.localSync?.request) {
+        void bridge.localSync.request({
+          action: 'status',
+          workspaceId: activeRouteWorkspaceId,
+        })
+      }
+    }
+  }, [activeRouteWorkspaceId, bridge.localSync])
+
   const { data: workspaces = [], isLoading: isLoadingWorkspaces } = useQuery<
     WorkspaceViewModel[]
   >({
@@ -266,8 +283,8 @@ function WorkspaceSubSidebarSettingsManager({
           Nenhum workspace encontrado
         </h3>
         <p className="text-muted-foreground mt-1 max-w-sm text-xs">
-          As conexÃµes e capacidades pertencem aos Workspaces. Crie ou abra um
-          workspace para configurar esta extensÃ£o.
+          As conexões e capacidades pertencem aos Workspaces. Crie ou abra um
+          workspace para configurar esta extensão.
         </p>
       </div>
     )
@@ -400,7 +417,30 @@ function WorkspaceSubSidebarSettingsManager({
         )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {renderWorkspaceCapabilityContent(activeWorkspace)}
+          <WorkspaceContext.Provider
+            value={{
+              workspace: activeWorkspace,
+              workspaces,
+              isLoading: false,
+              isLoadingWorkspaces,
+              create: async () => undefined,
+              updateIdentity: async () => undefined,
+              remove: async () => undefined,
+              isCreating: false,
+              isUpdatingIdentity: false,
+              isRemoving: false,
+            }}
+          >
+            <DataSourceConnectionsProvider>
+              {activeWorkspace.id !== activeRouteWorkspaceId && (
+                <SyncProvider>
+                  {renderWorkspaceCapabilityContent(activeWorkspace)}
+                </SyncProvider>
+              )}
+              {activeWorkspace.id === activeRouteWorkspaceId &&
+                renderWorkspaceCapabilityContent(activeWorkspace)}
+            </DataSourceConnectionsProvider>
+          </WorkspaceContext.Provider>
         </div>
       </div>
     </div>
@@ -461,7 +501,9 @@ function ScopedAddonSettingsRenderer({
       }
     >
   >({})
-  const [formValues, setFormValues] = useState<AddonSettingsValues>({})
+  const [formValues, setFormValues] = useState<AddonSettingsValues>(() => ({
+    ...savedSettings.values,
+  }))
   const [credentialValues, setCredentialValues] = useState<
     Record<string, string>
   >({})
@@ -651,10 +693,42 @@ function ScopedAddonSettingsRenderer({
       }))
       return
     }
-    setFormValues((prev) => ({
-      ...prev,
-      [fieldId]: value,
-    }))
+
+    setFormValues((prev) => {
+      const prevVal = prev[fieldId]
+      if (isFieldValueEqual(prevVal, value)) return prev
+
+      const nextValues: AddonSettingsValues = {
+        ...prev,
+        [fieldId]: value,
+      }
+
+      const allFields = flattenSettingsFields(schema || [])
+      const dependentIds = findDependentFieldIds(allFields, fieldId)
+
+      for (const depId of dependentIds) {
+        const depField = allFields.find((f) => f.id === depId)
+        if (
+          depField &&
+          'defaultValue' in depField &&
+          depField.defaultValue !== undefined
+        ) {
+          const def = depField.defaultValue
+          if (
+            typeof def === 'string' ||
+            typeof def === 'number' ||
+            typeof def === 'boolean'
+          ) {
+            nextValues[depId] = def
+            continue
+          }
+        }
+
+        delete nextValues[depId]
+      }
+
+      return nextValues
+    })
   }
 
   const reapplyMutation = useMutation({
@@ -888,8 +962,27 @@ function ScopedAddonSettingsRenderer({
   }
 
   const handleSave = () => {
+    const values = { ...formValues }
+
+    if (schema !== undefined) {
+      for (const field of flattenSettingsFields(schema)) {
+        if (field.scope === 'credential') continue
+        if (values[field.id] !== undefined) continue
+        if (!('defaultValue' in field)) continue
+        const defaultValue = field.defaultValue
+
+        if (
+          typeof defaultValue === 'string' ||
+          typeof defaultValue === 'number' ||
+          typeof defaultValue === 'boolean'
+        ) {
+          values[field.id] = defaultValue
+        }
+      }
+    }
+
     const patch: AddonSettingsValues = {}
-    for (const [fieldId, value] of Object.entries(formValues)) {
+    for (const [fieldId, value] of Object.entries(values)) {
       if (savedSettings.values[fieldId] !== value) patch[fieldId] = value
     }
     saveMutation.mutate({
@@ -1133,9 +1226,9 @@ function ScopedAddonSettingsRenderer({
     return (
       <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center p-8 text-center text-sm">
         <Check className="mb-2 size-8 text-emerald-500/80" />
-        <span className="text-foreground font-semibold">MÃ³dulo Ativo</span>
+        <span className="text-foreground font-semibold">Módulo Ativo</span>
         <p className="mt-1 max-w-sm text-xs">
-          Esta extensÃ£o estÃ¡ ativa e operando em segundo plano.
+          Esta extensão está ativa e operando em segundo plano.
         </p>
       </div>
     )
@@ -1153,7 +1246,7 @@ function ScopedAddonSettingsRenderer({
         <div className="border-b p-4">
           <h2 className="text-lg font-semibold">{headerTitle}</h2>
           <p className="text-muted-foreground text-sm">
-            Configure os parÃ¢metros deste addon
+            Configure os parâmetros deste addon
           </p>
         </div>
       )}
@@ -1196,8 +1289,8 @@ function ScopedAddonSettingsRenderer({
                     data-testid="addon-capability-auth-required-banner"
                     className="border-border/70 bg-muted/30 text-muted-foreground rounded-md border border-dashed px-3.5 py-2.5 text-xs"
                   >
-                    Conecte uma conta na aba <strong>AutenticaÃ§Ã£o</strong>{' '}
-                    deste Workspace para habilitar e configurar esta capacidade.
+                    Conecte uma conta na aba <strong>Autenticação</strong> deste
+                    Workspace para habilitar e configurar esta capacidade.
                   </div>
                 )}
 

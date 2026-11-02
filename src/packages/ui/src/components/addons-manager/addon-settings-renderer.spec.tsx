@@ -1,6 +1,7 @@
 import type {
   AddonFormEvaluationResponse,
   AddonSettingsSchema,
+  AddonSettingsValues,
   AddonSettingsView,
 } from '@mr-tick/application'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -32,6 +33,67 @@ describe('AddonSettingsRenderer', () => {
         queries: { retry: false },
       },
     })
+  })
+
+  it('persists a displayed timezone default and keeps it after the system default changes', async () => {
+    let saved: AddonSettingsView = {
+      schemaVersion: 1,
+      revision: 0,
+      values: {},
+      credentialStates: {},
+    }
+    let defaultZone = 'America/Sao_Paulo'
+    const getSchema = vi.fn(async () => ({
+      isSuccess: true,
+      data: [
+        {
+          id: 'zone',
+          type: 'timezone',
+          label: 'Horário',
+          defaultValue: defaultZone,
+        },
+      ],
+    }))
+    const saveSettings = vi.fn(
+      async ({ body }: { body: { patch: AddonSettingsValues } }) => {
+        saved = {
+          ...saved,
+          revision: saved.revision + 1,
+          values: { ...saved.values, ...body.patch },
+        }
+        return { isSuccess: true, data: saved }
+      },
+    )
+    vi.mocked(useHostBridge).mockReturnValue({
+      addons: {
+        getSchema,
+        getSettings: vi.fn(async () => ({ isSuccess: true, data: saved })),
+        listInstalled: vi.fn(async () => ({ isSuccess: true, data: [] })),
+        saveSettings,
+      },
+    } as unknown as ReturnType<typeof useHostBridge>)
+    const editor = () => (
+      <QueryClientProvider client={queryClient}>
+        <AddonSettingsRenderer
+          addonId="rooms-observer"
+          scope={{ kind: 'addon' }}
+          hideHeader
+        />
+      </QueryClientProvider>
+    )
+    const first = render(editor())
+    await screen.findByTestId('addon-dynamic-select-zone')
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    await waitFor(() => expect(saved.values['zone']).toBe('America/Sao_Paulo'))
+    first.unmount()
+    defaultZone = 'Asia/Tokyo'
+    queryClient.clear()
+    render(editor())
+    const control = await screen.findByTestId('addon-dynamic-select-zone')
+    expect(control).toHaveTextContent('Sao Paulo')
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(2))
+    expect(saved.values['zone']).toBe('America/Sao_Paulo')
   })
 
   it('renders application status banner (applied) and revision', async () => {

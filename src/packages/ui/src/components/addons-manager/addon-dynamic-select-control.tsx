@@ -66,11 +66,38 @@ function isSameOptionValue(
 ): boolean {
   if (a === undefined || a === null) return false
   if (b === undefined || b === null) return false
-  return a === b
+  if (a === b) return true
+  return String(a) === String(b)
+}
+
+function findKnownPresentation(
+  map: Map<string | number | boolean, KnownOptionPresentation>,
+  targetValue: string | number | boolean | null | undefined,
+): KnownOptionPresentation | undefined {
+  if (targetValue === null || targetValue === undefined) return undefined
+  const direct = map.get(targetValue)
+  if (direct !== undefined) return direct
+
+  const targetStr = String(targetValue)
+  for (const [key, presentation] of map.entries()) {
+    if (String(key) === targetStr) {
+      return presentation
+    }
+  }
+
+  return undefined
 }
 
 function formatOptionKey(val: string | number | boolean): string {
   return `${typeof val}:${String(val)}`
+}
+
+function normalizeOptionSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase()
+    .trim()
 }
 
 function getValidGroup(
@@ -104,12 +131,24 @@ export function AddonDynamicSelectControl({
     useState<SelectAvailabilityState>('available')
   const [statusMessage, setStatusMessage] = useState<string>('')
   const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [presentationsVersion, setPresentationsVersion] = useState(0)
 
   const knownPresentationMap = useRef<
     Map<string | number | boolean, KnownOptionPresentation>
   >(new Map())
 
   const source = field.source
+
+  const staticMatches = useMemo(() => {
+    if (source.kind !== 'static') return []
+    const search = normalizeOptionSearch(searchTerm)
+
+    return source.options.filter(
+      (option) =>
+        normalizeOptionSearch(option.label).includes(search) ||
+        normalizeOptionSearch(String(option.value)).includes(search),
+    )
+  }, [source, searchTerm])
 
   const resolvedDependencies = useMemo(() => {
     if (source.kind !== 'dynamic') return []
@@ -146,13 +185,31 @@ export function AddonDynamicSelectControl({
   }
 
   const activeIdentityRef = useRef(serializedIdentity)
+  const attemptedResolutionRef = useRef<Set<string>>(new Set())
+
+  const dependenciesIdentity = useMemo(() => {
+    return JSON.stringify(resolvedDependencies)
+  }, [resolvedDependencies])
+
+  const activeDepsRef = useRef(dependenciesIdentity)
+
+  useEffect(() => {
+    if (activeDepsRef.current !== dependenciesIdentity) {
+      activeDepsRef.current = dependenciesIdentity
+
+      if (source.kind === 'dynamic' && resolvedDependencies.length > 0) {
+        knownPresentationMap.current.clear()
+        setPresentationsVersion((v) => v + 1)
+      }
+    }
+  }, [dependenciesIdentity, source.kind, resolvedDependencies.length])
 
   useEffect(() => {
     if (activeIdentityRef.current !== serializedIdentity) {
       activeIdentityRef.current = serializedIdentity
-      knownPresentationMap.current.clear()
+      attemptedResolutionRef.current.clear()
 
-      // Preservar metadados de fonte estática no mapa após limpeza de identidade
+      // Preservar metadados de fonte estática no mapa após troca de identidade
       if (source.kind === 'static') {
         for (const opt of source.options) {
           const validGroup = getValidGroup(opt.group)
@@ -162,6 +219,7 @@ export function AddonDynamicSelectControl({
             imageUrl: opt.imageUrl,
           })
         }
+        setPresentationsVersion((v) => v + 1)
       }
 
       setOptions([])
@@ -170,12 +228,6 @@ export function AddonDynamicSelectControl({
       setStatusMessage('')
     }
   }, [serializedIdentity, source])
-
-  useEffect(() => {
-    return () => {
-      activeIdentityRef.current = ''
-    }
-  }, [])
 
   useEffect(() => {
     if (source.kind === 'static') {
@@ -187,6 +239,7 @@ export function AddonDynamicSelectControl({
           imageUrl: opt.imageUrl,
         })
       }
+      setPresentationsVersion((v) => v + 1)
     }
   }, [source])
 
@@ -226,6 +279,7 @@ export function AddonDynamicSelectControl({
         }
 
         if (!response.isSuccess || !response.data) {
+          attemptedResolutionRef.current.clear()
           setAvailability('error')
           const failureMsg =
             response.error && response.error.length > 0
@@ -239,6 +293,10 @@ export function AddonDynamicSelectControl({
 
         const data: AddonResolveOptionsResponse = response.data
         setAvailability(data.availability)
+
+        if (data.options.length === 0 && data.availability !== 'empty') {
+          attemptedResolutionRef.current.clear()
+        }
 
         if (data.reason) {
           setStatusMessage(data.reason)
@@ -265,6 +323,7 @@ export function AddonDynamicSelectControl({
             imageUrl: opt.imageUrl,
           })
         }
+        setPresentationsVersion((v) => v + 1)
 
         if (isPaging) {
           setOptions((previous) => {
@@ -284,6 +343,7 @@ export function AddonDynamicSelectControl({
         setIsLoading(false)
       } catch (err) {
         if (activeIdentityRef.current !== capturedIdentity) return
+        attemptedResolutionRef.current.clear()
         setAvailability('error')
         const message =
           err instanceof Error && err.message.length > 0
@@ -297,24 +357,113 @@ export function AddonDynamicSelectControl({
     [addonId, bridge?.addons, serializedIdentity],
   )
 
+  const selectedValuesList: readonly (string | number)[] = useMemo(() => {
+    if (isMulti) {
+      if (Array.isArray(value)) return value
+      return []
+    }
+
+    if (typeof value === 'string' || typeof value === 'number') {
+      return [value]
+    }
+
+    return []
+  }, [isMulti, value])
+
+  const hasSelectedValue = useMemo(() => {
+    if (isMulti) {
+      return selectedValuesList.length > 0
+    }
+
+    return (
+      value !== undefined &&
+      value !== null &&
+      value !== '' &&
+      (typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean')
+    )
+  }, [isMulti, selectedValuesList.length, value])
+
+  const hasMissingPresentation = useMemo(() => {
+    if (!hasSelectedValue) return false
+    if (isMulti) {
+      return selectedValuesList.some(
+        (v) =>
+          findKnownPresentation(knownPresentationMap.current, v) === undefined,
+      )
+    }
+
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    ) {
+      return (
+        findKnownPresentation(knownPresentationMap.current, value) === undefined
+      )
+    }
+
+    return false
+  }, [
+    hasSelectedValue,
+    isMulti,
+    presentationsVersion,
+    selectedValuesList,
+    value,
+  ])
+
+  const resolutionKey = useMemo(() => {
+    if (isMulti) {
+      return `${serializedIdentity}:${selectedValuesList.map(formatOptionKey).join(',')}`
+    }
+
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    ) {
+      return `${serializedIdentity}:${formatOptionKey(value)}`
+    }
+
+    return `${serializedIdentity}:none`
+  }, [isMulti, selectedValuesList, serializedIdentity, value])
+
   useEffect(() => {
     const currentSource = requestContextRef.current.source
     if (currentSource.kind === 'static') {
-      setOptions(currentSource.options)
-      if (currentSource.options.length === 0) {
+      setOptions(staticMatches)
+      if (staticMatches.length === 0) {
         setAvailability('empty')
         setStatusMessage('Nenhuma opção disponível')
         return
       }
+
       setAvailability('available')
       setStatusMessage('')
       return
     }
 
-    if (!open) return
+    if (open) {
+      fetchDynamicOptions(searchTerm)
+      return
+    }
 
-    fetchDynamicOptions(searchTerm)
-  }, [serializedIdentity, open, searchTerm, fetchDynamicOptions])
+    if (hasMissingPresentation) {
+      if (!attemptedResolutionRef.current.has(resolutionKey)) {
+        attemptedResolutionRef.current.add(resolutionKey)
+        fetchDynamicOptions('')
+      }
+    }
+  }, [
+    serializedIdentity,
+    open,
+    searchTerm,
+    fetchDynamicOptions,
+    staticMatches,
+    hasMissingPresentation,
+    resolutionKey,
+  ])
 
   const handleSearchChange = (query: string) => {
     setSearchTerm(query)
@@ -325,21 +474,11 @@ export function AddonDynamicSelectControl({
     fetchDynamicOptions(searchTerm, nextCursor)
   }
 
-  const selectedValuesList: readonly (string | number)[] = useMemo(() => {
-    if (isMulti) {
-      if (Array.isArray(value)) return value
-      return []
-    }
-    if (typeof value === 'string' || typeof value === 'number') {
-      return [value]
-    }
-    return []
-  }, [isMulti, value])
-
   const isOptionChecked = (optValue: string | number | boolean): boolean => {
     if (isMulti) {
       return selectedValuesList.some((v) => isSameOptionValue(v, optValue))
     }
+
     if (
       typeof value !== 'string' &&
       typeof value !== 'number' &&
@@ -347,6 +486,7 @@ export function AddonDynamicSelectControl({
     ) {
       return false
     }
+
     return isSameOptionValue(value, optValue)
   }
 
@@ -359,6 +499,7 @@ export function AddonDynamicSelectControl({
       groupLabel: validGroup?.label,
       imageUrl: opt.imageUrl,
     })
+    setPresentationsVersion((v) => v + 1)
 
     if (isMulti) {
       const alreadySelected = selectedValuesList.some((v) =>
@@ -385,7 +526,8 @@ export function AddonDynamicSelectControl({
       (typeof value === 'string' ||
         typeof value === 'number' ||
         typeof value === 'boolean') &&
-      isSameOptionValue(value, opt.value)
+      isSameOptionValue(value, opt.value) &&
+      field.required !== true
     ) {
       onChange(null)
       setOpen(false)
@@ -407,15 +549,22 @@ export function AddonDynamicSelectControl({
       }
 
       return (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap items-center gap-1">
+          {isLoading && (
+            <Loader2 className="text-muted-foreground h-3.5 w-3.5 shrink-0 animate-spin" />
+          )}
           {selectedValuesList.map((val) => {
             let label = String(val)
             let groupLabel: string | undefined
-            const mapped = knownPresentationMap.current.get(val)
+            const mapped = findKnownPresentation(
+              knownPresentationMap.current,
+              val,
+            )
             if (mapped !== undefined) {
               label = mapped.label
               groupLabel = mapped.groupLabel
             }
+
             return (
               <Badge
                 key={formatOptionKey(val)}
@@ -448,7 +597,7 @@ export function AddonDynamicSelectControl({
     let label = String(value)
     let groupLabel: string | undefined
     let imageUrl: string | undefined
-    const mapped = knownPresentationMap.current.get(value)
+    const mapped = findKnownPresentation(knownPresentationMap.current, value)
     if (mapped !== undefined) {
       label = mapped.label
       groupLabel = mapped.groupLabel
@@ -457,7 +606,11 @@ export function AddonDynamicSelectControl({
 
     return (
       <div className="flex min-w-0 items-center gap-2">
-        <AddonSelectOptionMedia label={label} imageUrl={imageUrl} size="sm" />
+        {isLoading && mapped === undefined ? (
+          <Loader2 className="text-muted-foreground h-3.5 w-3.5 shrink-0 animate-spin" />
+        ) : (
+          <AddonSelectOptionMedia label={label} imageUrl={imageUrl} size="sm" />
+        )}
         <span className="truncate">
           {groupLabel ? `${groupLabel} · ${label}` : label}
         </span>
@@ -567,8 +720,11 @@ export function AddonDynamicSelectControl({
           </Button>
         </PopoverTrigger>
 
-        <PopoverContent className="w-[320px] p-2" align="start">
-          <div className="relative mb-2">
+        <PopoverContent
+          className="flex max-h-[var(--radix-popover-content-available-height)] w-[320px] flex-col overflow-hidden p-2"
+          align="start"
+        >
+          <div className="relative mb-2 shrink-0">
             <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-3.5 w-3.5" />
             <Input
               type="text"
@@ -596,7 +752,7 @@ export function AddonDynamicSelectControl({
             renderAvailabilityNotice()}
 
           {!isLoading && availability === 'available' && (
-            <ScrollArea className="max-h-56">
+            <ScrollArea className="h-56 min-h-0">
               <div className="space-y-0.5 p-0.5">
                 {options.map((opt, index) => {
                   const isChecked = isOptionChecked(opt.value)

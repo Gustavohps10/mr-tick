@@ -361,6 +361,28 @@ describe('Public core read capabilities', () => {
     })
     expect(foreign.isFailure()).toBe(true)
   })
+  it('reads a destination owned by another addon in the same workspace without granting connection ownership', async () => {
+    const { core, queryCore, workspace } = fixture()
+    const scope = {
+      workspaceId: workspace.id,
+      connectionInstanceId: 'foreign-connection',
+    }
+    const result = await core.tasks.list({ ...scope, limit: 10 })
+    expect(result.isSuccess()).toBe(true)
+    expect(queryCore).toHaveBeenCalledWith({
+      ...scope,
+      limit: 10,
+      action: 'tasks',
+    })
+    expect((await core.connections.get(scope)).isFailure()).toBe(true)
+    expect(
+      (
+        await core.connections.withCredentials(scope, async () =>
+          Either.success(),
+        )
+      ).isFailure(),
+    ).toBe(true)
+  })
   it('delegates members.getCurrentUser to getCurrentUserService with validated scope', async () => {
     const { core, getCurrentUserService, workspace } = fixture()
     const scope = {

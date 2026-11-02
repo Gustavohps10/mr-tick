@@ -12,10 +12,11 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { RxError } from 'rxdb'
 import { toast } from 'sonner'
-import { type StoreApi, useStore } from 'zustand'
+import { type StoreApi } from 'zustand'
 
 import {
   type ConnectionInstanceId,
@@ -50,9 +51,19 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
   const bridge = useHostBridge()
   const { dataSourceConnections: connections } = useDataSourceConnections()
   const queryClient = useQueryClient()
-  const [activeStore, setActiveStore] = useState<StoreApi<SyncStore> | null>(
-    null,
-  )
+  const [activeStoreEntry, setActiveStoreEntry] = useState<{
+    workspaceId: string
+    store: StoreApi<SyncStore>
+  } | null>(null)
+
+  let activeStore: StoreApi<SyncStore> | null = null
+  if (
+    activeStoreEntry !== null &&
+    activeStoreEntry.workspaceId === workspace?.id
+  ) {
+    activeStore = activeStoreEntry.store
+  }
+
   const activeStoreRef = useRef<StoreApi<SyncStore> | null>(null)
   const cacheSyncHandleRef = useRef<RxDBQueryCacheSyncHandle | null>(null)
   const startedConnections = useRef<
@@ -73,18 +84,17 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
     initializationError = initializationFailure.message
   }
 
-  useEffect(
-    () =>
-      bridge.events.on<{ generation: string; state: string }>(
-        'local-runtime:state',
-        (state) => {
-          if (state.state !== 'ready') return
-          startedConnections.current.clear()
-          setRuntimeGeneration(state.generation)
-        },
-      ),
-    [bridge],
-  )
+  useEffect(() => {
+    if (!bridge.events?.on) return
+    return bridge.events.on<{ generation: string; state: string }>(
+      'local-runtime:state',
+      (state) => {
+        if (state.state !== 'ready') return
+        startedConnections.current.clear()
+        setRuntimeGeneration(state.generation)
+      },
+    )
+  }, [bridge])
 
   // Opening, closing and connecting share one owner. An old teardown must finish
   // before a new store can open the same RxDB database.
@@ -105,11 +115,12 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
     startedConnections.current.clear()
     cacheSyncHandleRef.current?.unsubscribe()
     cacheSyncHandleRef.current = null
-    setActiveStore(null)
+    setActiveStoreEntry(null)
     if (previous) await previous.getState().destroy()
   }, [])
 
   useEffect(() => {
+    if (!bridge.events?.on) return
     const close = bridge.events.on<{ workspaceId: string; requestId: string }>(
       'local-runtime:close-readers',
       (request) => {
@@ -155,6 +166,7 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
       if (cancelled) return
       await releaseActiveStore()
       if (cancelled || !workspaceId) return
+      if (!bridge.localSync?.request) return
       setInitializationFailure(null)
 
       const readiness = await bridge.localSync.request({
@@ -199,7 +211,7 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
       }
 
       activeStoreRef.current = store
-      setActiveStore(store)
+      setActiveStoreEntry({ workspaceId, store })
       const db = store.getState().db
       if (!db) return
       cacheSyncHandleRef.current = setupRxDBQueryCacheSync(db, queryClient)
@@ -402,7 +414,6 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
     </SyncInitializationErrorContext.Provider>
   )
 
-  if (!activeStore) return content
   return (
     <SyncStoreContext.Provider value={activeStore}>
       {content}
@@ -414,15 +425,25 @@ const SyncInitializationErrorContext = createContext<string | null>(null)
 export function useSyncInitializationError(): string | null {
   return useContext(SyncInitializationErrorContext)
 }
-const SyncStoreContext = createContext<StoreApi<SyncStore> | undefined>(
-  undefined,
-)
+const SyncStoreContext = createContext<StoreApi<SyncStore> | null>(null)
 
 export const useSyncStore = <T,>(
   selector: (store: SyncStore) => T,
 ): T | undefined => {
   const storeApi = useContext(SyncStoreContext)
-  return storeApi ? useStore(storeApi, selector) : undefined
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (storeApi === null) return () => undefined
+      return storeApi.subscribe(onStoreChange)
+    },
+    [storeApi],
+  )
+  const getSnapshot = useCallback(() => {
+    if (storeApi === null) return undefined
+    return selector(storeApi.getState())
+  }, [storeApi, selector])
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
 
 export function useSyncDrop() {

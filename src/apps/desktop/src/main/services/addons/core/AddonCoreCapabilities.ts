@@ -726,8 +726,16 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
   ): Promise<Either<AppError, CoreCacheValue>> {
     const valid = validateCoreCacheQuery(input)
     if (valid.isFailure()) return valid.forwardFailure()
-    const connection = await this.getConnection(input)
-    if (connection.isFailure()) return connection.forwardFailure()
+    const workspace = await this.findWorkspace(input.workspaceId)
+    if (workspace.isFailure()) return workspace.forwardFailure()
+    const hasDestination = workspace.success.connections.some(
+      (connection) => connection.id === input.connectionInstanceId,
+    )
+
+    if (!hasDestination) {
+      return Either.failure(AppError.NotFound('CONNECTION_NOT_FOUND'))
+    }
+
     const response = await this.transport.queryCore(input)
     if (!response.ok)
       return Either.failure(

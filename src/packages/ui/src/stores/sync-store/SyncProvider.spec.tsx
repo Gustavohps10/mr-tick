@@ -147,6 +147,42 @@ function container(queryClient: QueryClient) {
 }
 
 describe('SyncProvider workspace lifecycle ownership', () => {
+  it('preserves selected settings and mounted children when the reader initializes', async () => {
+    const pending = gate()
+    const reader = fixture('A', pending.promise)
+    context.create.mockReturnValue(reader.store)
+
+    function SettingsSelection() {
+      const [tab, setTab] = React.useState('Explorar')
+      const initialized = useSyncStore((state) => state.isInitialized)
+      return (
+        <button
+          onClick={() => setTab('Observadores')}
+          data-initialized={Boolean(initialized)}
+        >
+          {tab}
+        </button>
+      )
+    }
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SyncProvider>
+          <SettingsSelection />
+        </SyncProvider>
+      </QueryClientProvider>,
+    )
+    await reader.initStarted.promise
+    const selection = screen.getByRole('button', { name: 'Explorar' })
+    await act(async () => selection.click())
+    await act(async () => pending.release())
+    await waitFor(() =>
+      expect(reader.store.getState().isInitialized).toBe(true),
+    )
+    expect(screen.getByRole('button', { name: 'Observadores' })).toBe(selection)
+    expect(selection.getAttribute('data-initialized')).toBe('true')
+  })
+
   it('exposes a rejected workspace startup instead of leaving initialization pending', async () => {
     context.bridge.localSync.request.mockResolvedValue({
       ok: false,

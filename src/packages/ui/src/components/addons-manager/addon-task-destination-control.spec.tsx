@@ -6,9 +6,15 @@ import type {
   CoreTask,
   CoreTaskPage,
 } from '@mr-tick/application'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import {
+  WorkspaceContext,
+  type WorkspaceContextType,
+} from '@/contexts/WorkspaceContext'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 
 import { AddonTaskDestinationControl } from './addon-task-destination-control'
@@ -17,10 +23,76 @@ vi.mock('@/hooks/use-host-bridge', () => ({
   useHostBridge: vi.fn(),
 }))
 
+vi.mock('@/contexts/DataSourceConnectionsContext', () => ({
+  useDataSourceConnections: () => ({
+    isLoading: false,
+    workspaceId: 'ws-1',
+    connections: [],
+    dataSourceConnections: [],
+    workspaceConnections: [],
+    installedPlugins: [],
+    link: vi.fn(),
+    unlink: vi.fn(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    getConnection: vi.fn(),
+    isConnected: vi.fn(),
+  }),
+  useOptionalDataSourceConnections: () => undefined,
+}))
+
+const mockWorkspaceValue: WorkspaceContextType = {
+  workspace: {
+    id: 'ws-1',
+    name: 'Default',
+    status: 'configured',
+    connections: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  workspaces: [],
+  isLoading: false,
+  isLoadingWorkspaces: false,
+  create: async () => undefined,
+  updateIdentity: async () => undefined,
+  remove: async () => undefined,
+  isCreating: false,
+  isUpdatingIdentity: false,
+  isRemoving: false,
+}
+
 describe('AddonTaskDestinationControl', () => {
+  let queryClient: QueryClient
+
   beforeEach(() => {
     window.HTMLElement.prototype.scrollIntoView = vi.fn()
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+      },
+    })
   })
+
+  const renderControl = (ui: React.ReactElement) => {
+    const res = render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceContext.Provider value={mockWorkspaceValue}>
+          {ui}
+        </WorkspaceContext.Provider>
+      </QueryClientProvider>,
+    )
+    return {
+      ...res,
+      rerender: (newUi: React.ReactElement) =>
+        res.rerender(
+          <QueryClientProvider client={queryClient}>
+            <WorkspaceContext.Provider value={mockWorkspaceValue}>
+              {newUi}
+            </WorkspaceContext.Provider>
+          </QueryClientProvider>,
+        ),
+    }
+  }
   const field: AddonSettingsTaskReferenceField = {
     id: 'targetTask',
     type: 'task-reference',
@@ -114,7 +186,7 @@ describe('AddonTaskDestinationControl', () => {
 
     const onChange = vi.fn()
 
-    render(
+    renderControl(
       <AddonTaskDestinationControl
         field={field}
         workspaceId="ws-1"
@@ -125,14 +197,17 @@ describe('AddonTaskDestinationControl', () => {
 
     await waitFor(() => {
       expect(listConnections).toHaveBeenCalledWith({
-        body: { workspaceId: 'ws-1' },
+        body: { workspaceId: 'ws-1', capability: 'dataSource' },
       })
     })
 
     expect(onChange).not.toHaveBeenCalled()
     expect(
       screen.getByTestId('addon-task-destination-trigger-targetTask'),
-    ).toBeDisabled()
+    ).toBeEnabled()
+    expect(
+      screen.queryByTestId('task-dest-connection-select-targetTask'),
+    ).toBeNull()
   })
 
   it('queries tasks on-demand via canonical bridge.core when popover opens and selects task', async () => {
@@ -168,7 +243,7 @@ describe('AddonTaskDestinationControl', () => {
       currentValue = val
     })
 
-    const { rerender } = render(
+    const { rerender } = renderControl(
       <AddonTaskDestinationControl
         field={field}
         workspaceId="ws-1"
@@ -261,7 +336,7 @@ describe('AddonTaskDestinationControl', () => {
       },
     } as any)
 
-    render(
+    renderControl(
       <AddonTaskDestinationControl
         field={field}
         workspaceId="ws-1"
@@ -324,7 +399,7 @@ describe('AddonTaskDestinationControl', () => {
       },
     }
 
-    render(
+    renderControl(
       <AddonTaskDestinationControl
         field={field}
         workspaceId="ws-1"
@@ -387,7 +462,7 @@ describe('AddonTaskDestinationControl', () => {
       },
     } as any)
 
-    render(
+    renderControl(
       <AddonTaskDestinationControl
         field={field}
         workspaceId="ws-1"
@@ -487,7 +562,7 @@ describe('AddonTaskDestinationControl', () => {
       taskId: '999',
     }
 
-    const { rerender } = render(
+    const { rerender } = renderControl(
       <AddonTaskDestinationControl
         field={field}
         workspaceId="ws-1"

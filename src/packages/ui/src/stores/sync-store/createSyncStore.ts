@@ -15,6 +15,7 @@ import {
   ensurePlugins,
   getDatabaseName,
   getOrCreateDatabase,
+  releaseDatabase,
   removeDatabaseFromCache,
 } from './storage'
 import {
@@ -365,8 +366,7 @@ export const createSyncStore = (
       await destroyAllModules()
 
       if (db) {
-        removeDatabaseFromCache(workspaceId, useMemoryStorage)
-        await db.close()
+        await releaseDatabase(workspaceId, useMemoryStorage, db)
       }
 
       set({ db: null, isInitialized: false, statuses: {} })

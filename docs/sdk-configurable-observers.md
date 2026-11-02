@@ -175,13 +175,13 @@ export interface AddonTaskReferenceValue {
 > [!IMPORTANT]
 > **Regra de Mesmo Workspace:**
 > O `workspaceId` da tarefa de destino deve ser estritamente igual ao `workspaceId` da conexão do observador. Conexões distintas são suportadas desde que pertençam ao mesmo workspace.
-> O observador nunca deve inventar tarefas com IDs vazios (`""`). Quando um sinal observado não tiver correspondência com as regras ativas, o evento deve ser registrado como pendência na lista operacional.
+> Uma referência vinculada exige tarefa e conexão reais. Uma sugestão genérica sem destino usa o contrato canônico de sugestão local (`taskId: ''`, sem conexão de destino), sem representar esse valor como uma tarefa existente. A decisão de gerar sugestão genérica, ignorar um sinal ou oferecer uma lista operacional pertence ao addon; o core não impõe pendências a todos os observers.
 
 ---
 
 ### 2.4. Lista Operacional e Ações Manuais (`operational-list`)
 
-Quando um sinal não possui regra correspondente ou quando a autoria não pode ser resolvida imediatamente, o addon registra o evento em sua lista operacional de pendências:
+Uma lista operacional é uma capacidade opcional: um addon pode oferecê-la quando seu fluxo de produto exigir revisão de sinais sem destino. O exemplo abaixo demonstra esse contrato; não é uma exigência para watchers. O Discord usa o fluxo normal de sugestões genéricas ou vinculadas e não registra sessões pendentes:
 
 ```typescript
 const pendingList: AddonSettingsOperationalListField = {
@@ -306,7 +306,7 @@ onApply: (ctx: AddonSettingsApplyContext): Either<AppError, void> => {
 
 ## 5. Criação Canônica de Sugestões e Resolução de Autoria
 
-Para emitir uma sugestão local ao final de uma sessão observada, o addon deve congelar o intervalo observado e resolver a tarefa, metadados e autoria na conexão de destino:
+Para emitir uma sugestão **vinculada** ao final de uma sessão observada, o addon deve congelar o intervalo observado e resolver a tarefa, metadados e autoria na conexão de destino. Uma sugestão **genérica**, sem destino, não possui autor de um datasource. Ambas usam `core.timeEntries.createSuggestion`; a política de associação permanece no addon:
 
 ```typescript
 // 1. Resolver autor OBRIGATORIAMENTE via membersProvider da conexão de destino
@@ -316,7 +316,8 @@ const authorResult = await context.core.members.getCurrentUser({
 })
 
 if (authorResult.isFailure()) {
-  // NUNCA criar sugestão sem autor; mantenha a captura como pendência na lista operacional
+  // Não emitir uma sugestão vinculada sem autor. O addon decide como tratar a falha;
+  // pode informar o erro e preservar o tempo como sugestão genérica sem destino.
   return authorResult.forwardFailure()
 }
 
@@ -375,7 +376,7 @@ const result = await context.core.timeEntries.createSuggestion(
 
 > [!IMPORTANT]
 > **Resolução de Autoria e Provenance:**
-> A autoria do apontamento deve ser **sempre** o usuário conectado no DataSource de destino (`core.members.getCurrentUser`), e **nunca** a identidade da conta do observador (ex: ID numérico do Discord). Se o membro não estiver autenticado, a emissão da sugestão é bloqueada.
+> A autoria do apontamento deve ser **sempre** o usuário conectado no DataSource de destino (`core.members.getCurrentUser`), e **nunca** a identidade da conta do observador (ex: ID numérico do Discord). Se o membro não estiver autenticado, a emissão **vinculada** é bloqueada. O addon pode informar essa falha e gerar uma sugestão genérica sem destino, se essa for sua política explícita.
 >
 > Para a implementação de referência completa e tipada com validações de mesmo workspace, desacoplamento de clock e testes de idempotência, consulte [`CoreSuggestionAddon.ts`](../src/apps/sdk/src/examples/CoreSuggestionAddon.ts).
 
@@ -414,3 +415,7 @@ if (response.ok && response.value.overlap && response.value.overlap.hasOverlap) 
 - **Repositórios Externos:** Addons independentes como o `discord-addon` residem em seus próprios repositórios e utilizam o portal local (`portal:../metric/src/apps/sdk`) durante o desenvolvimento.
 - **Fixtures Internas:** Addons de teste como `fake-watcher-for-tests` e `datasource-alpha-for-tests` residem em `src/dev-addons/` no monorepo e são vinculados no ambiente de testes Electron via junctions no diretório isolado do worker.
 - **Sem Bump Manual:** É terminantemente proibido editar campos `"version"` em `package.json` ou manipular `CHANGELOG.md` manualmente. A publicação e controle semântico seguem estritamente o pipeline de **Changesets** (`.changeset/`) e a CLI do Mr. Tick.
+
+### Controle genérico de fuso horário
+
+Campos `type: 'timezone'` usam um seletor pesquisável com rótulos legíveis e salvam o identificador IANA. Essa apresentação independe do addon e não interpreta suas regras. O addon declara o valor inicial e decide a semântica do horário; o controle não seleciona automaticamente a primeira opção.

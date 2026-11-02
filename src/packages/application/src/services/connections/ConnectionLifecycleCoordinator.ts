@@ -500,11 +500,7 @@ export class ConnectionLifecycleCoordinator implements IConnectionLifecycleCoord
     const credentialsResult = parseConnectionCredentialPayload(readResult.token)
     if (credentialsResult.isFailure()) return credentialsResult.forwardFailure()
 
-    return this.pendingWorkGuard.withNoPendingWrites(
-      input.scope.workspaceId,
-      [input.scope.connectionInstanceId],
-      () => input.operation(credentialsResult.success),
-    )
+    return input.operation(credentialsResult.success)
   }
 
   public async refresh(input: {

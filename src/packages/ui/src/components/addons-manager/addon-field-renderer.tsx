@@ -38,6 +38,7 @@ import { AddonDateField } from './addon-date-field'
 import { AddonDynamicSelectControl } from './addon-dynamic-select-control'
 import { AddonOperationalRecordsCard } from './addon-operational-records-card'
 import { AddonTaskDestinationControl } from './addon-task-destination-control'
+import { AddonTimezoneControl } from './addon-timezone-control'
 import { serializeFieldAddress } from './address-helpers'
 
 export interface AddonFieldRendererProps {
@@ -667,12 +668,30 @@ function AddonFieldControl({
     )
   }
 
-  if (field.type === 'time' || field.type === 'timezone') {
+  if (field.type === 'timezone') {
+    let timezoneValue: string | undefined
+    if (typeof fieldValue === 'string') timezoneValue = fieldValue
+
+    return (
+      <AddonTimezoneControl
+        field={field}
+        addonId={addonId}
+        scope={scope}
+        fieldAddress={currentAddress}
+        value={timezoneValue}
+        onChange={(val) => onChange(field.id, val)}
+        disabled={disabled}
+        draftValues={draftValues}
+      />
+    )
+  }
+
+  if (field.type === 'time') {
     return (
       <div className="flex flex-col gap-1.5 py-2">
         <label className="text-sm font-medium">{field.label}</label>
         <Input
-          type={field.type === 'time' ? 'time' : 'text'}
+          type="time"
           disabled={disabled}
           value={
             fieldValue !== undefined && fieldValue !== null

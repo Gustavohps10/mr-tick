@@ -84,7 +84,7 @@ test.use({
 test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neutra & Multi-DataSource)', () => {
   test('CEN-01: Resolução relativa de dependências em coleções (relative parent: Prédio -> Andar -> Sala)', async ({
     page,
-  }) => {
+  }, testInfo) => {
     // 0. Inicializar cache do workspace abrindo o workspace
     await openWorkspace(page)
 
@@ -195,28 +195,31 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
     await item1Room101Opt.click()
 
     // Selecionar DataSource Alpha como destino e tarefa ALPHA-101
-    const item1ConnSelect = item1Card.locator(
-      '[data-testid="task-dest-connection-select-targetTask"]',
-    )
-    await expect(item1ConnSelect).toBeVisible({ timeout: 5000 })
-    await item1ConnSelect.click()
-    const alphaConnOpt = page
-      .locator('div[role="option"]:has-text("Beatriz Alpha")')
-      .or(
-        page.locator('div[role="option"]:has-text("mr-tick-datasource-alpha")'),
-      )
-    await expect(alphaConnOpt.first()).toBeVisible({ timeout: 5000 })
-    await alphaConnOpt.first().click()
-
     const item1TaskTrigger = item1Card.locator(
       '[data-testid="addon-task-destination-trigger-targetTask"]',
     )
     await expect(item1TaskTrigger).toBeVisible({ timeout: 5000 })
     await item1TaskTrigger.click()
+
+    const item1ConnSelect = page
+      .locator('[data-testid="time-entry-connection-select"]')
+      .last()
+    if (await item1ConnSelect.isVisible().catch(() => false)) {
+      await item1ConnSelect.click()
+      const alphaConnOpt = page.getByRole('option', {
+        name: /Alpha DataSource/,
+      })
+      await expect(alphaConnOpt.first()).toBeVisible({ timeout: 5000 })
+      await alphaConnOpt.first().click()
+    }
+
     const alphaTask101Opt = page.locator(
       '[data-testid="addon-task-option-ALPHA-101"]',
     )
     await expect(alphaTask101Opt).toBeVisible({ timeout: 5000 })
+    await page.screenshot({
+      path: testInfo.outputPath('addon-task-lookup.png'),
+    })
     await alphaTask101Opt.click()
 
     await expect(
@@ -272,24 +275,24 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
     await item2Room302Opt.click()
 
     // Selecionar DataSource Alpha como destino e tarefa ALPHA-102
-    const item2ConnSelect = item2Card.locator(
-      '[data-testid="task-dest-connection-select-targetTask"]',
-    )
-    await expect(item2ConnSelect).toBeVisible({ timeout: 5000 })
-    await item2ConnSelect.click()
-    const alphaConnOpt2 = page
-      .locator('div[role="option"]:has-text("Beatriz Alpha")')
-      .or(
-        page.locator('div[role="option"]:has-text("mr-tick-datasource-alpha")'),
-      )
-    await expect(alphaConnOpt2.first()).toBeVisible({ timeout: 5000 })
-    await alphaConnOpt2.first().click()
-
     const item2TaskTrigger = item2Card.locator(
       '[data-testid="addon-task-destination-trigger-targetTask"]',
     )
     await expect(item2TaskTrigger).toBeVisible({ timeout: 5000 })
     await item2TaskTrigger.click()
+
+    const item2ConnSelect = page
+      .locator('[data-testid="time-entry-connection-select"]')
+      .last()
+    if (await item2ConnSelect.isVisible().catch(() => false)) {
+      await item2ConnSelect.click()
+      const alphaConnOpt2 = page.getByRole('option', {
+        name: /Alpha DataSource/,
+      })
+      await expect(alphaConnOpt2.first()).toBeVisible({ timeout: 5000 })
+      await alphaConnOpt2.first().click()
+    }
+
     const alphaTask102Opt = page.locator(
       '[data-testid="addon-task-option-ALPHA-102"]',
     )
@@ -662,24 +665,24 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
     await expect(modal).toBeVisible({ timeout: 10000 })
 
     // Selecionar conexão Beatriz Alpha e tarefa ALPHA-101 dentro do modal
-    const modalConnSelect = modal.locator(
-      '[data-testid="task-dest-connection-select-targetTask"]',
-    )
-    await expect(modalConnSelect).toBeVisible({ timeout: 5000 })
-    await modalConnSelect.click()
-    const alphaConnOpt = page
-      .locator('div[role="option"]:has-text("Beatriz Alpha")')
-      .or(
-        page.locator('div[role="option"]:has-text("mr-tick-datasource-alpha")'),
-      )
-    await expect(alphaConnOpt.first()).toBeVisible({ timeout: 5000 })
-    await alphaConnOpt.first().click()
-
     const modalTaskTrigger = modal.locator(
       '[data-testid="addon-task-destination-trigger-targetTask"]',
     )
     await expect(modalTaskTrigger).toBeVisible({ timeout: 5000 })
     await modalTaskTrigger.click()
+
+    const modalConnSelect = page
+      .locator('[data-testid="time-entry-connection-select"]')
+      .last()
+    if (await modalConnSelect.isVisible().catch(() => false)) {
+      await modalConnSelect.click()
+      const alphaConnOpt = page.getByRole('option', {
+        name: /Alpha DataSource/,
+      })
+      await expect(alphaConnOpt.first()).toBeVisible({ timeout: 5000 })
+      await alphaConnOpt.first().click()
+    }
+
     const alphaTask101Opt = page.locator(
       '[data-testid="addon-task-option-ALPHA-101"]',
     )
@@ -710,6 +713,10 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
         PLAYWRIGHT_TEST: '1',
         MR_TICK_RUNTIME_PROBE_WORKSPACE: workspace.id,
         MR_TICK_TEST_USER_DATA_DIR: userDataPath,
+        MR_TICK_DISCORD_RPC_PIPE_OVERRIDE:
+          process.platform === 'win32'
+            ? `\\\\.\\pipe\\mr-tick-discord-isolated-${testInfo.workerIndex}`
+            : `/tmp/mr-tick-discord-isolated-${testInfo.workerIndex}`,
       },
     })
 
@@ -779,7 +786,7 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
     await restartedApp.close()
   })
 
-  test('CEN-06: Discord Addon E2E com servidor RPC mock por named pipe (GET_GUILDS, GET_CHANNELS, regras e journal de pendências)', async ({
+  test('CEN-06: Discord Addon E2E com servidor RPC mock por named pipe (GET_GUILDS, GET_CHANNELS, regras opcionais e sugestões genéricas)', async ({
     electronApp,
     electronNodeEnv,
   }, testInfo) => {
@@ -916,9 +923,24 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
       )
       await expect(ruleNameInput).toBeVisible({ timeout: 5000 })
       await ruleNameInput.fill('Daily Standup Engenharia')
-      await ruleCard
-        .getByTestId('addon-field-input-timeZone')
-        .fill('America/Sao_Paulo')
+      await expect(
+        ruleCard.getByTestId('addon-field-input-timeZone'),
+      ).toHaveCount(0)
+      await wsGroup.getByTestId('addon-dynamic-select-timezone').click()
+      await win.getByPlaceholder('Pesquisar opções...').fill('Sao Paulo')
+      await expect(
+        win.getByTestId('addon-select-option-Africa/Abidjan'),
+      ).toHaveCount(0)
+      await win.screenshot({
+        path: testInfo.outputPath('discord-timezone-search.png'),
+      })
+      await win.getByTestId('addon-select-option-America/Sao_Paulo').click()
+      await expect(
+        wsGroup.getByTestId('addon-field-input-defaultDestination'),
+      ).toHaveCount(0)
+      await expect(
+        wsGroup.getByTestId('addon-operational-list-pendingSessions'),
+      ).toHaveCount(0)
 
       const guildTrigger = ruleCard.locator(
         '[data-testid="addon-dynamic-select-guild"]',
@@ -1058,22 +1080,7 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
         'Reuniões & Sync · Daily Standup',
       )
 
-      // Selecionar DataSource Alpha e tarefa ALPHA-101 como destino da regra
-      const connSelect = ruleCard.locator(
-        '[data-testid="task-dest-connection-select-destination"]',
-      )
-      await expect(connSelect).toBeVisible({ timeout: 5000 })
-      await connSelect.click()
-      const alphaConnOpt = win
-        .locator('div[role="option"]:has-text("Beatriz Alpha")')
-        .or(
-          win.locator(
-            'div[role="option"]:has-text("mr-tick-datasource-alpha")',
-          ),
-        )
-      await expect(alphaConnOpt.first()).toBeVisible({ timeout: 5000 })
-      await alphaConnOpt.first().click()
-
+      // Selecionar tarefa ALPHA-101 como destino da regra diretamente via popover
       const taskTrigger = ruleCard.locator(
         '[data-testid="addon-task-destination-trigger-destination"]',
       )
@@ -1103,7 +1110,16 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
       }
       await expect(appliedBadge).toBeVisible({ timeout: 10000 })
 
-      // 3. Emitir chamada no canal não mapeado -> deve cair na lista operacional pendingSessions
+      await win.screenshot({
+        path: testInfo.outputPath('discord-simplified-settings.png'),
+      })
+      await openWorkspace(win)
+      const suggestions = win.locator(
+        '[data-testid="time-entry-row"][data-is-suggestion="true"]',
+      )
+      const initialSuggestionCount = await suggestions.count()
+
+      // 3. Uma chamada sem regra entra no fluxo normal como sugestão genérica.
       mockRpcServer.dispatchVoiceChannelSelect({
         channelId: 'chan-unmapped-999',
         guildId: 'guild-eng-100',
@@ -1119,24 +1135,10 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
         .toBe(true)
       mockRpcServer.dispatchVoiceChannelSelect({ channelId: null })
 
-      // Recarregar aba watcher para ver a sessão pendente no card operacional
-      const authTab = win.locator('[data-testid="addon-capability-tab-auth"]')
-      await authTab.first().click()
-      await watcherTab.first().click()
-      await wsTab.click()
-
-      const pendingCard = wsGroup.locator(
-        '[data-testid="addon-operational-list-pendingSessions"]',
-      )
-      await expect(pendingCard).toBeVisible({ timeout: 10000 })
-      await expect(async () => {
-        await pendingCard
-          .getByRole('button', { name: 'Atualizar', exact: true })
-          .click()
-        await expect(
-          pendingCard.getByText('Chamada em chan-unmapped-999'),
-        ).toBeVisible()
-      }).toPass({ timeout: 10000 })
+      await expect(suggestions).toHaveCount(initialSuggestionCount + 1, {
+        timeout: 15000,
+      })
+      await expect(suggestions.first()).not.toContainText('ALPHA-101')
 
       // 4. Emitir chamada no canal mapeado (chan-daily-101) -> deve criar sugestão associada à tarefa ALPHA-101
       mockRpcServer.dispatchVoiceChannelSelect({
@@ -1153,11 +1155,355 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
       mockRpcServer.dispatchVoiceChannelSelect({ channelId: null })
 
       await openWorkspace(win)
-      const suggestionRow = win
-        .locator('[data-testid="time-entry-row"][data-is-suggestion="true"]')
-        .first()
+      await expect(suggestions).toHaveCount(initialSuggestionCount + 2, {
+        timeout: 15000,
+      })
+      expect(
+        await win
+          .locator('[data-sonner-toast][data-type="error"]')
+          .allTextContents(),
+      ).toEqual([])
+      const suggestionRow = suggestions.filter({ hasText: 'ALPHA-101' })
       await expect(suggestionRow).toBeVisible({ timeout: 15000 })
       await expect(suggestionRow).toContainText('ALPHA-101')
+    } finally {
+      await discordApp.close()
+      await mockRpcServer.stop()
+    }
+  })
+
+  test('CEN-07: Destino de tarefa com metadados (atividades/comentários), persistência pós-save, busca avançada e limpeza de canal ao alternar servidor', async ({
+    electronApp,
+    electronNodeEnv,
+  }, testInfo) => {
+    test.skip(
+      !existsSync(
+        resolve(desktopRoot, '../../../../discord-addon/dist/index.js'),
+      ),
+      'Requer o repositório externo discord-addon compilado ao lado de metric; os cenários neutros permanecem independentes dessa integração.',
+    )
+    const userDataPath = getElectronUserDataPath(testInfo.workerIndex)
+    await electronApp.close()
+
+    const pipePath =
+      process.platform === 'win32'
+        ? `\\\\.\\pipe\\mr-tick-discord-e2e-${Date.now()}-${testInfo.workerIndex}`
+        : `/tmp/mr-tick-discord-e2e-${Date.now()}-${testInfo.workerIndex}`
+
+    const mockRpcServer = new DiscordMockRpcServer(pipePath)
+    await mockRpcServer.start()
+
+    const discordApp = await electronLauncher.launch({
+      args: ['.', '--window-size=1600,900', `--user-data-dir=${userDataPath}`],
+      cwd: desktopRoot,
+      env: {
+        ...process.env,
+        NODE_ENV: electronNodeEnv,
+        FAKE_DB_IN_MEMORY: 'true',
+        PLAYWRIGHT_TEST: '1',
+        MR_TICK_RUNTIME_PROBE_WORKSPACE: workspace.id,
+        MR_TICK_TEST_USER_DATA_DIR: userDataPath,
+        MR_TICK_DISCORD_RPC_PIPE_OVERRIDE: pipePath,
+      },
+    })
+
+    try {
+      await expect
+        .poll(async () => (await findMainWindow(discordApp)) !== null, {
+          timeout: 30000,
+        })
+        .toBe(true)
+      const win = await findMainWindow(discordApp)
+      if (!win) {
+        throw new Error('DISCORD_MAIN_WINDOW_NOT_FOUND')
+      }
+      await win.waitForLoadState('domcontentloaded')
+
+      // Interceptar requisições de imagem de ícone do Discord no Playwright para retornar imagem válida
+      const transparentPngBuffer = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      )
+      await win.route('https://cdn.discordapp.com/**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'image/png',
+          body: transparentPngBuffer,
+        })
+      })
+
+      // Aguardar handshake + AUTHENTICATE + SUBSCRIBE no named pipe mock
+      await expect
+        .poll(() => mockRpcServer.stats.subscriptionsCount, {
+          timeout: 15000,
+        })
+        .toBeGreaterThanOrEqual(1)
+
+      // Criar um 3º workspace para exercitar o limite LRU (2 workspaces) do BrowserWorkspaceRegistry e abrir o workspace principal na rota ativa
+      const thirdWorkspaceId = await win.evaluate(async () => {
+        const res = await window.api.workspaces.create({
+          body: { name: 'TERCEIRO WORKSPACE' },
+        })
+        return res.data?.id ?? ''
+      })
+      expect(thirdWorkspaceId.length).toBeGreaterThan(0)
+      await openWorkspace(win)
+
+      // 1. Abrir diálogo de configurações com o workspace principal ativo na rota
+      const settingsButton = win.locator(
+        '[data-testid="app-rail-settings-btn"]',
+      )
+      await expect(settingsButton.first()).toBeVisible({ timeout: 15000 })
+      await settingsButton.first().click()
+
+      const installedTabBtn = win.locator(
+        '[data-testid="settings-nav-tab-addons-installed"]',
+      )
+      await expect(installedTabBtn).toBeVisible({ timeout: 10000 })
+      await installedTabBtn.click()
+
+      const configureBtn = win.locator(
+        '[data-testid="addon-configure-btn-mistertick-discord"]',
+      )
+      await expect(configureBtn).toBeVisible({ timeout: 10000 })
+      await configureBtn.click()
+
+      const watcherTab = win.locator(
+        '[data-testid="addon-capability-tab-watcher"]',
+      )
+      await expect(watcherTab.first()).toBeVisible({ timeout: 10000 })
+      await watcherTab.first().click()
+
+      const wsTab = win.locator(
+        `[data-testid="addon-workspace-tab-${workspace.id}"]`,
+      )
+      await expect(wsTab).toBeVisible({ timeout: 10000 })
+      await wsTab.click()
+
+      const wsGroup = win.locator(
+        `[data-testid="workspace-addon-group-${workspace.id}"]`,
+      )
+      await expect(wsGroup).toBeVisible({ timeout: 10000 })
+
+      // 2. Adicionar regra na coleção 'rules'
+      const addRuleBtn = wsGroup.locator(
+        '[data-testid="addon-collection-add-rules"]',
+      )
+      await expect(addRuleBtn).toBeVisible({ timeout: 10000 })
+      await addRuleBtn.click()
+
+      const ruleCard = wsGroup
+        .locator(
+          '[data-testid="addon-collection-rules"] > div > [data-testid^="addon-collection-item-"]',
+        )
+        .first()
+      await expect(ruleCard).toBeVisible({ timeout: 10000 })
+
+      const ruleNameInput = ruleCard.locator(
+        'input[data-testid="addon-field-input-name"]',
+      )
+      await expect(ruleNameInput).toBeVisible({ timeout: 5000 })
+      await ruleNameInput.fill('Regra Teste Metadados e Persistência')
+
+      // Seleciona servidor Engenharia de Software
+      const guildTrigger = ruleCard.locator(
+        '[data-testid="addon-dynamic-select-guild"]',
+      )
+      await expect(guildTrigger).toBeVisible({ timeout: 5000 })
+      await guildTrigger.click()
+
+      const engGuildOpt = win.locator(
+        '[data-testid="addon-select-option-guild-eng-100"]',
+      )
+      await expect(engGuildOpt).toBeVisible({ timeout: 10000 })
+      await engGuildOpt.click()
+      await expect(guildTrigger).toContainText('Engenharia de Software')
+
+      // Seleciona canal Daily Standup
+      const channelTrigger = ruleCard.locator(
+        '[data-testid="addon-dynamic-select-channel"]',
+      )
+      await expect(channelTrigger).toBeVisible({ timeout: 5000 })
+      await channelTrigger.click()
+
+      const dailyChannelOpt = win.locator(
+        '[data-testid="addon-select-option-chan-daily-101"]',
+      )
+      await expect(dailyChannelOpt).toBeVisible({ timeout: 10000 })
+      await dailyChannelOpt.click()
+      await expect(channelTrigger).toContainText('Daily Standup')
+
+      // 3. Teste do Modal Avançado de Busca (TaskLookup)
+      const taskTrigger = ruleCard.locator(
+        '[data-testid="addon-task-destination-trigger-destination"]',
+      )
+      await expect(taskTrigger).toBeVisible({ timeout: 5000 })
+      await taskTrigger.click()
+
+      // Popover aberto: clica no botão de busca detalhada (modal avançado)
+      const advancedModalBtn = win.locator(
+        '[data-testid="time-entry-task-lookup-modal-btn"]',
+      )
+      await expect(advancedModalBtn).toBeVisible({ timeout: 5000 })
+      await advancedModalBtn.click()
+
+      // Modal avançado TaskLookup visível
+      const modalSearchInput = win.locator(
+        '[data-testid="task-lookup-modal-search-input"]',
+      )
+      await expect(modalSearchInput).toBeVisible({ timeout: 10000 })
+
+      // Verifica presença de chip de conexão ou tarefas listadas e busca por ALPHA-102
+      await modalSearchInput.fill('ALPHA-102')
+      const alphaTaskRow = win
+        .locator('[data-testid="task-lookup-row"]')
+        .filter({
+          hasText: 'ALPHA-102',
+        })
+      await expect(alphaTaskRow.first()).toBeVisible({ timeout: 10000 })
+      await alphaTaskRow.first().click()
+      await expect(modalSearchInput).toBeHidden({ timeout: 5000 })
+
+      // 4. Card pós-seleção: selecionar atividade e preencher comentário
+      const selectedCard = ruleCard.locator(
+        '[data-testid="addon-task-selected-card-destination"]',
+      )
+      await expect(selectedCard).toBeVisible({ timeout: 10000 })
+
+      const activitySelect = ruleCard.locator(
+        '[data-testid="addon-task-activity-select-destination"]',
+      )
+      await expect(activitySelect).toBeVisible({ timeout: 5000 })
+      await activitySelect.click()
+
+      // Seleciona a atividade Alpha Development do DataSource
+      const alphaDevActivityOpt = win.locator('[role="option"]').filter({
+        hasText: 'Alpha Development',
+      })
+      await expect(alphaDevActivityOpt).toBeVisible({ timeout: 5000 })
+      await alphaDevActivityOpt.click()
+      await expect(activitySelect).toContainText('Alpha Development')
+
+      // Preenche comentário opcional
+      const commentInput = ruleCard.locator(
+        '[data-testid="addon-task-comment-input-destination"]',
+      )
+      await expect(commentInput).toBeVisible({ timeout: 5000 })
+      await commentInput.fill('Comentário Automatizado E2E')
+
+      // 5. Salvar configurações
+      const saveBtn = win.getByRole('button', { name: 'Salvar' })
+      await expect(saveBtn).toBeVisible({ timeout: 5000 })
+      await saveBtn.click()
+
+      const appliedBadge = win.locator(
+        '[data-testid="addon-settings-status-applied"]',
+      )
+      await expect(appliedBadge).toBeVisible({ timeout: 10000 })
+
+      // 6. Teste de Persistência: Fecha e reabre o diálogo de configuração do addon para garantir que os dados persistem sem vir lista vazia
+      const closeSettingsBtn = win
+        .locator('[role="dialog"][data-state="open"]')
+        .last()
+        .getByRole('button', { name: 'Close', exact: true })
+      await closeSettingsBtn.click()
+
+      // Reabre configuração do addon Discord
+      await expect(configureBtn).toBeVisible({ timeout: 10000 })
+      await configureBtn.click()
+      await expect(watcherTab.first()).toBeVisible({ timeout: 10000 })
+      await watcherTab.first().click()
+      await expect(wsTab).toBeVisible({ timeout: 10000 })
+      await wsTab.click()
+
+      // Asserção: Tarefa permanece selecionada com título real, atividade real e comentário preenchido
+      const reloadedCard = win
+        .locator(
+          `[data-testid="workspace-addon-group-${workspace.id}"] [data-testid="addon-task-selected-card-destination"]`,
+        )
+        .first()
+      await expect(reloadedCard).toBeVisible({ timeout: 10000 })
+      await expect(reloadedCard).not.toContainText('Tarefa #ALPHA-102')
+      await expect(reloadedCard).toContainText('ALPHA-102')
+      await expect(reloadedCard).toContainText('Alpha Verification Suite')
+
+      const reloadedActivitySelect = reloadedCard.locator(
+        '[data-testid="addon-task-activity-select-destination"]',
+      )
+      await expect(reloadedActivitySelect).toContainText('Alpha Development')
+
+      const reloadedComment = win.locator(
+        '[data-testid="addon-task-comment-input-destination"]',
+      )
+      await expect(reloadedComment).toHaveValue('Comentário Automatizado E2E')
+
+      // 6b. Navegação entre múltiplos workspaces na sub-sidebar (TESTE -> WORKSPACE ISOLADO -> TERCEIRO WORKSPACE -> TESTE)
+      // Exercita a evicção LRU (cap=2) do BrowserWorkspaceRegistry e o retorno ao workspace inicial da rota ativa
+      const isolatedWsTab = win.locator(
+        '[data-testid="addon-workspace-tab-ws-isolated-9999-8888-777766665555"]',
+      )
+      await expect(isolatedWsTab).toBeVisible({ timeout: 10000 })
+      await isolatedWsTab.click()
+      await expect(
+        win.locator(
+          '[data-testid="workspace-addon-group-ws-isolated-9999-8888-777766665555"]',
+        ),
+      ).toBeVisible({ timeout: 10000 })
+
+      const thirdWsTab = win.locator(
+        `[data-testid="addon-workspace-tab-${thirdWorkspaceId}"]`,
+      )
+      await expect(thirdWsTab).toBeVisible({ timeout: 10000 })
+      await thirdWsTab.click()
+      await expect(
+        win.locator(
+          `[data-testid="workspace-addon-group-${thirdWorkspaceId}"]`,
+        ),
+      ).toBeVisible({ timeout: 10000 })
+
+      // Voltar para o workspace inicial (TESTE)
+      await wsTab.click()
+      await expect(wsGroup).toBeVisible({ timeout: 10000 })
+
+      await expect(reloadedCard).toBeVisible({ timeout: 10000 })
+      await expect(reloadedCard).not.toContainText('Tarefa #ALPHA-102')
+      await expect(reloadedCard).toContainText('ALPHA-102')
+      await expect(reloadedCard).toContainText('Alpha Verification Suite')
+      await expect(reloadedActivitySelect).toContainText('Alpha Development')
+      await expect(reloadedComment).toHaveValue('Comentário Automatizado E2E')
+
+      // Verificar que o popover de tarefas também carrega normalmente após retornar ao workspace inicial
+      await addRuleBtn.click()
+      const secondRuleCard = wsGroup
+        .locator(
+          '[data-testid="addon-collection-rules"] > div > [data-testid^="addon-collection-item-"]',
+        )
+        .nth(1)
+      await expect(secondRuleCard).toBeVisible({ timeout: 10000 })
+      const secondTaskTrigger = secondRuleCard.locator(
+        '[data-testid="addon-task-destination-trigger-destination"]',
+      )
+      await secondTaskTrigger.click()
+      const popoverTaskOpt = win.locator('[data-testid^="addon-task-option-"]')
+      await expect(popoverTaskOpt.first()).toBeVisible({ timeout: 10000 })
+      await win.keyboard.press('Escape')
+
+      // 7. Teste de Limpeza de Canal Sujo ao Alternar Servidor
+      const reloadedGuildTrigger = ruleCard.locator(
+        '[data-testid="addon-dynamic-select-guild"]',
+      )
+      await reloadedGuildTrigger.click()
+      const opsGuildOpt = win.locator(
+        '[data-testid="addon-select-option-guild-ops-200"]',
+      )
+      await expect(opsGuildOpt).toBeVisible({ timeout: 10000 })
+      await opsGuildOpt.click()
+
+      // Ao trocar de Engenharia de Software para Operações e Infra, o canal selecionado deve ser limpo imediatamente
+      const reloadedChannelTrigger = ruleCard.locator(
+        '[data-testid="addon-dynamic-select-channel"]',
+      )
+      await expect(reloadedChannelTrigger).not.toContainText('Daily Standup')
     } finally {
       await discordApp.close()
       await mockRpcServer.stop()

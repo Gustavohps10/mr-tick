@@ -89,6 +89,35 @@ describe('TaskPopover - Activity selection and remote constraints', () => {
     vi.clearAllMocks()
   })
 
+  it('groups the comment with entry details and commits multiline text when closing', () => {
+    const onDescriptionChange = vi.fn()
+    renderWithProviders(
+      <TaskPopover
+        trigger={<button>Abrir Detalhes</button>}
+        description=""
+        onDescriptionChange={onDescriptionChange}
+        activities={TEST_ACTIVITIES}
+      />,
+    )
+    fireEvent.click(screen.getByText('Abrir Detalhes'))
+    const details = screen.getByRole('group', {
+      name: 'Detalhes do apontamento',
+    })
+    const comment = screen.getByRole('textbox', {
+      name: 'Comentário do apontamento',
+    })
+    expect(details).toContainElement(comment)
+    expect(comment.tagName).toBe('TEXTAREA')
+    fireEvent.change(comment, { target: { value: 'Investigação\nValidação' } })
+    expect(fireEvent.keyDown(comment, { key: 'Enter', shiftKey: true })).toBe(
+      true,
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Fechar detalhes da tarefa' }),
+    )
+    expect(onDescriptionChange).toHaveBeenCalledWith('Investigação\nValidação')
+  })
+
   it('should keep the popover open when selecting an activity', async () => {
     function ControlledTest() {
       const [activity, setActivity] = useState('')
@@ -109,9 +138,7 @@ describe('TaskPopover - Activity selection and remote constraints', () => {
     expect(screen.getByText('Detalhes da Tarefa')).toBeTruthy()
 
     // Abre o select de atividade
-    const selectTrigger = baseElement.querySelector(
-      '[data-slot="select-trigger"]',
-    )
+    const selectTrigger = baseElement.querySelector('[aria-label="Atividade"]')
     if (selectTrigger) {
       fireEvent.keyDown(selectTrigger, { key: 'ArrowDown' })
     }
@@ -141,9 +168,7 @@ describe('TaskPopover - Activity selection and remote constraints', () => {
     fireEvent.click(screen.getByText('Abrir Detalhes'))
 
     // Abre o select de atividade
-    const selectTrigger = baseElement.querySelector(
-      '[data-slot="select-trigger"]',
-    )
+    const selectTrigger = baseElement.querySelector('[aria-label="Atividade"]')
     if (selectTrigger) {
       fireEvent.keyDown(selectTrigger, { key: 'ArrowDown' })
     }
@@ -177,9 +202,7 @@ describe('TaskPopover - Activity selection and remote constraints', () => {
     fireEvent.click(screen.getByText('Abrir Detalhes'))
 
     // Abre o select de atividade
-    const selectTrigger = baseElement.querySelector(
-      '[data-slot="select-trigger"]',
-    )
+    const selectTrigger = baseElement.querySelector('[aria-label="Atividade"]')
     if (selectTrigger) {
       fireEvent.keyDown(selectTrigger, { key: 'ArrowDown' })
     }

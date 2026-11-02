@@ -40,6 +40,11 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: 'src/main/index.ts',
+        onwarn(warning, warn) {
+          if (warning.code === 'INVALID_ANNOTATION') return
+
+          warn(warning)
+        },
       },
     },
   },
@@ -53,6 +58,11 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: 'src/preload/index.ts',
+        onwarn(warning, warn) {
+          if (warning.code === 'INVALID_ANNOTATION') return
+
+          warn(warning)
+        },
       },
     },
   },
@@ -78,6 +88,11 @@ export default defineConfig({
       sourcemap: true,
       rollupOptions: {
         input: resolve(__dirname, 'src/renderer/index.html'),
+        onwarn(warning, warn) {
+          if (warning.code === 'INVALID_ANNOTATION') return
+
+          warn(warning)
+        },
       },
     },
   },

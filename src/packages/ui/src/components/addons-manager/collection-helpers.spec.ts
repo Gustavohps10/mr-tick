@@ -1,10 +1,13 @@
 import type { AddonSettingsValues } from '@mr-tick/application'
+import type { AddonSettingsField } from '@mr-tick/sdk'
 import { describe, expect, it } from 'vitest'
 
 import {
   createCollectionItemEnvelope,
   createRequestTracker,
   duplicateCollectionItemEnvelope,
+  findDependentFieldIds,
+  isFieldValueEqual,
   removeCollectionItemEnvelope,
   reorderCollectionItemEnvelope,
   updateCollectionItemEnvelope,
@@ -145,5 +148,125 @@ describe('collection-helpers (envelope { itemId, values } e rastreamento de requ
 
     tracker.reset()
     expect(tracker.isCurrent(req2)).toBe(false)
+  })
+
+  it('identifica campos dependentes diretos e em cadeia', () => {
+    const fields: readonly AddonSettingsField[] = [
+      {
+        id: 'guild',
+        type: 'select',
+        label: 'Servidor',
+        source: { kind: 'dynamic', providerId: 'discord.guilds' },
+      },
+      {
+        id: 'channel',
+        type: 'select',
+        label: 'Canal de voz',
+        source: {
+          kind: 'dynamic',
+          providerId: 'discord.channels',
+          dependsOn: [
+            {
+              base: 'parent',
+              address: { path: [{ kind: 'field', fieldId: 'guild' }] },
+            },
+          ],
+        },
+      },
+      {
+        id: 'subChannelDetail',
+        type: 'select',
+        label: 'Detalhe do Canal',
+        source: {
+          kind: 'dynamic',
+          providerId: 'discord.subchannels',
+          dependsOn: [
+            {
+              base: 'parent',
+              address: { path: [{ kind: 'field', fieldId: 'channel' }] },
+            },
+          ],
+        },
+      },
+      {
+        id: 'otherField',
+        type: 'text',
+        label: 'Outro',
+      },
+    ]
+
+    const guildDependents = findDependentFieldIds(fields, 'guild')
+    expect(guildDependents).toEqual(['channel', 'subChannelDetail'])
+
+    const channelDependents = findDependentFieldIds(fields, 'channel')
+    expect(channelDependents).toEqual(['subChannelDetail'])
+
+    const otherDependents = findDependentFieldIds(fields, 'otherField')
+    expect(otherDependents).toEqual([])
+  })
+
+  it('compara valores de campos semântica e deterministicamente (Snowflakes string e number)', () => {
+    expect(isFieldValueEqual('100', 100)).toBe(true)
+    expect(
+      isFieldValueEqual('1294040636718317618', '1294040636718317618'),
+    ).toBe(true)
+    expect(isFieldValueEqual('server-a', 'server-a')).toBe(true)
+    expect(isFieldValueEqual('server-a', 'server-b')).toBe(false)
+    expect(isFieldValueEqual(undefined, null)).toBe(true)
+    expect(isFieldValueEqual(null, undefined)).toBe(true)
+  })
+
+  it('limpa campo canal ao trocar servidor na colecao evitando estado sujo', () => {
+    const fields: readonly AddonSettingsField[] = [
+      {
+        id: 'guild',
+        type: 'select',
+        label: 'Servidor',
+        source: { kind: 'dynamic', providerId: 'discord.guilds' },
+      },
+      {
+        id: 'channel',
+        type: 'select',
+        label: 'Canal de voz',
+        source: {
+          kind: 'dynamic',
+          providerId: 'discord.channels',
+          dependsOn: [
+            {
+              base: 'parent',
+              address: { path: [{ kind: 'field', fieldId: 'guild' }] },
+            },
+          ],
+        },
+      },
+    ]
+
+    const item = createCollectionItemEnvelope(
+      {
+        guild: '1294040636718317618',
+        channel: '1294040636718317622',
+      },
+      'rule-1',
+    )
+
+    // Troca para um servidor diferente -> limpa canal
+    const updatedDifferentGuild = updateCollectionItemFieldValue(
+      item,
+      'guild',
+      '9999999999999999999',
+      fields,
+    )
+    expect(updatedDifferentGuild.values.guild).toBe('9999999999999999999')
+    expect(updatedDifferentGuild.values.channel).toBeUndefined()
+
+    // Mantém o mesmo servidor (mesmo Snowflake em número) -> preserva canal
+    const sameGuild = updateCollectionItemFieldValue(
+      item,
+      'guild',
+      '1294040636718317618',
+      fields,
+    )
+    expect(sameGuild.values.guild).toBe('1294040636718317618')
+    expect(sameGuild.values.channel).toBe('1294040636718317622')
   })
 })

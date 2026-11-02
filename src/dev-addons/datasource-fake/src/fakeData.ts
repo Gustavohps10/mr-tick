@@ -357,11 +357,6 @@ function buildTimeEntries(): TimeEntryDTO[] {
   entries.push({
     id: 'te-support-9999',
     task: { id: 'DEV-9999' },
-    taskData: {
-      id: 'DEV-9999',
-      title: 'TAREFA PARA APOIO (DEV-9999)',
-      tracker: { id: 'task', name: 'Task' },
-    },
     activity: { id: 'act-coding', name: 'Coding' },
     user: { id: FAKE_USER_ID, name: USER_NAME },
     timeSpent: 3.5,

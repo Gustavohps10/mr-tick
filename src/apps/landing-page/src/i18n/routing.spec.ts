@@ -1,14 +1,12 @@
 import { NextRequest } from 'next/server'
 import { describe, expect, it } from 'vitest'
 
-import middleware from '../middleware'
+import proxy from '../proxy'
 
 function request(path: string, language: string, cookie?: string) {
   const headers = new Headers({ 'accept-language': language })
   if (cookie) headers.set('cookie', cookie)
-  return middleware(
-    new NextRequest('http://localhost:3000' + path, { headers }),
-  )
+  return proxy(new NextRequest('http://localhost:3000' + path, { headers }))
 }
 
 describe('landing language negotiation', () => {

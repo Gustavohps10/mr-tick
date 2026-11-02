@@ -157,7 +157,7 @@ export function AddonCollectionControl({
   ) => {
     const nextItems = items.map((it) => {
       if (it.itemId !== targetItemId) return it
-      return updateCollectionItemFieldValue(it, fieldId, fieldVal)
+      return updateCollectionItemFieldValue(it, fieldId, fieldVal, field.fields)
     })
     onChange(nextItems)
   }

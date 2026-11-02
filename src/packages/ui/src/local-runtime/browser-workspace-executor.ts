@@ -55,41 +55,64 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
         if (db === null)
           return Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE'))
         if (input.action === 'metadata') {
-          const documents = await db.metadata
-            .find({
-              selector: {
-                connectionInstanceId: input.connectionInstanceId,
-                dataSourceId,
-              },
-              limit: 2,
-            })
+          let document = await db.metadata
+            .findOne(`${input.connectionInstanceId}::metadata`)
             .exec()
-          if (documents.length === 0)
+
+          if (document && document.dataSourceId !== dataSourceId) {
+            document = null
+          }
+
+          if (!document) {
+            const documents = await db.metadata
+              .find({
+                selector: {
+                  connectionInstanceId: input.connectionInstanceId,
+                  dataSourceId,
+                },
+                limit: 2,
+              })
+              .exec()
+
+            if (documents.length === 0)
+              return Either.failure(
+                AppError.Http(503, 'CORE_METADATA_UNAVAILABLE'),
+              )
+
+            if (documents.length !== 1)
+              return Either.failure(
+                AppError.Http(409, 'CORE_METADATA_AMBIGUOUS'),
+              )
+
+            for (const doc of documents) {
+              document = doc
+            }
+          }
+
+          if (!document)
             return Either.failure(
               AppError.Http(503, 'CORE_METADATA_UNAVAILABLE'),
             )
-          if (documents.length !== 1)
-            return Either.failure(AppError.Http(409, 'CORE_METADATA_AMBIGUOUS'))
-          for (const document of documents) {
-            const record = document.toMutableJSON()
-            return Either.success({
-              kind: 'metadata',
-              metadata: {
-                workspaceId: input.workspaceId,
-                connectionInstanceId: input.connectionInstanceId,
-                dataSourceId,
-                lastPulledAt: record.lastPulledAt,
-                values: {
-                  activities: record.activities,
-                  taskStatuses: record.taskStatuses,
-                  taskPriorities: record.taskPriorities,
-                  trackStatuses: record.trackStatuses,
-                  participantRoles: record.participantRoles,
-                  estimationTypes: record.estimationTypes,
-                },
+
+          const record = document.toMutableJSON()
+
+          return Either.success({
+            kind: 'metadata',
+            metadata: {
+              workspaceId: input.workspaceId,
+              connectionInstanceId: input.connectionInstanceId,
+              dataSourceId,
+              lastPulledAt: record.lastPulledAt,
+              values: {
+                activities: record.activities,
+                taskStatuses: record.taskStatuses,
+                taskPriorities: record.taskPriorities,
+                trackStatuses: record.trackStatuses,
+                participantRoles: record.participantRoles,
+                estimationTypes: record.estimationTypes,
               },
-            })
-          }
+            },
+          })
         }
         if (input.action === 'task') {
           const document = await db.tasks

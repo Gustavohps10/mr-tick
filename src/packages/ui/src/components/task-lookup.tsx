@@ -31,6 +31,8 @@ import React, {
 import { MangoQuerySelector } from 'rxdb'
 import { useDebounce } from 'use-debounce'
 
+import { getTaskConnectionOption } from '@/components/task-connection-select'
+import { TaskLookupTaskDetails } from '@/components/task-lookup-results'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -75,7 +77,7 @@ interface TaskLookupModalProps {
 }
 
 const PAGE_SIZE = 50
-const ROW_HEIGHT = 48
+const ROW_HEIGHT = 64
 
 const lucideCatalog: Record<string, ElementType> = LucideIcons.icons
 
@@ -105,17 +107,39 @@ export function TaskLookup({
   const { mappings } = useFieldMappings()
   const db = useSyncStore((s) => s.db)
   const syncConnections = useConnectionsWithSync()
+  const { workspace } = useWorkspace()
+  const { dataSourceConnections: dsConnections } = useDataSourceConnections()
 
   const memberIdsByConnection = useMemo(() => {
     if (propMemberIdsByConnection) return propMemberIdsByConnection
     const map: Record<string, string | null | undefined> = {}
-    syncConnections.forEach((conn) => {
-      map[conn.connectionId] = conn.member?.id ? String(conn.member.id) : null
-    })
-    return map
-  }, [syncConnections, propMemberIdsByConnection])
 
-  const { workspace } = useWorkspace()
+    syncConnections.forEach((conn) => {
+      if (conn.member?.id) {
+        map[conn.connectionId] = String(conn.member.id)
+      }
+    })
+
+    workspace?.connections?.forEach((conn) => {
+      if (conn.member?.id && !map[conn.id]) {
+        map[conn.id] = String(conn.member.id)
+      }
+    })
+
+    dsConnections.forEach((conn) => {
+      if (conn.member?.id && !map[conn.connectionId]) {
+        map[conn.connectionId] = String(conn.member.id)
+      }
+    })
+
+    return map
+  }, [
+    propMemberIdsByConnection,
+    syncConnections,
+    workspace?.connections,
+    dsConnections,
+  ])
+
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearch] = useDebounce(searchTerm, 300)
 
@@ -123,6 +147,20 @@ export function TaskLookup({
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
   const [onlyMyTasks, setOnlyMyTasks] = useState(false)
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
+
+  const availableConnections = useMemo(
+    () =>
+      dsConnections.map((connection) => ({
+        ...getTaskConnectionOption({
+          id: connection.connectionId,
+          addon: connection.addon,
+          identityName: connection.identity?.displayName,
+          memberName: connection.member?.name,
+        }),
+        dataSourceId: connection.dataSourceId,
+      })),
+    [dsConnections],
+  )
 
   // Lista de IDs de instâncias (connections) selecionadas
   const [selectedConnectionIds, setSelectedConnectionIds] = useState<string[]>(
@@ -162,25 +200,11 @@ export function TaskLookup({
     return { statuses, priorities, roles }
   }, [metadataDocs])
 
-  const { dataSourceConnections: dsConnections } = useDataSourceConnections()
-
-  const availableConnections = useMemo(() => {
-    const connections = workspace?.connections ?? []
-    return connections.map((c) => {
-      const match = dsConnections?.find((dc) => dc.connectionId === c.id)
-      return {
-        id: c.id,
-        dataSourceId: c.addonId,
-        label: String(c.config?.name || match?.addon?.name || c.addonId),
-        logo: match?.addon?.logo,
-      }
-    })
-  }, [workspace, dsConnections])
-
   const effectiveConnectionIds = useMemo(() => {
-    if (selectedConnectionIds.length === 0)
-      return availableConnections.map((s) => s.id)
-    return selectedConnectionIds
+    if (selectedConnectionIds.length > 0) {
+      return selectedConnectionIds
+    }
+    return availableConnections.map((s) => s.id)
   }, [selectedConnectionIds, availableConnections])
 
   const singleSelectedConnection = useMemo(() => {
@@ -199,18 +223,21 @@ export function TaskLookup({
     useInfiniteQuery({
       queryKey: [
         'task-lookup',
+        db?.name,
         debouncedSearch,
         statusFilter,
         priorityFilter,
         onlyMyTasks,
         sortOrder,
-        selectedConnectionIds.join(','),
+        effectiveConnectionIds.join(','),
       ],
       initialPageParam: 0,
       queryFn: async ({ pageParam = 0 }) => {
         if (!db) return []
 
-        const andConditions: MangoQuerySelector<SyncTaskRxDBDTO>[] = []
+        const andConditions: MangoQuerySelector<SyncTaskRxDBDTO>[] = [
+          { _deleted: { $ne: true } },
+        ]
 
         if (debouncedSearch) {
           andConditions.push({
@@ -231,7 +258,10 @@ export function TaskLookup({
             const myTasksOr = effectiveConnectionIds
               .map((connId) => {
                 const memberId =
-                  memberIdsByConnection?.[connId] ?? currentUserId
+                  memberIdsByConnection?.[connId] ??
+                  (currentUserId && currentUserId !== 'me'
+                    ? currentUserId
+                    : null)
                 if (!memberId) return null
                 return {
                   connectionInstanceId: connId,
@@ -285,7 +315,9 @@ export function TaskLookup({
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    if (!isModalOpen || !db || !workspace?.id || !debouncedSearch.trim()) return
+    if (!isModalOpen || !db || !workspace?.id || !debouncedSearch.trim()) {
+      return
+    }
 
     const queryStr = debouncedSearch.trim()
     const pureId = extractPureTaskId(queryStr)
@@ -430,7 +462,7 @@ export function TaskLookup({
         <DialogOverlay className="pointer-events-auto bg-black/50 backdrop-blur-md transition-all" />
         <DialogContent
           onKeyDown={handleKeyDown}
-          className="bg-card/95 border-border/40 pointer-events-auto flex max-h-[85vh] w-[95vw] max-w-3xl flex-col overflow-hidden rounded-xl border p-0 shadow-2xl backdrop-blur-xl sm:max-w-3xl"
+          className="bg-card/95 border-border/40 pointer-events-auto flex h-[min(42rem,85vh)] max-h-[85vh] w-[95vw] max-w-3xl min-w-0 flex-col gap-0 overflow-hidden rounded-lg border p-0 shadow-2xl backdrop-blur-xl sm:max-w-3xl"
         >
           {/* Header Command Input Bar */}
           <DialogHeader className="border-border/30 space-y-0 border-b p-0">
@@ -484,7 +516,7 @@ export function TaskLookup({
                   )}
                 >
                   <Layers className="h-3 w-3" />
-                  <span>Todas Fontes</span>
+                  <span>Todas as conexões</span>
                 </button>
 
                 {availableConnections.map((s) => {
@@ -504,9 +536,11 @@ export function TaskLookup({
                     <button
                       key={s.id}
                       type="button"
+                      disabled={s.disabled}
+                      title={s.description}
                       onClick={toggleConnection}
                       className={cn(
-                        'inline-flex h-6 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-[10px] font-semibold transition-all select-none',
+                        'inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-semibold transition-all select-none',
                         isSelected
                           ? 'border-primary/50 bg-primary/15 text-primary shadow-xs'
                           : 'border-border/40 bg-background/50 text-muted-foreground hover:border-border hover:text-foreground',
@@ -521,7 +555,12 @@ export function TaskLookup({
                       ) : (
                         <Hash className="h-3 w-3 opacity-60" />
                       )}
-                      <span>{s.label}</span>
+                      <span className="truncate">{s.label}</span>
+                      {s.description && (
+                        <span className="text-muted-foreground truncate font-normal">
+                          {s.description}
+                        </span>
+                      )}
                     </button>
                   )
                 })}
@@ -547,7 +586,7 @@ export function TaskLookup({
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger
                     data-testid="task-lookup-status-filter"
-                    className="bg-background/60 border-border/40 h-6 w-fit border px-2 text-[10px] font-semibold shadow-none focus:ring-0"
+                    className="bg-background/60 border-border/40 h-8 w-fit border px-2 text-xs font-semibold shadow-none focus:ring-0"
                   >
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
@@ -577,7 +616,7 @@ export function TaskLookup({
                   value={priorityFilter}
                   onValueChange={setPriorityFilter}
                 >
-                  <SelectTrigger className="bg-background/60 border-border/40 h-6 w-fit border px-2 text-[10px] font-semibold shadow-none focus:ring-0">
+                  <SelectTrigger className="bg-background/60 border-border/40 h-8 w-fit border px-2 text-xs font-semibold shadow-none focus:ring-0">
                     <SelectValue placeholder="Prioridade" />
                   </SelectTrigger>
                   <SelectContent align="end">
@@ -609,7 +648,7 @@ export function TaskLookup({
                     if (v === 'desc' || v === 'asc') setSortOrder(v)
                   }}
                 >
-                  <SelectTrigger className="bg-background/60 border-border/40 h-6 w-fit border px-2 text-[10px] font-semibold shadow-none focus:ring-0">
+                  <SelectTrigger className="bg-background/60 border-border/40 h-8 w-fit border px-2 text-xs font-semibold shadow-none focus:ring-0">
                     <div className="flex items-center gap-1.5">
                       <Clock className="h-3 w-3 opacity-50" />
                       <SelectValue placeholder="Ordem" />
@@ -650,8 +689,7 @@ export function TaskLookup({
           {/* Virtual Task List */}
           <div
             ref={setScrollElement}
-            className="scrollbar-thumb-muted/50 flex-1 scrollbar-thin overflow-y-auto"
-            style={{ height: '288px' }}
+            className="scrollbar-thumb-muted/50 min-h-0 flex-1 scrollbar-thin overflow-y-auto"
           >
             {allTasks.length > 0 ? (
               <div
@@ -740,28 +778,27 @@ export function TaskLookup({
 
                           {/* Task Information */}
                           <div className="min-w-0 flex-1 py-1">
-                            <div className="mb-0.5 flex items-center gap-1.5">
-                              <span className="bg-muted/70 text-foreground/80 border-border/30 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] font-semibold">
-                                {trackerIcon && (
+                            <TaskLookupTaskDetails
+                              id={cleanTaskId(task.sourceId || task.id)}
+                              title={task.title}
+                              icon={
+                                trackerIcon ? (
                                   <DynamicIcon
                                     name={trackerIcon}
                                     color={tResolved.badgeColor}
-                                    className="h-3 w-3 shrink-0"
+                                    className="size-4"
                                   />
-                                )}
-                                <span>
-                                  {cleanTaskId(task.sourceId || task.id)}
-                                </span>
-                              </span>
-                              <h4
-                                className="text-foreground truncate text-xs font-medium tracking-tight opacity-90"
-                                title={task.title}
-                              >
-                                {task.title}
-                              </h4>
-                            </div>
+                                ) : connObj?.logo ? (
+                                  <img
+                                    src={connObj.logo}
+                                    alt=""
+                                    className="size-4 rounded-xs object-contain"
+                                  />
+                                ) : undefined
+                              }
+                            />
 
-                            <div className="text-muted-foreground flex items-center gap-2 text-[9px] font-medium opacity-85">
+                            <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium">
                               {task.projectName && (
                                 <span className="text-foreground/70 flex max-w-[140px] items-center gap-1 truncate font-medium">
                                   <FolderKanban className="h-3 w-3 opacity-60" />
@@ -799,10 +836,7 @@ export function TaskLookup({
                                       className="h-2.5 w-2.5 rounded-xs object-contain"
                                     />
                                   )}
-                                  <span>
-                                    {connObj?.label ??
-                                      task.connectionInstanceId}
-                                  </span>
+                                  <span>{connObj?.label}</span>
                                 </Badge>
                               )}
 
@@ -819,10 +853,7 @@ export function TaskLookup({
                                 const roleMeta = myParticipant.role?.id
                                   ? metaLookup.roles.get(myParticipant.role.id)
                                   : null
-                                const roleName =
-                                  roleMeta?.name ||
-                                  (myParticipant.role as any)?.name ||
-                                  ''
+                                const roleName = roleMeta?.name
 
                                 return (
                                   <Badge

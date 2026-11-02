@@ -4,27 +4,31 @@ import type {
   CoreConnection,
   CoreTask,
 } from '@mr-tick/application'
+import { isDataSource } from '@mr-tick/shared/helpers'
 import type { MetadataItem } from '@mr-tick/shared/view-models'
 import {
-  AlertCircle,
-  ChevronsUpDown,
-  FolderKanban,
-  Loader2,
-  Search,
-  X,
-} from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+  QueryClient,
+  QueryClientContext,
+  QueryClientProvider,
+} from '@tanstack/react-query'
+import { CheckSquare2, ChevronsUpDown, Loader2, X } from 'lucide-react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
+import {
+  getTaskConnectionOption,
+  type TaskConnectionOption,
+} from '@/components/task-connection-select'
+import { TaskPopover } from '@/components/task-popover'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
   SelectContent,
@@ -33,7 +37,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useOptionalDataSourceConnections } from '@/contexts/DataSourceConnectionsContext'
 import { useHostBridge } from '@/hooks/use-host-bridge'
+import type { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 
 export interface AddonTaskDestinationControlProps {
   field: AddonSettingsTaskReferenceField
@@ -52,7 +58,15 @@ function makeTaskKey(
   return `${workspaceId}::${connectionInstanceId}::${taskId}`
 }
 
-export function AddonTaskDestinationControl({
+const defaultFallbackQueryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+    },
+  },
+})
+
+function AddonTaskDestinationControlInner({
   field,
   workspaceId,
   value,
@@ -61,6 +75,7 @@ export function AddonTaskDestinationControl({
   connectionInstanceId: explicitConnectionInstanceId,
 }: AddonTaskDestinationControlProps) {
   const bridge = useHostBridge()
+  const catalog = useOptionalDataSourceConnections()
 
   const [connections, setConnections] = useState<readonly CoreConnection[]>([])
   const [isLoadingConnections, setIsLoadingConnections] = useState(false)
@@ -80,6 +95,7 @@ export function AddonTaskDestinationControl({
       setSelectedConnectionId(explicitConnectionInstanceId)
       return
     }
+
     if (value && value.connectionInstanceId) {
       setSelectedConnectionId(value.connectionInstanceId)
     }
@@ -96,6 +112,7 @@ export function AddonTaskDestinationControl({
       setConnections([])
       return
     }
+
     if (!bridge?.core?.listConnections) {
       return
     }
@@ -109,7 +126,7 @@ export function AddonTaskDestinationControl({
     setConnectionsError(null)
 
     const response = await bridge.core.listConnections({
-      body: { workspaceId },
+      body: { workspaceId, capability: 'dataSource' },
     })
 
     if (activeConnectionsRequestRef.current !== requestToken) return
@@ -125,14 +142,44 @@ export function AddonTaskDestinationControl({
       return
     }
 
-    const connectedOnly = response.data.filter(
-      (c) =>
-        c.status === 'connected' &&
-        (c.capability === undefined || c.capability === 'dataSource'),
-    )
+    const connectedOnly = response.data.filter((c) => {
+      if (c.status !== 'connected') return false
+      if (c.capability === 'dataSource') return true
+      if (c.capability !== undefined) return false
+
+      if (
+        catalog &&
+        catalog.installedPlugins &&
+        catalog.installedPlugins.length > 0
+      ) {
+        const plugin = catalog.installedPlugins.find((p) => p.id === c.addonId)
+        if (plugin) {
+          return isDataSource(plugin.capabilities)
+        }
+      }
+
+      return false
+    })
+
     setConnections(connectedOnly)
     setIsLoadingConnections(false)
-  }, [bridge?.core, workspaceId])
+
+    if (!explicitConnectionInstanceId && !value?.connectionInstanceId) {
+      setSelectedConnectionId((current) => {
+        if (current) return current
+        for (const first of connectedOnly) {
+          return first.connectionInstanceId
+        }
+        return ''
+      })
+    }
+  }, [
+    bridge?.core,
+    catalog,
+    explicitConnectionInstanceId,
+    value?.connectionInstanceId,
+    workspaceId,
+  ])
 
   useEffect(() => {
     loadConnections()
@@ -147,11 +194,9 @@ export function AddonTaskDestinationControl({
   )
   const [isLoadingTasks, setIsLoadingTasks] = useState(false)
   const [isLoadingMoreTasks, setIsLoadingMoreTasks] = useState(false)
-  const [tasksError, setTasksError] = useState<string | null>(null)
 
   const [activities, setActivities] = useState<readonly MetadataItem[]>([])
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false)
-  const [metadataError, setMetadataError] = useState<string | null>(null)
 
   const knownTasksMap = useRef<Map<string, CoreTask>>(new Map())
   const [knownTaskRevision, setKnownTaskRevision] = useState(0)
@@ -172,9 +217,7 @@ export function AddonTaskDestinationControl({
       setTasks([])
       setHasMoreTasks(false)
       setNextTaskCursor(undefined)
-      setTasksError(null)
       setActivities([])
-      setMetadataError(null)
     }
   }, [currentIdentity])
 
@@ -195,18 +238,26 @@ export function AddonTaskDestinationControl({
 
       requestSequenceRef.current += 1
       const requestId = requestSequenceRef.current
-      const requestToken = `${workspaceId}::${selectedConnectionId}::${field.id}::${searchQuery}::${cursor ?? 'root'}::${requestId}`
+      const requestToken = `${workspaceId}::${selectedConnectionId}::${field.id}::${searchQuery}::${cursor ? cursor : 'root'}::${requestId}`
       activeTaskRequestRef.current = requestToken
 
       const isPagination = cursor !== undefined
-
       if (isPagination) {
         setIsLoadingMoreTasks(true)
       }
+
       if (!isPagination) {
         setIsLoadingTasks(true)
-        setTasksError(null)
       }
+
+      if (bridge.localSync?.request) {
+        await bridge.localSync.request({
+          action: 'status',
+          workspaceId,
+        })
+      }
+
+      if (activeTaskRequestRef.current !== requestToken) return
 
       const trimmedSearch = searchQuery.trim()
       const response = await bridge.core.listTasks({
@@ -222,15 +273,11 @@ export function AddonTaskDestinationControl({
       if (activeTaskRequestRef.current !== requestToken) return
 
       if (!response || !response.isSuccess || !response.data) {
-        const failureMsg =
-          response && response.error && response.error.length > 0
-            ? response.error
-            : 'Falha ao carregar tarefas'
         if (isPagination) {
           setIsLoadingMoreTasks(false)
           return
         }
-        setTasksError(failureMsg)
+
         setTasks([])
         setHasMoreTasks(false)
         setNextTaskCursor(undefined)
@@ -259,7 +306,13 @@ export function AddonTaskDestinationControl({
       setNextTaskCursor(data.nextCursor)
       setIsLoadingTasks(false)
     },
-    [bridge?.core, field.id, selectedConnectionId, workspaceId],
+    [
+      bridge?.core,
+      bridge?.localSync,
+      field.id,
+      selectedConnectionId,
+      workspaceId,
+    ],
   )
 
   const fetchMetadata = useCallback(async () => {
@@ -273,7 +326,15 @@ export function AddonTaskDestinationControl({
     activeMetadataRequestRef.current = requestToken
 
     setIsLoadingMetadata(true)
-    setMetadataError(null)
+
+    if (bridge.localSync?.request) {
+      await bridge.localSync.request({
+        action: 'status',
+        workspaceId,
+      })
+    }
+
+    if (activeMetadataRequestRef.current !== requestToken) return
 
     const response = await bridge.core.getMetadata({
       body: {
@@ -284,19 +345,27 @@ export function AddonTaskDestinationControl({
 
     if (activeMetadataRequestRef.current !== requestToken) return
 
-    if (!response || !response.isSuccess || !response.data) {
-      const failureMsg =
-        response && response.error && response.error.length > 0
-          ? response.error
-          : 'Falha ao carregar metadados'
-      setMetadataError(failureMsg)
+    if (
+      response &&
+      response.isSuccess &&
+      response.data &&
+      response.data.values &&
+      response.data.values.activities
+    ) {
+      setActivities(response.data.values.activities)
       setIsLoadingMetadata(false)
       return
     }
 
-    setActivities(response.data.values.activities)
+    setActivities([])
     setIsLoadingMetadata(false)
-  }, [bridge?.core, field.includeMetadata, selectedConnectionId, workspaceId])
+  }, [
+    bridge?.core,
+    bridge?.localSync,
+    field.includeMetadata,
+    selectedConnectionId,
+    workspaceId,
+  ])
 
   useEffect(() => {
     if (!selectedConnectionId) return
@@ -313,21 +382,31 @@ export function AddonTaskDestinationControl({
   }, [selectedConnectionId, field.includeMetadata, fetchMetadata])
 
   const fetchIndividualTask = useCallback(
-    async (targetTaskId: string) => {
-      if (!workspaceId || !selectedConnectionId || !targetTaskId) return
+    async (targetTaskId: string, targetConnectionId: string) => {
+      if (!workspaceId || !targetConnectionId || !targetTaskId) return
       if (!bridge?.core?.getTask) return
-      const key = makeTaskKey(workspaceId, selectedConnectionId, targetTaskId)
+
+      const key = makeTaskKey(workspaceId, targetConnectionId, targetTaskId)
       if (knownTasksMap.current.has(key)) return
 
       requestSequenceRef.current += 1
       const requestId = requestSequenceRef.current
-      const requestToken = `${workspaceId}::${selectedConnectionId}::${targetTaskId}::${requestId}`
+      const requestToken = `${workspaceId}::${targetConnectionId}::${targetTaskId}::${requestId}`
       activeGetTaskRequestRef.current = requestToken
+
+      if (bridge.localSync?.request) {
+        await bridge.localSync.request({
+          action: 'status',
+          workspaceId,
+        })
+      }
+
+      if (activeGetTaskRequestRef.current !== requestToken) return
 
       const response = await bridge.core.getTask({
         body: {
           workspaceId,
-          connectionInstanceId: selectedConnectionId,
+          connectionInstanceId: targetConnectionId,
           taskId: targetTaskId,
         },
       })
@@ -346,17 +425,21 @@ export function AddonTaskDestinationControl({
         setKnownTaskRevision((r) => r + 1)
       }
     },
-    [bridge?.core, selectedConnectionId, workspaceId],
+    [bridge?.core, bridge?.localSync, workspaceId],
   )
 
   useEffect(() => {
     if (value && value.taskId) {
-      fetchIndividualTask(value.taskId)
+      const targetConnectionId = value.connectionInstanceId
+        ? value.connectionInstanceId
+        : selectedConnectionId
+      fetchIndividualTask(value.taskId, targetConnectionId)
     }
-  }, [value, fetchIndividualTask])
+  }, [value, selectedConnectionId, fetchIndividualTask])
 
   const selectedTask = useMemo(() => {
     if (!value || !value.taskId) return null
+
     const key = makeTaskKey(
       value.workspaceId,
       value.connectionInstanceId,
@@ -364,37 +447,81 @@ export function AddonTaskDestinationControl({
     )
     const fromKnown = knownTasksMap.current.get(key)
     if (fromKnown) return fromKnown
+
     const fromList = tasks.find((t) => t.taskId === value.taskId)
     if (fromList) return fromList
+
     return null
   }, [value, tasks, knownTaskRevision])
 
-  const handleSelectTask = (task: CoreTask) => {
-    if (!workspaceId || !selectedConnectionId) return
+  const [draftActivityId, setDraftActivityId] = useState<string>('')
+  const [draftComment, setDraftComment] = useState<string>('')
 
-    knownTasksMap.current.set(
-      makeTaskKey(task.workspaceId, task.connectionInstanceId, task.taskId),
-      task,
-    )
+  useEffect(() => {
+    if (value && value.metadataValues) {
+      const actVal = value.metadataValues['activityId']
+      if (typeof actVal === 'string') {
+        setDraftActivityId(actVal)
+        return
+      }
+      if (typeof actVal === 'number') {
+        setDraftActivityId(String(actVal))
+        return
+      }
+    }
 
-    onChange({
-      workspaceId,
-      connectionInstanceId: selectedConnectionId,
-      taskId: task.taskId,
-      metadataValues: undefined,
-    })
-    setPopoverOpen(false)
-  }
+    setDraftActivityId('')
+  }, [value?.metadataValues?.activityId])
 
-  const handleClear = () => {
-    onChange(null)
-  }
+  useEffect(() => {
+    if (value && value.metadataValues) {
+      const commentVal = value.metadataValues['comment']
+      if (typeof commentVal === 'string') {
+        setDraftComment(commentVal)
+        return
+      }
+      if (typeof commentVal === 'number') {
+        setDraftComment(String(commentVal))
+        return
+      }
+    }
+
+    setDraftComment('')
+  }, [value?.metadataValues?.comment])
+
+  const currentActivityId = useMemo(() => {
+    if (!value || !value.metadataValues) return ''
+    const act = value.metadataValues['activityId']
+    if (typeof act === 'string') return act
+    return ''
+  }, [value])
+
+  const selectedActivityId = useMemo(() => {
+    if (draftActivityId) return draftActivityId
+    return currentActivityId
+  }, [draftActivityId, currentActivityId])
+
+  const currentComment = useMemo(() => {
+    if (!value || !value.metadataValues) return ''
+    const commentValue = value.metadataValues['comment']
+    if (typeof commentValue === 'string') return commentValue
+    return ''
+  }, [value])
+
+  const selectedComment = useMemo(() => {
+    if (draftComment) return draftComment
+    return currentComment
+  }, [draftComment, currentComment])
 
   const handleSelectActivity = (activityId: string) => {
+    setDraftActivityId(activityId)
+
     if (!value) return
+
     const currentMetadata = value.metadataValues
       ? { ...value.metadataValues }
       : {}
+
     if (!activityId) {
       delete currentMetadata.activityId
       const hasRemaining = Object.keys(currentMetadata).length > 0
@@ -414,12 +541,160 @@ export function AddonTaskDestinationControl({
     })
   }
 
-  const selectedActivityId = useMemo(() => {
-    if (!value || !value.metadataValues) return ''
-    const act = value.metadataValues['activityId']
-    if (typeof act === 'string') return act
-    return ''
-  }, [value])
+  const handleSelectComment = (comment: string) => {
+    setDraftComment(comment)
+
+    if (!value) return
+
+    const currentMetadata = value.metadataValues
+      ? { ...value.metadataValues }
+      : {}
+
+    if (!comment) {
+      delete currentMetadata.comment
+      const hasRemaining = Object.keys(currentMetadata).length > 0
+      onChange({
+        ...value,
+        metadataValues: hasRemaining ? currentMetadata : undefined,
+      })
+      return
+    }
+
+    onChange({
+      ...value,
+      metadataValues: {
+        ...currentMetadata,
+        comment,
+      },
+    })
+  }
+
+  const handleClear = () => {
+    setDraftActivityId('')
+    setDraftComment('')
+    onChange(null)
+  }
+
+  const handleSelectTask = useCallback(
+    (
+      task: SyncTaskRxDBDTO,
+      context?: { activityId?: string; comment?: string },
+    ) => {
+      if (!workspaceId) return
+
+      const connId = task.connectionInstanceId
+        ? task.connectionInstanceId
+        : selectedConnectionId
+      if (!connId) return
+
+      if (connId !== selectedConnectionId) {
+        setSelectedConnectionId(connId)
+      }
+
+      const pureTaskId = task.sourceId ? task.sourceId : task.id
+
+      if (task.title && task.status) {
+        const coreTask: CoreTask = {
+          workspaceId,
+          connectionInstanceId: connId,
+          taskId: pureTaskId,
+          dataSourceId: task.dataSourceId ? task.dataSourceId : '',
+          title: task.title,
+          status: task.status,
+          projectName: task.projectName ? task.projectName : undefined,
+          createdAt: task.createdAt ? task.createdAt : new Date().toISOString(),
+          updatedAt: task.updatedAt ? task.updatedAt : new Date().toISOString(),
+        }
+        knownTasksMap.current.set(
+          makeTaskKey(workspaceId, connId, pureTaskId),
+          coreTask,
+        )
+      }
+
+      const effectiveActivityId =
+        context && context.activityId ? context.activityId : selectedActivityId
+      const effectiveComment =
+        context && context.comment ? context.comment : selectedComment
+
+      const meta: Record<string, string> = {}
+      if (effectiveActivityId) {
+        meta.activityId = effectiveActivityId
+      }
+      if (effectiveComment) {
+        meta.comment = effectiveComment
+      }
+      const hasMeta = Object.keys(meta).length > 0
+
+      onChange({
+        workspaceId,
+        connectionInstanceId: connId,
+        taskId: pureTaskId,
+        metadataValues: hasMeta ? meta : undefined,
+      })
+      setPopoverOpen(false)
+    },
+    [
+      onChange,
+      selectedActivityId,
+      selectedComment,
+      selectedConnectionId,
+      workspaceId,
+    ],
+  )
+
+  const selectedConnectionLogo = useMemo(() => {
+    const connId = value?.connectionInstanceId || selectedConnectionId
+    if (!connId) return undefined
+
+    const matched = connections.find((c) => c.connectionInstanceId === connId)
+    if (!matched) return undefined
+
+    const addon = catalog?.installedPlugins.find(
+      (p) => p.id === matched.addonId,
+    )
+    return addon?.logo
+  }, [
+    connections,
+    selectedConnectionId,
+    value?.connectionInstanceId,
+    catalog?.installedPlugins,
+  ])
+
+  const popoverTasks: SyncTaskRxDBDTO[] = useMemo(() => {
+    return tasks.map((t) => ({
+      id: `${t.connectionInstanceId}::${t.taskId}`,
+      sourceId: t.taskId,
+      connectionInstanceId: t.connectionInstanceId,
+      dataSourceId: t.dataSourceId,
+      title: t.title,
+      status: t.status,
+      projectName: t.projectName,
+      _deleted: false,
+      syncStatus: 'synced',
+      lastPulledAt: t.updatedAt,
+      lastPushedAt: null,
+      lastReconciledAt: null,
+      timeEntryIds: [],
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+    }))
+  }, [tasks])
+
+  const popoverActivities = useMemo(() => {
+    return activities.map((a) => ({ id: a.id, name: a.name }))
+  }, [activities])
+
+  const connectionOptions: readonly TaskConnectionOption[] = useMemo(() => {
+    return connections.map((connection) =>
+      getTaskConnectionOption({
+        id: connection.connectionInstanceId,
+        addon: catalog?.installedPlugins.find(
+          (addon) => addon.id === connection.addonId,
+        ),
+        identityName: connection.identity?.displayName,
+      }),
+    )
+  }, [connections, catalog?.installedPlugins])
 
   return (
     <div
@@ -433,109 +708,89 @@ export function AddonTaskDestinationControl({
         )}
       </div>
 
-      {!explicitConnectionInstanceId && (
-        <div className="flex flex-col gap-1">
-          <span className="text-muted-foreground text-xs">
-            Instância de Conexão:
-          </span>
-          {isLoadingConnections && <Skeleton className="h-8 w-full rounded" />}
-          {!isLoadingConnections && connectionsError && (
-            <p className="text-destructive text-xs">{connectionsError}</p>
-          )}
-          {!isLoadingConnections && !connectionsError && (
-            <Select
-              value={selectedConnectionId}
-              onValueChange={(val) => {
-                setSelectedConnectionId(val)
-                onChange(null)
-              }}
-              disabled={disabled}
-            >
-              <SelectTrigger
-                className="h-8 w-full text-xs"
-                data-testid={`task-dest-connection-select-${field.id}`}
-              >
-                <SelectValue placeholder="Selecione a conexão do datasource" />
-              </SelectTrigger>
-              <SelectContent>
-                {connections.map((c) => (
-                  <SelectItem
-                    key={c.connectionInstanceId}
-                    value={c.connectionInstanceId}
-                    className="text-xs"
-                  >
-                    {c.identity?.displayName || c.connectionInstanceId}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
+      {connectionsError && (
+        <p className="text-destructive text-xs">{connectionsError}</p>
       )}
 
       {value && value.taskId ? (
-        <Card
+        <div
           data-testid={`addon-task-selected-card-${field.id}`}
-          className="border-primary/30 bg-primary/5 shadow-none"
+          className="border-border/40 bg-card/60 flex flex-col gap-2 rounded-lg border p-2.5 shadow-2xs"
         >
-          <CardContent className="flex flex-col gap-2 p-3">
-            <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-1 items-start gap-2">
+              {selectedConnectionLogo ? (
+                <img
+                  src={selectedConnectionLogo}
+                  alt=""
+                  className="mt-0.5 size-4 shrink-0 rounded-xs object-contain"
+                />
+              ) : (
+                <CheckSquare2 className="text-primary mt-0.5 size-4 shrink-0" />
+              )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <Badge variant="outline" className="font-mono text-[10px]">
+                  <Badge
+                    variant="outline"
+                    className="border-border/30 bg-muted/40 text-muted-foreground font-mono text-[10px] font-normal"
+                  >
                     ID: {value.taskId}
                   </Badge>
                   {selectedTask && (
-                    <Badge variant="secondary" className="text-[10px]">
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] font-normal"
+                    >
                       {selectedTask.status.name}
                     </Badge>
                   )}
                   {selectedTask && selectedTask.projectName && (
-                    <Badge variant="outline" className="text-[10px]">
+                    <Badge
+                      variant="outline"
+                      className="border-border/30 text-[10px] font-normal"
+                    >
                       {selectedTask.projectName}
                     </Badge>
                   )}
                 </div>
-                <p className="text-foreground mt-1 truncate text-xs font-semibold">
+                <p className="text-foreground mt-1 text-xs leading-snug font-medium break-words">
                   {selectedTask
                     ? selectedTask.title
                     : `Tarefa #${value.taskId}`}
                 </p>
               </div>
-
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={disabled}
-                data-testid={`addon-task-clear-btn-${field.id}`}
-                onClick={handleClear}
-                className="text-muted-foreground hover:text-foreground size-6 shrink-0"
-                title="Desvincular tarefa"
-              >
-                <X className="size-3.5" />
-              </Button>
             </div>
 
-            {field.includeMetadata && (
-              <div className="flex flex-col gap-1.5 border-t pt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={disabled}
+              data-testid={`addon-task-clear-btn-${field.id}`}
+              onClick={handleClear}
+              className="text-muted-foreground hover:text-foreground size-6 shrink-0 rounded-md"
+              title="Desvincular tarefa"
+            >
+              <X className="size-3.5" />
+            </Button>
+          </div>
+
+          {field.includeMetadata && (
+            <div className="border-border/30 flex flex-col gap-2.5 border-t pt-2">
+              <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground text-[11px] font-medium">
                   Atividade / Categoria (opcional):
                 </span>
                 {isLoadingMetadata && <Skeleton className="h-7 w-48 rounded" />}
-                {!isLoadingMetadata && metadataError && (
-                  <p className="text-destructive text-[11px]">
-                    {metadataError}
-                  </p>
-                )}
-                {!isLoadingMetadata && !metadataError && (
+                {!isLoadingMetadata && (
                   <Select
                     value={selectedActivityId}
                     onValueChange={handleSelectActivity}
                     disabled={disabled}
                   >
                     <SelectTrigger
-                      className="h-7 w-full text-xs"
+                      size="sm"
+                      className="border-input/40 h-8 w-full text-xs"
                       data-testid={`addon-task-activity-select-${field.id}`}
                     >
                       <SelectValue placeholder="Selecione uma atividade..." />
@@ -554,127 +809,107 @@ export function AddonTaskDestinationControl({
                   </Select>
                 )}
               </div>
-            )}
-          </CardContent>
-        </Card>
+
+              <div className="flex flex-col gap-1">
+                <span className="text-muted-foreground text-[11px] font-medium">
+                  Comentário (opcional):
+                </span>
+                <Input
+                  value={selectedComment}
+                  onChange={(e) => handleSelectComment(e.target.value)}
+                  disabled={disabled}
+                  placeholder="Descreva o trabalho realizado..."
+                  className="border-input/40 h-8 w-full text-xs"
+                  data-testid={`addon-task-comment-input-${field.id}`}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
-        <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-          <PopoverTrigger asChild>
+        <TaskPopover
+          open={popoverOpen}
+          onOpenChange={setPopoverOpen}
+          side="bottom"
+          align="start"
+          title={field.label ? field.label : 'Selecionar Tarefa'}
+          hideComment={false}
+          allowLocal={false}
+          workspaceId={workspaceId}
+          connections={connectionOptions}
+          selectedConnectionId={selectedConnectionId}
+          onConnectionChange={(connId) => {
+            setSelectedConnectionId(connId)
+            if (value && value.connectionInstanceId !== connId) {
+              onChange(null)
+            }
+          }}
+          selectedActivity={selectedActivityId}
+          onActivityChange={handleSelectActivity}
+          description={selectedComment}
+          onDescriptionChange={handleSelectComment}
+          onSelectTask={handleSelectTask}
+          tasks={popoverTasks}
+          activities={activities.length > 0 ? popoverActivities : undefined}
+          loadingTasks={isLoadingTasks}
+          footer={
+            hasMoreTasks ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={isLoadingMoreTasks}
+                data-testid={`addon-task-load-more-${field.id}`}
+                onClick={() => fetchTasks(searchTerm, nextTaskCursor)}
+                className="text-muted-foreground h-8 w-full text-xs"
+              >
+                {isLoadingMoreTasks && (
+                  <Loader2 className="mr-1 size-3 animate-spin" />
+                )}
+                Carregar mais
+              </Button>
+            ) : undefined
+          }
+          searchInputTestId={`addon-task-search-input-${field.id}`}
+          onSearchChange={(query) => {
+            setSearchTerm(query)
+            fetchTasks(query)
+          }}
+          getTestId={(task) =>
+            `addon-task-option-${task.sourceId ? task.sourceId : task.id}`
+          }
+          trigger={
             <Button
               type="button"
               variant="outline"
               role="combobox"
               aria-expanded={popoverOpen}
-              disabled={disabled || !selectedConnectionId}
+              disabled={disabled}
               data-testid={`addon-task-destination-trigger-${field.id}`}
-              className="text-muted-foreground h-9 w-full justify-between text-xs font-normal"
+              className="text-muted-foreground border-input/40 h-8.5 w-full justify-between text-xs font-normal"
             >
               <span>Selecione uma tarefa de destino...</span>
               <ChevronsUpDown className="ml-2 size-3.5 shrink-0 opacity-50" />
             </Button>
-          </PopoverTrigger>
-
-          <PopoverContent className="w-[340px] p-2" align="start">
-            <div className="relative mb-2">
-              <Search className="text-muted-foreground absolute top-2.5 left-2.5 size-3.5" />
-              <Input
-                type="text"
-                placeholder="Pesquisar por título ou ID..."
-                value={searchTerm}
-                data-testid={`addon-task-search-input-${field.id}`}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-8 pl-8 text-xs"
-              />
-            </div>
-
-            {isLoadingTasks && (
-              <div
-                className="space-y-1.5 p-2"
-                data-testid={`addon-task-loading-${field.id}`}
-              >
-                <Skeleton className="h-7 w-full rounded" />
-                <Skeleton className="h-7 w-full rounded" />
-                <Skeleton className="h-7 w-full rounded" />
-              </div>
-            )}
-
-            {!isLoadingTasks && tasksError && (
-              <div
-                data-testid={`addon-task-error-${field.id}`}
-                className="border-destructive/30 bg-destructive/10 text-destructive flex items-center gap-2 rounded-md border p-2.5 text-xs"
-              >
-                <AlertCircle className="size-4 shrink-0" />
-                <p className="flex-1 text-[11px]">{tasksError}</p>
-              </div>
-            )}
-
-            {!isLoadingTasks && !tasksError && tasks.length === 0 && (
-              <div
-                data-testid={`addon-task-empty-${field.id}`}
-                className="text-muted-foreground flex flex-col items-center justify-center p-4 text-center text-xs"
-              >
-                <FolderKanban className="mb-1 size-6 opacity-30" />
-                <p>Nenhuma tarefa encontrada.</p>
-              </div>
-            )}
-
-            {!isLoadingTasks && !tasksError && tasks.length > 0 && (
-              <ScrollArea className="max-h-56">
-                <div className="space-y-1 p-0.5">
-                  {tasks.map((task) => (
-                    <button
-                      key={task.taskId}
-                      type="button"
-                      onClick={() => handleSelectTask(task)}
-                      data-testid={`addon-task-option-${task.taskId}`}
-                      className="hover:bg-muted/70 flex w-full cursor-pointer flex-col rounded p-2 text-left text-xs transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-muted-foreground font-mono text-[10px]">
-                          #{task.taskId}
-                        </span>
-                        <Badge
-                          variant="secondary"
-                          className="px-1 py-0 text-[9px]"
-                        >
-                          {task.status.name}
-                        </Badge>
-                      </div>
-                      <p className="text-foreground mt-0.5 truncate font-medium">
-                        {task.title}
-                      </p>
-                      {task.projectName && (
-                        <p className="text-muted-foreground truncate text-[10px]">
-                          {task.projectName}
-                        </p>
-                      )}
-                    </button>
-                  ))}
-
-                  {hasMoreTasks && (
-                    <div className="pt-1 pb-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={isLoadingMoreTasks}
-                        data-testid={`addon-task-load-more-${field.id}`}
-                        onClick={() => fetchTasks(searchTerm, nextTaskCursor)}
-                        className="text-muted-foreground h-7 w-full text-xs"
-                      >
-                        {isLoadingMoreTasks ? (
-                          <Loader2 className="mr-1 size-3 animate-spin" />
-                        ) : null}
-                        Carregar mais
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            )}
-          </PopoverContent>
-        </Popover>
+          }
+        />
       )}
     </div>
   )
+}
+
+export function AddonTaskDestinationControl(
+  props: AddonTaskDestinationControlProps,
+) {
+  const queryClientInContext = useContext(QueryClientContext)
+
+  if (!queryClientInContext) {
+    return (
+      <QueryClientProvider client={defaultFallbackQueryClient}>
+        <AddonTaskDestinationControlInner {...props} />
+      </QueryClientProvider>
+    )
+  }
+
+  return <AddonTaskDestinationControlInner {...props} />
 }

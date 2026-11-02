@@ -908,4 +908,161 @@ describe('AddonDynamicSelectControl', () => {
     // Presentation must still be preserved for static source
     expect(trigger).toHaveTextContent('Brasil · Brasília')
   })
+
+  it('resolves presentation in background when mounted with a pre-registered dynamic value while closed', async () => {
+    const resolveSettingsOptions = vi.fn().mockResolvedValue({
+      isSuccess: true,
+      data: {
+        availability: 'available',
+        options: [
+          {
+            label: 'Comunidade Principal',
+            value: '1294040636718317618',
+            group: { id: 'grp-guilds', label: 'Servidores' },
+            imageUrl:
+              'https://cdn.discordapp.com/icons/1294040636718317618/icon.png',
+          },
+        ],
+        hasMore: false,
+      },
+    })
+
+    vi.mocked(useHostBridge).mockReturnValue({
+      addons: { resolveSettingsOptions },
+    } as unknown as ReturnType<typeof useHostBridge>)
+
+    const field: AddonSettingsSelectField = {
+      id: 'guild',
+      type: 'select',
+      label: 'Servidor',
+      source: {
+        kind: 'dynamic',
+        providerId: 'discord.guilds',
+      },
+    }
+
+    render(
+      <AddonDynamicSelectControl
+        field={field}
+        addonId="discord-observer"
+        scope={{ kind: 'workspace', workspaceId: 'ws-1' }}
+        fieldAddress={{ path: [{ kind: 'field', fieldId: 'guild' }] }}
+        value="1294040636718317618"
+        onChange={vi.fn()}
+        draftValues={{ guild: '1294040636718317618' }}
+      />,
+    )
+
+    // Trigger initially resolves in the background and updates presentation
+    await waitFor(() => {
+      const trigger = screen.getByTestId('addon-dynamic-select-guild')
+      expect(trigger).toHaveTextContent('Servidores · Comunidade Principal')
+    })
+
+    expect(resolveSettingsOptions).toHaveBeenCalledTimes(1)
+  })
+
+  it('resolves presentation in background for multiselect when mounted with pre-registered values', async () => {
+    const resolveSettingsOptions = vi.fn().mockResolvedValue({
+      isSuccess: true,
+      data: {
+        availability: 'available',
+        options: [
+          {
+            label: 'Canal Dev',
+            value: 'chan-101',
+            group: { id: 'dev-cat', label: 'Engenharia' },
+          },
+          {
+            label: 'Canal QA',
+            value: 'chan-102',
+            group: { id: 'qa-cat', label: 'Qualidade' },
+          },
+        ],
+        hasMore: false,
+      },
+    })
+
+    vi.mocked(useHostBridge).mockReturnValue({
+      addons: { resolveSettingsOptions },
+    } as unknown as ReturnType<typeof useHostBridge>)
+
+    const multiField = {
+      id: 'voiceChannels',
+      type: 'multiselect' as const,
+      label: 'Canais de Voz',
+      source: {
+        kind: 'dynamic' as const,
+        providerId: 'discord.channels',
+      },
+    }
+
+    render(
+      <AddonDynamicSelectControl
+        field={multiField}
+        addonId="discord-observer"
+        scope={{ kind: 'workspace', workspaceId: 'ws-1' }}
+        fieldAddress={{ path: [{ kind: 'field', fieldId: 'voiceChannels' }] }}
+        value={['chan-101', 'chan-102']}
+        onChange={vi.fn()}
+        draftValues={{}}
+      />,
+    )
+
+    await waitFor(() => {
+      const trigger = screen.getByTestId('addon-dynamic-select-voiceChannels')
+      expect(trigger).toHaveTextContent('Engenharia · Canal Dev')
+      expect(trigger).toHaveTextContent('Qualidade · Canal QA')
+    })
+
+    expect(resolveSettingsOptions).toHaveBeenCalledTimes(1)
+  })
+
+  it('matches presentation even when value is provided as number and option as string', async () => {
+    const resolveSettingsOptions = vi.fn().mockResolvedValue({
+      isSuccess: true,
+      data: {
+        availability: 'available',
+        options: [
+          {
+            label: 'Servidor dos Devs',
+            value: '1294040636718317618',
+            group: { id: 'grp-1', label: 'Servidores' },
+          },
+        ],
+        hasMore: false,
+      },
+    })
+
+    vi.mocked(useHostBridge).mockReturnValue({
+      addons: { resolveSettingsOptions },
+    } as unknown as ReturnType<typeof useHostBridge>)
+
+    const field: AddonSettingsSelectField = {
+      id: 'guild',
+      type: 'select',
+      label: 'Servidor',
+      source: {
+        kind: 'dynamic',
+        providerId: 'discord.guilds',
+      },
+    }
+
+    render(
+      <AddonDynamicSelectControl
+        field={field}
+        addonId="discord-observer"
+        scope={{ kind: 'workspace', workspaceId: 'ws-1' }}
+        fieldAddress={{ path: [{ kind: 'field', fieldId: 'guild' }] }}
+        value="1294040636718317618"
+        onChange={vi.fn()}
+        draftValues={{}}
+      />,
+    )
+
+    await waitFor(() => {
+      const trigger = screen.getByTestId('addon-dynamic-select-guild')
+      expect(trigger).toHaveTextContent('Servidores · Servidor dos Devs')
+    })
+  })
 })

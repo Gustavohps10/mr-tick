@@ -406,9 +406,20 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
     )
     if (connection === undefined)
       return coreFailure(AppError.NotFound('CONNECTION_NOT_FOUND'))
-    const executor = this.workspaces.get(input.workspaceId)
+    let executor = this.workspaces.get(input.workspaceId)
+    if (executor === undefined) {
+      const pending = this.openings.get(input.workspaceId)
+      if (pending !== undefined) {
+        const opened = await pending
+        if (opened.isSuccess()) {
+          executor = opened.success
+        }
+      }
+    }
+
     if (executor === undefined)
       return coreFailure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE'))
+    this.touchAccess(input.workspaceId)
     const result = await executor.queryCore(input, connection.addonId)
     if (result.isFailure()) return coreFailure(result.failure)
     const afterRead = this.admissionError(input.workspaceId)
