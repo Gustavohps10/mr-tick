@@ -74,6 +74,8 @@ test.describe('E2E - Criação de Instâncias de Data Source com Schema Dinâmic
     )
     await expect(passwordInput).toBeVisible({ timeout: 5000 })
     await expect(passwordInput).toHaveAttribute('type', 'password')
+    await expect(passwordInput).toHaveValue('')
+    await passwordInput.fill('123')
     await expect(passwordInput).toHaveValue('123')
 
     // Valida que syncInterval e botões de mapeamento NÃO existem no modal de conexão

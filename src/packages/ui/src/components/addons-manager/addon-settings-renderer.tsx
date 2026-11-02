@@ -59,6 +59,7 @@ import {
   DataSourceConnectionsProvider,
   useDataSourceConnections,
 } from '@/contexts/DataSourceConnectionsContext'
+import { EnvironmentContext } from '@/contexts/EnvironmentContext'
 import { WorkspaceContext } from '@/contexts/WorkspaceContext'
 import { useHostBridge } from '@/hooks/use-host-bridge'
 import { cn } from '@/lib/utils'
@@ -195,6 +196,7 @@ function WorkspaceSubSidebarSettingsManager({
   hideHeader?: boolean
 }) {
   const bridge = useHostBridge()
+  const environmentContext = useContext(EnvironmentContext)
   const workspaceContext = useContext(WorkspaceContext)
   const activeRouteWorkspaceId = workspaceContext?.workspace?.id
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('')
@@ -432,12 +434,14 @@ function WorkspaceSubSidebarSettingsManager({
             }}
           >
             <DataSourceConnectionsProvider>
-              {activeWorkspace.id !== activeRouteWorkspaceId && (
-                <SyncProvider>
-                  {renderWorkspaceCapabilityContent(activeWorkspace)}
-                </SyncProvider>
-              )}
-              {activeWorkspace.id === activeRouteWorkspaceId &&
+              {environmentContext !== null &&
+                activeWorkspace.id !== activeRouteWorkspaceId && (
+                  <SyncProvider>
+                    {renderWorkspaceCapabilityContent(activeWorkspace)}
+                  </SyncProvider>
+                )}
+              {(environmentContext === null ||
+                activeWorkspace.id === activeRouteWorkspaceId) &&
                 renderWorkspaceCapabilityContent(activeWorkspace)}
             </DataSourceConnectionsProvider>
           </WorkspaceContext.Provider>
