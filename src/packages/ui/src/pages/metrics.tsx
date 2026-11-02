@@ -155,21 +155,14 @@ const getEntriesForRange = async (
   }
 
   if (dataSourceIds && dataSourceIds.length > 0) {
-    selector.dataSourceId = { $in: dataSourceIds }
+    selector.connectionInstanceId = { $in: dataSourceIds }
   }
-
-  console.log(
-    '[MetricsLog] getEntriesForRange selector:',
-    JSON.stringify(selector),
-  )
 
   const result = await db.timeEntries.find({ selector }).exec()
 
-  console.log(
-    `[MetricsLog] getEntriesForRange — Found ${result.length} entries`,
+  return (result as unknown as SyncTimeEntryRxDBDTO[]).filter(
+    (entry) => !entry._deleted || (entry._deleted as unknown) === '0',
   )
-
-  return result as unknown as SyncTimeEntryRxDBDTO[]
 }
 
 // #endregion
@@ -411,17 +404,15 @@ function EffortIntelligenceSection({ data }: { data: EffortIntelligenceData }) {
               config={effortIntelligenceChartConfig}
               className="h-12 w-full"
             >
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data.consistencyData}>
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="var(--chart-2)"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <LineChart data={data.consistencyData}>
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="var(--chart-2)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
             </ChartContainer>
           ) : (
             <div className="flex h-12 items-center">
@@ -460,46 +451,44 @@ function FocusAnalysisSection({ data }: { data: FocusAnalysisDataPoint[] }) {
       </CardHeader>
       <CardContent>
         <ChartContainer config={focusChartConfig} className="h-[240px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={data}
-              margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-            >
-              <XAxis
-                dataKey="date"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
-                tickMargin={8}
-              />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
-                tickMargin={8}
-                tickFormatter={(value: number) => `${value}h`}
-              />
-              <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    labelFormatter={(value) => `Data: ${value}`}
-                  />
-                }
-              />
-              <Bar
-                dataKey="deepWork"
-                stackId="a"
-                fill="var(--chart-1)"
-                radius={[0, 0, 0, 0]}
-              />
-              <Bar
-                dataKey="fragmented"
-                stackId="a"
-                fill="var(--chart-4)"
-                radius={[4, 4, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+          <BarChart
+            data={data}
+            margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+          >
+            <XAxis
+              dataKey="date"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
+              tickMargin={8}
+            />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
+              tickMargin={8}
+              tickFormatter={(value: number) => `${value}h`}
+            />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  labelFormatter={(value) => `Data: ${value}`}
+                />
+              }
+            />
+            <Bar
+              dataKey="deepWork"
+              stackId="a"
+              fill="var(--chart-1)"
+              radius={[0, 0, 0, 0]}
+            />
+            <Bar
+              dataKey="fragmented"
+              stackId="a"
+              fill="var(--chart-4)"
+              radius={[4, 4, 0, 0]}
+            />
+          </BarChart>
         </ChartContainer>
 
         <div className="mt-4 flex items-center justify-center gap-6">
@@ -537,38 +526,32 @@ function SessionDistributionSection({
           config={sessionChartConfig}
           className="h-[200px] w-full"
         >
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={data}
-              margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-            >
-              <XAxis
-                dataKey="range"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
-                tickMargin={8}
-              />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
-                tickMargin={8}
-              />
-              <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    labelFormatter={(value) => `Duração: ${value}`}
-                  />
-                }
-              />
-              <Bar
-                dataKey="count"
-                fill="var(--chart-2)"
-                radius={[4, 4, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+          <BarChart
+            data={data}
+            margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+          >
+            <XAxis
+              dataKey="range"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
+              tickMargin={8}
+            />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
+              tickMargin={8}
+            />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  labelFormatter={(value) => `Duração: ${value}`}
+                />
+              }
+            />
+            <Bar dataKey="count" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
+          </BarChart>
         </ChartContainer>
 
         <div className="mt-4 grid grid-cols-5 gap-2 text-center">
@@ -721,40 +704,35 @@ async function fetchSummaryData(
   const weekStart = startOfWeek(now, { weekStartsOn: 1 })
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 })
   const monthStart = startOfMonth(now)
+  const queryMonthStart = new Date(monthStart.getTime() - 24 * 60 * 60 * 1000)
   const todayStr = format(now, 'yyyy-MM-dd')
+  const currentMonthStr = format(now, 'yyyy-MM')
 
   const selector: MangoQuerySelector<SyncTimeEntryRxDBDTO> = {
-    startDate: { $gte: monthStart.toISOString() },
+    startDate: { $gte: queryMonthStart.toISOString() },
   }
 
   if (dataSourceIds && dataSourceIds.length > 0) {
-    selector.dataSourceId = { $in: dataSourceIds }
+    selector.connectionInstanceId = { $in: dataSourceIds }
   }
-
-  console.log(
-    '[MetricsLog] fetchSummaryData selector:',
-    JSON.stringify(selector),
-  )
 
   const entries = await db.timeEntries.find({ selector }).exec()
 
-  console.log(`[MetricsLog] fetchSummaryData — Found ${entries.length} entries`)
+  const result = (entries as unknown as SyncTimeEntryRxDBDTO[])
+    .filter((entry) => !entry._deleted || (entry._deleted as unknown) === '0')
+    .reduce(
+      (acc, entry) => {
+        if (!entry.startDate) return acc
+        const entryDate = parseUTCDate(entry.startDate)
+        const hours = Number(entry.timeSpent ?? 0)
 
-  const result = (entries as unknown as SyncTimeEntryRxDBDTO[]).reduce(
-    (acc, entry) => {
-      if (!entry.startDate) return acc
-      const entryDate = parseUTCDate(entry.startDate)
-      const hours = Number(entry.timeSpent ?? 0)
-
-      if (format(entryDate, 'yyyy-MM-dd') === todayStr) acc.today += hours
-      if (entryDate >= weekStart && entryDate <= weekEnd) acc.week += hours
-      acc.month += hours
-      return acc
-    },
-    { today: 0, week: 0, month: 0 },
-  )
-
-  console.log('[MetricsLog] fetchSummaryData — result:', result)
+        if (format(entryDate, 'yyyy-MM-dd') === todayStr) acc.today += hours
+        if (entryDate >= weekStart && entryDate <= weekEnd) acc.week += hours
+        if (format(entryDate, 'yyyy-MM') === currentMonthStr) acc.month += hours
+        return acc
+      },
+      { today: 0, week: 0, month: 0 },
+    )
 
   return result
 }
@@ -1441,13 +1419,15 @@ export function Metrics() {
             name?: string
             provider?: string
             dataSourceId?: string
+            addonId?: string
           }[]
         }
       )?.connections || []
+
     return Array.isArray(connections)
       ? connections.map((c) => ({
-          id: c.dataSourceId ?? c.id,
-          label: c.name || c.provider || c.id,
+          id: c.id,
+          label: c.name || c.addonId || c.provider || c.id,
         }))
       : []
   }, [workspace])
@@ -1460,8 +1440,9 @@ export function Metrics() {
       selectedSources.length === 0 ||
       availableDataSources.length === 0
     ) {
-      return availableDataSources.map((s) => s.id)
+      return undefined
     }
+
     return selectedSources
   }, [selectedSources, availableDataSources])
 
@@ -2060,124 +2041,122 @@ export function Metrics() {
                       }}
                       className="h-[250px] w-full"
                     >
-                      <ResponsiveContainer width="100%" height="100%">
-                        {(() => {
-                          const today = startOfToday()
-                          const adjustedData =
-                            timelineQuery.data.timelineData.map((item) => {
-                              const itemDate = parseISO(item.date)
-                              if (isAfter(itemDate, today))
-                                return { ...item, dailyHours: null }
-                              return item
-                            })
+                      {(() => {
+                        const today = startOfToday()
+                        const adjustedData =
+                          timelineQuery.data.timelineData.map((item) => {
+                            const itemDate = parseISO(item.date)
+                            if (isAfter(itemDate, today))
+                              return { ...item, dailyHours: null }
+                            return item
+                          })
 
-                          return (
-                            <LineChart
-                              data={adjustedData}
-                              style={{ cursor: 'pointer' }}
-                              onClick={(data) => {
-                                if (
-                                  data?.activePayload &&
-                                  data.activePayload.length > 0
-                                ) {
-                                  const clickedDate = (
-                                    data.activePayload[0].payload as {
-                                      date: string
-                                    }
-                                  ).date
-                                  navigate(
-                                    `/workspaces/${workspace?.id}/time-entries?from=${clickedDate}&to=${clickedDate}`,
-                                  )
-                                }
+                        return (
+                          <LineChart
+                            data={adjustedData}
+                            style={{ cursor: 'pointer' }}
+                            onClick={(data) => {
+                              if (
+                                data?.activePayload &&
+                                data.activePayload.length > 0
+                              ) {
+                                const clickedDate = (
+                                  data.activePayload[0].payload as {
+                                    date: string
+                                  }
+                                ).date
+                                navigate(
+                                  `/workspaces/${workspace?.id}/time-entries?from=${clickedDate}&to=${clickedDate}`,
+                                )
+                              }
+                            }}
+                            margin={{
+                              top: 5,
+                              right: 20,
+                              left: 0,
+                              bottom: 20,
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <CartesianGrid vertical={false} />
+                            <XAxis
+                              dataKey="date"
+                              tickLine={false}
+                              axisLine={false}
+                              height={50}
+                              interval="preserveStartEnd"
+                              tickFormatter={(value: string) => {
+                                const d = parseISO(value)
+                                return isValid(d) ? format(d, 'dd/MM') : value
                               }}
-                              margin={{
-                                top: 5,
-                                right: 20,
-                                left: 0,
-                                bottom: 20,
+                            />
+                            <YAxis
+                              tickFormatter={(value: number) =>
+                                `${value.toFixed(1)}h`
+                              }
+                              width={40}
+                              domain={[0, yAxisMax]}
+                              ticks={yAxisTicks}
+                            />
+                            <ChartTooltip
+                              cursor={false}
+                              content={
+                                <ChartTooltipContent
+                                  indicator="dot"
+                                  formatter={(value) => {
+                                    const hours = Number(value)
+                                    return `${hours.toFixed(1)}h (${formatHours(hours)})`
+                                  }}
+                                  labelFormatter={(label) => {
+                                    const d = parseISO(label)
+                                    return isValid(d)
+                                      ? format(d, 'EEEE, dd/MM', {
+                                          locale: ptBR,
+                                        })
+                                      : label
+                                  }}
+                                />
+                              }
+                            />
+                            <ReferenceLine
+                              y={chartSettings.hoursGoal}
+                              label={{
+                                value: `Meta ${chartSettings.hoursGoal}h`,
+                                position: 'insideTopRight',
+                                fill: 'orange',
+                                fontSize: 12,
                               }}
-                              className="cursor-pointer"
-                            >
-                              <CartesianGrid vertical={false} />
-                              <XAxis
-                                dataKey="date"
-                                tickLine={false}
-                                axisLine={false}
-                                height={50}
-                                interval="preserveStartEnd"
-                                tickFormatter={(value: string) => {
-                                  const d = parseISO(value)
-                                  return isValid(d) ? format(d, 'dd/MM') : value
-                                }}
-                              />
-                              <YAxis
-                                tickFormatter={(value: number) =>
-                                  `${value.toFixed(1)}h`
-                                }
-                                width={40}
-                                domain={[0, yAxisMax]}
-                                ticks={yAxisTicks}
-                              />
-                              <ChartTooltip
-                                cursor={false}
-                                content={
-                                  <ChartTooltipContent
-                                    indicator="dot"
-                                    formatter={(value) => {
-                                      const hours = Number(value)
-                                      return `${hours.toFixed(1)}h (${formatHours(hours)})`
-                                    }}
-                                    labelFormatter={(label) => {
-                                      const d = parseISO(label)
-                                      return isValid(d)
-                                        ? format(d, 'EEEE, dd/MM', {
-                                            locale: ptBR,
-                                          })
-                                        : label
-                                    }}
-                                  />
-                                }
-                              />
-                              <ReferenceLine
-                                y={chartSettings.hoursGoal}
-                                label={{
-                                  value: `Meta ${chartSettings.hoursGoal}h`,
-                                  position: 'insideTopRight',
-                                  fill: 'orange',
-                                  fontSize: 12,
-                                }}
-                                stroke="orange"
-                                strokeDasharray="3 3"
-                              />
-                              <ReferenceLine
-                                y={acceptableHours}
-                                label={{
-                                  value: `Aceitável ${acceptableHours.toFixed(1)}h`,
-                                  position: 'insideTopRight',
-                                  fill: 'var(--muted-foreground)',
-                                  fontSize: 12,
-                                  dy: 20,
-                                }}
-                                stroke="var(--muted-foreground)"
-                                strokeDasharray="4 4"
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="dailyHours"
-                                stroke="var(--color-dailyHours)"
-                                strokeWidth={2}
-                                dot={{
-                                  r: 4,
-                                  strokeWidth: 2,
-                                  fill: 'var(--primary)',
-                                  stroke: 'var(--background)',
-                                }}
-                                connectNulls={false}
-                              />
-                            </LineChart>
-                          )
-                        })()}
-                      </ResponsiveContainer>
+                              stroke="orange"
+                              strokeDasharray="3 3"
+                            />
+                            <ReferenceLine
+                              y={acceptableHours}
+                              label={{
+                                value: `Aceitável ${acceptableHours.toFixed(1)}h`,
+                                position: 'insideTopRight',
+                                fill: 'var(--muted-foreground)',
+                                fontSize: 12,
+                                dy: 20,
+                              }}
+                              stroke="var(--muted-foreground)"
+                              strokeDasharray="4 4"
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="dailyHours"
+                              stroke="var(--color-dailyHours)"
+                              strokeWidth={2}
+                              dot={{
+                                r: 4,
+                                strokeWidth: 2,
+                                fill: 'var(--primary)',
+                                stroke: 'var(--background)',
+                              }}
+                              connectNulls={false}
+                            />
+                          </LineChart>
+                        )
+                      })()}
                     </ChartContainer>
                   </CardContent>
                 </Card>
@@ -2363,31 +2342,27 @@ export function Metrics() {
                       config={avgHoursChartConfig}
                       className="h-[300px] w-full"
                     >
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={avgHoursAnalysis.chartData}
-                          margin={{ left: -20 }}
-                        >
-                          <CartesianGrid vertical={false} />
-                          <XAxis
-                            dataKey="day"
-                            tickLine={false}
-                            axisLine={false}
-                          />
-                          <YAxis
-                            tickFormatter={(value: number) => `${value}h`}
-                          />
-                          <ChartTooltip
-                            cursor={false}
-                            content={<ChartTooltipContent />}
-                          />
-                          <Bar
-                            dataKey="averageHours"
-                            fill="var(--color-averageHours)"
-                            radius={4}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <BarChart
+                        data={avgHoursAnalysis.chartData}
+                        margin={{ left: -20 }}
+                      >
+                        <CartesianGrid vertical={false} />
+                        <XAxis
+                          dataKey="day"
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis tickFormatter={(value: number) => `${value}h`} />
+                        <ChartTooltip
+                          cursor={false}
+                          content={<ChartTooltipContent />}
+                        />
+                        <Bar
+                          dataKey="averageHours"
+                          fill="var(--color-averageHours)"
+                          radius={4}
+                        />
+                      </BarChart>
                     </ChartContainer>
                   </CardContent>
                 </Card>
@@ -2420,41 +2395,37 @@ export function Metrics() {
                       config={overtimeChartConfig}
                       className="h-[300px] w-full"
                     >
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart
-                          data={timelineQuery.data.overtimeData.chartData}
-                          margin={{ left: -20, right: 10 }}
-                        >
-                          <CartesianGrid vertical={false} />
-                          <XAxis
-                            dataKey="day"
-                            tickLine={false}
-                            axisLine={false}
-                          />
-                          <YAxis
-                            tickFormatter={(value: number) =>
-                              `${value.toFixed(1)}h`
-                            }
-                          />
-                          <ChartTooltip
-                            cursor={false}
-                            content={
-                              <ChartTooltipContent
-                                formatter={(value) =>
-                                  formatHours(Number(value))
-                                }
-                              />
-                            }
-                          />
-                          <Line
-                            type="stepAfter"
-                            dataKey="overtimeHours"
-                            stroke="var(--primary)"
-                            strokeWidth={2}
-                            dot={false}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
+                      <LineChart
+                        data={timelineQuery.data.overtimeData.chartData}
+                        margin={{ left: -20, right: 10 }}
+                      >
+                        <CartesianGrid vertical={false} />
+                        <XAxis
+                          dataKey="day"
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          tickFormatter={(value: number) =>
+                            `${value.toFixed(1)}h`
+                          }
+                        />
+                        <ChartTooltip
+                          cursor={false}
+                          content={
+                            <ChartTooltipContent
+                              formatter={(value) => formatHours(Number(value))}
+                            />
+                          }
+                        />
+                        <Line
+                          type="stepAfter"
+                          dataKey="overtimeHours"
+                          stroke="var(--primary)"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </LineChart>
                     </ChartContainer>
                   </CardContent>
                 </Card>
@@ -2650,68 +2621,66 @@ export function Metrics() {
                           config={punctualityChartConfig}
                           className="h-[100px] w-full"
                         >
-                          <ResponsiveContainer width="100%" height="100%">
-                            <RechartsPieChart accessibilityLayer>
-                              <ChartTooltip
-                                cursor={false}
-                                content={({ active, payload }) => {
-                                  if (active && payload && payload.length) {
-                                    const total =
-                                      qualityQuery.data.punctualityData.reduce(
-                                        (acc, curr) => acc + curr.value,
-                                        0,
-                                      )
-                                    const data = payload[0]
-                                    const percentage =
-                                      total > 0
-                                        ? ((data.payload.value as number) /
-                                            total) *
-                                          100
-                                        : 0
-                                    return (
-                                      <div className="bg-background min-w-[12rem] rounded-lg border p-2 text-sm shadow-sm">
-                                        <div className="flex items-center gap-2 font-medium">
-                                          <div
-                                            className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                                            style={{
-                                              backgroundColor: data.payload
-                                                .fill as string,
-                                            }}
-                                          />
-                                          {data.name}
-                                        </div>
-                                        <div className="text-muted-foreground flex justify-between">
-                                          <span>
-                                            Contagem:{' '}
-                                            {data.payload.value as number}
-                                          </span>
-                                          <span>{percentage.toFixed(0)}%</span>
-                                        </div>
-                                      </div>
+                          <RechartsPieChart accessibilityLayer>
+                            <ChartTooltip
+                              cursor={false}
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  const total =
+                                    qualityQuery.data.punctualityData.reduce(
+                                      (acc, curr) => acc + curr.value,
+                                      0,
                                     )
-                                  }
-                                  return null
-                                }}
-                              />
-                              <Pie
-                                data={qualityQuery.data.punctualityData}
-                                dataKey="value"
-                                nameKey="name"
-                                innerRadius={30}
-                                outerRadius={40}
-                                strokeWidth={2}
-                              >
-                                {qualityQuery.data.punctualityData.map(
-                                  (entry) => (
-                                    <Cell
-                                      key={`cell-${entry.name}`}
-                                      fill={entry.fill}
-                                    />
-                                  ),
-                                )}
-                              </Pie>
-                            </RechartsPieChart>
-                          </ResponsiveContainer>
+                                  const data = payload[0]
+                                  const percentage =
+                                    total > 0
+                                      ? ((data.payload.value as number) /
+                                          total) *
+                                        100
+                                      : 0
+                                  return (
+                                    <div className="bg-background min-w-[12rem] rounded-lg border p-2 text-sm shadow-sm">
+                                      <div className="flex items-center gap-2 font-medium">
+                                        <div
+                                          className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                                          style={{
+                                            backgroundColor: data.payload
+                                              .fill as string,
+                                          }}
+                                        />
+                                        {data.name}
+                                      </div>
+                                      <div className="text-muted-foreground flex justify-between">
+                                        <span>
+                                          Contagem:{' '}
+                                          {data.payload.value as number}
+                                        </span>
+                                        <span>{percentage.toFixed(0)}%</span>
+                                      </div>
+                                    </div>
+                                  )
+                                }
+                                return null
+                              }}
+                            />
+                            <Pie
+                              data={qualityQuery.data.punctualityData}
+                              dataKey="value"
+                              nameKey="name"
+                              innerRadius={30}
+                              outerRadius={40}
+                              strokeWidth={2}
+                            >
+                              {qualityQuery.data.punctualityData.map(
+                                (entry) => (
+                                  <Cell
+                                    key={`cell-${entry.name}`}
+                                    fill={entry.fill}
+                                  />
+                                ),
+                              )}
+                            </Pie>
+                          </RechartsPieChart>
                         </ChartContainer>
                       </div>
                     </div>
