@@ -3,9 +3,12 @@ import { errorToPlainJson } from 'rxdb/plugins/utils'
 import { describe, expect, it } from 'vitest'
 
 import {
+  explainReplicationError,
   getReplicationErrorMessage,
   getReplicationFailures,
   isReplicationAuthError,
+  isReplicationForbidden,
+  isReplicationUnauthorized,
   ReplicationError,
 } from './ReplicationError'
 
@@ -52,5 +55,31 @@ describe('RxDB serialized provider failures', () => {
     expect(
       isReplicationAuthError(new Error('UNAUTHORIZED TOKEN_EXPIRED 401')),
     ).toBe(false)
+  })
+
+  it('differentiates 401 unauthorized from 403 forbidden with semantic explanations', () => {
+    const authFailure = { statusCode: 401, messageKey: 'INVALID_TOKEN' }
+    const forbiddenFailure = { statusCode: 403, messageKey: 'ACCESS_DENIED' }
+
+    const authError = new ReplicationError('auth', [authFailure])
+    const forbiddenError = new ReplicationError('forbidden', [forbiddenFailure])
+
+    expect(isReplicationUnauthorized(authError)).toBe(true)
+    expect(isReplicationForbidden(authError)).toBe(false)
+
+    expect(isReplicationUnauthorized(forbiddenError)).toBe(false)
+    expect(isReplicationForbidden(forbiddenError)).toBe(true)
+
+    const authExplanation = explainReplicationError(authError, 'pull')
+    expect(authExplanation.kind).toBe('unauthorized')
+    expect(authExplanation.statusCode).toBe(401)
+    expect(authExplanation.shortLabel).toContain('401')
+    expect(authExplanation.description).toContain('reconecte')
+
+    const forbiddenExplanation = explainReplicationError(forbiddenError, 'pull')
+    expect(forbiddenExplanation.kind).toBe('forbidden')
+    expect(forbiddenExplanation.statusCode).toBe(403)
+    expect(forbiddenExplanation.shortLabel).toContain('403')
+    expect(forbiddenExplanation.description).toContain('permissão')
   })
 })

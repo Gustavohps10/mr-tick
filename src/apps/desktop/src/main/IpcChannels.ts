@@ -36,8 +36,6 @@ export const IpcChannels = {
   SET_HEADERS: 'set-headers',
   GET_HEADERS: 'get-headers',
 
-  GET_CURRENT_USER: 'get-current-user',
-
   WORKSPACES_CREATE: 'workspaces:create',
   WORKSPACES_GET_ALL: 'workspaces:get-all',
   WORKSPACES_GET_BY_ID: 'workspaces:get-by-id',

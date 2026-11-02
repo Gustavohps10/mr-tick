@@ -1,7 +1,6 @@
 export * from './CoreHandler'
 export * from './DiagnosticsHandler'
 export * from './LicensingHandler'
-export * from './SessionHandler'
 export * from './TasksHandler'
 export * from './TimeEntriesHandler'
 export * from './TokenHandler'

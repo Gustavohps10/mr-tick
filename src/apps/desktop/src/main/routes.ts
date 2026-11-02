@@ -16,7 +16,6 @@ import {
   CoreHandler,
   DiagnosticsHandler,
   LicensingHandler,
-  SessionHandler,
   TasksHandler,
   TimeEntriesHandler,
   TokenHandler,
@@ -50,8 +49,6 @@ export function openIpcRoutes(
   const tokenHandler = serviceProvider.resolve<TokenHandler>('tokenHandler')
   const workspacesHandler =
     serviceProvider.resolve<WorkspacesHandler>('workspacesHandler')
-  const sessionHandler =
-    serviceProvider.resolve<SessionHandler>('sessionHandler')
   const metadataHandler =
     serviceProvider.resolve<MetadataHandler>('metadataHandler')
   const tasksHandler = serviceProvider.resolve<TasksHandler>('tasksHandler')
@@ -196,11 +193,6 @@ export function openIpcRoutes(
   )
   IpcHandler.register('WORKSPACES_DELETE', (e, req) =>
     workspacesHandler.delete(e, req),
-  )
-
-  // --- SESSION ---
-  IpcHandler.register('GET_CURRENT_USER', (e, req) =>
-    sessionHandler.getCurrentUser(e, req),
   )
 
   // --- SYNC / DATA PULL (Authenticated) ---

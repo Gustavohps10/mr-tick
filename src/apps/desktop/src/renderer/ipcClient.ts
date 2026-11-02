@@ -6,7 +6,6 @@ const ipcClient: IHostBridge = {
   localSync: window.api.localSync,
   localRuntime: window.api.localRuntime,
   workspaces: window.api.workspaces,
-  session: window.api.session,
   tasks: window.api.tasks,
   timeEntries: window.api.timeEntries,
   metadata: window.api.metadata,

@@ -14,6 +14,7 @@ import {
   DownloadCloud,
   Monitor,
   RefreshCcw,
+  ShieldAlert,
   Trash2,
   UploadCloud,
   User2,
@@ -57,8 +58,11 @@ import { useWorkspaceConflicts } from '@/hooks/queries/use-workspace-conflicts'
 import { cn } from '@/lib/utils'
 import { useConflictModalStore } from '@/stores/conflictModalStore'
 import {
+  explainReplicationError,
   getReplicationErrorMessage,
   isReplicationAuthError,
+  isReplicationForbidden,
+  isReplicationUnauthorized,
 } from '@/stores/sync-store/ReplicationError'
 import {
   ReplicationStatus,
@@ -162,8 +166,10 @@ export function Header({ className }: HeaderProps = {}) {
         icon: 'local',
       }
 
-    const anyAuthError = allStatuses.some((v) => isAuthError(v.error))
-    if (anyAuthError)
+    const anyUnauthorized = allStatuses.some((v) =>
+      isReplicationUnauthorized(v.error),
+    )
+    if (anyUnauthorized)
       return {
         status: 'auth_error',
         color: 'bg-amber-500',
@@ -171,8 +177,22 @@ export function Header({ className }: HeaderProps = {}) {
         icon: 'sync',
       }
 
+    const anyForbidden = allStatuses.some((v) =>
+      isReplicationForbidden(v.error),
+    )
+    if (anyForbidden)
+      return {
+        status: 'technical_error',
+        color: 'bg-destructive',
+        label: 'Permissão insuficiente',
+        icon: 'sync',
+      }
+
     const technicalError = allStatuses.find(
-      (v) => v.error && !isAuthError(v.error),
+      (v) =>
+        v.error &&
+        !isReplicationUnauthorized(v.error) &&
+        !isReplicationForbidden(v.error),
     )
     if (technicalError) {
       console.error(
@@ -654,86 +674,108 @@ export function Header({ className }: HeaderProps = {}) {
 
                           <div className="flex flex-col gap-1 px-1">
                             {syncEntries.map(({ key, status }) => {
-                              const isErr =
-                                (status.error && !isAuthError(status.error)) ||
+                              const explanation = status.error
+                                ? explainReplicationError(
+                                    status.error,
+                                    status.lastPushResult === 'error'
+                                      ? 'push'
+                                      : 'pull',
+                                  )
+                                : null
+
+                              const isUnauthorized =
+                                explanation?.kind === 'unauthorized' ||
+                                isReplicationUnauthorized(status.error)
+
+                              const isForbidden =
+                                explanation?.kind === 'forbidden' ||
+                                isReplicationForbidden(status.error)
+
+                              const isGeneralError =
+                                (status.error &&
+                                  !isUnauthorized &&
+                                  !isForbidden) ||
                                 status.lastPushResult === 'error' ||
                                 status.lastPullResult === 'error'
 
+                              const isAnyFailure =
+                                isUnauthorized || isForbidden || isGeneralError
+
                               let statusText = 'Sincronizado'
+                              let textClass = 'text-foreground/80'
                               let StatusIcon = (
                                 <CheckCircle
                                   size={12}
-                                  className="text-green-500"
+                                  className="shrink-0 text-green-500"
                                 />
                               )
 
                               if (status.isReconciling) {
                                 statusText = 'Conciliando...'
+                                textClass = 'text-destructive'
                                 StatusIcon = (
                                   <Trash2
                                     size={12}
-                                    className="text-destructive animate-pulse"
+                                    className="text-destructive shrink-0 animate-pulse"
                                   />
                                 )
                               } else if (status.isPulling) {
                                 statusText = 'Baixando...'
+                                textClass = 'text-blue-500'
                                 StatusIcon = (
                                   <LottieJumpArrow
                                     direction="down"
                                     animating={true}
                                     size={12}
-                                    className="text-blue-500"
+                                    className="shrink-0 text-blue-500"
                                   />
                                 )
                               } else if (status.isPushing) {
                                 statusText = 'Enviando...'
+                                textClass = 'text-amber-500'
                                 StatusIcon = (
                                   <LottieJumpArrow
                                     direction="up"
                                     animating={true}
                                     size={12}
-                                    className="text-amber-500"
+                                    className="shrink-0 text-amber-500"
                                   />
                                 )
-                              } else if (isErr) {
-                                statusText =
-                                  status.lastPushResult === 'error'
+                              } else if (isUnauthorized) {
+                                statusText = explanation
+                                  ? explanation.shortLabel
+                                  : 'Login expirado (401)'
+                                textClass = 'text-amber-500'
+                                StatusIcon = (
+                                  <AlertCircle
+                                    size={12}
+                                    className="shrink-0 text-amber-500"
+                                  />
+                                )
+                              } else if (isForbidden) {
+                                statusText = explanation
+                                  ? explanation.shortLabel
+                                  : 'Sem permissão (403)'
+                                textClass = 'text-destructive'
+                                StatusIcon = (
+                                  <ShieldAlert
+                                    size={12}
+                                    className="text-destructive shrink-0"
+                                  />
+                                )
+                              } else if (isGeneralError) {
+                                statusText = explanation
+                                  ? explanation.shortLabel
+                                  : status.lastPushResult === 'error'
                                     ? 'Erro no envio (push)'
                                     : status.lastPullResult === 'error'
                                       ? 'Erro no recebimento (pull)'
                                       : 'Falha técnica'
-                                const errDetail = status.error
-                                  ? getRawErrorMessage(status.error)
-                                  : statusText
+                                textClass = 'text-destructive'
                                 StatusIcon = (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="inline-flex cursor-help items-center">
-                                        <XCircle
-                                          size={12}
-                                          className="text-destructive"
-                                        />
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent
-                                      side="left"
-                                      className="max-w-xs text-xs"
-                                    >
-                                      <p className="text-destructive font-semibold">
-                                        {statusText}
-                                      </p>
-                                      <p className="text-muted-foreground mt-0.5 font-mono text-[10px] break-words">
-                                        {errDetail}
-                                      </p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )
-                              } else if (isAuthError(status.error)) {
-                                statusText = 'Login expirado'
-                                StatusIcon = (
-                                  <AlertCircle
+                                  <XCircle
                                     size={12}
-                                    className="text-zinc-400"
+                                    className="text-destructive shrink-0"
                                   />
                                 )
                               } else if (
@@ -742,8 +784,12 @@ export function Header({ className }: HeaderProps = {}) {
                                 !status.lastReplication
                               ) {
                                 statusText = 'Aguardando sincronização'
+                                textClass = 'text-zinc-400'
                                 StatusIcon = (
-                                  <Clock size={12} className="text-zinc-400" />
+                                  <Clock
+                                    size={12}
+                                    className="shrink-0 text-zinc-400"
+                                  />
                                 )
                               }
 
@@ -751,6 +797,20 @@ export function Header({ className }: HeaderProps = {}) {
                                 status.isPulling ||
                                 status.isPushing ||
                                 status.isReconciling
+
+                              const statusBadge = (
+                                <div className="flex cursor-help items-center gap-1.5">
+                                  {StatusIcon}
+                                  <span
+                                    className={cn(
+                                      'text-[9px] font-bold',
+                                      textClass,
+                                    )}
+                                  >
+                                    {statusText}
+                                  </span>
+                                </div>
+                              )
 
                               return (
                                 <div
@@ -761,65 +821,75 @@ export function Header({ className }: HeaderProps = {}) {
                                     {COLLECTION_LABELS[key]}
                                   </span>
 
-                                  <div className="flex items-center gap-2">
-                                    {StatusIcon}
-                                    <div className="flex flex-col items-end">
-                                      <span
-                                        className={`text-[9px] font-bold ${
-                                          isErr
-                                            ? 'text-destructive'
-                                            : status.isReconciling
-                                              ? 'text-destructive'
-                                              : status.isPulling
-                                                ? 'text-blue-500'
-                                                : status.isPushing
-                                                  ? 'text-amber-500'
-                                                  : 'text-foreground/80'
-                                        }`}
-                                      >
-                                        {statusText}
-                                      </span>
-                                      {!isBusy && (
-                                        <div className="text-muted-foreground/60 mt-0.5 flex items-center gap-1.5 text-[8px] leading-none">
-                                          {status.lastPulledAt && (
-                                            <span title="Último Pull">
-                                              ↓{' '}
+                                  <div className="flex flex-col items-end">
+                                    {isAnyFailure && explanation ? (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          {statusBadge}
+                                        </TooltipTrigger>
+                                        <TooltipContent
+                                          side="left"
+                                          className="max-w-xs space-y-1 p-2 text-xs"
+                                        >
+                                          <p className="text-foreground font-semibold">
+                                            {COLLECTION_LABELS[key]}:{' '}
+                                            {explanation.title}
+                                          </p>
+                                          <p className="text-muted-foreground text-[11px] leading-relaxed">
+                                            {explanation.description}
+                                          </p>
+                                          {explanation.technicalDetails && (
+                                            <p className="text-muted-foreground/80 border-border/40 mt-1 border-t pt-1 font-mono text-[10px] break-words">
+                                              Detalhe:{' '}
+                                              {explanation.technicalDetails}
+                                            </p>
+                                          )}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    ) : (
+                                      statusBadge
+                                    )}
+
+                                    {!isBusy && (
+                                      <div className="text-muted-foreground/60 mt-0.5 flex items-center gap-1.5 text-[8px] leading-none">
+                                        {status.lastPulledAt && (
+                                          <span title="Último Pull">
+                                            ↓{' '}
+                                            {format(
+                                              status.lastPulledAt,
+                                              'HH:mm',
+                                            )}
+                                          </span>
+                                        )}
+                                        {status.lastPushedAt && (
+                                          <span title="Último Push">
+                                            ↑{' '}
+                                            {format(
+                                              status.lastPushedAt,
+                                              'HH:mm',
+                                            )}
+                                          </span>
+                                        )}
+                                        {!status.lastPulledAt &&
+                                          !status.lastPushedAt &&
+                                          status.lastReplication && (
+                                            <span>
                                               {format(
-                                                status.lastPulledAt,
-                                                'HH:mm',
+                                                status.lastReplication,
+                                                "HH:mm 'em' dd/MM",
+                                                { locale: ptBR },
                                               )}
                                             </span>
                                           )}
-                                          {status.lastPushedAt && (
-                                            <span title="Último Push">
-                                              ↑{' '}
-                                              {format(
-                                                status.lastPushedAt,
-                                                'HH:mm',
-                                              )}
+                                        {!status.lastPulledAt &&
+                                          !status.lastPushedAt &&
+                                          !status.lastReplication && (
+                                            <span title="Aguardando primeira sincronização com o servidor">
+                                              Pendente
                                             </span>
                                           )}
-                                          {!status.lastPulledAt &&
-                                            !status.lastPushedAt &&
-                                            status.lastReplication && (
-                                              <span>
-                                                {format(
-                                                  status.lastReplication,
-                                                  "HH:mm 'em' dd/MM",
-                                                  { locale: ptBR },
-                                                )}
-                                              </span>
-                                            )}
-                                          {!status.lastPulledAt &&
-                                            !status.lastPushedAt &&
-                                            !status.lastReplication && (
-                                              <span title="Aguardando primeira sincronização com o servidor">
-                                                Pendente
-                                              </span>
-                                            )}
-                                        </div>
-                                      )}
-                                    </div>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               )

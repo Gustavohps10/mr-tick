@@ -38,7 +38,6 @@ import {
   AddonManifestViewModel,
   ConnectionResultViewModel,
   LicensingStatusViewModel,
-  MemberViewModel,
   MetadataViewModel,
   PaginatedViewModel,
   SyncDocumentViewModel,
@@ -145,15 +144,6 @@ export interface IWorkspacesAPI {
   ): Promise<ViewModel<WorkspaceViewModel>>
 
   delete(input: IRequest<{ workspaceId: string }>): Promise<ViewModel<void>>
-}
-
-export interface ISessionAPI {
-  getCurrentUser(
-    input: IRequest<{
-      workspaceId: string
-      connectionInstanceId: string
-    }>,
-  ): Promise<ViewModel<MemberViewModel>>
 }
 
 export interface ITaskAPI {
@@ -645,7 +635,6 @@ export interface IHostBridge {
   localPersistence: ILocalPersistenceAPI
   localSync: ILocalSyncAPI
   workspaces: IWorkspacesAPI
-  session: ISessionAPI
   tasks: ITaskAPI
   timeEntries: IHostTimeEntriesAPI
   metadata: IMetadataAPI

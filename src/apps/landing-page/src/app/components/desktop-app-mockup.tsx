@@ -203,9 +203,6 @@ const mockBridgeClient: IHostBridge = {
       }),
     disconnectDataSource: async () => mockSuccess(undefined),
   },
-  session: {
-    getCurrentUser: async () => mockSuccess(mockMember),
-  },
   addons: {
     listAvailable: async () => mockPaginated(mockInstalledPlugins),
     listInstalled: async () => mockPaginated(mockInstalledPlugins),

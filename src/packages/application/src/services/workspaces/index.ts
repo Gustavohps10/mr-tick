@@ -1,6 +1,5 @@
 export * from './CreateWorkspaceService'
 export * from './DeleteWorkspaceService'
-export * from './GetCurrentUserService'
 export * from './GetWorkspaceService'
 export * from './ListWorkspacesService'
 export * from './MarkWorkspaceAsConfiguredService'

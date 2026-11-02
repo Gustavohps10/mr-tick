@@ -10,7 +10,6 @@ import {
   type IConnectionLifecycleCoordinator,
   type ICoreCacheTransport,
   type IDisconnectAddonConnectionUseCase,
-  type IGetCurrentUserUseCase,
   type ILinkConnectionUseCase,
   type IUnlinkConnectionUseCase,
   type IWorkspacesRepository,
@@ -233,18 +232,6 @@ function fixture() {
     getConnectionProfiles: async () => Either.success([profile]),
   }
   const oauthAttemptCoordinator = new OAuthAttemptCoordinator()
-  const fakeGetCurrentUserService: IGetCurrentUserUseCase = {
-    execute: vi.fn<IGetCurrentUserUseCase['execute']>(async () =>
-      Either.success({
-        id: 'member-1',
-        login: 'fixture-member',
-        firstname: 'Fixture',
-        lastname: 'Member',
-        customFields: [],
-      }),
-    ),
-  }
-
   return {
     workspace,
     repository,
@@ -257,7 +244,6 @@ function fixture() {
     authenticatorRegistry,
     profile,
     oauthAttemptCoordinator,
-    getCurrentUserService: fakeGetCurrentUserService,
     core: new AddonCoreCapabilities(
       repository,
       transport,
@@ -271,7 +257,6 @@ function fixture() {
       profilesResolver,
       oauthAttemptCoordinator,
       new NoOpSystemEventEmitter(),
-      fakeGetCurrentUserService,
     ),
   }
 }
@@ -383,8 +368,8 @@ describe('Public core read capabilities', () => {
       ).isFailure(),
     ).toBe(true)
   })
-  it('delegates members.getCurrentUser to getCurrentUserService with validated scope', async () => {
-    const { core, getCurrentUserService, workspace } = fixture()
+  it('resolves members.getCurrentUser directly from workspace connection identity with validated scope', async () => {
+    const { core, workspace } = fixture()
     const scope = {
       workspaceId: workspace.id,
       connectionInstanceId: 'connection',
@@ -393,10 +378,10 @@ describe('Public core read capabilities', () => {
     expect(result.isSuccess()).toBe(true)
     if (result.isFailure()) return expect.fail(result.failure.messageKey)
     expect(result.success).toEqual({
-      id: 'member-1',
-      name: 'Fixture Member',
+      id: 'member',
+      name: 'Name Test',
+      avatarUrl: undefined,
     })
-    expect(getCurrentUserService.execute).toHaveBeenCalledWith(scope)
   })
   it('propagates tasks.list pagination with nextCursor and hasMore', async () => {
     const { core, queryCore, workspace } = fixture()

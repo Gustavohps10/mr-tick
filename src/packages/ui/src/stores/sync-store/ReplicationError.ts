@@ -74,6 +74,118 @@ export function isReplicationAuthError(error: Error | RxError | null): boolean {
   )
 }
 
+export function isReplicationUnauthorized(
+  error: Error | RxError | null,
+): boolean {
+  return getReplicationFailures(error).some(
+    (failure) => failure.statusCode === 401,
+  )
+}
+
+export function isReplicationForbidden(error: Error | RxError | null): boolean {
+  return getReplicationFailures(error).some(
+    (failure) => failure.statusCode === 403,
+  )
+}
+
+export interface ReplicationErrorExplanation {
+  statusCode: number | null
+  kind:
+    | 'unauthorized'
+    | 'forbidden'
+    | 'not-found'
+    | 'rate-limit'
+    | 'server-error'
+    | 'generic'
+  shortLabel: string
+  title: string
+  description: string
+  technicalDetails: string
+}
+
+export function explainReplicationError(
+  error: Error | RxError | null,
+  context?: 'pull' | 'push',
+): ReplicationErrorExplanation {
+  const failures = getReplicationFailures(error)
+  const technicalDetails = getReplicationErrorMessage(error)
+
+  for (const failure of failures) {
+    if (failure.statusCode === 401) {
+      return {
+        statusCode: 401,
+        kind: 'unauthorized',
+        shortLabel: 'Login expirado (401)',
+        title: 'Não autenticado (HTTP 401)',
+        description:
+          'O token ou credenciais de acesso expiraram ou são inválidos. Por favor, reconecte sua conta em Configurações > Conexões.',
+        technicalDetails,
+      }
+    }
+
+    if (failure.statusCode === 403) {
+      return {
+        statusCode: 403,
+        kind: 'forbidden',
+        shortLabel: 'Sem permissão (403)',
+        title: 'Acesso negado (HTTP 403)',
+        description:
+          'Sua conta está conectada e válida, mas o servidor remoto negou acesso a este recurso (permissão insuficiente no provedor para visualizar ou gerenciar apontamentos/tarefas).',
+        technicalDetails,
+      }
+    }
+
+    if (failure.statusCode === 404) {
+      return {
+        statusCode: 404,
+        kind: 'not-found',
+        shortLabel: 'Não encontrado (404)',
+        title: 'Recurso não encontrado (HTTP 404)',
+        description:
+          'O projeto, tarefa ou recurso configurado não foi encontrado no servidor remoto.',
+        technicalDetails,
+      }
+    }
+
+    if (failure.statusCode === 429) {
+      return {
+        statusCode: 429,
+        kind: 'rate-limit',
+        shortLabel: 'Limite de requisições (429)',
+        title: 'Muitas requisições (HTTP 429)',
+        description:
+          'O servidor remoto limitou temporariamente as requisições (rate limit). A sincronização aguardará antes de tentar novamente.',
+        technicalDetails,
+      }
+    }
+
+    if (failure.statusCode >= 500) {
+      return {
+        statusCode: failure.statusCode,
+        kind: 'server-error',
+        shortLabel: `Servidor indisponível (${failure.statusCode})`,
+        title: `Erro no servidor remoto (HTTP ${failure.statusCode})`,
+        description:
+          'O servidor remoto retornou erro interno ou instabilidade temporária.',
+        technicalDetails,
+      }
+    }
+  }
+
+  const defaultAction =
+    context === 'push' ? 'Erro no envio (push)' : 'Erro no recebimento (pull)'
+
+  return {
+    statusCode: null,
+    kind: 'generic',
+    shortLabel: defaultAction,
+    title: defaultAction,
+    description:
+      'Ocorreu uma falha de comunicação ou processamento durante a sincronização.',
+    technicalDetails,
+  }
+}
+
 export function getReplicationErrorMessage(
   error: Error | RxError | null,
 ): string {

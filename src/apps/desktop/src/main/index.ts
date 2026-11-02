@@ -33,7 +33,6 @@ import {
   IConnectionLifecycleCoordinator,
   ICoreAddonCapabilities,
   IDisconnectAddonConnectionUseCase,
-  IGetCurrentUserUseCase,
   ILinkConnectionUseCase,
   IOAuthAttemptCoordinator,
   IUnlinkConnectionUseCase,
@@ -62,7 +61,6 @@ import { TimerRuntime } from '@/main/adapters/TimerRuntime'
 import {
   CoreHandler,
   LicensingHandler,
-  SessionHandler,
   TasksHandler,
   TimeEntriesHandler,
   TokenHandler,
@@ -109,7 +107,6 @@ export interface NativeOverlay {
 
 export type IHandlersScope = {
   coreHandler: typeof CoreHandler
-  sessionHandler: typeof SessionHandler
   tasksHandler: typeof TasksHandler
   timeEntriesHandler: typeof TimeEntriesHandler
   tokenHandler: typeof TokenHandler
@@ -750,9 +747,6 @@ if (gotTheLock) {
             ),
             oauthAttemptCoordinator,
             addonLoader.systemEventEmitter,
-            serviceProvider.resolve<IGetCurrentUserUseCase>(
-              'getCurrentUserService',
-            ),
           ),
         addonAccessService,
         credentialRegistry,
@@ -825,7 +819,6 @@ if (gotTheLock) {
         .addPlatformDependencies(platformDeps)
         .addScoped<IHandlersScope>({
           coreHandler: CoreHandler,
-          sessionHandler: SessionHandler,
           tasksHandler: TasksHandler,
           timeEntriesHandler: TimeEntriesHandler,
           tokenHandler: TokenHandler,

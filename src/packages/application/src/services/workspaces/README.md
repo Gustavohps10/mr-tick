@@ -18,7 +18,6 @@ Gerencia a unidade primária de agrupamento de trabalho do usuário no Mr. Tick:
 | `ListWorkspacesService`            | Listagem paginada/filtrada de workspaces disponíveis                  |
 | `MarkWorkspaceAsConfiguredService` | Transição de estado para marcar workspace como pronto para uso        |
 | `UpdateWorkspaceIdentityService`   | Alteração de propriedades visuais e cadastrais (nome, cor, logo)      |
-| `GetCurrentUserService`            | Resolução da identidade do usuário no workspace                       |
 
 ## 🛡️ Invariantes e Regras de Negócio
 

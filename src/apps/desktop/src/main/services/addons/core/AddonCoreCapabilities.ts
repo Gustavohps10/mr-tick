@@ -19,7 +19,6 @@ import type {
   ICoreMembersAPI,
   ICoreReadAPI,
   IDisconnectAddonConnectionUseCase,
-  IGetCurrentUserUseCase,
   ILinkConnectionUseCase,
   IOAuthAttemptCoordinator,
   IUnlinkConnectionUseCase,
@@ -28,7 +27,9 @@ import type {
 } from '@mr-tick/application'
 import { validateCoreCacheQuery, validateCoreScope } from '@mr-tick/application'
 import {
+  type ConnectionIdentity,
   type ConnectionProfileDescriptor,
+  type DataSourceConnection,
   isValidConnectionProfileDescriptors,
   type Workspace,
 } from '@mr-tick/domain'
@@ -57,7 +58,6 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
     private readonly profilesResolver: IAddonConnectionProfilesResolver,
     private readonly oauthAttemptCoordinator: IOAuthAttemptCoordinator,
     private readonly systemEventEmitter: ISystemEventEmitter,
-    private readonly getCurrentUserService: IGetCurrentUserUseCase,
   ) {
     this.runtime = {
       getState: () => transport.getState(),
@@ -118,15 +118,34 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
       getCurrentUser: async (scope) => {
         const scopeValidation = validateCoreScope(scope)
         if (scopeValidation.isFailure()) return scopeValidation.forwardFailure()
-        const userResult = await this.getCurrentUserService.execute({
-          workspaceId: scope.workspaceId,
-          connectionInstanceId: scope.connectionInstanceId,
-        })
-        if (userResult.isFailure()) return userResult.forwardFailure()
+
+        const workspaceResult = await this.findWorkspace(scope.workspaceId)
+        if (workspaceResult.isFailure()) return workspaceResult.forwardFailure()
+        const workspace = workspaceResult.success
+
+        const connection = workspace.connections.find(
+          (item) => item.id === scope.connectionInstanceId,
+        )
+        if (!connection) {
+          return Either.failure(
+            AppError.NotFound('CONEXAO_NAO_ENCONTRADA_OU_INVALIDA'),
+          )
+        }
+
+        const identity = extractConnectionIdentity(connection)
+        if (!identity) {
+          return Either.failure(
+            AppError.Unauthorized('CONNECTION_MEMBER_UNAVAILABLE'),
+          )
+        }
+
+        const avatarUrl =
+          'avatarUrl' in identity ? identity.avatarUrl : undefined
+
         return Either.success({
-          id: String(userResult.success.id),
-          name: `${userResult.success.firstname} ${userResult.success.lastname}`.trim(),
-          avatarUrl: userResult.success.avatarUrl,
+          id: identity.providerSubjectId,
+          name: identity.displayName,
+          avatarUrl: avatarUrl ? avatarUrl : undefined,
         })
       },
     }
@@ -776,6 +795,24 @@ function toCoreConnection(
     identity,
   }
 }
+
+function extractConnectionIdentity(
+  connection: DataSourceConnection,
+): ConnectionIdentity | undefined {
+  if (connection.identity) {
+    return connection.identity
+  }
+
+  const activeAuth = connection.authorizations.find(
+    (auth) => auth.status === 'active',
+  )
+  if (activeAuth) {
+    return activeAuth.identity
+  }
+
+  return undefined
+}
+
 function compareIds(left: string, right: string): number {
   if (left < right) return -1
   if (left > right) return 1
