@@ -164,3 +164,22 @@ Exemplo: alterar o avatar não autoriza `workspaceRepository.uploadAvatar(...)`.
 39. **Proibição de Imports Inline dentro de Funções ou Tipos (`import('...')`)**:
     - NUNCA utilize importações dinâmicas inline de tipos (como `import('@mr-tick/sdk').MetadataDTO`) dentro de generics, assinaturas de métodos ou no corpo de funções.
     - Todos os tipos, contratos, DTOs e utilitários necessários DEVEM ser importados explicitamente no topo do arquivo via declaração de cabeçalho (`import { type MetadataDTO } from '@mr-tick/sdk'`).
+
+40. **Proibição de Mapeamentos Manuais e Adivinhação de Erros (`switch/case` ou `if/else` de Strings de Erro)**:
+    - É terminantemente PROIBIDO criar funções ad-hoc na UI como `formatConnectionError(errorKey?: string)` que usem `switch (errorKey)` ou encadeamentos de `if/else` para tentar adivinhar, traduzir ou mascarar strings de erro brutas.
+    - Exemplo de Má Prática Terminantemente Proibida:
+      ```ts
+      // ❌ ERRADO: Função ad-hoc adivinhando strings soltas com switch/case
+      export function formatConnectionError(errorKey?: string): string {
+        if (!errorKey) return 'Falha ao conectar instância'
+        switch (errorKey) {
+          case 'HTTP_CREDENTIAL_ORIGIN_REQUIRED':
+            return 'Origem da requisição inválida. As credenciais só podem ser enviadas para uma URL base com protocolo HTTPS e domínio configurado.'
+          case 'JIRA_AUTHENTICATION_FAILED':
+            return 'Falha na autenticação do Jira. Verifique se o e-mail e o API Token estão corretos.'
+          default:
+            return errorKey
+        }
+      }
+      ```
+    - Erros devem ser modelados, tipados e tratados canonicamente nas camadas de infraestrutura/transporte/serviço através de `Either<AppError, T>`, com `AppError` carregando semanticamente seu `statusCode`, `messageKey` e estrutura tipada em `details` (como mapeamentos por campo). A UI deve consumir os erros estruturados da camada de aplicação sem adivinhações manuais por string.
