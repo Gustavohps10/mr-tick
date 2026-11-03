@@ -39,6 +39,7 @@ import {
 } from '@mr-tick/application'
 import { IAddonsFacade, ILicensingFacade } from '@mr-tick/application'
 import { ContainerBuilder, PlatformDependencies } from '@mr-tick/IoC'
+import { AddonLoadFailuresSnapshot } from '@mr-tick/shared/view-models'
 import {
   app,
   BrowserWindow,
@@ -47,6 +48,7 @@ import {
   screen,
   shell,
   Tray,
+  webContents,
 } from 'electron'
 import installExtension, {
   REACT_DEVELOPER_TOOLS,
@@ -715,6 +717,20 @@ if (gotTheLock) {
       )
       const electronHttpClient = electronHttpClientFactory.createClient({})
       let addonLoader: AddonLoader
+      const onLoadFailuresChanged = (snapshot: AddonLoadFailuresSnapshot) => {
+        for (const webContent of webContents.getAllWebContents()) {
+          try {
+            if (!webContent.isDestroyed()) {
+              webContent.send('addons:load-failures-changed', snapshot)
+            }
+          } catch (broadcastErr) {
+            console.warn(
+              '⚠️ [Main] Falha ao emitir addons:load-failures-changed:',
+              broadcastErr,
+            )
+          }
+        }
+      }
       addonLoader = new AddonLoader(
         credentialsVault,
         localRuntime,
@@ -760,6 +776,7 @@ if (gotTheLock) {
         oauthAttemptCoordinator,
         electronHttpClientFactory,
         new SQLiteAddonStorageRepository(userDataPath),
+        onLoadFailuresChanged,
       )
       globalAddonLoader = addonLoader
 

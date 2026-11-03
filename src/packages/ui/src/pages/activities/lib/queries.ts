@@ -1,5 +1,6 @@
-import { MangoQuery, MangoQuerySortPart } from 'rxdb'
+import { MangoQuery, MangoQuerySelector, MangoQuerySortPart } from 'rxdb'
 
+import { ConnectionScope, isNoneScope } from '@/lib/connection-scope'
 import {
   SyncMetadataItem,
   SyncMetadataRxDBDTO,
@@ -25,9 +26,14 @@ export interface GetTasksSchema {
 
 function getMemberTaskSelector(
   memberIds: string[],
+  scope?: ConnectionScope,
 ): MangoQuery<SyncTaskRxDBDTO> {
   const selector: MangoQuery<SyncTaskRxDBDTO>['selector'] = {
     _deleted: { $ne: true },
+  }
+
+  if (scope && scope.kind === 'subset') {
+    selector.connectionInstanceId = { $in: scope.ids }
   }
 
   if (memberIds.length > 0) {
@@ -49,8 +55,13 @@ function getMemberTaskSelector(
 async function getAllUserTasks(
   db: AppDatabase,
   memberIds: string[],
+  scope?: ConnectionScope,
 ): Promise<SyncTaskRxDBDTO[]> {
-  const { selector } = getMemberTaskSelector(memberIds)
+  if (scope && isNoneScope(scope)) {
+    return []
+  }
+
+  const { selector } = getMemberTaskSelector(memberIds, scope)
   const allDocs = await db.tasks.find({ selector }).exec()
 
   // Converte DeepReadonlyObject[] para SyncTaskRxDBDTO[]
@@ -59,29 +70,77 @@ async function getAllUserTasks(
 }
 
 /**
- * Busca os metadados (status, prioridades) do schema de metadata.
+ * Busca e mescla deterministicamente os metadados (status, prioridades)
+ * das conexões selecionadas, deduplicando por id.
  */
 async function getMetadata(
   db: AppDatabase,
+  scope?: ConnectionScope,
 ): Promise<SyncMetadataRxDBDTO | undefined> {
-  const metadataDoc = await db.metadata.findOne().exec()
-  if (!metadataDoc) {
+  if (scope && isNoneScope(scope)) {
     return undefined
   }
 
-  // Converte DeepReadonlyObject para SyncMetadataRxDBDTO
-  const readonlyData = metadataDoc.toJSON()
-  return JSON.parse(JSON.stringify(readonlyData)) as SyncMetadataRxDBDTO
+  let selector: MangoQuerySelector<SyncMetadataRxDBDTO> | undefined
+
+  if (scope && scope.kind === 'subset') {
+    selector = { connectionInstanceId: { $in: scope.ids } }
+  }
+
+  const metadataDocs = selector
+    ? await db.metadata.find({ selector }).exec()
+    : await db.metadata.find().exec()
+
+  if (!metadataDocs || metadataDocs.length === 0) {
+    return undefined
+  }
+
+  const plainDocs = metadataDocs.map(
+    (doc) => doc.toJSON() as SyncMetadataRxDBDTO,
+  )
+
+  const mergedStatuses: SyncMetadataItem[] = []
+  const seenStatusIds = new Set<string>()
+
+  const mergedPriorities: SyncMetadataItem[] = []
+  const seenPriorityIds = new Set<string>()
+
+  for (const doc of plainDocs) {
+    for (const status of doc.taskStatuses ?? []) {
+      if (!seenStatusIds.has(status.id)) {
+        seenStatusIds.add(status.id)
+        mergedStatuses.push(status)
+      }
+    }
+
+    for (const priority of doc.taskPriorities ?? []) {
+      if (!seenPriorityIds.has(priority.id)) {
+        seenPriorityIds.add(priority.id)
+        mergedPriorities.push(priority)
+      }
+    }
+  }
+
+  return {
+    ...plainDocs[0],
+    taskStatuses: mergedStatuses,
+    taskPriorities: mergedPriorities,
+  }
 }
 
 export async function getTasks(
   db: AppDatabase,
   memberIds: string[],
   input: GetTasksSchema,
+  scope?: ConnectionScope,
 ) {
+  if (scope && isNoneScope(scope)) {
+    return { data: [], pageCount: 0 }
+  }
+
   try {
     const offset = (input.page - 1) * input.perPage
-    const { selector: userSelector } = getMemberTaskSelector(memberIds)
+    const { selector: userSelector } = getMemberTaskSelector(memberIds, scope)
 
     const selector: MangoQuery<SyncTaskRxDBDTO>['selector'] = {
       ...userSelector,
@@ -145,10 +204,15 @@ export async function getTasks(
 export async function getTaskStatusCounts(
   db: AppDatabase,
   memberIds: string[],
+  scope?: ConnectionScope,
 ) {
+  if (scope && isNoneScope(scope)) {
+    return {}
+  }
+
   const [tasks, metadata] = await Promise.all([
-    getAllUserTasks(db, memberIds),
-    getMetadata(db),
+    getAllUserTasks(db, memberIds, scope),
+    getMetadata(db, scope),
   ])
 
   const counts: Record<string, number> = {}
@@ -167,10 +231,15 @@ export async function getTaskStatusCounts(
 export async function getTaskPriorityCounts(
   db: AppDatabase,
   memberIds: string[],
+  scope?: ConnectionScope,
 ) {
+  if (scope && isNoneScope(scope)) {
+    return {}
+  }
+
   const [tasks, metadata] = await Promise.all([
-    getAllUserTasks(db, memberIds),
-    getMetadata(db),
+    getAllUserTasks(db, memberIds, scope),
+    getMetadata(db, scope),
   ])
 
   const counts: Record<string, number> = {}
@@ -189,8 +258,13 @@ export async function getTaskPriorityCounts(
 export async function getEstimatedHoursRange(
   db: AppDatabase,
   memberIds: string[],
+  scope?: ConnectionScope,
 ) {
-  const tasks = await getAllUserTasks(db, memberIds)
+  if (scope && isNoneScope(scope)) {
+    return { min: 0, max: 0 }
+  }
+
+  const tasks = await getAllUserTasks(db, memberIds, scope)
   if (tasks.length === 0) return { min: 0, max: 0 }
 
   let min = 0
@@ -214,12 +288,15 @@ export async function getEstimatedHoursRange(
   return { min, max }
 }
 
-export async function getAllstatus(db: AppDatabase) {
-  const metadata = await getMetadata(db)
+export async function getAllstatus(db: AppDatabase, scope?: ConnectionScope) {
+  const metadata = await getMetadata(db, scope)
   return metadata?.taskStatuses || []
 }
 
-export async function getAllPriorities(db: AppDatabase) {
-  const metadata = await getMetadata(db)
+export async function getAllPriorities(
+  db: AppDatabase,
+  scope?: ConnectionScope,
+) {
+  const metadata = await getMetadata(db, scope)
   return metadata?.taskPriorities || []
 }

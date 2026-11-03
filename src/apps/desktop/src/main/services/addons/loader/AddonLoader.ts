@@ -91,6 +91,12 @@ import {
   isString,
 } from '@mr-tick/shared/helpers'
 import { ISystemEvents } from '@mr-tick/shared/transport'
+import {
+  AddonLoadFailureReason,
+  AddonLoadFailuresSnapshot,
+  AddonLoadFailureStage,
+  AddonLoadFailureViewModel,
+} from '@mr-tick/shared/view-models'
 import { app, BrowserWindow, Notification, shell } from 'electron'
 import yaml from 'js-yaml'
 
@@ -260,6 +266,29 @@ export class AddonEventEmitter implements IAddonEventsAPI {
   }
 }
 
+export type OnLoadFailuresChangedNotifier = (
+  snapshot: AddonLoadFailuresSnapshot,
+) => void
+
+export const NoOpLoadFailuresNotifier: OnLoadFailuresChangedNotifier = () => {}
+
+class AddonActivationError extends AppError {
+  public readonly stage: AddonLoadFailureStage
+  public readonly reason: AddonLoadFailureReason
+  public readonly technicalMessage: string
+
+  constructor(
+    stage: AddonLoadFailureStage,
+    reason: AddonLoadFailureReason,
+    technicalMessage: string,
+  ) {
+    super(technicalMessage, 500)
+    this.stage = stage
+    this.reason = reason
+    this.technicalMessage = technicalMessage
+  }
+}
+
 export class AddonLoader implements IAddonReloader {
   private activeAddons = new Map<string, ActiveAddonInfo>()
   private loadingAddons = new Map<string, Promise<boolean>>()
@@ -315,6 +344,8 @@ export class AddonLoader implements IAddonReloader {
   private readonly getAddonSettingsService: GetAddonSettingsService
   private readonly saveAddonSettingsService: SaveAddonSettingsService
   private readonly ownershipValidator: CoreAddonScopeOwnershipValidator
+  private readonly failedAddons = new Map<string, AddonLoadFailureViewModel>()
+  private loadFailuresRevision = 0
 
   constructor(
     private credentialsVault: ICredentialsVault & IConnectionCredentialsVault,
@@ -329,6 +360,7 @@ export class AddonLoader implements IAddonReloader {
     private readonly oauthAttemptCoordinator: IOAuthAttemptCoordinator,
     private readonly httpClientFactory: IHttpClientFactory,
     private readonly addonStorageRepository: IAddonStorageRepository,
+    private readonly onLoadFailuresChanged: OnLoadFailuresChangedNotifier,
   ) {
     const capabilityOwnershipValidator = new AddonCapabilityOwnershipValidator(
       (addonId, capabilityId) => {
@@ -387,6 +419,59 @@ export class AddonLoader implements IAddonReloader {
         )
       }
     })
+  }
+
+  public getLoadFailures(): AddonLoadFailuresSnapshot {
+    return {
+      revision: this.loadFailuresRevision,
+      failures: Array.from(this.failedAddons.values()),
+    }
+  }
+
+  public recordLoadFailure(
+    addonId: string,
+    folderPath: string,
+    entryPath: string | undefined,
+    stage: AddonLoadFailureStage,
+    reason: AddonLoadFailureReason,
+    technicalMessage: string,
+    meta?: { name?: string; iconUrl?: string },
+  ): void {
+    let resolvedName = meta?.name
+    let resolvedIconUrl = meta?.iconUrl
+    if (!resolvedName || !resolvedIconUrl) {
+      const storedMeta = this.addonMetadata.get(addonId)
+      if (!resolvedName && storedMeta?.name) {
+        resolvedName = storedMeta.name
+      }
+      if (!resolvedIconUrl && storedMeta?.iconUrl) {
+        resolvedIconUrl = storedMeta.iconUrl
+      }
+    }
+
+    const failure: AddonLoadFailureViewModel = {
+      addonId,
+      addonName: resolvedName,
+      iconUrl: resolvedIconUrl,
+      folderPath,
+      entryPath,
+      stage,
+      reason,
+      technicalMessage,
+      timestamp: Date.now(),
+    }
+
+    this.failedAddons.set(addonId, failure)
+    this.loadFailuresRevision += 1
+    this.onLoadFailuresChanged(this.getLoadFailures())
+  }
+
+  public clearLoadFailure(addonId: string): void {
+    if (this.failedAddons.has(addonId)) {
+      this.failedAddons.delete(addonId)
+      this.loadFailuresRevision += 1
+      this.onLoadFailuresChanged(this.getLoadFailures())
+    }
   }
 
   public setLicensingFacade(licensingFacade: ILicensingFacade): void {
@@ -1265,21 +1350,57 @@ export class AddonLoader implements IAddonReloader {
     addonInstance: IAddon,
     manifest?: IAddonManifest,
   ): Promise<boolean> {
+    const outcome = await this.performActivation(
+      addonId,
+      addonInstance,
+      manifest,
+    )
+    return outcome.isSuccess()
+  }
+
+  private async performActivation(
+    addonId: string,
+    addonInstance: IAddon,
+    manifest?: IAddonManifest,
+  ): Promise<Either<AddonActivationError, void>> {
     if (manifest && manifest.capabilities) {
       const capResult = validateManifestCapabilities(manifest.capabilities)
       if (capResult.isFailure()) {
+        const msg = capResult.failure.messageKey
         console.error(
-          `[AddonLoader] Addon ${addonId} recusado por capacidade incompatível: ${capResult.failure.messageKey}`,
+          `[AddonLoader] Addon ${addonId} recusado por capacidade incompatível: ${msg}`,
         )
-        return false
+        return Either.failure(
+          new AddonActivationError(
+            'manifest',
+            'CONTRACT_VIOLATION',
+            `Capabilities inválidas: ${msg}`,
+          ),
+        )
       }
     }
+
     if (this.activeAddons.has(addonId)) await this.deactivateAddon(addonId)
     this.applyManifestCapabilities(addonId, manifest?.capabilities)
     const context = this.createContext(addonId)
+
     try {
       await addonInstance.activate(context)
     } catch (error) {
+      let technicalMessage = String(error)
+      if (error instanceof Error) {
+        technicalMessage = error.message
+      }
+      if (isString(error)) {
+        technicalMessage = error
+      }
+      if (isRecord(error)) {
+        const candidateMsg = error['message']
+        if (isString(candidateMsg)) {
+          technicalMessage = candidateMsg
+        }
+      }
+
       try {
         await addonInstance.deactivate()
       } catch (cleanupError) {
@@ -1290,9 +1411,17 @@ export class AddonLoader implements IAddonReloader {
       }
       await this.deactivateAddon(addonId)
       console.error('[AddonLoader] Activation failed:', error)
-      return false
+      return Either.failure(
+        new AddonActivationError(
+          'activate',
+          'INITIALIZATION_FAILED',
+          technicalMessage,
+        ),
+      )
     }
+
     this.activeAddons.set(addonId, { addonId, instance: addonInstance })
+    this.clearLoadFailure(addonId)
     console.log(`✅ [AddonLoader] Addon ativado com sucesso: ${addonId}`)
     if (this.activeWorkspaceId) {
       this.systemEventEmitter.emit('workspace:changed', {
@@ -1300,7 +1429,7 @@ export class AddonLoader implements IAddonReloader {
         currentWorkspaceId: this.activeWorkspaceId,
       })
     }
-    return true
+    return Either.success()
   }
 
   public async deactivateAddon(addonId: string): Promise<void> {
@@ -1330,6 +1459,7 @@ export class AddonLoader implements IAddonReloader {
       this.lifetimes.delete(addonId)
       this.activeAddons.delete(addonId)
       this.addonSettingsSchemas.delete(addonId)
+      this.clearLoadFailure(addonId)
     }
   }
 
@@ -1363,7 +1493,13 @@ export class AddonLoader implements IAddonReloader {
     addonId: string,
     addonFolderPath: string,
   ): Promise<boolean> {
+    let currentStage: AddonLoadFailureStage = 'authorize'
+    let currentTargetEntry: string | undefined = undefined
+    let metaName: string | undefined
+    let metaIconUrl: string | undefined
+
     try {
+      currentStage = 'authorize'
       const authorization = await this.addonAccessService.authorizeDirectory(
         addonId,
         addonFolderPath,
@@ -1374,6 +1510,14 @@ export class AddonLoader implements IAddonReloader {
         console.warn(
           '[AddonLoader] Pacote bloqueado:',
           addonId,
+          authorization.failure.messageKey,
+        )
+        this.recordLoadFailure(
+          addonId,
+          addonFolderPath,
+          currentTargetEntry,
+          'authorize',
+          'AUTHORIZATION_FAILED',
           authorization.failure.messageKey,
         )
         return false
@@ -1395,17 +1539,28 @@ export class AddonLoader implements IAddonReloader {
         currentVersion = '-1'
       }
 
+      currentStage = 'apiVersion'
       if (!isApiVersionCompatible(requiredApiVersion, currentVersion)) {
         let reqDisplay = 'desconhecida'
         if (requiredApiVersion) {
           reqDisplay = requiredApiVersion
         }
+        const msg = `Requer API ${reqDisplay}, mas o aplicativo suporta a API ${currentVersion}`
         console.warn(
           `⚠️ [AddonLoader] Addon "${addonId}" ignorado: requer API ${reqDisplay}, mas o aplicativo suporta a API ${currentVersion}`,
+        )
+        this.recordLoadFailure(
+          addonId,
+          addonFolderPath,
+          currentTargetEntry,
+          'apiVersion',
+          'API_VERSION_INCOMPATIBLE',
+          msg,
         )
         return false
       }
 
+      currentStage = 'entry'
       const possibleEntries = [
         join(addonFolderPath, 'dist', 'index.js'),
         join(addonFolderPath, 'dist', 'index.mjs'),
@@ -1421,21 +1576,28 @@ export class AddonLoader implements IAddonReloader {
       }
 
       if (!targetEntry) {
-        console.warn(
-          `⚠️ [AddonLoader] Ponto de entrada JS não encontrado para o addon "${addonId}" em: ${addonFolderPath}`,
+        const msg = `Ponto de entrada JS não encontrado para o addon "${addonId}" em: ${addonFolderPath}`
+        console.warn(`⚠️ [AddonLoader] ${msg}`)
+        this.recordLoadFailure(
+          addonId,
+          addonFolderPath,
+          undefined,
+          'entry',
+          'ENTRY_NOT_FOUND',
+          msg,
         )
         return false
       }
 
+      currentTargetEntry = targetEntry
       const fileUrl = pathToFileURL(targetEntry).href
 
-      let metaName: string | undefined
-      let metaIconUrl: string | undefined
       let parsedCapabilities: AddonCapability[] | undefined
       const manifestPathYaml = join(addonFolderPath, 'manifest.yaml')
       const manifestPathYml = join(addonFolderPath, 'manifest.yml')
       const manifestPathJson = join(addonFolderPath, 'manifest.json')
 
+      currentStage = 'manifest'
       try {
         if (existsSync(manifestPathYaml)) {
           const parsed = yaml.load(readFileSync(manifestPathYaml, 'utf-8'))
@@ -1447,6 +1609,15 @@ export class AddonLoader implements IAddonReloader {
               console.error(
                 '[AddonLoader] Manifesto inválido:',
                 capabilitiesResult.failure.messageKey,
+              )
+              this.recordLoadFailure(
+                addonId,
+                addonFolderPath,
+                currentTargetEntry,
+                'manifest',
+                'CONTRACT_VIOLATION',
+                `Capabilities inválidas: ${capabilitiesResult.failure.messageKey}`,
+                { name: metaName, iconUrl: metaIconUrl },
               )
               return false
             }
@@ -1464,6 +1635,15 @@ export class AddonLoader implements IAddonReloader {
                 '[AddonLoader] Manifesto inválido:',
                 capabilitiesResult.failure.messageKey,
               )
+              this.recordLoadFailure(
+                addonId,
+                addonFolderPath,
+                currentTargetEntry,
+                'manifest',
+                'CONTRACT_VIOLATION',
+                `Capabilities inválidas: ${capabilitiesResult.failure.messageKey}`,
+                { name: metaName, iconUrl: metaIconUrl },
+              )
               return false
             }
             parsedCapabilities = capabilitiesResult.success
@@ -1480,13 +1660,35 @@ export class AddonLoader implements IAddonReloader {
                 '[AddonLoader] Manifesto inválido:',
                 capabilitiesResult.failure.messageKey,
               )
+              this.recordLoadFailure(
+                addonId,
+                addonFolderPath,
+                currentTargetEntry,
+                'manifest',
+                'CONTRACT_VIOLATION',
+                `Capabilities inválidas: ${capabilitiesResult.failure.messageKey}`,
+                { name: metaName, iconUrl: metaIconUrl },
+              )
               return false
             }
             parsedCapabilities = capabilitiesResult.success
           }
         }
-      } catch {
-        // Ignora erro de leitura de manifesto
+      } catch (manifestReadErr) {
+        let manifestErrMsg = 'Manifesto ilegível ou estrutura inválida'
+        if (manifestReadErr instanceof Error) {
+          manifestErrMsg = manifestReadErr.message
+        }
+        this.recordLoadFailure(
+          addonId,
+          addonFolderPath,
+          currentTargetEntry,
+          'manifest',
+          'MANIFEST_INVALID',
+          manifestErrMsg,
+          { name: metaName, iconUrl: metaIconUrl },
+        )
+        return false
       }
 
       const iconPngPath = join(addonFolderPath, 'icon.png')
@@ -1523,7 +1725,28 @@ export class AddonLoader implements IAddonReloader {
         }
       }
 
-      const loadedModule: object = await import(fileUrl)
+      currentStage = 'import'
+      let loadedModule: object
+      try {
+        loadedModule = await import(fileUrl)
+      } catch (importErr) {
+        let importErrMsg = String(importErr)
+        if (importErr instanceof Error) {
+          importErrMsg = importErr.message
+        }
+        this.recordLoadFailure(
+          addonId,
+          addonFolderPath,
+          currentTargetEntry,
+          'import',
+          'IMPORT_FAILED',
+          importErrMsg,
+          { name: metaName, iconUrl: metaIconUrl },
+        )
+        return false
+      }
+
+      currentStage = 'contract'
       let exportedCandidate: object | Function = loadedModule
       if (isRecord(loadedModule) && hasProperty(loadedModule, 'default')) {
         const defaultExport = loadedModule.default
@@ -1533,20 +1756,81 @@ export class AddonLoader implements IAddonReloader {
       }
 
       if (isAddonConstructor(exportedCandidate)) {
-        const addonInstance = new exportedCandidate()
-        return await this.activateAddon(addonId, addonInstance, diskManifest)
+        currentStage = 'instantiate'
+        let addonInstance: IAddon
+        try {
+          addonInstance = new exportedCandidate()
+        } catch (instantiateErr) {
+          let instMsg = String(instantiateErr)
+          if (instantiateErr instanceof Error) {
+            instMsg = instantiateErr.message
+          }
+          this.recordLoadFailure(
+            addonId,
+            addonFolderPath,
+            currentTargetEntry,
+            'instantiate',
+            'INSTANTIATION_FAILED',
+            instMsg,
+            { name: metaName, iconUrl: metaIconUrl },
+          )
+          return false
+        }
+
+        currentStage = 'activate'
+        const activationOutcome = await this.performActivation(
+          addonId,
+          addonInstance,
+          diskManifest,
+        )
+        if (activationOutcome.isFailure()) {
+          this.recordLoadFailure(
+            addonId,
+            addonFolderPath,
+            currentTargetEntry,
+            activationOutcome.failure.stage,
+            activationOutcome.failure.reason,
+            activationOutcome.failure.technicalMessage,
+            { name: metaName, iconUrl: metaIconUrl },
+          )
+          return false
+        }
+        return true
       }
 
       if (isAddonInstance(exportedCandidate)) {
-        return await this.activateAddon(
+        currentStage = 'activate'
+        const activationOutcome = await this.performActivation(
           addonId,
           exportedCandidate,
           diskManifest,
         )
+        if (activationOutcome.isFailure()) {
+          this.recordLoadFailure(
+            addonId,
+            addonFolderPath,
+            currentTargetEntry,
+            activationOutcome.failure.stage,
+            activationOutcome.failure.reason,
+            activationOutcome.failure.technicalMessage,
+            { name: metaName, iconUrl: metaIconUrl },
+          )
+          return false
+        }
+        return true
       }
 
       console.warn(
         `⚠️ [AddonLoader] Exportação padrão inválida para o addon "${addonId}" em: ${targetEntry}`,
+      )
+      this.recordLoadFailure(
+        addonId,
+        addonFolderPath,
+        currentTargetEntry,
+        'contract',
+        'INVALID_DEFAULT_EXPORT',
+        `Exportação padrão inválida em ${targetEntry}`,
+        { name: metaName, iconUrl: metaIconUrl },
       )
       return false
     } catch (err) {
@@ -1555,8 +1839,17 @@ export class AddonLoader implements IAddonReloader {
         message = err.message
       }
       console.error(
-        `❌ [AddonLoader] Erro ao carregar addon "${addonId}" do disco (${addonFolderPath}):`,
+        `❌ [AddonLoader] Erro inesperado ao carregar addon "${addonId}" do disco (${addonFolderPath}):`,
         message,
+      )
+      this.recordLoadFailure(
+        addonId,
+        addonFolderPath,
+        currentTargetEntry,
+        currentStage,
+        'UNEXPECTED_ERROR',
+        message,
+        { name: metaName, iconUrl: metaIconUrl },
       )
       return false
     }

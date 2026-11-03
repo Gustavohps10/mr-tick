@@ -20,13 +20,19 @@ export function ActivitiesLayout() {
 
   const nav = [
     {
-      to: `/workspaces/${workspaceId}/activities`,
+      to: {
+        pathname: `/workspaces/${workspaceId}/activities`,
+        search: location.search,
+      },
       label: 'Área de Trabalho',
       icon: LayoutGrid,
       end: true,
     },
     {
-      to: `/workspaces/${workspaceId}/activities/backlog`,
+      to: {
+        pathname: `/workspaces/${workspaceId}/activities/backlog`,
+        search: location.search,
+      },
       label: 'Backlog',
       icon: ClipboardList,
       end: false,
@@ -54,7 +60,7 @@ export function ActivitiesLayout() {
             {nav.map((n) => {
               const Icon = n.icon
               return (
-                <NavLink key={n.to} to={n.to} end={n.end}>
+                <NavLink key={n.to.pathname} to={n.to} end={n.end}>
                   {({ isActive }) => (
                     <div
                       className={cn(

@@ -20,6 +20,8 @@ import type { AddonSettingValue } from '../addons/vault/IAddonVaultAPI'
 export type { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
 export type {
   AddonInstallerViewModel,
+  AddonLoadFailuresSnapshot,
+  AddonLoadFailureViewModel,
   AddonManifestViewModel,
   ConnectionResultViewModel,
   LicensingStatusStateViewModel,
@@ -35,6 +37,7 @@ export type {
 } from '@mr-tick/shared/view-models'
 import {
   AddonInstallerViewModel,
+  AddonLoadFailuresSnapshot,
   AddonManifestViewModel,
   ConnectionResultViewModel,
   LicensingStatusViewModel,
@@ -539,6 +542,8 @@ export interface IAddonsAPI {
   setActiveTheme(
     payload: IRequest<{ themeId: string | null }>,
   ): Promise<ViewModel<void>>
+
+  getLoadFailures(): Promise<ViewModel<AddonLoadFailuresSnapshot>>
 }
 
 export interface EnvironmentInfo {

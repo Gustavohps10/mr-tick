@@ -30,7 +30,7 @@ import {
   ElectronHttpClientFactory,
   NodeFetchTransport,
 } from '../../../adapters/ElectronHttpClient'
-import { AddonLoader } from '../loader/AddonLoader'
+import { AddonLoader, NoOpLoadFailuresNotifier } from '../loader/AddonLoader'
 import { permissiveAddonAccessService } from './addon-core-test-fixture'
 import {
   emptyAddonCredentialsVault,
@@ -461,6 +461,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
         new NodeFetchTransport(),
       ),
       emptyAddonStorageRepository,
+      NoOpLoadFailuresNotifier,
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
@@ -713,6 +714,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
         new NodeFetchTransport(),
       ),
       emptyAddonStorageRepository,
+      NoOpLoadFailuresNotifier,
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
@@ -915,6 +917,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
         new NodeFetchTransport(),
       ),
       emptyAddonStorageRepository,
+      NoOpLoadFailuresNotifier,
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])
@@ -1200,6 +1203,7 @@ describe('M07 host unit: addon connection auth via registry', () => {
         new NodeFetchTransport(),
       ),
       emptyAddonStorageRepository,
+      NoOpLoadFailuresNotifier,
     )
 
     addonLoader.registerManifestCapabilities('mistertick-discord', ['auth'])

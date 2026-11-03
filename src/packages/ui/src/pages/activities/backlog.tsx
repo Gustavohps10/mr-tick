@@ -6,6 +6,8 @@ import { Suspense, useMemo } from 'react'
 import { DataTableSkeleton } from '@/components/data-table/data-table-skeleton'
 import { Shell } from '@/components/shell'
 import { useDataSourceConnections } from '@/hooks'
+import { useWorkspaceConnectionsFilter } from '@/hooks/use-workspace-connections-filter'
+import { ConnectionScope } from '@/lib/connection-scope'
 import { AppDatabase, useSyncStore } from '@/stores/syncStore'
 
 import { TasksTable } from './components/tasks-table'
@@ -22,23 +24,25 @@ import { getValidFilters, tasksSearchParamsParsers } from './lib/validations'
 interface ClientTasksTableWrapperProps {
   db: AppDatabase
   memberIds: string[]
+  scope: ConnectionScope
 }
 
 function ClientTasksTableWrapper({
   db,
   memberIds,
+  scope,
 }: ClientTasksTableWrapperProps) {
   const [search] = useQueryStates(tasksSearchParamsParsers)
 
   const validFilters = getValidFilters(search.filters)
 
   const promises = Promise.all([
-    getTasks(db, memberIds, search),
-    getTaskStatusCounts(db, memberIds),
-    getTaskPriorityCounts(db, memberIds),
-    getEstimatedHoursRange(db, memberIds),
-    getAllstatus(db),
-    getAllPriorities(db),
+    getTasks(db, memberIds, search, scope),
+    getTaskStatusCounts(db, memberIds, scope),
+    getTaskPriorityCounts(db, memberIds, scope),
+    getEstimatedHoursRange(db, memberIds, scope),
+    getAllstatus(db, scope),
+    getAllPriorities(db, scope),
   ])
 
   return <TasksTable promises={promises} />
@@ -46,6 +50,7 @@ function ClientTasksTableWrapper({
 
 export function Backlog() {
   const db = useSyncStore((state) => state.db)
+  const { scope } = useWorkspaceConnectionsFilter()
 
   const { dataSourceConnections: connections } = useDataSourceConnections()
 
@@ -88,7 +93,11 @@ export function Backlog() {
             />
           }
         >
-          <ClientTasksTableWrapper db={db} memberIds={memberIds} />
+          <ClientTasksTableWrapper
+            db={db}
+            memberIds={memberIds}
+            scope={scope}
+          />
         </Suspense>
       </Shell>
     </div>

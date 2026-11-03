@@ -38,6 +38,7 @@ import {
 } from '@mr-tick/shared/transport'
 import {
   AddonInstallerViewModel,
+  AddonLoadFailuresSnapshot,
   AddonManifestViewModel,
   AddonThemeViewModel,
   PaginatedViewModel,
@@ -82,6 +83,23 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       isSuccess: true,
       statusCode: 200,
       data: items,
+    }
+  }
+
+  public async getLoadFailures(): Promise<
+    ViewModel<AddonLoadFailuresSnapshot>
+  > {
+    let snapshot: AddonLoadFailuresSnapshot = {
+      revision: 0,
+      failures: [],
+    }
+    if (this.addonLoader) {
+      snapshot = this.addonLoader.getLoadFailures()
+    }
+    return {
+      isSuccess: true,
+      statusCode: 200,
+      data: snapshot,
     }
   }
 
@@ -566,6 +584,12 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       body.addonId,
       body.version,
     )
+    if (result.isSuccess() && this.addonLoader) {
+      if (this.addonLoader.hasActiveAddon(body.addonId)) {
+        await this.addonLoader.deactivateAddon(body.addonId)
+      }
+      this.addonLoader.clearLoadFailure(body.addonId)
+    }
     return createResponseViewModel(result)
   }
 

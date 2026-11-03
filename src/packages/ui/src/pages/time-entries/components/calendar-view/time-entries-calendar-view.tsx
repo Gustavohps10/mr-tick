@@ -552,11 +552,19 @@ export function TimeEntriesCalendarView({
                       const pureTaskId = isNoTask
                         ? undefined
                         : extractPureTaskId(entry.task?.id)
+                      const entryConnId = entry.connectionInstanceId
+                      const pureLookup =
+                        entryConnId && pureTaskId
+                          ? `${entryConnId}::${pureTaskId}`
+                          : undefined
+                      const rawLookup =
+                        entryConnId && entry.task?.id
+                          ? `${entryConnId}::${entry.task.id}`
+                          : undefined
+
                       const taskDoc = pureTaskId
-                        ? tasksById?.[pureTaskId] ||
-                          (entry.task?.id
-                            ? tasksById?.[entry.task.id]
-                            : undefined)
+                        ? (pureLookup ? tasksById?.[pureLookup] : undefined) ||
+                          (rawLookup ? tasksById?.[rawLookup] : undefined)
                         : undefined
                       const cleanId = pureTaskId
                         ? cleanTaskId(pureTaskId)

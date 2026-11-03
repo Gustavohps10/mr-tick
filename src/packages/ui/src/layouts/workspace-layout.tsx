@@ -8,6 +8,8 @@ import {
 import { Outlet, useLocation, useParams } from 'react-router'
 
 import {
+  AddonSettingsDialogHost,
+  AddonsTrailDock,
   AppSidebar,
   AppSidebarContent,
   AppSidebarFooter,
@@ -33,7 +35,7 @@ export function WorkspaceLayout() {
     const base = [
       {
         label: 'Workspace',
-        href: `/workspaces/${workspaceId}/time-entries`,
+        href: `/workspaces/${workspaceId}/time-entries${location.search}`,
       },
     ]
 
@@ -110,7 +112,7 @@ export function WorkspaceLayout() {
         </AppSidebar>
 
         <main className="flex h-full flex-1 flex-col overflow-hidden">
-          {/* Barra Superior Twenty com Sidebar Trigger e Breadcrumbs */}
+          {/* Barra Superior Twenty com Sidebar Trigger e Breadcrumbs (topo contínuo de ponta a ponta) */}
           <div className="border-border/60 bg-background/95 z-20 flex h-9 shrink-0 items-center justify-between border-b px-3 backdrop-blur-sm select-none">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="hover:bg-muted/70 text-muted-foreground hover:text-foreground h-6.5 w-6.5 rounded-md transition-colors" />
@@ -119,57 +121,79 @@ export function WorkspaceLayout() {
             </div>
           </div>
 
-          {/* 1. TOPO */}
-          {widgetPosition === 'top' && (
-            <div
-              data-widget-drag-boundary
-              className="bg-background z-10 shrink-0 border-b px-2 py-2 shadow-sm"
-            >
-              <UltimateTimeTracker />
-            </div>
-          )}
+          {/* Área de Trabalho abaixo dos Breadcrumbs */}
+          <div className="flex min-h-0 flex-1 flex-row overflow-hidden">
+            {/* Coluna Central: Timer (Topo/Rodapé) + Conteúdo Principal */}
+            <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+              {/* 1. TOPO */}
+              {widgetPosition === 'top' && (
+                <div
+                  data-testid="workspace-timebar"
+                  data-position="top"
+                  data-widget-drag-boundary
+                  className="bg-background z-10 shrink-0 border-b px-2 py-2 shadow-sm"
+                >
+                  <UltimateTimeTracker />
+                </div>
+              )}
 
-          <div className="flex min-h-0 flex-1 overflow-hidden">
-            {/* 2. ESQUERDA */}
-            {widgetPosition === 'left' && (
-              <div
-                data-widget-drag-boundary
-                className="bg-background z-10 flex h-full shrink-0 border-r shadow-sm"
-              >
-                <UltimateTimeTracker />
+              <div className="flex min-h-0 flex-1 overflow-hidden">
+                {/* 2. ESQUERDA */}
+                {widgetPosition === 'left' && (
+                  <div
+                    data-testid="workspace-timebar"
+                    data-position="left"
+                    data-widget-drag-boundary
+                    className="bg-background z-10 flex h-full shrink-0 border-r shadow-sm"
+                  >
+                    <UltimateTimeTracker />
+                  </div>
+                )}
+
+                {/* CENTRO */}
+                <div
+                  data-testid="workspace-content"
+                  className="bg-muted/10 min-w-0 flex-1"
+                >
+                  <ScrollArea className="h-full">
+                    <section className="px-4 py-4">
+                      <Outlet />
+                    </section>
+                    <Footer />
+                  </ScrollArea>
+                </div>
+
+                {/* 3. DIREITA */}
+                {widgetPosition === 'right' && (
+                  <div
+                    data-testid="workspace-timebar"
+                    data-position="right"
+                    data-widget-drag-boundary
+                    className="bg-background z-10 flex h-full shrink-0 border-l shadow-sm"
+                  >
+                    <UltimateTimeTracker />
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* CENTRO */}
-            <div className="bg-muted/10 min-w-0 flex-1">
-              <ScrollArea className="h-full">
-                <section className="px-4 py-4">
-                  <Outlet />
-                </section>
-                <Footer />
-              </ScrollArea>
+              {/* 4. RODAPÉ */}
+              {widgetPosition === 'bottom' && (
+                <div
+                  data-testid="workspace-timebar"
+                  data-position="bottom"
+                  data-widget-drag-boundary
+                  className="bg-background z-10 shrink-0 border-t px-2 py-2 shadow-sm"
+                >
+                  <UltimateTimeTracker />
+                </div>
+              )}
             </div>
 
-            {/* 3. DIREITA */}
-            {widgetPosition === 'right' && (
-              <div
-                data-widget-drag-boundary
-                className="bg-background z-10 flex h-full shrink-0 border-l shadow-sm"
-              >
-                <UltimateTimeTracker />
-              </div>
-            )}
+            {/* ADDS-ON TRAIL DOCK - Borda externa direita, abaixo dos breadcrumbs e prevalecendo sobre a barra do timer */}
+            <AddonsTrailDock />
           </div>
 
-          {/* 4. RODAPÉ */}
-          {widgetPosition === 'bottom' && (
-            <div
-              data-widget-drag-boundary
-              className="bg-background z-10 shrink-0 border-t px-2 py-2 shadow-sm"
-            >
-              <UltimateTimeTracker />
-            </div>
-          )}
+          <AddonSettingsDialogHost />
         </main>
       </SidebarProvider>
     </TimeEntryProvider>

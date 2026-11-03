@@ -2,28 +2,38 @@
 
 import { motion } from 'framer-motion'
 import { CalendarDays, CalendarRange, List } from 'lucide-react'
-import { NavLink, Outlet, useParams } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useParams } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
 
 export function TimeEntriesLayout() {
   const { workspaceId } = useParams()
+  const location = useLocation()
 
   const nav = [
     {
-      to: `/workspaces/${workspaceId}/time-entries`,
+      to: {
+        pathname: `/workspaces/${workspaceId}/time-entries`,
+        search: location.search,
+      },
       label: 'Modo Lista',
       icon: List,
       end: true,
     },
     {
-      to: `/workspaces/${workspaceId}/time-entries/calendar`,
+      to: {
+        pathname: `/workspaces/${workspaceId}/time-entries/calendar`,
+        search: location.search,
+      },
       label: 'Grade Mensal',
       icon: CalendarDays,
       end: false,
     },
     {
-      to: `/workspaces/${workspaceId}/time-entries/timesheet`,
+      to: {
+        pathname: `/workspaces/${workspaceId}/time-entries/timesheet`,
+        search: location.search,
+      },
       label: 'Grade Semanal',
       icon: CalendarRange,
       end: false,
@@ -38,7 +48,7 @@ export function TimeEntriesLayout() {
             {nav.map((n) => {
               const Icon = n.icon
               return (
-                <NavLink key={n.to} to={n.to} end={n.end}>
+                <NavLink key={n.to.pathname} to={n.to} end={n.end}>
                   {({ isActive }) => (
                     <div
                       className={cn(

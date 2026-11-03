@@ -31,7 +31,7 @@ import {
   emptyAddonStorageRepository,
   emptyWorkspaceReferenceRegistry,
 } from '../core/addon-workspace-reference-test-fixture'
-import { AddonLoader } from './AddonLoader'
+import { AddonLoader, NoOpLoadFailuresNotifier } from './AddonLoader'
 
 vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
@@ -99,6 +99,7 @@ describe('AddonLoader security', () => {
         new NodeFetchTransport(),
       ),
       emptyAddonStorageRepository,
+      NoOpLoadFailuresNotifier,
     )
     const activated = await loader.activateAddon(addonId, {
       activate: (context) =>
@@ -172,6 +173,7 @@ describe('AddonLoader security', () => {
         new NodeFetchTransport(),
       ),
       emptyAddonStorageRepository,
+      NoOpLoadFailuresNotifier,
     )
     const addonId = 'password-scope-security'
     const activated = await loader.activateAddon(addonId, {
@@ -253,6 +255,7 @@ describe('AddonLoader security', () => {
         new NodeFetchTransport(),
       ),
       emptyAddonStorageRepository,
+      NoOpLoadFailuresNotifier,
     )
     expect(await loader.loadAndActivateFromDisk('unknown', directory)).toBe(
       false,

@@ -524,7 +524,10 @@ function SidebarAddonSection({
                       return (
                         <DropdownMenuItem asChild key={sub.id}>
                           <NavLink
-                            to={`/workspaces/${workspaceId}${sub.href}`}
+                            to={{
+                              pathname: `/workspaces/${workspaceId}${sub.href}`,
+                              search: location.search,
+                            }}
                             className={({ isActive }) =>
                               cn(
                                 'flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-xs font-normal transition-colors',
@@ -583,7 +586,10 @@ function SidebarAddonSection({
                           <SidebarMenuItem key={sub.id} className="ml-2">
                             <SidebarMenuButton asChild>
                               <NavLink
-                                to={`/workspaces/${workspaceId}${sub.href}`}
+                                to={{
+                                  pathname: `/workspaces/${workspaceId}${sub.href}`,
+                                  search: location.search,
+                                }}
                                 className={({ isActive }) =>
                                   cn(
                                     'hover:bg-muted/60 flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] font-normal transition-colors select-none',
@@ -615,7 +621,10 @@ function SidebarAddonSection({
                   <TooltipTrigger asChild>
                     <SidebarMenuButton asChild>
                       <NavLink
-                        to={`/workspaces/${workspaceId}${menu.href ?? ''}`}
+                        to={{
+                          pathname: `/workspaces/${workspaceId}${menu.href ?? ''}`,
+                          search: location.search,
+                        }}
                         className={({ isActive }) =>
                           cn(
                             'hover:bg-muted/60 flex h-8.5 items-center rounded-md px-2.5 text-sm font-normal transition-colors select-none',

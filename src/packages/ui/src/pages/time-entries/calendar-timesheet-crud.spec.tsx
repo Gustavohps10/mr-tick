@@ -112,8 +112,12 @@ const mockTasks: SyncTaskRxDBDTO[] = [
 const mockTasksById: Record<string, SyncTaskRxDBDTO> = {
   'API-415': mockTasks[0],
   'mr-tick-fake::API-415': mockTasks[0],
+  'conn-1::API-415': mockTasks[0],
+  'conn-1::mr-tick-fake::API-415': mockTasks[0],
   'DOC-131': mockTasks[1],
   'mr-tick-fake::DOC-131': mockTasks[1],
+  'conn-1::DOC-131': mockTasks[1],
+  'conn-1::mr-tick-fake::DOC-131': mockTasks[1],
 }
 
 const queryState = vi.hoisted(() => ({ isLoading: false }))

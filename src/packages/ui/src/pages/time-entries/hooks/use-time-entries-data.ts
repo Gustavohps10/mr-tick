@@ -10,6 +10,7 @@ import {
   useTasksQuery,
   useTimeEntriesQuery,
 } from '@/hooks/queries'
+import { useWorkspaceConnectionsFilter } from '@/hooks/use-workspace-connections-filter'
 import { fetchAndPersistTasks } from '@/lib/tasks-enrichment'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { extractPureTaskId } from '@/pages/time-entries/lib/time-entries-utils'
@@ -39,6 +40,9 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
     return next
   }, [connections])
 
+  const fromParam = searchParams.get('from')
+  const toParam = searchParams.get('to')
+
   const range = useMemo(() => {
     if (options?.ignoreUrlRange && options.from && options.to) {
       return { from: options.from, to: options.to }
@@ -48,10 +52,8 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
       return { from: options.from, to: options.to }
     }
 
-    const from = searchParams.get('from')
-    const to = searchParams.get('to')
-    const parsedFrom = from ? parseISO(from) : null
-    const parsedTo = to ? parseISO(to) : null
+    const parsedFrom = fromParam ? parseISO(fromParam) : null
+    const parsedTo = toParam ? parseISO(toParam) : null
 
     if (parsedFrom && isValid(parsedFrom) && parsedTo && isValid(parsedTo)) {
       return { from: parsedFrom, to: parsedTo }
@@ -61,16 +63,16 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
       from: subDays(new Date(), 6),
       to: new Date(),
     }
-  }, [options?.ignoreUrlRange, options?.from, options?.to, searchParams])
+  }, [options?.ignoreUrlRange, options?.from, options?.to, fromParam, toParam])
 
   const handleRangeChange = (newRange: DateRange | undefined) => {
     if (options?.ignoreUrlRange) return
 
     if (newRange?.from && newRange.to) {
-      setSearchParams({
-        from: newRange.from.toISOString(),
-        to: newRange.to.toISOString(),
-      })
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set('from', newRange.from.toISOString())
+      nextParams.set('to', newRange.to.toISOString())
+      setSearchParams(nextParams)
     }
   }
 
@@ -83,6 +85,8 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
   const playCurrentTimeEntry = useTimeEntryStore((s) => s.playCurrentTimeEntry)
   const stopCurrentTimeEntry = useTimeEntryStore((s) => s.stopCurrentTimeEntry)
 
+  const { scope } = useWorkspaceConnectionsFilter()
+
   const {
     data: timeEntries,
     isLoading,
@@ -94,21 +98,40 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
   } = useTimeEntriesQuery({
     from: range.from,
     to: range.to,
+    scope,
   })
 
-  const { data: activities, activitiesByConnection } = useActivitiesQuery()
-  const { data: tasks = [] } = useTasksQuery()
+  const {
+    data: operationalActivities,
+    activitiesByConnection: operationalActivitiesByConnection,
+  } = useActivitiesQuery()
+  const { data: operationalTasks = [] } = useTasksQuery()
 
-  const tasksById = useMemo(() => {
+  const { data: activities, activitiesByConnection } = useActivitiesQuery({
+    scope,
+  })
+  const { data: tasks = [] } = useTasksQuery({
+    scope,
+  })
+
+  const tasksByIdentity = useMemo(() => {
     const map: Record<string, SyncTaskRxDBDTO> = {}
 
-    for (const t of tasks) {
-      if (t.id) map[t.id] = t
-      if (t.sourceId) map[t.sourceId] = t
+    // Inclui tarefas operacionais indexadas por conexão para resolução determinística em edições/pickers
+    for (const t of operationalTasks) {
+      const connId = t.connectionInstanceId
+      if (!connId) continue
+
+      if (t.id) {
+        map[`${connId}::${t.id}`] = t
+      }
+      if (t.sourceId) {
+        map[`${connId}::${t.sourceId}`] = t
+      }
     }
 
     return map
-  }, [tasks])
+  }, [operationalTasks])
 
   const hostBridge = useHostBridge()
   const { workspace } = useWorkspace()
@@ -127,7 +150,7 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
       if (!rawTaskId) continue
       const pureId = extractPureTaskId(rawTaskId)
       if (!pureId) continue
-      if (tasksById[pureId]?.title) continue
+      if (tasksByIdentity[`${connId}::${pureId}`]?.title) continue
 
       const cacheKey = `${connId}::${pureId}`
       if (requestedTaskIdsRef.current.has(cacheKey)) continue
@@ -158,7 +181,7 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
         ids,
       })
     })
-  }, [db, workspace?.id, timeEntries, tasksById, connections, hostBridge])
+  }, [db, workspace?.id, timeEntries, tasksByIdentity, connections, hostBridge])
 
   const daysInRange = useMemo(() => {
     return eachDayOfInterval({ start: range.from, end: range.to }).reverse()
@@ -176,12 +199,18 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
     isPushing,
     syncResult,
     syncErrorMessage,
-    activities: activities ? activities : [],
-    activitiesByConnection: activitiesByConnection
+    activities: operationalActivities ? operationalActivities : [],
+    activitiesByConnection: operationalActivitiesByConnection
+      ? operationalActivitiesByConnection
+      : {},
+    filteredActivities: activities ? activities : [],
+    filteredActivitiesByConnection: activitiesByConnection
       ? activitiesByConnection
       : {},
     tasks,
-    tasksById,
+    operationalTasks,
+    tasksById: tasksByIdentity,
+    tasksByIdentity,
     daysInRange,
     activeTimeEntry,
     setActive,

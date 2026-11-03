@@ -316,6 +316,9 @@ export function openIpcRoutes(
   IpcHandler.register('ADDONS_SET_ACTIVE_THEME', (e, req) =>
     addonsHandler.setActiveTheme(e, req),
   )
+  IpcHandler.register('ADDONS_GET_LOAD_FAILURES', () =>
+    addonsHandler.getLoadFailures(),
+  )
 
   // --- WIDGET / MOUSE EVENTS ---
   IpcHandler.register('WIDGET_SET_IGNORE_MOUSE', (event, req) => {

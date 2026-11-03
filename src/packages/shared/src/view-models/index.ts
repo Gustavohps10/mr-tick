@@ -1,4 +1,5 @@
 export * from './AddonInstallerViewModel'
+export * from './AddonLoadFailureViewModel'
 export * from './AddonManifestViewModel'
 export * from './AddonThemeViewModel'
 export * from './AuthenticationViewModel'

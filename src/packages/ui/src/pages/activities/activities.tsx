@@ -17,7 +17,7 @@ import {
   UserIcon,
 } from 'lucide-react'
 import { Suspense, useCallback, useMemo, useState } from 'react'
-import { DeepReadonly, RxDocument } from 'rxdb'
+import { DeepReadonly, MangoQuerySelector, RxDocument } from 'rxdb'
 import { toast } from 'sonner'
 
 import { Loader } from '@/components'
@@ -40,9 +40,14 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useWorkspaceConnectionsFilter } from '@/hooks/use-workspace-connections-filter'
+import { connectionScopeKey, isNoneScope } from '@/lib/connection-scope'
 import { KanbanColumnRxDBDTO } from '@/local-db/schemas/kanban-column-schema'
 import { TaskKanbanColumnRxDBDTO } from '@/local-db/schemas/kanban-task-columns-schema'
-import { SyncMetadataRxDBDTO } from '@/local-db/schemas/metadata-sync-schema'
+import {
+  SyncMetadataItem,
+  SyncMetadataRxDBDTO,
+} from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { AppDatabase, useSyncStore } from '@/stores/syncStore'
 
@@ -281,23 +286,45 @@ function KanbanBoard({
     },
   })
 
+  const { scope } = useWorkspaceConnectionsFilter()
+  const dbName = db?.name ? db.name : 'no-db'
+  const isNone = isNoneScope(scope)
+
   const { data: tasks } = useSuspenseQuery({
-    queryKey: ['tasks'],
+    queryKey: ['tasks', dbName, connectionScopeKey(scope)],
     queryFn: async (): Promise<TaskWithTimeEntries[]> => {
+      if (isNone) return []
       const tasksCol = db.collections?.tasks ?? db.tasks
       if (!tasksCol || db.closed) return []
-      const taskDocs = await tasksCol.find().exec()
+
+      const selector: MangoQuerySelector<SyncTaskRxDBDTO> = {
+        _deleted: { $ne: true },
+      }
+
+      if (scope.kind === 'subset') {
+        selector.connectionInstanceId = { $in: scope.ids }
+      }
+
+      const taskDocs = await tasksCol.find({ selector }).exec()
       const timeEntriesCol = db.collections?.timeEntries ?? db.timeEntries
       const tasksWithTimeEntries = await Promise.all(
         taskDocs.map(async (t: RxDocument<SyncTaskRxDBDTO>) => {
           const obj = t.toJSON()
+          const timeSelector: Record<string, unknown> = {
+            _deleted: { $ne: true },
+            'task.id': { $eq: obj.id },
+          }
+
+          if (obj.connectionInstanceId) {
+            timeSelector.connectionInstanceId = {
+              $eq: obj.connectionInstanceId,
+            }
+          }
+
           const timeDocs = timeEntriesCol
             ? await timeEntriesCol
                 .find({
-                  selector: {
-                    _deleted: { $ne: true },
-                    'task.id': { $eq: obj.id },
-                  },
+                  selector: timeSelector,
                 })
                 .exec()
             : []
@@ -312,12 +339,41 @@ function KanbanBoard({
   })
 
   const { data: metadata } = useSuspenseQuery({
-    queryKey: ['metadata'],
+    queryKey: ['metadata', dbName, connectionScopeKey(scope)],
     queryFn: async () => {
+      if (isNone) return null
       const metadataCol = db.collections?.metadata ?? db.metadata
       if (!metadataCol || db.closed) return null
-      const doc = await metadataCol.findOne().exec()
-      return doc ? (doc.toJSON() as SyncMetadataRxDBDTO) : null
+
+      let selector: MangoQuerySelector<SyncMetadataRxDBDTO> | undefined
+
+      if (scope.kind === 'subset') {
+        selector = { connectionInstanceId: { $in: scope.ids } }
+      }
+
+      const docs = selector
+        ? await metadataCol.find({ selector }).exec()
+        : await metadataCol.find().exec()
+
+      if (!docs || docs.length === 0) return null
+
+      const plainDocs = docs.map((d) => d.toJSON() as SyncMetadataRxDBDTO)
+      const mergedStatuses: SyncMetadataItem[] = []
+      const seenStatusIds = new Set<string>()
+
+      for (const d of plainDocs) {
+        for (const s of d.taskStatuses ?? []) {
+          if (!seenStatusIds.has(s.id)) {
+            seenStatusIds.add(s.id)
+            mergedStatuses.push(s)
+          }
+        }
+      }
+
+      return {
+        ...plainDocs[0],
+        taskStatuses: mergedStatuses,
+      } as SyncMetadataRxDBDTO
     },
   })
 

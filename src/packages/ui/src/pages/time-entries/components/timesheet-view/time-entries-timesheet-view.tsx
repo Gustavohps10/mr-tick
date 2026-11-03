@@ -120,9 +120,14 @@ function TimesheetTaskChip({
   compact = false,
 }: TimesheetTaskChipProps) {
   const cleanId = row.taskId ? extractPureTaskId(row.taskId) : undefined
+  const connId = row.connectionInstanceId
+  const taskLookupKey = connId && cleanId ? `${connId}::${cleanId}` : undefined
+  const rawLookupKey =
+    connId && row.taskId ? `${connId}::${row.taskId}` : undefined
+
   const associatedTask =
-    (cleanId && tasksById ? tasksById[cleanId] : undefined) ||
-    (row.taskId && tasksById ? tasksById[row.taskId] : undefined) ||
+    (taskLookupKey && tasksById ? tasksById[taskLookupKey] : undefined) ||
+    (rawLookupKey && tasksById ? tasksById[rawLookupKey] : undefined) ||
     row.entries.find((e) => e.taskData)?.taskData
   const trackerObj = associatedTask?.tracker
   const resolvedTracker = resolveEntityMapping(trackerObj, 'tracker', mappings)
@@ -355,9 +360,17 @@ export function TimeEntriesTimesheetView({
       const pureTaskId = isNoTask
         ? undefined
         : extractPureTaskId(entry.task?.id)
+      const entryConnId = entry.connectionInstanceId
+      const pureLookup =
+        entryConnId && pureTaskId ? `${entryConnId}::${pureTaskId}` : undefined
+      const rawLookup =
+        entryConnId && entry.task?.id
+          ? `${entryConnId}::${entry.task.id}`
+          : undefined
+
       const taskDoc = pureTaskId
-        ? tasksById?.[pureTaskId] ||
-          (entry.task?.id ? tasksById?.[entry.task.id] : undefined)
+        ? (pureLookup ? tasksById?.[pureLookup] : undefined) ||
+          (rawLookup ? tasksById?.[rawLookup] : undefined)
         : undefined
 
       const resolvedTitle = isNoTask

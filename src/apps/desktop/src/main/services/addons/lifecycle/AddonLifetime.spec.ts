@@ -22,7 +22,7 @@ import {
   emptyAddonStorageRepository,
   emptyWorkspaceReferenceRegistry,
 } from '../core/addon-workspace-reference-test-fixture'
-import { AddonLoader } from '../loader/AddonLoader'
+import { AddonLoader, NoOpLoadFailuresNotifier } from '../loader/AddonLoader'
 import { AddonLifetime } from './AddonLifetime'
 vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
@@ -81,6 +81,7 @@ describe('Addon ownership and lifecycle', () => {
         new NodeFetchTransport(),
       ),
       emptyAddonStorageRepository,
+      NoOpLoadFailuresNotifier,
     )
     const first = new ProbeAddon('first')
     const second = new ProbeAddon('second')
@@ -125,6 +126,7 @@ describe('Addon ownership and lifecycle', () => {
         new NodeFetchTransport(),
       ),
       emptyAddonStorageRepository,
+      NoOpLoadFailuresNotifier,
     )
     const addon = new ProbeAddon('probe')
     vi.spyOn(addon, 'activate').mockImplementation((context) => {
@@ -166,6 +168,7 @@ it('releases availability subscriptions and registrations even when deactivate f
     oauthAttemptCoordinator,
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
     emptyAddonStorageRepository,
+    NoOpLoadFailuresNotifier,
   )
   const addon = new ProbeAddon('probe')
   await loader.activateAddon('probe', addon)
@@ -192,6 +195,7 @@ it('keeps reused datasource definitions owned by distinct addons without mutatin
     oauthAttemptCoordinator,
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
     emptyAddonStorageRepository,
+    NoOpLoadFailuresNotifier,
   )
   const source: IDataSource = {
     createInstance: vi.fn<IDataSource['createInstance']>(),
@@ -229,6 +233,7 @@ it('preserves the built-in theme command while resolving addon themes by their o
     oauthAttemptCoordinator,
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
     emptyAddonStorageRepository,
+    NoOpLoadFailuresNotifier,
   )
   const first = new ProbeAddon('first')
   const second = new ProbeAddon('second')
@@ -255,6 +260,7 @@ it('never resolves another addon alias when the selected addon has no such actio
     oauthAttemptCoordinator,
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
     emptyAddonStorageRepository,
+    NoOpLoadFailuresNotifier,
   )
   const first = new ProbeAddon('first')
   const second = new ProbeAddon('second')

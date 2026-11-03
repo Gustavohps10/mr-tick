@@ -37,7 +37,7 @@ import {
   emptyAddonStorageRepository,
   emptyWorkspaceReferenceRegistry,
 } from '../../core/addon-workspace-reference-test-fixture'
-import { AddonLoader } from '../AddonLoader'
+import { AddonLoader, NoOpLoadFailuresNotifier } from '../AddonLoader'
 
 const credentials = emptyAddonCredentialsVault()
 const runtime: ILocalRuntimeAPI = {
@@ -119,6 +119,7 @@ function createLoader(
     new OAuthAttemptCoordinator(),
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
     emptyAddonStorageRepository,
+    NoOpLoadFailuresNotifier,
   )
 }
 

@@ -22,7 +22,7 @@ import {
   emptyAddonStorageRepository,
   emptyWorkspaceReferenceRegistry,
 } from '../../core/addon-workspace-reference-test-fixture'
-import { AddonLoader } from '../AddonLoader'
+import { AddonLoader, NoOpLoadFailuresNotifier } from '../AddonLoader'
 
 export const unavailableRuntime: ILocalRuntimeAPI = {
   request: async () => ({
@@ -50,6 +50,7 @@ export function createOAuthTestSetup(): {
     new OAuthAttemptCoordinator(),
     new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, new NodeFetchTransport()),
     emptyAddonStorageRepository,
+    NoOpLoadFailuresNotifier,
   )
 
   return { addonLoader, fakeCredentialsVault }

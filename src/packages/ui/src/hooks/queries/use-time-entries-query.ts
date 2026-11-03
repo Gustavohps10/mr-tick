@@ -4,6 +4,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, startOfDay } from 'date-fns'
 import { useEffect, useMemo } from 'react'
 
+import {
+  ConnectionScope,
+  connectionScopeKey,
+  DEFAULT_CONNECTION_SCOPE,
+  extractScopeSubsetIds,
+  isNoneScope,
+} from '@/lib/connection-scope'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { useSyncStore } from '@/stores/syncStore'
 
@@ -11,6 +18,7 @@ export interface UseTimeEntriesQueryOptions {
   from: Date
   to: Date
   enabled?: boolean
+  scope?: ConnectionScope
 }
 
 export interface UseTimeEntriesQueryResult {
@@ -30,6 +38,7 @@ export function useTimeEntriesQuery({
   from,
   to,
   enabled = true,
+  scope = DEFAULT_CONNECTION_SCOPE,
 }: UseTimeEntriesQueryOptions): UseTimeEntriesQueryResult {
   const queryClient = useQueryClient()
   const db = useSyncStore((state) => state?.db)
@@ -38,9 +47,10 @@ export function useTimeEntriesQuery({
   const dbName = db?.name ? db.name : 'no-db'
   const fromIso = useMemo(() => startOfDay(from).toISOString(), [from])
   const toIso = useMemo(() => endOfDay(to).toISOString(), [to])
+  const scopeKey = useMemo(() => connectionScopeKey(scope), [scope])
   const queryKey = useMemo(
-    () => ['time-entries-range', dbName, fromIso, toIso],
-    [dbName, fromIso, toIso],
+    () => ['time-entries-range', dbName, fromIso, toIso, scopeKey],
+    [dbName, fromIso, toIso, scopeKey],
   )
 
   const isSyncing = useMemo(() => {
@@ -94,18 +104,28 @@ export function useTimeEntriesQuery({
     return null
   }, [statuses])
 
+  const isNone = isNoneScope(scope)
+
   const query = useQuery<SyncTimeEntryRxDBDTO[]>({
     queryKey,
     queryFn: async () => {
-      if (!db?.timeEntries) return []
+      if (!db?.timeEntries || isNone) return []
+
+      const selector: Record<string, unknown> = {
+        _deleted: { $ne: true },
+        startDate: {
+          $gte: fromIso,
+          $lte: toIso,
+        },
+      }
+
+      if (scope.kind === 'subset') {
+        selector.connectionInstanceId = { $in: scope.ids }
+      }
+
       const results = await db.timeEntries
         .find({
-          selector: {
-            startDate: {
-              $gte: fromIso,
-              $lte: toIso,
-            },
-          },
+          selector,
           sort: [{ startDate: 'desc' }],
         })
         .exec()
@@ -117,15 +137,23 @@ export function useTimeEntriesQuery({
 
   // Reactive subscription: live update TanStack Query cache on any RxDB change
   useEffect(() => {
-    if (!db?.timeEntries || !enabled) return
+    if (!db?.timeEntries || !enabled || isNone) return
+
+    const selector: Record<string, unknown> = {
+      _deleted: { $ne: true },
+      startDate: {
+        $gte: fromIso,
+        $lte: toIso,
+      },
+    }
+
+    const subsetIds = extractScopeSubsetIds(scopeKey)
+    if (subsetIds) {
+      selector.connectionInstanceId = { $in: subsetIds }
+    }
 
     const rxQuery = db.timeEntries.find({
-      selector: {
-        startDate: {
-          $gte: fromIso,
-          $lte: toIso,
-        },
-      },
+      selector,
       sort: [{ startDate: 'desc' }],
     })
 
@@ -137,7 +165,7 @@ export function useTimeEntriesQuery({
     return () => {
       subscription.unsubscribe()
     }
-  }, [db, fromIso, toIso, enabled, queryKey, queryClient])
+  }, [db, fromIso, toIso, enabled, isNone, scopeKey, queryKey, queryClient])
 
   const syncErrorMessage = useMemo((): string | null => {
     const safeStatuses = statuses ? statuses : {}

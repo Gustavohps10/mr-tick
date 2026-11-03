@@ -265,6 +265,7 @@ const mockBridgeClient: IHostBridge = {
     getActiveTheme: async () => mockSuccess(null),
     listThemes: async () => mockSuccess([]),
     setActiveTheme: async () => mockSuccess(undefined),
+    getLoadFailures: async () => mockSuccess({ revision: 0, failures: [] }),
   },
   system: {
     getEnvironment: async () => mockEnvironment,

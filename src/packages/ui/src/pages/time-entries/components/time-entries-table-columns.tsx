@@ -447,13 +447,18 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
     }))
   }
 
+  const rowConnId =
+    mergedRow.connectionInstanceId || original.connectionInstanceId
+  const taskLookupKey =
+    rowConnId && cleanId ? `${rowConnId}::${cleanId}` : undefined
+
   const taskTitle =
     mergedRow.taskData?.title ||
-    (cleanId && tasksById ? tasksById[cleanId]?.title : '') ||
+    (taskLookupKey && tasksById ? tasksById[taskLookupKey]?.title : '') ||
     ''
 
   const associatedTask =
-    (cleanId && tasksById ? tasksById[cleanId] : undefined) ||
+    (taskLookupKey && tasksById ? tasksById[taskLookupKey] : undefined) ||
     mergedRow.taskData
   const trackerObj = associatedTask?.tracker
   const resolvedTracker = resolveEntityMapping(trackerObj, 'tracker', mappings)
@@ -527,7 +532,24 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
               return
             }
 
-            const matchedTask = tasksById ? tasksById[clean] : undefined
+            // Busca a tarefa em todo o mapa indexado de tasksByIdentity (procura por chave ou iterando tarefas operacionais)
+            let matchedTask =
+              rowConnId && clean && tasksById
+                ? tasksById[`${rowConnId}::${clean}`]
+                : undefined
+
+            if (!matchedTask && tasksById) {
+              for (const [key, t] of Object.entries(tasksById)) {
+                if (
+                  key.endsWith(`::${clean}`) ||
+                  t.id === clean ||
+                  t.sourceId === clean
+                ) {
+                  matchedTask = t
+                  break
+                }
+              }
+            }
             const nextConnectionId = matchedTask?.connectionInstanceId
             const previousConnectionId =
               mergedRow.connectionInstanceId ||
@@ -912,7 +934,12 @@ function ActivityCell({ row }: { row: TanStackRow<SuggestionRow> }) {
     )
     const rawTaskId = mergedRow.task?.id
     const currentTaskId = extractPureTaskId(rawTaskId)
-    const associatedTask = currentTaskId ? tasksById[currentTaskId] : undefined
+    const cellConnId =
+      mergedRow.connectionInstanceId || original.connectionInstanceId
+    const associatedTask =
+      cellConnId && currentTaskId && tasksById
+        ? tasksById[`${cellConnId}::${currentTaskId}`]
+        : undefined
 
     const resolvedConnectionInstanceId =
       mergedRow.connectionInstanceId ||
@@ -1110,8 +1137,11 @@ function ActivityCell({ row }: { row: TanStackRow<SuggestionRow> }) {
   }
 
   const currentTaskId = extractPureTaskId(original.task?.id)
+  const cellConnId = original.connectionInstanceId
   const associatedTask =
-    currentTaskId && tasksById ? tasksById[currentTaskId] : undefined
+    cellConnId && currentTaskId && tasksById
+      ? tasksById[`${cellConnId}::${currentTaskId}`]
+      : undefined
   const resolvedConnectionInstanceId =
     original.connectionInstanceId || associatedTask?.connectionInstanceId
 

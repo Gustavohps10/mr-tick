@@ -80,6 +80,8 @@ export const DataSourceConnectionsContext = createContext<
   DataSourceConnectionsContextType | undefined
 >(undefined)
 
+const EMPTY_CONNECTIONS: WorkspaceViewModel['connections'] = []
+
 export function DataSourceConnectionsProvider({
   children,
 }: {
@@ -90,7 +92,7 @@ export function DataSourceConnectionsProvider({
   const queryClient = useQueryClient()
 
   const workspaceId = workspace?.id
-  const workspaceConnections = workspace?.connections ?? []
+  const workspaceConnections = workspace?.connections ?? EMPTY_CONNECTIONS
 
   const { data: installedPlugins = [] } = useQuery({
     queryKey: ['plugins', 'installed'],

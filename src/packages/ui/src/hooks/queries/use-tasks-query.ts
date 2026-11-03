@@ -2,13 +2,21 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
+import { MangoQuerySelector } from 'rxdb'
 
+import {
+  ConnectionScope,
+  connectionScopeKey,
+  DEFAULT_CONNECTION_SCOPE,
+  extractScopeSubsetIds,
+  isNoneScope,
+} from '@/lib/connection-scope'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
 import { useSyncStore } from '@/stores/syncStore'
 
 export interface UseTasksQueryOptions {
   search?: string
-  connectionInstanceId?: string
+  scope?: ConnectionScope
   enabled?: boolean
 }
 
@@ -23,23 +31,29 @@ export interface UseTasksQueryResult {
 export function useTasksQuery(
   options: UseTasksQueryOptions = {},
 ): UseTasksQueryResult {
-  const { search, connectionInstanceId, enabled = true } = options
+  const { search, scope = DEFAULT_CONNECTION_SCOPE, enabled = true } = options
   const queryClient = useQueryClient()
   const db = useSyncStore((state) => state?.db)
   const dbName = db?.name ? db.name : 'no-db'
-  const connectionKey = connectionInstanceId ? connectionInstanceId : 'all'
+  const scopeKey = useMemo(() => connectionScopeKey(scope), [scope])
   const searchKey = search ? search : ''
+  const isNone = isNoneScope(scope)
+
   const queryKey = useMemo(
-    () => ['tasks', dbName, connectionKey, searchKey],
-    [dbName, connectionKey, searchKey],
+    () => ['tasks', dbName, scopeKey, searchKey],
+    [dbName, scopeKey, searchKey],
   )
 
   useEffect(() => {
-    if (!db?.tasks || !enabled) return
+    if (!db?.tasks || !enabled || isNone) return
 
-    const selector: Record<string, any> = { _deleted: { $ne: true } }
-    if (connectionInstanceId) {
-      selector.connectionInstanceId = connectionInstanceId
+    const selector: MangoQuerySelector<SyncTaskRxDBDTO> = {
+      _deleted: { $ne: true },
+    }
+
+    const subsetIds = extractScopeSubsetIds(scopeKey)
+    if (subsetIds) {
+      selector.connectionInstanceId = { $in: subsetIds }
     }
 
     const query = db.tasks.find({ selector, sort: [{ updatedAt: 'desc' }] })
@@ -51,15 +65,17 @@ export function useTasksQuery(
     return () => {
       subscription.unsubscribe()
     }
-  }, [db, connectionInstanceId, search, enabled, queryKey, queryClient])
+  }, [db, scopeKey, isNone, enabled, queryKey, queryClient])
 
   const query = useQuery<SyncTaskRxDBDTO[]>({
     queryKey,
     queryFn: async () => {
-      if (!db?.tasks) return []
-      const selector: Record<string, any> = { _deleted: { $ne: true } }
-      if (connectionInstanceId) {
-        selector.connectionInstanceId = connectionInstanceId
+      if (!db?.tasks || isNone) return []
+      const selector: MangoQuerySelector<SyncTaskRxDBDTO> = {
+        _deleted: { $ne: true },
+      }
+      if (scope.kind === 'subset') {
+        selector.connectionInstanceId = { $in: scope.ids }
       }
 
       const results = await db.tasks

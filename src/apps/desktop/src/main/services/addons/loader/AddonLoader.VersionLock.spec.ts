@@ -33,7 +33,7 @@ import {
   emptyAddonStorageRepository,
   emptyWorkspaceReferenceRegistry,
 } from '../core/addon-workspace-reference-test-fixture'
-import { AddonLoader } from './AddonLoader'
+import { AddonLoader, NoOpLoadFailuresNotifier } from './AddonLoader'
 
 const unavailableRuntime: ILocalRuntimeAPI = {
   request: async () => ({
@@ -87,6 +87,7 @@ describe('AddonLoader - Version Locking & Compatibility at Runtime', () => {
         new NodeFetchTransport(),
       ),
       emptyAddonStorageRepository,
+      NoOpLoadFailuresNotifier,
     )
 
     // Cria diretório temporário para simular addon no disco

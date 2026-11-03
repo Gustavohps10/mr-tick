@@ -23,10 +23,8 @@ import {
   Calendar,
   CalendarClock,
   CheckSquare,
-  ChevronDown,
   Clock,
   Clock4,
-  Database,
   Flame,
   Grid,
   MessageSquareWarning,
@@ -74,11 +72,6 @@ import {
 } from '@/components/ui/chart'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -90,6 +83,12 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useWorkspaceConnectionsFilter } from '@/hooks/use-workspace-connections-filter'
+import {
+  ConnectionScope,
+  connectionScopeKey,
+  isNoneScope,
+} from '@/lib/connection-scope'
 import { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import { AppCollections } from '@/stores/syncStore'
 import { useSyncStore } from '@/stores/syncStore'
@@ -139,13 +138,14 @@ const parseUTCDate = (dateString: string | undefined): Date => {
   )
 }
 
-const getEntriesForRange = async (
+export const getEntriesForRange = async (
   db: RxDatabase<AppCollections>,
   from: Date,
   to: Date,
-  dataSourceIds?: string[],
+  scope?: ConnectionScope,
 ): Promise<SyncTimeEntryRxDBDTO[]> => {
   if (!db?.timeEntries) return []
+  if (scope && isNoneScope(scope)) return []
 
   const selector: MangoQuerySelector<SyncTimeEntryRxDBDTO> = {
     startDate: {
@@ -154,8 +154,8 @@ const getEntriesForRange = async (
     },
   }
 
-  if (dataSourceIds && dataSourceIds.length > 0) {
-    selector.connectionInstanceId = { $in: dataSourceIds }
+  if (scope && scope.kind === 'subset') {
+    selector.connectionInstanceId = { $in: scope.ids }
   }
 
   const result = await db.timeEntries.find({ selector }).exec()
@@ -694,11 +694,12 @@ function AutomatedInsightsSection({ insights }: { insights: InsightItem[] }) {
 
 // #region Data Fetching
 
-async function fetchSummaryData(
+export async function fetchSummaryData(
   db: RxDatabase<AppCollections>,
-  dataSourceIds?: string[],
+  scope?: ConnectionScope,
 ): Promise<{ today: number; week: number; month: number }> {
   if (!db?.timeEntries) return { today: 0, week: 0, month: 0 }
+  if (scope && isNoneScope(scope)) return { today: 0, week: 0, month: 0 }
 
   const now = new Date()
   const weekStart = startOfWeek(now, { weekStartsOn: 1 })
@@ -712,8 +713,8 @@ async function fetchSummaryData(
     startDate: { $gte: queryMonthStart.toISOString() },
   }
 
-  if (dataSourceIds && dataSourceIds.length > 0) {
-    selector.connectionInstanceId = { $in: dataSourceIds }
+  if (scope && scope.kind === 'subset') {
+    selector.connectionInstanceId = { $in: scope.ids }
   }
 
   const entries = await db.timeEntries.find({ selector }).exec()
@@ -737,10 +738,10 @@ async function fetchSummaryData(
   return result
 }
 
-async function fetchPeriodSummaryData(
+export async function fetchPeriodSummaryData(
   db: RxDatabase<AppCollections>,
   dateRange: { from: Date; to: Date },
-  dataSourceIds?: string[],
+  scope?: ConnectionScope,
 ): Promise<{
   totalHours: number
   overtimeHours: number
@@ -748,7 +749,7 @@ async function fetchPeriodSummaryData(
   possibleWorkDays: number
   totalEntries: number
 }> {
-  if (!db?.timeEntries)
+  if (!db?.timeEntries || (scope && isNoneScope(scope)))
     return {
       totalHours: 0,
       overtimeHours: 0,
@@ -758,7 +759,7 @@ async function fetchPeriodSummaryData(
     }
 
   const { from, to } = dateRange
-  const entries = await getEntriesForRange(db, from, to, dataSourceIds)
+  const entries = await getEntriesForRange(db, from, to, scope)
 
   console.log(
     '[MetricsLog] fetchPeriodSummaryData — processing entries:',
@@ -809,10 +810,10 @@ async function fetchPeriodSummaryData(
   return result
 }
 
-async function fetchTimelineData(
+export async function fetchTimelineData(
   db: RxDatabase<AppCollections>,
   dateRange: { from: Date; to: Date },
-  dataSourceIds?: string[],
+  scope?: ConnectionScope,
 ): Promise<{
   timelineData: { date: string; day: string; dailyHours: number }[]
   overtimeData: {
@@ -830,10 +831,10 @@ async function fetchTimelineData(
     overtimeData: { daysWithOvertime: 0, chartData: [] },
   }
 
-  if (!db?.timeEntries) return empty
+  if (!db?.timeEntries || (scope && isNoneScope(scope))) return empty
 
   const { from, to } = dateRange
-  const entries = await getEntriesForRange(db, from, to, dataSourceIds)
+  const entries = await getEntriesForRange(db, from, to, scope)
 
   console.log(
     '[MetricsLog] fetchTimelineData — Found',
@@ -891,15 +892,15 @@ async function fetchTimelineData(
   return result
 }
 
-async function fetchAvgHoursData(
+export async function fetchAvgHoursData(
   db: RxDatabase<AppCollections>,
   dateRange: { from: Date; to: Date },
-  dataSourceIds?: string[],
+  scope?: ConnectionScope,
 ): Promise<{ day: string; averageHours: number }[]> {
-  if (!db?.timeEntries) return []
+  if (!db?.timeEntries || (scope && isNoneScope(scope))) return []
 
   const { from, to } = dateRange
-  const entries = await getEntriesForRange(db, from, to, dataSourceIds)
+  const entries = await getEntriesForRange(db, from, to, scope)
 
   console.log(
     '[MetricsLog] fetchAvgHoursData — Found',
@@ -949,15 +950,15 @@ async function fetchAvgHoursData(
   return result
 }
 
-async function fetchHeatmapData(
+export async function fetchHeatmapData(
   db: RxDatabase<AppCollections>,
   dateRange: { from: Date; to: Date },
-  dataSourceIds?: string[],
+  scope?: ConnectionScope,
 ): Promise<Record<string, Record<string, number>>> {
-  if (!db?.timeEntries) return {}
+  if (!db?.timeEntries || (scope && isNoneScope(scope))) return {}
 
   const { from, to } = dateRange
-  const entries = await getEntriesForRange(db, from, to, dataSourceIds)
+  const entries = await getEntriesForRange(db, from, to, scope)
 
   console.log(
     '[MetricsLog] fetchHeatmapData — Found',
@@ -1005,15 +1006,15 @@ async function fetchHeatmapData(
   return heatmapData
 }
 
-async function fetchActivityData(
+export async function fetchActivityData(
   db: RxDatabase<AppCollections>,
   dateRange: { from: Date; to: Date },
-  dataSourceIds?: string[],
+  scope?: ConnectionScope,
 ): Promise<{ activity: string; hours: number; fill: string }[]> {
-  if (!db?.timeEntries) return []
+  if (!db?.timeEntries || (scope && isNoneScope(scope))) return []
 
   const { from, to } = dateRange
-  const entries = await getEntriesForRange(db, from, to, dataSourceIds)
+  const entries = await getEntriesForRange(db, from, to, scope)
 
   console.log(
     '[MetricsLog] fetchActivityData — Found',
@@ -1055,10 +1056,10 @@ async function fetchActivityData(
   return result
 }
 
-async function fetchQualityData(
+export async function fetchQualityData(
   db: RxDatabase<AppCollections>,
   dateRange: { from: Date; to: Date },
-  dataSourceIds?: string[],
+  scope?: ConnectionScope,
 ): Promise<{
   punctualityData: { name: string; value: number; fill: string }[]
   quality: { forgottenDays: number; noCommentPercent: number }
@@ -1067,10 +1068,10 @@ async function fetchQualityData(
     punctualityData: [],
     quality: { forgottenDays: 0, noCommentPercent: 0 },
   }
-  if (!db?.timeEntries) return empty
+  if (!db?.timeEntries || (scope && isNoneScope(scope))) return empty
 
   const { from, to } = dateRange
-  const entries = await getEntriesForRange(db, from, to, dataSourceIds)
+  const entries = await getEntriesForRange(db, from, to, scope)
 
   console.log(
     '[MetricsLog] fetchQualityData — Found',
@@ -1132,10 +1133,10 @@ async function fetchQualityData(
 
 // Derived query: computes effort intelligence, focus analysis, session distribution,
 // task performance and automated insights from raw entries in the period.
-async function fetchEnhancedAnalyticsData(
+export async function fetchEnhancedAnalyticsData(
   db: RxDatabase<AppCollections>,
   dateRange: { from: Date; to: Date },
-  dataSourceIds?: string[],
+  scope?: ConnectionScope,
 ): Promise<{
   effort: EffortIntelligenceData
   focusAnalysis: FocusAnalysisDataPoint[]
@@ -1163,10 +1164,10 @@ async function fetchEnhancedAnalyticsData(
     insights: [],
   }
 
-  if (!db?.timeEntries) return emptyResult
+  if (!db?.timeEntries || (scope && isNoneScope(scope))) return emptyResult
 
   const { from, to } = dateRange
-  const entries = await getEntriesForRange(db, from, to, dataSourceIds)
+  const entries = await getEntriesForRange(db, from, to, scope)
 
   console.log(
     '[MetricsLog] fetchEnhancedAnalyticsData — Found',
@@ -1410,48 +1411,11 @@ export function Metrics() {
     [date],
   )
 
-  const availableDataSources = useMemo(() => {
-    const connections =
-      (
-        workspace as {
-          connections?: {
-            id: string
-            name?: string
-            provider?: string
-            dataSourceId?: string
-            addonId?: string
-          }[]
-        }
-      )?.connections || []
+  const { scope } = useWorkspaceConnectionsFilter()
 
-    return Array.isArray(connections)
-      ? connections.map((c) => ({
-          id: c.id,
-          label: c.name || c.addonId || c.provider || c.id,
-        }))
-      : []
-  }, [workspace])
+  const scopeKey = useMemo(() => connectionScopeKey(scope), [scope])
 
-  const [selectedSources, setSelectedSources] = useState<string[]>(['all'])
-
-  const effectiveSourceIds = useMemo(() => {
-    if (
-      selectedSources.includes('all') ||
-      selectedSources.length === 0 ||
-      availableDataSources.length === 0
-    ) {
-      return undefined
-    }
-
-    return selectedSources
-  }, [selectedSources, availableDataSources])
-
-  const queryKeyBase = [
-    workspace?.id,
-    dateRange.from,
-    dateRange.to,
-    (effectiveSourceIds || []).join(','),
-  ]
+  const queryKeyBase = [workspace?.id, dateRange.from, dateRange.to, scopeKey]
   const queryOptions = {
     enabled: !!db && !!workspace?.id && !!date?.from,
   }
@@ -1459,14 +1423,10 @@ export function Metrics() {
   // #region Queries
 
   const summaryQuery = useQuery({
-    queryKey: [
-      'metricsSummary',
-      workspace?.id,
-      (effectiveSourceIds || []).join(','),
-    ],
+    queryKey: ['metricsSummary', workspace?.id, scopeKey],
     queryFn: () =>
       db
-        ? fetchSummaryData(db as RxDatabase<AppCollections>, effectiveSourceIds)
+        ? fetchSummaryData(db as RxDatabase<AppCollections>, scope)
         : Promise.resolve({ today: 0, week: 0, month: 0 }),
     enabled: !!db && !!workspace?.id,
   })
@@ -1478,7 +1438,7 @@ export function Metrics() {
         ? fetchPeriodSummaryData(
             db as RxDatabase<AppCollections>,
             dateRange,
-            effectiveSourceIds,
+            scope,
           )
         : Promise.resolve({
             totalHours: 0,
@@ -1494,11 +1454,7 @@ export function Metrics() {
     queryKey: ['metricsTimeline', ...queryKeyBase],
     queryFn: () =>
       db
-        ? fetchTimelineData(
-            db as RxDatabase<AppCollections>,
-            dateRange,
-            effectiveSourceIds,
-          )
+        ? fetchTimelineData(db as RxDatabase<AppCollections>, dateRange, scope)
         : Promise.resolve({
             timelineData: [],
             overtimeData: { daysWithOvertime: 0, chartData: [] },
@@ -1510,11 +1466,7 @@ export function Metrics() {
     queryKey: ['metricsAvgHours', ...queryKeyBase],
     queryFn: () =>
       db
-        ? fetchAvgHoursData(
-            db as RxDatabase<AppCollections>,
-            dateRange,
-            effectiveSourceIds,
-          )
+        ? fetchAvgHoursData(db as RxDatabase<AppCollections>, dateRange, scope)
         : Promise.resolve([]),
     ...queryOptions,
   })
@@ -1523,11 +1475,7 @@ export function Metrics() {
     queryKey: ['metricsHeatmap', ...queryKeyBase],
     queryFn: () =>
       db
-        ? fetchHeatmapData(
-            db as RxDatabase<AppCollections>,
-            dateRange,
-            effectiveSourceIds,
-          )
+        ? fetchHeatmapData(db as RxDatabase<AppCollections>, dateRange, scope)
         : Promise.resolve({}),
     ...queryOptions,
   })
@@ -1536,11 +1484,7 @@ export function Metrics() {
     queryKey: ['metricsActivity', ...queryKeyBase],
     queryFn: () =>
       db
-        ? fetchActivityData(
-            db as RxDatabase<AppCollections>,
-            dateRange,
-            effectiveSourceIds,
-          )
+        ? fetchActivityData(db as RxDatabase<AppCollections>, dateRange, scope)
         : Promise.resolve([]),
     ...queryOptions,
   })
@@ -1549,11 +1493,7 @@ export function Metrics() {
     queryKey: ['metricsQuality', ...queryKeyBase],
     queryFn: () =>
       db
-        ? fetchQualityData(
-            db as RxDatabase<AppCollections>,
-            dateRange,
-            effectiveSourceIds,
-          )
+        ? fetchQualityData(db as RxDatabase<AppCollections>, dateRange, scope)
         : Promise.resolve({
             punctualityData: [],
             quality: { forgottenDays: 0, noCommentPercent: 0 },
@@ -1568,7 +1508,7 @@ export function Metrics() {
         ? fetchEnhancedAnalyticsData(
             db as RxDatabase<AppCollections>,
             dateRange,
-            effectiveSourceIds,
+            scope,
           )
         : Promise.resolve({
             effort: {
@@ -1781,75 +1721,6 @@ export function Metrics() {
 
   return (
     <>
-      {availableDataSources.length > 0 && (
-        <div className="mb-4 flex justify-end">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-border/60 bg-background/50 hover:bg-accent h-8 rounded-md px-2.5 text-xs font-medium shadow-2xs"
-              >
-                <Database className="mr-1.5 size-3.5 opacity-70" />
-                {(() => {
-                  if (
-                    selectedSources.includes('all') ||
-                    selectedSources.length === 0
-                  ) {
-                    return 'Todas as Fontes'
-                  }
-                  if (selectedSources.length === 1) {
-                    const source = availableDataSources.find(
-                      (s) => s.id === selectedSources[0],
-                    )
-                    return source?.label || '1 fonte'
-                  }
-                  return `${selectedSources.length} fontes`
-                })()}
-                <ChevronDown className="ml-1.5 size-3 opacity-60" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-52 p-1.5" align="end">
-              <div className="space-y-0.5 text-xs">
-                <div
-                  className="hover:bg-accent flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 transition-colors"
-                  onClick={() => setSelectedSources(['all'])}
-                >
-                  <Checkbox
-                    checked={selectedSources.includes('all')}
-                    className="size-3.5"
-                  />
-                  <span>Todas as Fontes</span>
-                </div>
-                {availableDataSources.map((source) => (
-                  <div
-                    key={source.id}
-                    className="hover:bg-accent flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 transition-colors"
-                    onClick={() =>
-                      setSelectedSources((prev) => {
-                        if (prev.includes('all')) return [source.id]
-                        return prev.includes(source.id)
-                          ? prev.filter((id) => id !== source.id)
-                          : [...prev, source.id]
-                      })
-                    }
-                  >
-                    <Checkbox
-                      checked={
-                        selectedSources.includes('all') ||
-                        selectedSources.includes(source.id)
-                      }
-                      className="size-3.5"
-                    />
-                    <span>{source.label}</span>
-                  </div>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-      )}
-
       <div className="flex flex-col gap-6">
         {/* --- 1. SEÇÃO "STATUS ATUAL" --- */}
         <div>

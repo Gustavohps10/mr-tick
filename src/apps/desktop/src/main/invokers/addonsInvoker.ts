@@ -68,4 +68,5 @@ export const addonsInvoker: IAddonsAPI = {
     IpcInvoker.invoke('ADDON_EVALUATE_SETTINGS_FORM', payload),
   reapplySettings: (payload) =>
     IpcInvoker.invoke('ADDON_REAPPLY_SETTINGS', payload),
+  getLoadFailures: () => IpcInvoker.invoke('ADDONS_GET_LOAD_FAILURES'),
 }
