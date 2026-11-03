@@ -3,6 +3,7 @@ import type {
   AddonTaskReferenceValue,
   CoreConnection,
   CoreTask,
+  LocalRuntimeSyncStatus,
 } from '@mr-tick/application'
 import { isDataSource } from '@mr-tick/shared/helpers'
 import type { MetadataItem } from '@mr-tick/shared/view-models'
@@ -382,12 +383,16 @@ function AddonTaskDestinationControlInner({
   }, [selectedConnectionId, field.includeMetadata, fetchMetadata])
 
   const fetchIndividualTask = useCallback(
-    async (targetTaskId: string, targetConnectionId: string) => {
+    async (
+      targetTaskId: string,
+      targetConnectionId: string,
+      freshness: 'cache' | 'refresh',
+    ) => {
       if (!workspaceId || !targetConnectionId || !targetTaskId) return
       if (!bridge?.core?.getTask) return
 
       const key = makeTaskKey(workspaceId, targetConnectionId, targetTaskId)
-      if (knownTasksMap.current.has(key)) return
+      if (freshness === 'cache' && knownTasksMap.current.has(key)) return
 
       requestSequenceRef.current += 1
       const requestId = requestSequenceRef.current
@@ -429,13 +434,63 @@ function AddonTaskDestinationControlInner({
   )
 
   useEffect(() => {
-    if (value && value.taskId) {
-      const targetConnectionId = value.connectionInstanceId
-        ? value.connectionInstanceId
-        : selectedConnectionId
-      fetchIndividualTask(value.taskId, targetConnectionId)
-    }
-  }, [value, selectedConnectionId, fetchIndividualTask])
+    if (!value || !value.taskId) return
+    void fetchIndividualTask(value.taskId, value.connectionInstanceId, 'cache')
+  }, [value, fetchIndividualTask])
+
+  const referencedTaskId = value?.taskId
+  const referencedConnectionId = value?.connectionInstanceId
+
+  useEffect(() => {
+    const completedPulls = new Map<string, string>()
+    const taskKey = `tasks_${selectedConnectionId}`
+    const metadataKey = `metadata_${selectedConnectionId}`
+
+    return bridge.events.on<{
+      workspaceId: string
+      statuses: LocalRuntimeSyncStatus[]
+    }>('local-runtime:sync-status', (event) => {
+      if (event.workspaceId !== workspaceId) return
+
+      for (const status of event.statuses) {
+        if (status.key !== taskKey && status.key !== metadataKey) continue
+        if (status.isActive || status.isPulling) continue
+        if (status.lastPullResult !== 'success') continue
+        if (status.lastPulledAt === null) continue
+        if (completedPulls.get(status.key) === status.lastPulledAt) continue
+        completedPulls.set(status.key, status.lastPulledAt)
+
+        if (status.key === metadataKey) {
+          void fetchMetadata()
+          continue
+        }
+
+        if (
+          referencedTaskId &&
+          referencedConnectionId === selectedConnectionId
+        ) {
+          void fetchIndividualTask(
+            referencedTaskId,
+            referencedConnectionId,
+            'refresh',
+          )
+        }
+
+        if (popoverOpen) void fetchTasks(searchTerm)
+      }
+    })
+  }, [
+    bridge.events,
+    workspaceId,
+    selectedConnectionId,
+    referencedTaskId,
+    referencedConnectionId,
+    fetchIndividualTask,
+    fetchMetadata,
+    popoverOpen,
+    fetchTasks,
+    searchTerm,
+  ])
 
   const selectedTask = useMemo(() => {
     if (!value || !value.taskId) return null

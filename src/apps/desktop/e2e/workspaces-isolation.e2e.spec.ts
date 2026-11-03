@@ -14,7 +14,7 @@ test.describe('E2E - Multi-Tenancy e Isolamento de Workspaces (WS-01)', () => {
 
     // 3. Aguarda a sincronização inicial do Workspace 1
     const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][data-status="synced"], [data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
+      '[data-testid="sync-status-indicator"][data-status="synced"]',
     )
     await expect(syncIndicator).toBeVisible({ timeout: 15000 })
 

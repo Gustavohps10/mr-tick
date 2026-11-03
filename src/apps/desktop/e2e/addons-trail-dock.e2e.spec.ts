@@ -70,12 +70,13 @@ test.describe('Addons Dock: real Electron layout, input and IPC', () => {
         await expect(diagnostic).toBeFocused()
         await diagnostic.press('Enter')
         await expect(drawer).toBeVisible()
-        await page.keyboard.press('Escape')
+        await drawer.getByRole('button', { name: 'Close', exact: true }).click()
+        await expect(drawer).not.toBeVisible()
 
         const addon = page
           .getByTestId('addons-trail-dock')
           .locator('button[data-addon-id="mr-tick-datasource-fake"]')
-        await expect(addon).toHaveAccessibleName(/DataSource Fake/)
+        await expect(addon).toHaveAttribute('aria-label', /DataSource Fake/)
         await addon.click()
         const settings = page.getByRole('dialog').filter({
           has: page.getByRole('heading', {
@@ -88,6 +89,7 @@ test.describe('Addons Dock: real Electron layout, input and IPC', () => {
           settings.getByTestId('addon-capability-tab-dataSource'),
         ).toBeVisible()
         await page.keyboard.press('Escape')
+        await expect(drawer).not.toBeVisible()
         await expect(settings).not.toBeVisible()
         await checkDockBounds(page, position)
         await testInfo.attach(`dock-${position}-${viewport.width}-closed.png`, {
@@ -103,10 +105,7 @@ test.describe('Addons Dock: real Electron layout, input and IPC', () => {
     page,
   }) => {
     await openDockWorkspace(page)
-    const diagnostic = page.getByRole('button', {
-      name: 'Diagnóstico dos addons',
-      exact: true,
-    })
+    const diagnostic = page.getByTestId('sync-status-indicator')
     await diagnostic.click()
     const drawer = page.getByTestId('addons-diagnostics-drawer')
     await drawer.getByRole('button', { name: 'Nenhuma', exact: true }).click()
@@ -124,7 +123,8 @@ test.describe('Addons Dock: real Electron layout, input and IPC', () => {
     await page.goBack()
     await expect(page).toHaveURL(urlBefore)
     await expect(checkbox).not.toBeChecked()
-    await page.keyboard.press('Escape')
+    await drawer.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(drawer).not.toBeVisible()
     await page
       .getByTestId('workspace-timebar')
       .getByTestId('timerbar-task-popover-trigger')
@@ -132,9 +132,10 @@ test.describe('Addons Dock: real Electron layout, input and IPC', () => {
     await expect(
       page.getByRole('textbox', { name: 'Buscar tarefa', exact: true }),
     ).toBeVisible()
-    await page
-      .getByRole('button', { name: 'Fechar detalhes da tarefa', exact: true })
-      .click()
+    await page.keyboard.press('Escape')
+    await expect(
+      page.getByRole('textbox', { name: 'Buscar tarefa', exact: true }),
+    ).not.toBeVisible()
   })
 
   for (const scenario of [
@@ -151,8 +152,7 @@ test.describe('Addons Dock: real Electron layout, input and IPC', () => {
     {
       variant: 'missing-default',
       reason: 'INVALID_DEFAULT_EXPORT',
-      source:
-        'export async function activate() {} export async function deactivate() {}',
+      source: 'export const helper = true',
     },
     {
       variant: 'activation',

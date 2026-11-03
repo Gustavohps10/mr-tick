@@ -130,14 +130,16 @@ export type AddonSettingsMultiSelectSource =
 
 export interface AddonSettingsSelectField extends AddonBaseSettingsField {
   readonly type: 'select'
-  readonly source: AddonSettingsSelectSource
+  readonly source?: AddonSettingsSelectSource
+  readonly options?: readonly AddonSettingsOption[]
   readonly defaultValue?: string | number | boolean
   readonly placeholder?: string
 }
 
 export interface AddonSettingsMultiSelectField extends AddonBaseSettingsField {
   readonly type: 'multiselect'
-  readonly source: AddonSettingsMultiSelectSource
+  readonly source?: AddonSettingsMultiSelectSource
+  readonly options?: readonly AddonSettingsMultiSelectOption[]
   readonly defaultValue?: readonly (string | number)[]
   readonly placeholder?: string
 }

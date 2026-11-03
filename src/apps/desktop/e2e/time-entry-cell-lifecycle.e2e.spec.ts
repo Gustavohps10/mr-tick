@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { expect, test } from './fixtures/electron-fixture'
 import seedWorkspaces from './fixtures/seed-workspaces.json' with { type: 'json' }
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 const renamedActivitySchema = z.object({
   ok: z.literal(true),
@@ -18,11 +19,9 @@ test('menu aberto mantém identidade quando metadata da atividade muda sem alter
   )
   if (!workspace) throw new Error('CELL_LIFECYCLE_WORKSPACE_NOT_FOUND')
   await page.locator(`nav a[href$="/workspaces/${workspace.id}"]`).click()
-  await expect(
-    page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    ),
-  ).toBeVisible({ timeout: 30000 })
+  await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+    timeout: 30000,
+  })
   const firstTrigger = page.getByTestId('time-entry-actions-trigger').first()
   await expect(firstTrigger).toBeVisible()
   const entryId = await firstTrigger
@@ -107,11 +106,9 @@ test('comentário em edição mantém foco e texto durante atualização de meta
   )
   if (!workspace) throw new Error('CELL_LIFECYCLE_WORKSPACE_NOT_FOUND')
   await page.locator(`nav a[href$="/workspaces/${workspace.id}"]`).click()
-  await expect(
-    page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    ),
-  ).toBeVisible({ timeout: 30000 })
+  await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+    timeout: 30000,
+  })
   const firstTrigger = page.getByTestId('time-entry-actions-trigger').first()
   await expect(firstTrigger).toBeVisible()
   const entryId = await firstTrigger

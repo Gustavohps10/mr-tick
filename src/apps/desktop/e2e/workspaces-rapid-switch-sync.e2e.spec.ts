@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures/electron-fixture'
+import { closeSyncDiagnostics } from './fixtures/sync-status'
 
 test.describe('E2E - Troca Rápida de Workspaces durante Sincronização (STR-04)', () => {
   test('deve alternar workspaces rapidamente durante sincronização ativa sem locks residuais ou crash (STR-04)', async ({
@@ -27,10 +28,11 @@ test.describe('E2E - Troca Rápida de Workspaces durante Sincronização (STR-04
 
     // 4. Inicia uma sincronização manual no Workspace 1
     const statusBtn = page.locator('[data-testid="sync-status-indicator"]')
-    await statusBtn.click({ force: true })
+    await statusBtn.click()
     const syncAllBtn = page.locator('[data-testid="sync-all-button"]')
     await expect(syncAllBtn).toBeVisible({ timeout: 5000 })
-    await syncAllBtn.click({ force: true })
+    await syncAllBtn.click()
+    await closeSyncDiagnostics(page)
 
     // 5. IMEDIATAMENTE (durante o sync ativo), alterna para o Workspace 2 no sidebar
     await workspaceLinks.nth(1).click()

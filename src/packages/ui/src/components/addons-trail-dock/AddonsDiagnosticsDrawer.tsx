@@ -160,6 +160,28 @@ export function AddonsDiagnosticsDrawer({
         data-testid="addons-diagnostics-drawer"
         side="right"
         className="bg-background/95 border-border/80 z-50 flex w-[460px] max-w-[95vw] flex-col border-l p-0 shadow-2xl backdrop-blur-md sm:max-w-md"
+        onCloseAutoFocus={(event) => {
+          if (focusedAddonId) {
+            const addonBtn = document.querySelector<HTMLButtonElement>(
+              `button[data-addon-id="${focusedAddonId}"]`,
+            )
+
+            if (addonBtn) {
+              event.preventDefault()
+              addonBtn.focus()
+              return
+            }
+          }
+
+          const syncBtn = document.querySelector<HTMLButtonElement>(
+            'button[data-testid="sync-status-indicator"]',
+          )
+
+          if (syncBtn) {
+            event.preventDefault()
+            syncBtn.focus()
+          }
+        }}
       >
         <SheetHeader className="border-border/60 border-b px-6 py-4">
           <SheetTitle className="flex items-center gap-2 text-base font-semibold">
@@ -678,6 +700,7 @@ export function AddonsDiagnosticsDrawer({
                                           <p className="text-muted-foreground text-[11px] leading-relaxed">
                                             {explanation.description}
                                           </p>
+                                          <p>{explanation.technicalDetails}</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>

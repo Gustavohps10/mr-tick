@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import type { IHostBridge } from '../../../packages/application/src/contracts/host/IHostBridge'
 import { expect, test } from './fixtures/electron-fixture'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 interface SyncObservation {
   at: number
@@ -76,9 +77,7 @@ test.describe('E2E - Edição Inline Direta (Ghost Mode)', () => {
       await workspaceLink.click()
 
       // 2. Aguarda a sincronização inicial assentar ("Sincronizado")
-      const syncIndicator = page.locator(
-        '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-      )
+      const syncIndicator = syncStatusIndicator(page, 'synced')
       await expect(syncIndicator).toBeVisible({ timeout: 15000 })
 
       // 3. Aguarda a estabilização completa dos apontamentos carregados
@@ -159,9 +158,7 @@ test.describe('E2E - Edição Inline Direta (Ghost Mode)', () => {
     await expect(workspaceLink).toBeVisible({ timeout: 15000 })
     await workspaceLink.click()
 
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 15000 })
 
     const actionTriggers = page.locator(

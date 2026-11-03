@@ -1655,7 +1655,7 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
               Preencha as configuraÃ§Ãµes de conexÃ£o para esta instÃ¢ncia.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto py-2 pr-1">
+          <div className="flex-1 overflow-y-auto px-1 py-2">
             {connectionTargetId && connectionTargetProfile && (
               <NewAddonConnectionForm
                 pluginId={addonId}

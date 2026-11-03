@@ -1,5 +1,13 @@
 import { defineConfig } from '@playwright/test'
 
+function getWorkerCount(): number {
+  if (process.env.CI) return 2
+  if (process.env.WORKERS) return Number(process.env.WORKERS)
+  // Native Win32 input and Electron focus share the same desktop session.
+  if (process.platform === 'win32') return 1
+  return 4
+}
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 60000,
@@ -7,11 +15,7 @@ export default defineConfig({
     timeout: 10000,
   },
   fullyParallel: true,
-  workers: process.env.CI
-    ? 2
-    : process.env.WORKERS
-      ? Number(process.env.WORKERS)
-      : 4,
+  workers: getWorkerCount(),
   forbidOnly: Boolean(process.env.CI),
   retries: 4,
   ...(process.env.CI ? { grepInvert: /@local-windows/ } : {}),

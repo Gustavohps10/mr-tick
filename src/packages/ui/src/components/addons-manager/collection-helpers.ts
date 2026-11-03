@@ -96,8 +96,10 @@ function fieldDependsOn(
   targetFieldId: string,
 ): boolean {
   if (field.type === 'select' || field.type === 'multiselect') {
-    if (field.source.kind === 'dynamic' && field.source.dependsOn) {
-      return field.source.dependsOn.some((dep) => {
+    const source = field.source
+
+    if (source && source.kind === 'dynamic' && source.dependsOn) {
+      return source.dependsOn.some((dep) => {
         const lastStep = dep.address.path[dep.address.path.length - 1]
         return lastStep?.kind === 'field' && lastStep.fieldId === targetFieldId
       })

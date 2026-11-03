@@ -19,6 +19,8 @@ export default defineConfig([
       '**/out/**',
       '**/.next/**',
       '**/.turbo/**',
+      '**/test-results*/**',
+      '**/playwright-report/**',
       '**/*.d.ts',
       '**/*.js',
       '**/*.cjs',

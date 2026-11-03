@@ -269,4 +269,25 @@ describe('collection-helpers (envelope { itemId, values } e rastreamento de requ
     expect(sameGuild.values.guild).toBe('1294040636718317618')
     expect(sameGuild.values.channel).toBe('1294040636718317622')
   })
+
+  it('processa campos select sem propriedade source sem estourar excecao', () => {
+    const fieldsWithMissingSource: readonly AddonSettingsField[] = [
+      {
+        id: 'redmineVersion',
+        type: 'select',
+        label: 'Versão do Redmine',
+        options: [
+          { label: 'Redmine 5.x', value: '5' },
+          { label: 'Redmine 6.x', value: '6' },
+        ],
+      },
+    ]
+
+    const dependentIds = findDependentFieldIds(
+      fieldsWithMissingSource,
+      'someOtherField',
+    )
+
+    expect(dependentIds).toEqual([])
+  })
 })

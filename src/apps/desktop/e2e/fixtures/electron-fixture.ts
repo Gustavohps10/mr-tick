@@ -57,6 +57,9 @@ function cleanTestStorage(userDataPath: string): void {
   cleanDirectoryIfExists(join(userDataPath, 'addons'))
   cleanDirectoryIfExists(join(userDataPath, 'linked-audit-source'))
   cleanDirectoryIfExists(join(userDataPath, 'addon-settings'))
+  const addonSettingsFile = join(userDataPath, 'addon-settings.json')
+  if (existsSync(addonSettingsFile)) rmSync(addonSettingsFile)
+
   for (const name of ['workspaces.sqlite', 'workspaces.sqlite3']) {
     for (const ext of ['', '-wal', '-shm', '-journal']) {
       const file = join(userDataPath, `${name}${ext}`)

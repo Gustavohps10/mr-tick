@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { IHostBridge } from '../../../packages/application/src/contracts/host/IHostBridge'
 import { expect, test } from './fixtures/electron-fixture'
 import { fakeSyncScope, localSyncEntries } from './fixtures/fake-sync-observer'
+import { closeSyncDiagnostics, expectSyncStatus } from './fixtures/sync-status'
 
 declare global {
   interface Window {
@@ -127,11 +128,7 @@ async function connectSecondFakeConnection(page: Page) {
   )
   expect(connected.isSuccess).toBe(true)
   await page.reload()
-  await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
-    'aria-label',
-    'Sincronizado',
-    { timeout: 60000 },
-  )
+  await expectSyncStatus(page, 'synced', { timeout: 60000 })
   return connectionInstanceId
 }
 
@@ -160,13 +157,13 @@ async function openDetectedConflict(page: Page) {
       .locator('[data-testid="sync-status-indicator"]')
       .first()
     if (await statusBtn.isVisible().catch(() => false)) {
-      await statusBtn.click({ force: true })
+      await statusBtn.click()
       const syncAllBtn = page.locator('[data-testid="sync-all-button"]').first()
       if (
         (await syncAllBtn.isVisible().catch(() => false)) &&
         (await syncAllBtn.isEnabled().catch(() => false))
       ) {
-        await syncAllBtn.click({ force: true })
+        await syncAllBtn.click()
       }
       const popoverResolver = page
         .getByRole('button', { name: 'Resolver' })
@@ -176,7 +173,7 @@ async function openDetectedConflict(page: Page) {
         await expect(dialog).toBeVisible({ timeout: 3000 })
         return
       }
-      await page.keyboard.press('Escape')
+      await closeSyncDiagnostics(page)
     }
     await expect(conflictButton.or(resolverBtn)).toBeVisible({ timeout: 3000 })
     if (await conflictButton.isVisible().catch(() => false)) {
@@ -300,7 +297,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
       .toBe(before.updateFailures + 1)
     await page.getByTestId('sync-status-indicator').click()
     await page.getByTestId('sync-all-button').click()
-    await page.keyboard.press('Escape')
+    await closeSyncDiagnostics(page)
     await expect(
       page.getByRole('button', { name: 'Conflito', exact: true }).first(),
     ).toBeVisible({ timeout: 45000 })
@@ -325,6 +322,10 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
     await dialog.getByRole('button', { name: 'Selecionar Tudo Remoto' }).click()
     await dialog.getByRole('button', { name: 'Aceitar Mesclagem' }).click()
     await expect(dialog).not.toBeVisible()
+
+    if (await page.getByTestId('addons-diagnostics-drawer').isVisible())
+      await closeSyncDiagnostics(page)
+
     const comments = 'EDIT_AFTER_REMOTE_ACCEPT_' + testInfo.testId
     await editFirstComment(page, comments)
     await expect
@@ -364,7 +365,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
       .parse(await command(page, 'fake-db:inject-today')).created
     await page.getByTestId('sync-status-indicator').click()
     await page.getByTestId('sync-all-button').click()
-    await page.keyboard.press('Escape')
+    await closeSyncDiagnostics(page)
     const targetRow = page.locator('tr').filter({
       has: page.getByText(created.comments, { exact: true }),
     })
@@ -491,7 +492,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
       .poll(async () => (await diagnostics(page)).deleteFailures)
       .toBe(before.deleteFailures + 1)
     const indicator = page.getByTestId('sync-status-indicator')
-    await expect(indicator).toHaveAttribute('aria-label', 'Erro técnico')
+    await expect(indicator).toHaveAttribute('data-status', 'technical_error')
     await indicator.click()
     await page
       .getByRole('dialog')
@@ -508,10 +509,10 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
     await expect(syncAll).toBeEnabled()
     await syncAll.click()
     await expect(syncAll).toBeEnabled({ timeout: 30000 })
-    await page.keyboard.press('Escape')
-    await expect(indicator).toHaveAttribute('aria-label', 'Erro técnico')
+    await closeSyncDiagnostics(page)
+    await expect(indicator).toHaveAttribute('data-status', 'technical_error')
     await page.reload()
-    await expect(indicator).toHaveAttribute('aria-label', 'Erro técnico', {
+    await expect(indicator).toHaveAttribute('data-status', 'technical_error', {
       timeout: 30000,
     })
     const after = await diagnostics(page)
@@ -546,10 +547,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
     const after = await diagnostics(page)
     expect(after.updateAttempts).toBe(before.updateAttempts + 1)
     expect(after.createAttempts).toBe(before.createAttempts)
-    await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
-      'aria-label',
-      'Sincronizado',
-    )
+    await expectSyncStatus(page, 'synced')
   })
 
   test('pull atualiza um apontamento sincronizado sem nenhuma edição local', async ({
@@ -565,7 +563,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
     await expect
       .poll(async () => (await diagnostics(page)).pullAttempts)
       .toBeGreaterThan(before.pullAttempts)
-    await page.keyboard.press('Escape')
+    await closeSyncDiagnostics(page)
     await expect(
       page.getByText(result.updated.comments, { exact: true }).first(),
     ).toBeVisible()
@@ -583,10 +581,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
       .poll(async () => (await diagnostics(page)).deleteFailures)
       .toBe(before.deleteFailures + 1)
     const indicator = page.getByTestId('sync-status-indicator')
-    await expect(indicator).toHaveAttribute(
-      'aria-label',
-      'Autenticação necessária',
-    )
+    await expect(indicator).toHaveAttribute('data-status', 'auth_error')
     await indicator.click()
     await page
       .getByRole('dialog')
@@ -618,19 +613,12 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
         timeout: 45000,
       })
       .toBe(before.timeEntryCount - 1)
-    await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
-      'aria-label',
-      'Sincronizado',
-    )
+    await expectSyncStatus(page, 'synced')
     const after = await diagnostics(page)
     expect(after.deleteAttempts).toBe(before.deleteAttempts + 1)
     expect(after.updateAttempts).toBe(before.updateAttempts + 1)
     await page.reload()
-    await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
-      'aria-label',
-      'Sincronizado',
-      { timeout: 30000 },
-    )
+    await expectSyncStatus(page, 'synced', { timeout: 30000 })
     const restarted = await diagnostics(page)
     expect(restarted.deleteAttempts).toBe(before.deleteAttempts + 1)
     expect(restarted.createAttempts).toBe(before.createAttempts)
@@ -672,10 +660,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
     expect(after.createAttempts).toBe(before.createAttempts + 1)
     expect(after.updateAttempts).toBe(before.updateAttempts + 1)
     expect(after.timeEntryCount).toBe(before.timeEntryCount)
-    await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
-      'aria-label',
-      'Sincronizado',
-    )
+    await expectSyncStatus(page, 'synced')
   })
 
   test('confirmação canônica pendente bloqueia troca de conexão', async ({
@@ -856,10 +841,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
         ),
       )
       .toBe(true)
-    await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
-      'aria-label',
-      'Sincronizado',
-    )
+    await expectSyncStatus(page, 'synced')
     const before = await diagnostics(page)
     await command(page, 'fake-db:legacy-update-and-lose-canonical-read')
     const row = page.locator('tr').filter({ hasText: comments }).first()
@@ -937,11 +919,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
     await expect
       .poll(async () => (await diagnostics(page)).updateFailures)
       .toBe(before.updateFailures + 1)
-    await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
-      'aria-label',
-      'Sincronizado',
-      { timeout: 45000 },
-    )
+    await expectSyncStatus(page, 'synced', { timeout: 45000 })
     const after = await diagnostics(page)
     expect(after.createAttempts).toBe(before.createAttempts + 1)
     expect(after.updateAttempts).toBe(before.updateAttempts + 1)
@@ -967,7 +945,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
     try {
       await page.getByTestId('sync-status-indicator').click()
       await page.getByTestId('sync-all-button').click()
-      await page.keyboard.press('Escape')
+      await closeSyncDiagnostics(page)
       await expect
         .poll(async () => (await diagnostics(page)).retainedPulls)
         .toBe(1)
@@ -981,11 +959,7 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
         .toBe(true)
       await expect(page.getByRole('row').filter({ hasText: r2 })).toHaveCount(1)
       await command(page, 'fake-db:release-time-entry-pulls')
-      await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
-        'aria-label',
-        'Sincronizado',
-        { timeout: 30000 },
-      )
+      await expectSyncStatus(page, 'synced', { timeout: 30000 })
       await expect(page.getByRole('row').filter({ hasText: r2 })).toHaveCount(1)
       await expect(page.getByRole('row').filter({ hasText: r1 })).toHaveCount(0)
     } finally {
@@ -1010,18 +984,16 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
         await window.getByTestId('sync-status-indicator').click()
         const syncBtn = window.getByTestId('sync-all-button')
         if (await syncBtn.isEnabled().catch(() => false)) {
-          await syncBtn.click({ force: true })
+          await syncBtn.click()
         }
-        await window.keyboard.press('Escape')
+        await closeSyncDiagnostics(window)
       }
       await expect
         .poll(async () => (await diagnostics(page)).retainedPulls)
         .toBeGreaterThanOrEqual(1)
       await command(page, 'fake-db:release-time-entry-pulls')
       for (const window of [page, second]) {
-        await expect(
-          window.getByTestId('sync-status-indicator'),
-        ).toHaveAttribute('aria-label', 'Sincronizado', { timeout: 30000 })
+        await expectSyncStatus(window, 'synced', { timeout: 30000 })
         await expect(
           window.getByRole('row').filter({ hasText: created.comments }),
         ).toHaveCount(1)

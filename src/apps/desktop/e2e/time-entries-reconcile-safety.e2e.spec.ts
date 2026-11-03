@@ -3,6 +3,10 @@ import { z } from 'zod'
 
 import type { IHostBridge } from '../../../packages/application/src/contracts/host/IHostBridge'
 import { expect, test } from './fixtures/electron-fixture'
+import {
+  closeSyncDiagnostics,
+  syncStatusIndicator,
+} from './fixtures/sync-status'
 
 declare global {
   interface Window {
@@ -58,11 +62,9 @@ async function openWorkspace(page: Page) {
   const workspace = page.locator('nav a[href*="/workspaces/"]').first()
   await expect(workspace).toBeVisible()
   await workspace.click()
-  await expect(
-    page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    ),
-  ).toBeVisible({ timeout: 30000 })
+  await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+    timeout: 30000,
+  })
   await expect(
     page.locator('[data-testid="time-entry-actions-trigger"]').first(),
   ).toBeVisible()
@@ -94,13 +96,11 @@ async function flushReplication(page: Page) {
     .poll(async () => (await diagnostics(page)).pullAttempts)
     .toBeGreaterThan(before.pullAttempts)
   await expect(syncAll).toBeEnabled({ timeout: 30000 })
-  await expect(
-    page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    ),
-  ).toBeVisible({ timeout: 30000 })
+  await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+    timeout: 30000,
+  })
   if (openedForFlush) {
-    await page.keyboard.press('Escape')
+    await closeSyncDiagnostics(page)
     await expect(syncAll).not.toBeVisible()
   }
 }

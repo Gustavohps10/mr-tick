@@ -1,4 +1,8 @@
 import { expect, test } from './fixtures/electron-fixture'
+import {
+  closeSyncDiagnostics,
+  syncStatusIndicator,
+} from './fixtures/sync-status'
 
 test.describe('E2E - Sweep Reconcile Local-First (SYNC-06)', () => {
   test('deve purgar localmente registros que sofreram hard-delete no servidor', async ({
@@ -10,9 +14,7 @@ test.describe('E2E - Sweep Reconcile Local-First (SYNC-06)', () => {
     await workspaceLink.click()
 
     // 2. Aguarda a sincronização inicial
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     // 2.1 Reseta o banco fake para garantir estado limpo
@@ -35,14 +37,12 @@ test.describe('E2E - Sweep Reconcile Local-First (SYNC-06)', () => {
       .locator('[data-testid="sync-status-indicator"]')
       .first()
     await expect(syncIndicatorPopover).toBeVisible()
-    await syncIndicatorPopover.click({ force: true })
+    await syncIndicatorPopover.click()
 
-    const forceSyncBtn = page
-      .getByRole('button', { name: 'Sincronizar tudo' })
-      .first()
+    const forceSyncBtn = page.getByTestId('sync-all-button')
     await expect(forceSyncBtn).toBeVisible()
-    await forceSyncBtn.click({ force: true })
-    await page.keyboard.press('Escape')
+    await forceSyncBtn.click()
+    await closeSyncDiagnostics(page)
 
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
@@ -71,11 +71,11 @@ test.describe('E2E - Sweep Reconcile Local-First (SYNC-06)', () => {
 
     // 4. Força a sincronização
     await expect(syncIndicatorPopover).toBeVisible()
-    await syncIndicatorPopover.click({ force: true })
+    await syncIndicatorPopover.click()
 
     await expect(forceSyncBtn).toBeVisible()
-    await forceSyncBtn.click({ force: true })
-    await page.keyboard.press('Escape')
+    await forceSyncBtn.click()
+    await closeSyncDiagnostics(page)
 
     // 5. Aguarda conclusão do sync
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })

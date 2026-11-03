@@ -268,7 +268,7 @@ export function MappingIconPicker({
         </div>
 
         <div
-          className="h-64 overflow-y-auto overscroll-contain pr-1"
+          className="h-64 overflow-y-auto overscroll-contain p-1"
           data-testid={`mapping-icon-scroll-${fieldId}`}
           data-radix-scroll-lock-ignore="true"
           onWheel={(e) => e.stopPropagation()}

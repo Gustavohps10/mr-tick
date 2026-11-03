@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures/electron-fixture'
+import { closeSyncDiagnostics } from './fixtures/sync-status'
 
 test.describe('E2E - Resiliência a Erro 401 / Token Expirado (SYNC-07)', () => {
   test('deve sinalizar autenticação necessária sem crash e manter integridade da fila local (SYNC-07)', async ({
@@ -41,11 +42,11 @@ test.describe('E2E - Resiliência a Erro 401 / Token Expirado (SYNC-07)', () => 
 
     // 5. Dispara sincronização para provocar a falha de autenticação
     const statusBtn = page.locator('[data-testid="sync-status-indicator"]')
-    await statusBtn.click({ force: true })
+    await statusBtn.click()
     const syncAllBtn = page.locator('[data-testid="sync-all-button"]')
     await expect(syncAllBtn).toBeVisible({ timeout: 5000 })
-    await syncAllBtn.click({ force: true })
-    await page.keyboard.press('Escape')
+    await syncAllBtn.click()
+    await closeSyncDiagnostics(page)
 
     // 6. Valida que o indicador global sinaliza status auth_error
     const authErrorIndicator = page.locator(
@@ -97,10 +98,10 @@ test.describe('E2E - Resiliência a Erro 401 / Token Expirado (SYNC-07)', () => 
     await page.keyboard.press('Escape')
 
     // 9. Força sincronização após restauração
-    await statusBtn.click({ force: true })
+    await statusBtn.click()
     await expect(syncAllBtn).toBeVisible({ timeout: 5000 })
-    await syncAllBtn.click({ force: true })
-    await page.keyboard.press('Escape')
+    await syncAllBtn.click()
+    await closeSyncDiagnostics(page)
 
     // 10. Valida que o sistema retorna ao estado normal "synced"
     await expect(syncIndicator).toBeVisible({ timeout: 45000 })

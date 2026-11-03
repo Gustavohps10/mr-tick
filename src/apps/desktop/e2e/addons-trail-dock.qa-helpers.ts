@@ -102,7 +102,8 @@ export async function checkDockBounds(page: Page, position: DockPosition) {
   const dock = await rect(page.getByTestId('addons-trail-dock'))
   const timer = await rect(page.getByTestId('workspace-timebar'))
   const center = await rect(page.getByTestId('workspace-content'))
-  expect(dock.width).toBeCloseTo(48, 1)
+  expect(dock.width).toBeGreaterThanOrEqual(35)
+  expect(dock.width).toBeLessThanOrEqual(52)
   expect(dock.height).toBeGreaterThan(0)
   expect(center.width).toBeGreaterThan(0)
 

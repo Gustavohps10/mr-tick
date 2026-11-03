@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures/electron-fixture'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 test.describe('E2E - Alternância de Visões (TE-07)', () => {
   test('deve alternar entre Modo Lista, Grade Mensal e Grade Semanal mantendo consistência dos dados', async ({
@@ -10,9 +11,7 @@ test.describe('E2E - Alternância de Visões (TE-07)', () => {
     await workspaceLink.click()
 
     // 2. Aguarda a sincronização inicial
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 15000 })
 
     // 3. Valida que inicia no Modo Lista com a tabela de apontamentos renderizada

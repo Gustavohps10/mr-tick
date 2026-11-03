@@ -4,6 +4,7 @@ import {
   fakeSyncScope,
   localSyncEntries,
 } from './fixtures/fake-sync-observer'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 test.describe('E2E - Sincronização e Resiliência Offline (SYNC-02)', () => {
   test.afterEach(async ({ page }) => {
@@ -25,9 +26,7 @@ test.describe('E2E - Sincronização e Resiliência Offline (SYNC-02)', () => {
     await workspaceLink.click()
 
     // 2. Aguarda a sincronização inicial assentar ("Sincronizado")
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     // 3. Obtém contagem inicial de apontamentos

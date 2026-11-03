@@ -80,7 +80,7 @@ export function NewAddonConnectionForm(props: NewAddonConnectionFormProps) {
   if (isLoading)
     return (
       <div
-        className="flex flex-col gap-4"
+        className="flex flex-col gap-4 p-1"
         aria-label="Carregando campos de conexão"
       >
         <Skeleton className="h-6 w-48" />
@@ -201,7 +201,7 @@ function ConnectionFields({
 
   return (
     <FormProvider {...methods}>
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6 p-1">
         {authTabs.length > 1 && (
           <label className="flex flex-col gap-2">
             <Label>Método de autenticação</Label>

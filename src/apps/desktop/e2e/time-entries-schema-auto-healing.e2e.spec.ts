@@ -25,19 +25,19 @@ test.describe('E2E - Auto-Healing de Schema do Banco Local / Reset (STR-05)', ()
 
     // 4. Abre o popover de status de sincronização
     const statusBtn = page.locator('[data-testid="sync-status-indicator"]')
-    await statusBtn.click({ force: true })
+    await statusBtn.click()
 
     // 5. Aciona o botão de reset manual / auto-healing da base de dados
     const resetTrigger = page.locator('[data-testid="reset-database-trigger"]')
     await expect(resetTrigger).toBeVisible({ timeout: 5000 })
-    await resetTrigger.click({ force: true })
+    await resetTrigger.click()
 
     // 6. Confirma o reset da base local no AlertDialog de segurança
     const confirmResetBtn = page.locator(
       '[data-testid="confirm-reset-database-btn"]',
     )
     await expect(confirmResetBtn).toBeVisible({ timeout: 5000 })
-    await confirmResetBtn.click({ force: true })
+    await confirmResetBtn.click()
 
     // 7. Valida que o aplicativo recria o banco do zero e retorna com sucesso para "synced"
     await expect(syncIndicator).toBeVisible({ timeout: 35000 })

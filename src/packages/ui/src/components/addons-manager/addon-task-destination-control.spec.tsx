@@ -5,9 +5,11 @@ import type {
   CoreMetadata,
   CoreTask,
   CoreTaskPage,
+  IHostBridge,
+  LocalRuntimeSyncStatus,
 } from '@mr-tick/application'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -176,13 +178,14 @@ describe('AddonTaskDestinationControl', () => {
     })
 
     vi.mocked(useHostBridge).mockReturnValue({
+      events: { on: vi.fn(() => vi.fn()) },
       core: {
         listConnections,
         listTasks: vi.fn(),
         getTask: vi.fn(),
         getMetadata: vi.fn(),
       },
-    } as any)
+    } as unknown as IHostBridge)
 
     const onChange = vi.fn()
 
@@ -230,13 +233,14 @@ describe('AddonTaskDestinationControl', () => {
     })
 
     vi.mocked(useHostBridge).mockReturnValue({
+      events: { on: vi.fn(() => vi.fn()) },
       core: {
         listConnections,
         listTasks,
         getTask: vi.fn(),
         getMetadata,
       },
-    } as any)
+    } as unknown as IHostBridge)
 
     let currentValue: AddonTaskReferenceValue | null = null
     const onChange = vi.fn((val) => {
@@ -324,6 +328,7 @@ describe('AddonTaskDestinationControl', () => {
       .mockResolvedValueOnce({ isSuccess: true, data: page2 })
 
     vi.mocked(useHostBridge).mockReturnValue({
+      events: { on: vi.fn(() => vi.fn()) },
       core: {
         listConnections: vi
           .fn()
@@ -334,7 +339,7 @@ describe('AddonTaskDestinationControl', () => {
           .fn()
           .mockResolvedValue({ isSuccess: true, data: sampleMetadata }),
       },
-    } as any)
+    } as unknown as IHostBridge)
 
     renderControl(
       <AddonTaskDestinationControl
@@ -371,6 +376,122 @@ describe('AddonTaskDestinationControl', () => {
     expect(await screen.findByText('Segunda Tarefa')).toBeInTheDocument()
   })
 
+  it('refreshes task and activities after the selected connection finishes repopulating its cache', async () => {
+    interface SyncEvent {
+      workspaceId: string
+      statuses: LocalRuntimeSyncStatus[]
+    }
+
+    const listeners = new Set<(event: SyncEvent) => void>()
+    const on = vi.fn(
+      (channel: string, listener: (event: SyncEvent) => void) => {
+        if (channel === 'local-runtime:sync-status') listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    )
+    const getTask = vi
+      .fn()
+      .mockResolvedValueOnce({ isSuccess: true })
+      .mockResolvedValue({ isSuccess: true, data: sampleTask })
+    const getMetadata = vi
+      .fn()
+      .mockResolvedValueOnce({
+        isSuccess: true,
+        data: {
+          ...sampleMetadata,
+          values: { ...sampleMetadata.values, activities: [] },
+        },
+      })
+      .mockResolvedValue({ isSuccess: true, data: sampleMetadata })
+
+    vi.mocked(useHostBridge).mockReturnValue({
+      core: {
+        listConnections: vi.fn(),
+        listTasks: vi.fn(),
+        getTask,
+        getMetadata,
+      },
+      events: { on },
+    } as unknown as IHostBridge)
+
+    renderControl(
+      <AddonTaskDestinationControl
+        field={field}
+        workspaceId="ws-1"
+        connectionInstanceId="conn-1"
+        value={{
+          workspaceId: 'ws-1',
+          connectionInstanceId: 'conn-1',
+          taskId: '1001',
+        }}
+        onChange={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByText('Tarefa #1001')).toBeInTheDocument()
+    await waitFor(() => expect(getMetadata).toHaveBeenCalledTimes(1))
+    const emit = (event: SyncEvent) => {
+      for (const listener of listeners) listener(event)
+    }
+    const pull: LocalRuntimeSyncStatus = {
+      key: 'tasks_conn-1',
+      isActive: false,
+      isPulling: false,
+      isPushing: false,
+      isReconciling: false,
+      lastPulledAt: '2026-11-03T12:00:00.000Z',
+      lastPushedAt: null,
+      lastReconciledAt: null,
+      lastReplication: '2026-11-03T12:00:00.000Z',
+      lastPushResult: null,
+      lastPullResult: 'success',
+      error: null,
+    }
+    const event: SyncEvent = {
+      workspaceId: 'ws-1',
+      statuses: [pull, { ...pull, key: 'metadata_conn-1' }],
+    }
+    await act(async () =>
+      emit({
+        ...event,
+        statuses: event.statuses.map((status) => ({
+          ...status,
+          isActive: true,
+        })),
+      }),
+    )
+    expect(getTask).toHaveBeenCalledTimes(1)
+    expect(getMetadata).toHaveBeenCalledTimes(1)
+    await act(async () => emit(event))
+
+    expect(await screen.findByText(sampleTask.title)).toBeInTheDocument()
+    await fireEvent.click(
+      screen.getByTestId('addon-task-activity-select-targetTask'),
+    )
+    expect(await screen.findByText('Desenvolvimento')).toBeInTheDocument()
+    await act(async () => {
+      emit(event)
+      emit({ ...event, workspaceId: 'other-workspace' })
+      emit({ ...event, statuses: [{ ...pull, key: 'tasks_other-connection' }] })
+    })
+    expect(getTask).toHaveBeenCalledTimes(2)
+    expect(getMetadata).toHaveBeenCalledTimes(2)
+
+    getTask.mockResolvedValue({
+      isSuccess: true,
+      data: { ...sampleTask, title: 'Título atualizado no provedor' },
+    })
+    await act(async () =>
+      emit({
+        ...event,
+        statuses: [{ ...pull, lastPulledAt: '2026-11-03T12:01:00.000Z' }],
+      }),
+    )
+    expect(
+      await screen.findByText('Título atualizado no provedor'),
+    ).toBeInTheDocument()
+  })
+
   it('preserves other metadata fields when selecting activity (B8)', async () => {
     const getMetadata = vi.fn().mockResolvedValue({
       isSuccess: true,
@@ -378,6 +499,7 @@ describe('AddonTaskDestinationControl', () => {
     })
 
     vi.mocked(useHostBridge).mockReturnValue({
+      events: { on: vi.fn(() => vi.fn()) },
       core: {
         listConnections: vi.fn(),
         listTasks: vi.fn(),
@@ -386,7 +508,7 @@ describe('AddonTaskDestinationControl', () => {
           .mockResolvedValue({ isSuccess: true, data: sampleTask }),
         getMetadata,
       },
-    } as any)
+    } as unknown as IHostBridge)
 
     const onChange = vi.fn()
     const currentValue: AddonTaskReferenceValue = {
@@ -454,13 +576,14 @@ describe('AddonTaskDestinationControl', () => {
     })
 
     vi.mocked(useHostBridge).mockReturnValue({
+      events: { on: vi.fn(() => vi.fn()) },
       core: {
         listConnections: vi.fn(),
         listTasks,
         getTask: vi.fn(),
         getMetadata: vi.fn(),
       },
-    } as any)
+    } as unknown as IHostBridge)
 
     renderControl(
       <AddonTaskDestinationControl
@@ -543,13 +666,14 @@ describe('AddonTaskDestinationControl', () => {
     })
 
     vi.mocked(useHostBridge).mockReturnValue({
+      events: { on: vi.fn(() => vi.fn()) },
       core: {
         listConnections: vi.fn(),
         listTasks: vi.fn(),
         getTask,
         getMetadata: vi.fn(),
       },
-    } as any)
+    } as unknown as IHostBridge)
 
     const valueConn1: AddonTaskReferenceValue = {
       workspaceId: 'ws-1',

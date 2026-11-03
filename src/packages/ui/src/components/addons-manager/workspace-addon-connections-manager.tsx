@@ -658,7 +658,7 @@ export function WorkspaceAddonConnectionsManager({
               instância.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto py-2 pr-1">
+          <div className="flex-1 overflow-y-auto px-1 py-2">
             {connectionTargetId && selectedProfile && (
               <NewAddonConnectionForm
                 pluginId={addonId}

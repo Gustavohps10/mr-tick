@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import type { IHostBridge } from '../../../packages/application/src/contracts/host/IHostBridge'
 import { expect, test } from './fixtures/electron-fixture'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 declare global {
   interface Window {
@@ -100,11 +101,9 @@ test.describe('E2E - Exclusão de Apontamentos (Remoção Local e Persistência)
 
     await page.reload()
     await page.waitForLoadState('domcontentloaded')
-    await expect(
-      page.locator(
-        '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-      ),
-    ).toBeVisible({ timeout: 45000 })
+    await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+      timeout: 45000,
+    })
     await expect(
       page.getByTestId('time-entry-actions-trigger').first(),
     ).toBeVisible()
@@ -170,11 +169,9 @@ test.describe('E2E - Exclusão de Apontamentos (Remoção Local e Persistência)
 
       await page.reload()
       await page.waitForLoadState('domcontentloaded')
-      await expect(
-        page.locator(
-          '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-        ),
-      ).toBeVisible({ timeout: 45000 })
+      await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+        timeout: 45000,
+      })
       await expect(
         page.getByTestId('time-entry-actions-trigger').first(),
       ).toBeVisible()

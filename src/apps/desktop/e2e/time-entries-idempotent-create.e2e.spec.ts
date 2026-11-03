@@ -1,8 +1,12 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import type { Page } from '@playwright/test'
+
 import type { IHostBridge } from '../../../packages/application/src/contracts/host/IHostBridge'
 import { expect, test } from './fixtures/electron-fixture'
+import { fakeSyncScope } from './fixtures/fake-sync-observer'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -13,7 +17,7 @@ declare global {
 }
 
 async function executeFakeCommand(
-  page: import('@playwright/test').Page,
+  page: Page,
   commandId: string,
 ): Promise<string> {
   return page.evaluate(async (id) => {
@@ -37,25 +41,19 @@ function getDiagnosticNumber(diagnostics: string, key: string): number {
   return Number(match[1])
 }
 
-async function openFakeWorkspace(
-  page: import('@playwright/test').Page,
-): Promise<void> {
+async function openFakeWorkspace(page: Page): Promise<void> {
   const workspaceLink = page.locator('a[href*="/workspaces/"]').first()
   await expect(workspaceLink).toBeVisible({ timeout: 15000 })
   await workspaceLink.click()
-  await expect(
-    page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    ),
-  ).toBeVisible({ timeout: 30000 })
+  await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+    timeout: 30000,
+  })
   await expect(
     page.locator('[data-testid="time-entry-actions-trigger"]').first(),
   ).toBeVisible({ timeout: 15000 })
 }
 
-async function duplicateAndSaveFirstEntry(
-  page: import('@playwright/test').Page,
-): Promise<void> {
+async function duplicateAndSaveFirstEntry(page: Page): Promise<void> {
   const actions = page.locator('[data-testid="time-entry-actions-trigger"]')
   const duplicateButton = page.locator(
     '[data-testid="time-entry-duplicate-btn"]',
@@ -105,7 +103,7 @@ test.describe('E2E - Criação idempotente de apontamentos', () => {
       resolve(desktopRoot, 'out/preload/index.mjs'),
     )
 
-    let secondPage: import('@playwright/test').Page | undefined
+    let secondPage: Page | undefined
     await expect
       .poll(async () => {
         for (const candidate of await electronApp.windows()) {
@@ -146,19 +144,27 @@ test.describe('E2E - Criação idempotente de apontamentos', () => {
       secondPage.locator('[data-testid="sync-status-creating"]').first(),
     ).toBeVisible({ timeout: 15000 })
 
-    await secondPage
-      .locator('[data-testid="sync-status-indicator"]')
-      .click({ force: true })
+    await secondPage.locator('[data-testid="sync-status-indicator"]').click()
     const syncAllButton = secondPage.locator('[data-testid="sync-all-button"]')
     await expect(syncAllButton).toBeVisible({ timeout: 5000 })
-    await syncAllButton.click({ force: true })
     await expect(syncAllButton).toBeDisabled({ timeout: 10000 })
+
+    const concurrentSync = secondPage.evaluate(
+      (workspaceId) =>
+        window.api.localSync.request({
+          action: 'forceSync',
+          workspaceId,
+        }),
+      fakeSyncScope.workspaceId,
+    )
 
     const releaseResult = await executeFakeCommand(
       page,
       'fake-db:release-paused-time-entry-create',
     )
     expect(releaseResult).toContain('"released":true')
+    const concurrentSyncResult = await concurrentSync
+    expect(concurrentSyncResult).toMatchObject({ ok: true })
 
     await expect
       .poll(async () => {
@@ -211,10 +217,8 @@ test.describe('E2E - Criação idempotente de apontamentos', () => {
     await expect(
       page.locator('[data-testid="sync-status-creating"]'),
     ).toHaveCount(0)
-    await expect(
-      page.locator(
-        '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-      ),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+      timeout: 30000,
+    })
   })
 })

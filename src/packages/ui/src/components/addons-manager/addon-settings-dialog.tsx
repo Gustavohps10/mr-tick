@@ -6,17 +6,20 @@ import {
   isWatcher,
 } from '@mr-tick/shared/helpers'
 import {
+  AlertTriangle,
   Calendar,
   Clock,
   Database,
   GlobeIcon,
   KeyRound,
   Palette,
+  RotateCcw,
   SlidersHorizontal,
 } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
@@ -121,6 +124,102 @@ export function resolveAddonCapabilities(
   return capabilities
 }
 
+interface AddonSettingsErrorBoundaryProps {
+  addonName: string
+  children: React.ReactNode
+}
+
+interface AddonSettingsErrorBoundaryState {
+  hasError: boolean
+  errorMessage: string
+}
+
+export class AddonSettingsErrorBoundary extends React.Component<
+  AddonSettingsErrorBoundaryProps,
+  AddonSettingsErrorBoundaryState
+> {
+  override state: AddonSettingsErrorBoundaryState = {
+    hasError: false,
+    errorMessage: '',
+  }
+
+  static getDerivedStateFromError(
+    error: Error,
+  ): AddonSettingsErrorBoundaryState {
+    const message = error.message.trim()
+
+    if (message.length > 0) {
+      return {
+        hasError: true,
+        errorMessage: message,
+      }
+    }
+
+    return {
+      hasError: true,
+      errorMessage: 'Erro inesperado ao carregar configurações do addon.',
+    }
+  }
+
+  override componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
+    console.error(
+      `[AddonSettingsErrorBoundary] Erro ao renderizar addon "${this.props.addonName}":`,
+      error,
+      errorInfo,
+    )
+  }
+
+  handleRetry = (): void => {
+    this.setState({ hasError: false, errorMessage: '' })
+  }
+
+  override render(): React.ReactNode {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-full w-full flex-col items-center justify-center p-8 text-center">
+          <div className="border-destructive/30 bg-destructive/5 max-w-lg rounded-xl border p-6 shadow-sm">
+            <div className="bg-destructive/10 text-destructive mx-auto flex size-12 items-center justify-center rounded-full">
+              <AlertTriangle className="size-6" />
+            </div>
+
+            <h3 className="text-foreground mt-4 text-sm font-semibold tracking-tight">
+              Falha ao carregar configurações do addon
+            </h3>
+
+            <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">
+              Ocorreu um erro inesperado ao renderizar as configurações de{' '}
+              <span className="text-foreground font-medium">
+                {this.props.addonName}
+              </span>
+              . As demais funcionalidades do sistema continuam operando
+              normalmente.
+            </p>
+
+            <div className="bg-muted/50 text-muted-foreground mt-3 max-h-32 overflow-y-auto rounded-md border p-2.5 text-left font-mono text-[11px] break-all select-text">
+              {this.state.errorMessage}
+            </div>
+
+            <div className="mt-5 flex items-center justify-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={this.handleRetry}
+                className="gap-1.5 text-xs"
+              >
+                <RotateCcw className="size-3.5" />
+                Tentar novamente
+              </Button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
 export function AddonSettingsDialog({
   addon,
   open,
@@ -221,14 +320,16 @@ export function AddonSettingsDialog({
           </header>
 
           <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-            <AddonSettingsRenderer
-              addonId={addon.id}
-              activeCapability={currentCapability?.id}
-              activeCapabilityLabel={currentCapability?.label}
-              activeCapabilityDescription={currentCapability?.description}
-              addon={addon}
-              hideHeader={true}
-            />
+            <AddonSettingsErrorBoundary addonName={addon.name} key={addon.id}>
+              <AddonSettingsRenderer
+                addonId={addon.id}
+                activeCapability={currentCapability?.id}
+                activeCapabilityLabel={currentCapability?.label}
+                activeCapabilityDescription={currentCapability?.description}
+                addon={addon}
+                hideHeader={true}
+              />
+            </AddonSettingsErrorBoundary>
           </div>
         </main>
       </DialogContent>

@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import type { IHostBridge } from '../../../packages/application/src/contracts/host/IHostBridge'
 import { expect, test } from './fixtures/electron-fixture'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 interface DurationSyncObservation {
   at: number
@@ -113,9 +114,7 @@ test.describe('E2E - Edição de Duração e Horários (TE-05)', () => {
       )
       if (!connection) return
 
-      const syncIndicator = page.locator(
-        '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-      )
+      const syncIndicator = syncStatusIndicator(page, 'synced')
       await expect(syncIndicator).toBeVisible({ timeout: 45000 })
       const actions = page.getByTestId('time-entry-actions-trigger')
       await expect(actions.first()).toBeVisible({ timeout: 15000 })

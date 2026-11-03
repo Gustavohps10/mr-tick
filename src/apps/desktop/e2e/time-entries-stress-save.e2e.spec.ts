@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures/electron-fixture'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 test.describe('E2E - Cenários Extremos (Concorrência e Duplo Clique no Salvar)', () => {
   test('deve suportar cliques repetidos no botão salvar sem duplicar rascunho nem quebrar integridade', async ({
@@ -10,9 +11,7 @@ test.describe('E2E - Cenários Extremos (Concorrência e Duplo Clique no Salvar)
     await workspaceLink.click()
 
     // 2. Aguarda a sincronização inicial assentar ("Sincronizado")
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 15000 })
 
     // 3. Aguarda a estabilização completa dos apontamentos carregados

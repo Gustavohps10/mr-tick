@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures/electron-fixture'
 import { inspectCachedTasks } from './fixtures/runtime-task-cache-probe'
 import seedWorkspaces from './fixtures/seed-workspaces.json' with { type: 'json' }
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 const probeWorkspace = seedWorkspaces.workspaces.find(
   (candidate) => candidate.name === 'TESTE',
@@ -66,11 +67,9 @@ test('timer iniciado pela UI chega ao addon com start, pause, resume e stop sem 
     .first()
   await expect(workspaceLink).toBeVisible({ timeout: 15000 })
   await workspaceLink.click()
-  await expect(
-    page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    ),
-  ).toBeVisible({ timeout: 30000 })
+  await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+    timeout: 30000,
+  })
   await executeProbe(page, 'fake-db:reset-timer-event-diagnostics')
 
   const start = page.getByTestId('timerbar-start-btn').first()

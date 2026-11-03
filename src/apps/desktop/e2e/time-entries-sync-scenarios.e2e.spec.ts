@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures/electron-fixture'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 test.describe('E2E - Cenários de Sincronização, Fuso Noturno, Comments Null e Caóticos', () => {
   test('deve criar apontamento noturno e persistir intacto pós-reload no DataSource Fake (CI & Local)', async ({
@@ -10,9 +11,7 @@ test.describe('E2E - Cenários de Sincronização, Fuso Noturno, Comments Null e
     await workspaceLink.click()
 
     // 2. Aguarda a sincronização inicial
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     // 3. Aguarda os apontamentos carregados
@@ -64,9 +63,7 @@ test.describe('E2E - Cenários de Sincronização, Fuso Noturno, Comments Null e
     await expect(workspaceLink).toBeVisible({ timeout: 15000 })
     await workspaceLink.click()
 
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     const actionTriggers = page.locator(
@@ -110,9 +107,7 @@ test.describe('E2E - Cenários de Sincronização, Fuso Noturno, Comments Null e
     await expect(workspaceLink).toBeVisible({ timeout: 15000 })
     await workspaceLink.click()
 
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     const actionTriggers = page.locator(

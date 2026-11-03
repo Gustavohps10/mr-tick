@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 
 import { expect, test } from './fixtures/electron-fixture'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 async function openDetectedConflict(page: Page) {
   const dialog = page.getByRole('dialog', {
@@ -27,10 +28,10 @@ async function openDetectedConflict(page: Page) {
       .locator('[data-testid="sync-status-indicator"]')
       .first()
     if (await statusBtn.isVisible().catch(() => false)) {
-      await statusBtn.click({ force: true })
+      await statusBtn.click()
       const syncAllBtn = page.locator('[data-testid="sync-all-button"]').first()
       if (await syncAllBtn.isVisible().catch(() => false)) {
-        await syncAllBtn.click({ force: true })
+        await syncAllBtn.click()
       }
       const popoverResolver = page
         .getByRole('button', { name: 'Resolver' })
@@ -62,9 +63,7 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
     await workspaceLink.click()
 
     // 2. Aguarda a sincronização inicial
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     // 3. Modifica a última entrada remotamente (via Addon Fake DB)
@@ -146,9 +145,7 @@ test.describe('E2E - Resolução de Conflitos Locais vs Remotos (SYNC-03, SYNC-0
     await workspaceLink.click()
 
     // 2. Aguarda a sincronização inicial
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     // 3. Modifica a última entrada remotamente (via Addon Fake DB)

@@ -2,9 +2,11 @@ import type {
   AddonFieldAddress,
   AddonResolveOptionsResponse,
   AddonSettingsMultiSelectField,
+  AddonSettingsMultiSelectSource,
   AddonSettingsOption,
   AddonSettingsOptionGroup,
   AddonSettingsSelectField,
+  AddonSettingsSelectSource,
   AddonSettingsValues,
   AddonVaultScope,
 } from '@mr-tick/application'
@@ -137,7 +139,42 @@ export function AddonDynamicSelectControl({
     Map<string | number | boolean, KnownOptionPresentation>
   >(new Map())
 
-  const source = field.source
+  const source: AddonSettingsSelectSource | AddonSettingsMultiSelectSource =
+    useMemo(() => {
+      if (field.type === 'multiselect') {
+        if (field.source) {
+          return field.source
+        }
+
+        if (field.options) {
+          return {
+            kind: 'static',
+            options: field.options,
+          }
+        }
+
+        return {
+          kind: 'static',
+          options: [],
+        }
+      }
+
+      if (field.source) {
+        return field.source
+      }
+
+      if (field.options) {
+        return {
+          kind: 'static',
+          options: field.options,
+        }
+      }
+
+      return {
+        kind: 'static',
+        options: [],
+      }
+    }, [field])
 
   const staticMatches = useMemo(() => {
     if (source.kind !== 'static') return []

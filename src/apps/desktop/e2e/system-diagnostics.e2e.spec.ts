@@ -7,6 +7,7 @@ import type { ElectronApplication, Page } from '@playwright/test'
 import { expect, test } from './fixtures/electron-fixture'
 import { fakeSyncDiagnostics } from './fixtures/fake-sync-observer'
 import seedWorkspaces from './fixtures/seed-workspaces.json' with { type: 'json' }
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 const currentFilePath = fileURLToPath(import.meta.url)
 const currentDir = dirname(currentFilePath)
@@ -81,6 +82,10 @@ test.describe('E2E - Alerta de inicialização e widget transparente', () => {
       { runtimeContentsId, metadata },
     )
 
+    // The widget may already have warmed this workspace before fault injection.
+    // Recreate the executor so the next open exercises storage initialization.
+    await runtimePage.reload({ waitUntil: 'domcontentloaded' })
+
     await page
       .locator(`nav a[href*="/workspaces/${workspace.id}"]`)
       .first()
@@ -153,11 +158,9 @@ test.describe('E2E - Saúde do Sistema e Diagnóstico de Runtime (Bloco C)', () 
       .first()
     await expect(workspaceLink).toBeVisible({ timeout: 15000 })
     await workspaceLink.click()
-    await expect(
-      page.locator(
-        '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-      ),
-    ).toBeVisible({ timeout: 15000 })
+    await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+      timeout: 15000,
+    })
 
     // 1. Obtém métricas de sincronização antes da verificação (não indução de escrita)
     const syncBefore = await fakeSyncDiagnostics(page)

@@ -1,5 +1,6 @@
 import { expect, test } from './fixtures/electron-fixture'
 import { fakeSyncScope } from './fixtures/fake-sync-observer'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 test.describe('E2E - Timer Lifecycle e Crash Recovery (TMR-01, TMR-02, TMR-03)', () => {
   test('deve resumir um timer pausado, persistir o estado e permitir parar (TMR-01, TMR-02, TMR-03)', async ({
@@ -13,9 +14,7 @@ test.describe('E2E - Timer Lifecycle e Crash Recovery (TMR-01, TMR-02, TMR-03)',
     await workspaceLink.click()
 
     // 2. Aguarda a sincronização inicial
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 15000 })
 
     // 3. Inicia um timer via timerbar (cria um novo apontamento em estado "running")

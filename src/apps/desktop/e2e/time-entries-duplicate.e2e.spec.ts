@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures/electron-fixture'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 test.describe('E2E - Duplicação de Apontamentos (Ghost Mode e Persistência)', () => {
   test('deve criar rascunho em Ghost Mode e descartar ao clicar em Cancelar', async ({
@@ -10,9 +11,7 @@ test.describe('E2E - Duplicação de Apontamentos (Ghost Mode e Persistência)',
     await workspaceLink.click()
 
     // 2. Aguarda a sincronização inicial assentar ("Sincronizado")
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 15000 })
 
     // 3. Aguarda a estabilização completa dos apontamentos carregados
@@ -61,9 +60,7 @@ test.describe('E2E - Duplicação de Apontamentos (Ghost Mode e Persistência)',
     await workspaceLink.click()
 
     // 2. Aguarda a sincronização inicial assentar ("Sincronizado")
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 15000 })
 
     // 3. Aguarda a estabilização completa dos apontamentos carregados
@@ -116,9 +113,7 @@ test.describe('E2E - Duplicação de Apontamentos (Ghost Mode e Persistência)',
     await workspaceLink.click()
 
     // 2. Aguarda a sincronização inicial assentar
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     // 3. Aguarda a listagem de apontamentos

@@ -131,6 +131,28 @@ test.describe('Timerbar Native Win32 Click-Through & Focus Contract', () => {
     const transparentX = Math.round((barBox.x + barBox.width / 2) * dpr)
     const transparentY = Math.max(100, Math.round((barBox.y - 200) * dpr))
 
+    const nativeWidget = await electronApp.browserWindow(widget)
+    await expect
+      .poll(() => nativeWidget.evaluate((window) => window.isVisible()))
+      .toBe(true)
+    const widgetGeometry = await nativeWidget.evaluate((window) => ({
+      bounds: window.getBounds(),
+      contentBounds: window.getContentBounds(),
+    }))
+    await nativeWidget.dispose()
+    await testInfo.attach('native-geometry.json', {
+      body: JSON.stringify({
+        system: await harnessClient.getSystemInfo(),
+        widgetGeometry,
+        nativeBounds: await harnessClient.getWindowRect(widgetHwnd),
+        barBox,
+        dpr,
+        transparentX,
+        transparentY,
+      }),
+      contentType: 'application/json',
+    })
+
     const testWin = await harnessClient.createWindow({
       x: transparentX - 200,
       y: transparentY - 100,
@@ -184,6 +206,23 @@ test.describe('Timerbar Native Win32 Click-Through & Focus Contract', () => {
         true,
       )
     })
+
+    // Establish an actual entry into the widget before testing its exit path.
+    const initialControlPoint = toPhysical(barBox)
+    await harnessClient.sendMouseInput({
+      action: 'move',
+      x: initialControlPoint.x,
+      y: initialControlPoint.y,
+    })
+    await expect
+      .poll(() =>
+        widget.evaluate(() =>
+          document.documentElement.dataset.nativeHoverTrace?.endsWith(
+            'interactive',
+          ),
+        ),
+      )
+      .toBe(true)
 
     // 3. CENÁRIO 1: click-through natural, sem alterar ignoreMouseEvents pelo teste.
     await harnessClient.clearEvents()
@@ -305,6 +344,8 @@ test.describe('Timerbar Native Win32 Click-Through & Focus Contract', () => {
     // Clica nativamente na aba semanal via SendInput para comprovar interatividade do popover
     const weeklyTab = widget.getByTestId('overview-tab-weekly')
     await expect(weeklyTab).toBeVisible({ timeout: 10000 })
+    // Trial only waits for actionability; SendInput still performs the click.
+    await weeklyTab.click({ trial: true })
     const weeklyBox = await weeklyTab.boundingBox()
     expect(weeklyBox).not.toBeNull()
     if (weeklyBox) {
@@ -436,7 +477,7 @@ test.describe('Timerbar Native Win32 Click-Through & Focus Contract', () => {
       y: controlY,
       button: 'left',
     })
-    await new Promise((r) => setTimeout(r, 80))
+    await expect(widget.getByTestId('overview-tab-list')).toBeVisible()
 
     const fgAfter = await harnessClient.getForegroundWindow()
     expect(fgAfter.status).toBe('ok')
@@ -488,7 +529,16 @@ test.describe('Timerbar Native Win32 Click-Through & Focus Contract', () => {
         },
         { x: mon2X, y: mon2Y },
       )
-      await new Promise((r) => setTimeout(r, 100))
+      await expect
+        .poll(() =>
+          electronApp.evaluate(({ BrowserWindow }) => {
+            const window = BrowserWindow.getAllWindows().find(
+              (candidate) => candidate.windowType === 'widget',
+            )
+            return window?.getPosition()
+          }),
+        )
+        .toEqual([mon2X, mon2Y])
 
       // Reposiciona a janela de teste de trás no segundo monitor
       await harnessClient.setWindowPos({
@@ -514,7 +564,12 @@ test.describe('Timerbar Native Win32 Click-Through & Focus Contract', () => {
         y: mon2Y + 200,
         button: 'left',
       })
-      await new Promise((r) => setTimeout(r, 100))
+      await expect
+        .poll(async () => {
+          const events = await harnessClient?.getEvents()
+          return events?.events.some((event) => event.type === 'lbuttondown')
+        })
+        .toBe(true)
 
       const mon2Events = await harnessClient.getEvents()
       const mon2Click = mon2Events.events.find((e) => e.type === 'lbuttondown')
@@ -531,27 +586,25 @@ test.describe('Timerbar Native Win32 Click-Through & Focus Contract', () => {
         w.close()
       }
     })
-    await new Promise((r) => setTimeout(r, 200))
-
     // Confirma que a janela fechou
-    const activeWidgetWindows = await electronApp.evaluate(
-      ({ BrowserWindow }) => {
+    const activeWidgetWindows = () =>
+      electronApp.evaluate(({ BrowserWindow }) => {
         return BrowserWindow.getAllWindows().filter(
           (win) => win.windowType === 'widget' && !win.isDestroyed(),
         ).length
-      },
-    )
-    expect(activeWidgetWindows).toBe(0)
+      })
+    await expect.poll(activeWidgetWindows).toBe(0)
 
     // A interceptação deve ficar inativa após fechar; o estado de instalação
     // do hook não é exposto pelo addon e não pode ser alegado como verificado.
-    const interceptionInactiveAfterClose = await electronApp.evaluate(() => {
-      return (
-        globalThis.nativeOverlayInstance?.isKeyboardInterceptionActive?.() ===
-        false
-      )
-    })
-    expect(interceptionInactiveAfterClose).toBe(true)
+    const interceptionInactiveAfterClose = () =>
+      electronApp.evaluate(() => {
+        return (
+          globalThis.nativeOverlayInstance?.isKeyboardInterceptionActive?.() ===
+          false
+        )
+      })
+    await expect.poll(interceptionInactiveAfterClose).toBe(true)
     const report = {
       timestamp: new Date().toISOString(),
       system: sysInfo,
@@ -605,8 +658,9 @@ test.describe('Timerbar Native Win32 Click-Through & Focus Contract', () => {
         },
         cleanCloseAndHookCleanup: {
           status: 'PARTIAL',
-          activeWidgetsAfterClose: activeWidgetWindows,
-          interceptionInactiveAfterClose,
+          activeWidgetsAfterClose: await activeWidgetWindows(),
+          interceptionInactiveAfterClose:
+            await interceptionInactiveAfterClose(),
           hookUninstallationObservable: false,
         },
       },

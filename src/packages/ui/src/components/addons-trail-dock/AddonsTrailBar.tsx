@@ -47,14 +47,39 @@ export function AddonsTrailBar({
   >(null)
 
   React.useEffect(() => {
-    if (hostBridge.addons?.listInstalled) {
-      hostBridge.addons.listInstalled().then((res) => {
-        if (res && res.isSuccess && res.data) {
-          setInstalledAddons(res.data)
-        }
-      })
+    let isMounted = true
+
+    const loadInstalled = () => {
+      if (hostBridge.addons?.listInstalled) {
+        hostBridge.addons.listInstalled().then((res) => {
+          if (isMounted && res && res.isSuccess && res.data) {
+            setInstalledAddons(res.data)
+          }
+        })
+      }
     }
-  }, [hostBridge])
+
+    loadInstalled()
+
+    let unsubscribeFailures: (() => void) | undefined
+
+    if (hostBridge.events?.on) {
+      unsubscribeFailures = hostBridge.events.on(
+        'addons:load-failures-changed',
+        () => {
+          loadInstalled()
+        },
+      )
+    }
+
+    return () => {
+      isMounted = false
+
+      if (unsubscribeFailures) {
+        unsubscribeFailures()
+      }
+    }
+  }, [hostBridge, failures])
 
   const failedAddonIds = useMemo(() => {
     return new Set(failures.map((f) => f.addonId))
@@ -225,6 +250,9 @@ export function AddonsTrailBar({
                     className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 group relative flex h-7.5 w-7.5 cursor-pointer items-center justify-center rounded-lg border shadow-2xs transition-all duration-150 hover:scale-[1.04] active:scale-[0.98]"
                   >
                     <AlertTriangle className="h-4 w-4 transition-transform duration-150 group-hover:scale-105" />
+                    <span className="sr-only">
+                      {failure.addonName || failure.addonId}
+                    </span>
                     {renderStatusDot('load_failure')}
                   </button>
                 </TooltipTrigger>
@@ -323,6 +351,7 @@ export function AddonsTrailBar({
                       className="h-4 w-4 rounded-xs object-contain transition-transform duration-150 group-hover:scale-105"
                       fallbackIconClassName="w-4 h-4 text-muted-foreground"
                     />
+                    <span className="sr-only">{addon.name}</span>
                     {renderStatusDot(status)}
                   </button>
                 </TooltipTrigger>

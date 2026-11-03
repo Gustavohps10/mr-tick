@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures/electron-fixture'
+import { syncStatusIndicator } from './fixtures/sync-status'
 
 test.describe('E2E - Seleção e Busca de Tarefa (TSK-01)', () => {
   test('deve pesquisar tarefa e atualizar apontamento (TSK-01)', async ({
@@ -8,9 +9,7 @@ test.describe('E2E - Seleção e Busca de Tarefa (TSK-01)', () => {
     await expect(workspaceLink).toBeVisible({ timeout: 15000 })
     await workspaceLink.click()
 
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     const actionTriggers = page.locator(
@@ -84,9 +83,7 @@ test.describe('E2E - Seleção e Busca de Tarefa (TSK-01)', () => {
     await expect(workspaceLink).toBeVisible({ timeout: 15000 })
     await workspaceLink.click()
 
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     const actionTriggers = page.locator(
@@ -164,9 +161,7 @@ test.describe('E2E - Seleção e Busca de Tarefa (TSK-01)', () => {
     await expect(workspaceLink).toBeVisible({ timeout: 15000 })
     await workspaceLink.click()
 
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     const actionTriggers = page.locator(
@@ -218,9 +213,7 @@ test.describe('E2E - Seleção e Busca de Tarefa (TSK-01)', () => {
     await expect(workspaceLink).toBeVisible({ timeout: 15000 })
     await workspaceLink.click()
 
-    const syncIndicator = page.locator(
-      '[data-testid="sync-status-indicator"][aria-label="Sincronizado"]',
-    )
+    const syncIndicator = syncStatusIndicator(page, 'synced')
     await expect(syncIndicator).toBeVisible({ timeout: 30000 })
 
     // Valida que apontamentos sincronizados no pull exibem o título completo da tarefa
