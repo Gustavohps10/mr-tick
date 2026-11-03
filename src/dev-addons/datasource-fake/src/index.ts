@@ -849,6 +849,31 @@ export default class FakeDataSourceAddon implements IAddon {
         () => store.getTimeEntrySyncDiagnostics(),
       )
       context.contributions.commands.register(
+        'fake-db:prepare-task-lookup',
+        () => {
+          const template = FAKE_TASKS.find((task) => task.id === 'DEV-9999')
+          if (template === undefined) return { prepared: false }
+          store.setLookupOnlyTask({
+            ...template,
+            id: 'LOOKUP-REMOTE-123456',
+            title: 'Tarefa remota exclusiva do lookup',
+          })
+          store.pauseTaskLookups()
+          return { prepared: true }
+        },
+      )
+      context.contributions.commands.register(
+        'fake-db:release-task-lookups',
+        () => {
+          store.releaseTaskLookups()
+          return { released: true }
+        },
+      )
+      context.contributions.commands.register(
+        'fake-db:get-task-lookup-diagnostics',
+        () => store.getTaskLookupDiagnostics(),
+      )
+      context.contributions.commands.register(
         'fake-db:lose-next-time-entry-create-response',
         () => {
           store.setSimulateTimeEntryCreateResponseLoss(true)

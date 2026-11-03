@@ -25,13 +25,17 @@ A identidade do addon permanece interna ao host: namespace, cofre e autoria são
 | `context.core.workspaces.list()` / `get(workspaceId)`                            | Identidade, nome e estado dos workspaces                                                     |
 | `context.core.connections.list(workspaceId)` / `get(scope)`                      | Workspace, instância, addon, perfil, identidade e estado; sem credenciais/configuração       |
 | `context.core.tasks.get(reference)`                                              | Snapshot local da tarefa; referência contém workspace, conexão e ID puro da origem           |
+| `context.core.tasks.search({ workspaceId, connectionInstanceId, limit, search? })` | Consulta remota explícita, com throttle compartilhado e persistência pelo owner; retorna página local após enriquecimento |
 | `context.core.tasks.list({ workspaceId, connectionInstanceId, limit, search? })` | Até 100 tarefas, ordenadas pelo ID da origem ascendente; `hasMore` informa truncamento       |
 | `context.core.metadata.get(scope)`                                               | Atividades, estados e demais metadados locais; `lastPulledAt` indica a última leitura remota |
+| `context.core.metadata.getLocal(workspaceId)`                                     | Catálogo da origem Local e token de revisão, sem autenticação remota |
 | `context.core.runtime.getState()` / `onStateChanged(listener)`                   | Disponibilidade do executor e unsubscribe                                                    |
 
 As capacidades de dados retornam `Either<AppError, T>`. `CoreTask` usa datas ISO 8601, não expõe chaves compostas nem estado interno da replicação. `search` procura um trecho literal do título ou ID, sem distinguir maiúsculas/minúsculas. `limit` é obrigatório, inteiro, de 1 a 100. Não há paginação do histórico nesta entrega.
 
-Tarefas e metadados são consultados no cache já aberto pelo runtime, sem abrir storage, chamar providers, conectar datasource ou disparar `forceSync`. Workspaces e conexões são projeções da configuração persistida. O estado de conexão não comprova a saúde atual do provedor. Uma conexão desconectada ainda pode ter dados locais. A leitura não promete que o cache está atualizado. Workspace novo pode exigir inicialização por um fluxo de configuração/sync existente antes de ficar disponível.
+`tasks.list`, `tasks.get` e `metadata.get` consultam o cache já aberto, sem chamar providers ou disparar `forceSync`. `tasks.search` é a operação explícita de rede. O host compartilha chamadas equivalentes, aplica intervalo global mínimo de 400 ms e permite no máximo três consultas concorrentes; respeita `Retry-After` e preserva erros canônicos. UI e addons não devem criar um segundo executor ou gravar resultados diretamente no banco de outra janela. A rede não ocupa a fila de escrita local durante sua espera.
+
+O catálogo local pode inicializar o storage do workspace sem abrir conexões remotas. A edição pelo aplicativo usa revisão otimista e rejeita exclusões de itens em uso. Suas categorias são as de `MetadataDTO`; cada workspace possui seu catálogo. Workspaces e conexões são projeções da configuração persistida. O estado de conexão não comprova saúde do provedor nem atualização do cache.
 
 Falhas distintas: `WORKSPACE_NOT_FOUND` / `CONNECTION_NOT_FOUND` / `TASK_NOT_FOUND` (404), `CORE_CACHE_UNAVAILABLE` / `CORE_METADATA_UNAVAILABLE` (503), parâmetros inválidos (422), metadados duplicados (`CORE_METADATA_AMBIGUOUS`, 409) e erros de leitura preservados pelo adaptador. Uma coleção de tarefas disponível e vazia retorna uma página vazia; metadados disponíveis com listas vazias continuam sendo um snapshot válido.
 

@@ -1037,6 +1037,10 @@ describe('AddonLoader - Capabilities & Granular Lifetime - Execution Policy & Pr
         new AddonConnectionProfilesResolver(),
         new OAuthAttemptCoordinator(),
         loader.systemEventEmitter,
+        {
+          execute: async () =>
+            Either.success({ items: [], total: 0, page: 1, pageSize: 50 }),
+        },
       )
 
       const dsManifest: IAddonManifest = {

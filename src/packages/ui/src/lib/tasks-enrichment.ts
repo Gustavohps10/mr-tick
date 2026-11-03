@@ -1,3 +1,4 @@
+import type { CoreTask } from '@mr-tick/application'
 import { IHostBridge } from '@mr-tick/application'
 import { StatusChange, TaskViewModel } from '@mr-tick/shared/view-models'
 
@@ -6,7 +7,31 @@ import {
   SyncTaskRxDBDTO,
 } from '@/local-db/schemas/tasks-sync-schema'
 import { extractPureTaskId } from '@/pages/time-entries/lib/time-entries-utils'
-import { AppDatabase } from '@/stores/sync-store/types'
+
+export function mapCoreTaskToRxDB(task: CoreTask): SyncTaskRxDBDTO {
+  return {
+    id: `${task.connectionInstanceId}::${task.taskId}`,
+    sourceId: task.taskId,
+    connectionInstanceId: task.connectionInstanceId,
+    dataSourceId: task.dataSourceId,
+    title: task.title,
+    status: task.status,
+    description: task.description,
+    projectName: task.projectName,
+    tracker: task.tracker,
+    priority: task.priority,
+    assignedTo: task.assignedTo,
+    url: task.url,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    _deleted: false,
+    syncStatus: 'synced',
+    lastPulledAt: null,
+    lastPushedAt: null,
+    lastReconciledAt: null,
+    timeEntryIds: [],
+  }
+}
 
 function dateToISO(
   value: Date | string | null | undefined,
@@ -82,7 +107,6 @@ export function mapTaskViewModelToRxDB(
 
 export interface FetchAndPersistTasksParams {
   hostBridge: IHostBridge
-  db: AppDatabase
   workspaceId: string
   connectionInstanceId: string
   dataSourceId: string
@@ -97,7 +121,6 @@ export async function fetchAndPersistTasks(
 ): Promise<SyncTaskRxDBDTO[]> {
   const {
     hostBridge,
-    db,
     workspaceId,
     connectionInstanceId,
     dataSourceId,
@@ -145,6 +168,5 @@ export async function fetchAndPersistTasks(
     mapTaskViewModelToRxDB(task, connectionInstanceId, dataSourceId),
   )
 
-  await db.tasks.bulkUpsert(mappedDocs)
   return mappedDocs
 }

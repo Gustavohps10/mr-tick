@@ -79,6 +79,126 @@ describe('Durable local command receipts with a real RxDB collection', () => {
     removeDatabaseFromCache(workspaceId, true)
   })
 
+  it('persists local metadata without a remote connection and rejects stale writes and deletion in use', async () => {
+    const initial = await executor.queryCore(
+      { action: 'localMetadata', workspaceId, connectionInstanceId: '' },
+      '',
+    )
+    expect(initial.isSuccess()).toBe(true)
+    const initialValue = initial.success
+    if (initialValue.kind !== 'localMetadata')
+      throw new Error('Expected local metadata')
+    const activity = {
+      id: 'local-development',
+      name: 'Desenvolvimento local',
+      icon: 'Code2',
+      colors: { badge: '#123456', background: 'transparent', text: '#123456' },
+    }
+    const values = { ...initialValue.values, activities: [activity] }
+    const saved = await executor.queryCore(
+      {
+        action: 'saveLocalMetadata',
+        workspaceId,
+        connectionInstanceId: '',
+        values,
+        revision: initialValue.revision,
+      },
+      '',
+    )
+    expect(saved.isSuccess()).toBe(true)
+    const reloaded = await executor.queryCore(
+      { action: 'localMetadata', workspaceId, connectionInstanceId: '' },
+      '',
+    )
+    expect(reloaded.success).toMatchObject({
+      kind: 'localMetadata',
+      values: { activities: [activity] },
+    })
+    const stale = await executor.queryCore(
+      {
+        action: 'saveLocalMetadata',
+        workspaceId,
+        connectionInstanceId: '',
+        values,
+        revision: initialValue.revision,
+      },
+      '',
+    )
+    expect(stale.failure.statusCode).toBe(409)
+
+    await database.timeEntries.insert({
+      ...entry('local-entry'),
+      connectionInstanceId: '',
+      dataSourceId: '',
+      syncStatus: 'local_only',
+      activity: { id: activity.id },
+    })
+    const savedValue = saved.success
+    if (savedValue.kind !== 'localMetadata')
+      throw new Error('Expected local metadata')
+    const remove = await executor.queryCore(
+      {
+        action: 'saveLocalMetadata',
+        workspaceId,
+        connectionInstanceId: '',
+        values: initialValue.values,
+        revision: savedValue.revision,
+      },
+      '',
+    )
+    expect(remove.failure.statusCode).toBe(422)
+    expect(
+      (await database.metadata.findOne('::metadata').exec())?.activities,
+    ).toHaveLength(1)
+  })
+
+  it('enriches tasks through the owner without overwriting a pending local edit', async () => {
+    const task = {
+      id: 'OPAQUE-123',
+      title: 'Original',
+      status: { id: 'open', name: 'Open' },
+      createdAt: new Date('2026-11-03T10:00:00Z'),
+      updatedAt: new Date('2026-11-03T10:00:00Z'),
+    }
+    const first = await executor.queryCore(
+      {
+        action: 'cacheTasks',
+        workspaceId,
+        connectionInstanceId: 'connection',
+        tasks: [task],
+      },
+      'source',
+    )
+    expect(first.isSuccess()).toBe(true)
+    const document = await database.tasks
+      .findOne('connection::OPAQUE-123')
+      .exec()
+    expect(document).not.toBeNull()
+    if (!document) throw new Error('Missing task')
+    await document.incrementalPatch({
+      syncStatus: 'pending_push',
+      title: 'Edição local',
+    })
+    await executor.queryCore(
+      {
+        action: 'cacheTasks',
+        workspaceId,
+        connectionInstanceId: 'connection',
+        tasks: [
+          {
+            ...task,
+            title: 'Atualização remota',
+            updatedAt: new Date('2026-11-03T11:00:00Z'),
+          },
+        ],
+      },
+      'source',
+    )
+    expect((await database.tasks.findOne(document.id).exec())?.title).toBe(
+      'Edição local',
+    )
+  })
+
   it('reads bounded local tasks with pure source IDs, deterministic ordering and literal search', async () => {
     const common = {
       dataSourceId: 'source',

@@ -3,11 +3,14 @@ import { dirname, join } from 'node:path'
 
 import {
   AppSettings,
+  DiagnosticSnapshot,
   IDataSourceResolver,
   IServiceProvider,
+  SanitizedDiagnosticReport,
 } from '@mr-tick/application'
 import { isBoolean } from '@mr-tick/shared/helpers'
 import { IRequest } from '@mr-tick/shared/transport'
+import type { ViewModel } from '@mr-tick/shared/view-models'
 import { app, BrowserWindow, screen } from 'electron'
 
 import { NativeOverlay } from '@/main'
@@ -80,49 +83,61 @@ export function openIpcRoutes(
   }
 
   // --- DIAGNOSTICS ---
-  IpcHandler.register('DIAGNOSTICS_GET_SNAPSHOT', (event) => {
-    if (!isAuthorizedDiagnosticsClient(event)) {
-      return Promise.resolve({
-        isSuccess: false,
-        statusCode: 403,
-        error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
-      })
-    }
-    return diagnosticsHandler.getSnapshot()
-  })
+  IpcHandler.register(
+    'DIAGNOSTICS_GET_SNAPSHOT',
+    (event): Promise<ViewModel<DiagnosticSnapshot>> => {
+      if (!isAuthorizedDiagnosticsClient(event)) {
+        return Promise.resolve({
+          isSuccess: false,
+          statusCode: 403,
+          error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
+        })
+      }
+      return diagnosticsHandler.getSnapshot()
+    },
+  )
 
-  IpcHandler.register('DIAGNOSTICS_RUN_CHECKS', (event) => {
-    if (!isAuthorizedDiagnosticsClient(event)) {
-      return Promise.resolve({
-        isSuccess: false,
-        statusCode: 403,
-        error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
-      })
-    }
-    return diagnosticsHandler.runChecks()
-  })
+  IpcHandler.register(
+    'DIAGNOSTICS_RUN_CHECKS',
+    (event): Promise<ViewModel<DiagnosticSnapshot>> => {
+      if (!isAuthorizedDiagnosticsClient(event)) {
+        return Promise.resolve({
+          isSuccess: false,
+          statusCode: 403,
+          error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
+        })
+      }
+      return diagnosticsHandler.runChecks()
+    },
+  )
 
-  IpcHandler.register('DIAGNOSTICS_GENERATE_REPORT', (event) => {
-    if (!isAuthorizedDiagnosticsClient(event)) {
-      return Promise.resolve({
-        isSuccess: false,
-        statusCode: 403,
-        error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
-      })
-    }
-    return diagnosticsHandler.generateReport()
-  })
+  IpcHandler.register(
+    'DIAGNOSTICS_GENERATE_REPORT',
+    (event): Promise<ViewModel<SanitizedDiagnosticReport>> => {
+      if (!isAuthorizedDiagnosticsClient(event)) {
+        return Promise.resolve({
+          isSuccess: false,
+          statusCode: 403,
+          error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
+        })
+      }
+      return diagnosticsHandler.generateReport()
+    },
+  )
 
-  IpcHandler.register('DIAGNOSTICS_OPEN_DATA_DIRECTORY', (event) => {
-    if (!isAuthorizedDiagnosticsClient(event)) {
-      return Promise.resolve({
-        isSuccess: false,
-        statusCode: 403,
-        error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
-      })
-    }
-    return diagnosticsHandler.openDataDirectory()
-  })
+  IpcHandler.register(
+    'DIAGNOSTICS_OPEN_DATA_DIRECTORY',
+    (event): Promise<ViewModel<void>> => {
+      if (!isAuthorizedDiagnosticsClient(event)) {
+        return Promise.resolve({
+          isSuccess: false,
+          statusCode: 403,
+          error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
+        })
+      }
+      return diagnosticsHandler.openDataDirectory()
+    },
+  )
 
   // --- SYSTEM ---
   IpcHandler.register('UPDATER_CHECK', (e) => updaterHandler.checkForUpdates(e))
@@ -199,6 +214,9 @@ export function openIpcRoutes(
   IpcHandler.register('METADATA_PULL', (e, req) => metadataHandler.pull(e, req))
   IpcHandler.register('TASKS_PULL', (e, req) => tasksHandler.pull(e, req))
   IpcHandler.register('TASKS_LIST', (e, req) => tasksHandler.listTasks(e, req))
+  IpcHandler.register('TASKS_CANCEL_SEARCH', (e, req) =>
+    tasksHandler.cancelSearch(e, req),
+  )
   IpcHandler.register('LIST_TIME_ENTRIES', (e, req) =>
     timeEntriesHandler.listTimeEntries(e, req),
   )
@@ -300,8 +318,17 @@ export function openIpcRoutes(
     coreHandler.listTasks(e, req),
   )
   IpcHandler.register('CORE_TASK_GET', (e, req) => coreHandler.getTask(e, req))
+  IpcHandler.register('CORE_TASK_REFERENCES', (e, req) =>
+    coreHandler.listTaskReferences(e, req),
+  )
   IpcHandler.register('CORE_METADATA_GET', (e, req) =>
     coreHandler.getMetadata(e, req),
+  )
+  IpcHandler.register('CORE_LOCAL_METADATA_GET', (e, req) =>
+    coreHandler.getLocalMetadata(e, req),
+  )
+  IpcHandler.register('CORE_LOCAL_METADATA_SAVE', (e, req) =>
+    coreHandler.saveLocalMetadata(e, req),
   )
   IpcHandler.register('ADDON_EXECUTE_ACTION', (e, req) =>
     addonsHandler.executeAction(e, req),

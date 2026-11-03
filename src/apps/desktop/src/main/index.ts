@@ -25,6 +25,7 @@ import {
   HardDiskStorage,
   KeytarCredentialsVault,
 } from '@mr-tick/adapters/tools'
+import type { IListTasksUseCase } from '@mr-tick/application'
 import {
   IAddonAccessService,
   IAddonAuthenticatorRegistry,
@@ -77,6 +78,7 @@ import { openIpcRoutes } from '@/main/routes'
 import { AddonLoader } from '@/main/services/addons/loader/AddonLoader'
 import { DesktopCredentialRecovery } from '@/main/services/credentials/DesktopCredentialRecovery'
 import { LocalRuntimeDispatcher } from '@/main/services/local-runtime/LocalRuntimeDispatcher'
+import { TaskLookupService } from '@/main/services/tasks/TaskLookupService'
 import { UpdaterService } from '@/main/services/updates/UpdaterService'
 import { getSettings } from '@/main/settings'
 import { createTray } from '@/main/tray'
@@ -763,6 +765,7 @@ if (gotTheLock) {
             ),
             oauthAttemptCoordinator,
             addonLoader.systemEventEmitter,
+            serviceProvider.resolve<IListTasksUseCase>('taskLookupService'),
           ),
         addonAccessService,
         credentialRegistry,
@@ -848,6 +851,10 @@ if (gotTheLock) {
 
       serviceProvider.include({
         addonLoader,
+        taskLookupService: new TaskLookupService(
+          serviceProvider.resolve<IListTasksUseCase>('listTasksService'),
+          localRuntime,
+        ),
         updaterService,
         diagnosticsHandler,
         diagnosticsService,

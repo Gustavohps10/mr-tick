@@ -47,6 +47,8 @@ export interface TaskLookupResultsProps<T> {
   present: (task: T) => TaskLookupPresentation
   onSelect: (task: T) => void
   selectedKey?: string
+  activeKey?: string
+  listId?: string
   renderAction?: (task: T) => ReactNode
   getTestId?: (task: T) => string
   loading?: boolean
@@ -62,6 +64,8 @@ export function TaskLookupResults<T>({
   present,
   onSelect,
   selectedKey,
+  activeKey,
+  listId,
   renderAction,
   getTestId,
   loading = false,
@@ -74,7 +78,7 @@ export function TaskLookupResults<T>({
       <div
         role="status"
         aria-label="Carregando tarefas"
-        className="space-y-2 p-3"
+        className="flex max-h-56 min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3"
       >
         <Skeleton className="h-14 w-full" />
         <Skeleton className="h-14 w-full" />
@@ -101,7 +105,12 @@ export function TaskLookupResults<T>({
 
   return (
     <div className="max-h-56 min-h-0 flex-1 scrollbar-thin overflow-y-auto overscroll-contain">
-      <ul aria-label="Tarefas" className="space-y-1 p-1">
+      <ul
+        id={listId}
+        role="listbox"
+        aria-label="Tarefas"
+        className="space-y-1 p-1"
+      >
         {tasks.map((task) => {
           const key = getKey(task)
           const item = present(task)
@@ -116,11 +125,18 @@ export function TaskLookupResults<T>({
               )}
             >
               <button
+                id={listId ? `${listId}-${key}` : undefined}
+                role="option"
+                aria-selected={
+                  activeKey === undefined ? selected : key === activeKey
+                }
                 type="button"
                 data-testid={getTestId?.(task)}
-                aria-pressed={selected}
                 onClick={() => onSelect(task)}
-                className="hover:bg-accent/60 focus-visible:ring-ring flex min-w-0 flex-1 items-start gap-2 rounded-md px-2.5 py-1.5 text-left outline-none focus-visible:ring-1"
+                className={cn(
+                  'hover:bg-accent/60 focus-visible:ring-ring flex min-w-0 flex-1 items-start gap-2 rounded-md px-2.5 py-1.5 text-left outline-none focus-visible:ring-1',
+                  key === activeKey && 'bg-accent',
+                )}
                 title={item.title}
               >
                 <TaskLookupTaskDetails {...item} />

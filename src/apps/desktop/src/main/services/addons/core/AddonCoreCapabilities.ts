@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type {
   AddonConnectionAuthenticator,
   CoreCacheQuery,
@@ -20,6 +22,7 @@ import type {
   ICoreReadAPI,
   IDisconnectAddonConnectionUseCase,
   ILinkConnectionUseCase,
+  IListTasksUseCase,
   IOAuthAttemptCoordinator,
   IUnlinkConnectionUseCase,
   IWorkspacesRepository,
@@ -58,6 +61,7 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
     private readonly profilesResolver: IAddonConnectionProfilesResolver,
     private readonly oauthAttemptCoordinator: IOAuthAttemptCoordinator,
     private readonly systemEventEmitter: ISystemEventEmitter,
+    private readonly taskLookupService: IListTasksUseCase,
   ) {
     this.runtime = {
       getState: () => transport.getState(),
@@ -89,6 +93,19 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
       remove: (scope) => this.removeConnection(scope),
     }
     this.tasks = {
+      search: async (request) => {
+        const valid = validateCoreCacheQuery({ ...request, action: 'tasks' })
+        if (valid.isFailure()) return valid.forwardFailure()
+        const result = await this.taskLookupService.execute({
+          workspaceId: request.workspaceId,
+          connectionInstanceId: request.connectionInstanceId,
+          search: request.search,
+          consumerId: `addon:${this.addonId}:request:${randomUUID()}`,
+          pageSize: request.limit,
+        })
+        if (result.isFailure()) return result.forwardFailure()
+        return this.tasks.list(request)
+      },
       list: async (request) => {
         const result = await this.query({ ...request, action: 'tasks' })
         if (result.isFailure()) return result.forwardFailure()
@@ -107,6 +124,24 @@ export class AddonCoreCapabilities implements ICoreAddonCapabilities {
       },
     }
     this.metadata = {
+      getLocal: async (workspaceId) => {
+        const workspace = await this.findWorkspace(workspaceId)
+        if (workspace.isFailure()) return workspace.forwardFailure()
+        const response = await this.transport.queryCore({
+          action: 'localMetadata',
+          workspaceId,
+          connectionInstanceId: '',
+        })
+        if (!response.ok)
+          return Either.failure(
+            AppError.Http(response.error.statusCode, response.error.messageKey),
+          )
+        if (response.value.kind !== 'localMetadata') return invalidReply()
+        return Either.success({
+          values: response.value.values,
+          revision: response.value.revision,
+        })
+      },
       get: async (scope) => {
         const result = await this.query({ ...scope, action: 'metadata' })
         if (result.isFailure()) return result.forwardFailure()

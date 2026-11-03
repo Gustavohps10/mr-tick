@@ -240,6 +240,10 @@ function setupIntegrationFixture() {
     profilesResolver,
     new OAuthAttemptCoordinator(),
     new NoOpSystemEventEmitter(),
+    {
+      execute: async () =>
+        Either.success({ items: [], total: 0, page: 1, pageSize: 50 }),
+    },
   )
 
   return {
@@ -435,6 +439,10 @@ describe('M07 host unit: addon connection auth via registry', () => {
       profilesResolver,
       oauthAttemptCoordinator,
       new NoOpSystemEventEmitter(),
+      {
+        execute: async () =>
+          Either.success({ items: [], total: 0, page: 1, pageSize: 50 }),
+      },
     )
 
     const fakeCredentialsVault = emptyAddonCredentialsVault()
@@ -688,6 +696,10 @@ describe('M07 host unit: addon connection auth via registry', () => {
       profilesResolver,
       oauthAttemptCoordinator,
       new NoOpSystemEventEmitter(),
+      {
+        execute: async () =>
+          Either.success({ items: [], total: 0, page: 1, pageSize: 50 }),
+      },
     )
 
     const fakeCredentialsVault = emptyAddonCredentialsVault()
@@ -891,6 +903,10 @@ describe('M07 host unit: addon connection auth via registry', () => {
       profilesResolver,
       oauthAttemptCoordinator,
       new NoOpSystemEventEmitter(),
+      {
+        execute: async () =>
+          Either.success({ items: [], total: 0, page: 1, pageSize: 50 }),
+      },
     )
 
     const fakeCredentialsVault = emptyAddonCredentialsVault()
@@ -1177,6 +1193,10 @@ describe('M07 host unit: addon connection auth via registry', () => {
       profilesResolver,
       oauthAttemptCoordinator,
       new NoOpSystemEventEmitter(),
+      {
+        execute: async () =>
+          Either.success({ items: [], total: 0, page: 1, pageSize: 50 }),
+      },
     )
 
     const fakeCredentialsVault = emptyAddonCredentialsVault()

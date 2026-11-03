@@ -11,6 +11,7 @@ import {
   type ICoreCacheTransport,
   type IDisconnectAddonConnectionUseCase,
   type ILinkConnectionUseCase,
+  type IListTasksUseCase,
   type IUnlinkConnectionUseCase,
   type IWorkspacesRepository,
   OAuthAttemptCoordinator,
@@ -21,9 +22,15 @@ import { AppError, Either } from '@mr-tick/shared/helpers'
 import { NoOpSystemEventEmitter } from '@mr-tick/shared/transport'
 import { describe, expect, it, vi } from 'vitest'
 
+import { TaskLookupService } from '../../tasks/TaskLookupService'
 import { AddonCoreCapabilities } from './AddonCoreCapabilities'
 
-function fixture() {
+function fixture(
+  taskLookupService: IListTasksUseCase = {
+    execute: async () =>
+      Either.success({ items: [], total: 0, page: 1, pageSize: 50 }),
+  },
+) {
   const created = Workspace.create({ name: 'SDK fixture' })
   if (created.isFailure()) return expect.fail(created.failure.messageKey)
   const workspace = created.success
@@ -257,10 +264,51 @@ function fixture() {
       profilesResolver,
       oauthAttemptCoordinator,
       new NoOpSystemEventEmitter(),
+      taskLookupService,
     ),
   }
 }
 describe('Public core read capabilities', () => {
+  it('completes independent SDK searches queued on the same origin', async () => {
+    vi.useFakeTimers()
+
+    try {
+      const execute = vi
+        .fn<IListTasksUseCase['execute']>()
+        .mockResolvedValue(
+          Either.success({ items: [], total: 0, page: 1, pageSize: 50 }),
+        )
+      const transport: ICoreCacheTransport = {
+        queryCore: async () => ({ ok: true, value: { kind: 'cachedTasks' } }),
+        getState: () => 'ready',
+        onStateChanged: () => () => {},
+      }
+      const coordinator = new TaskLookupService({ execute }, transport)
+      const { core, workspace } = fixture(coordinator)
+      const scope = {
+        workspaceId: workspace.id,
+        connectionInstanceId: 'connection',
+      }
+      await coordinator.execute({ ...scope, search: 'prime' })
+      const first = core.tasks.search({ ...scope, limit: 10, search: 'first' })
+      const second = core.tasks.search({
+        ...scope,
+        limit: 10,
+        search: 'second',
+      })
+      await vi.advanceTimersByTimeAsync(800)
+
+      expect((await first).isSuccess()).toBe(true)
+      expect((await second).isSuccess()).toBe(true)
+      expect(execute.mock.calls.map(([input]) => input.search)).toEqual([
+        'prime',
+        'first',
+        'second',
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('exposes safe identity DTOs and never grants repository or transport access', async () => {
     const { workspace, core } = fixture()
     const result = await core.workspaces.list()

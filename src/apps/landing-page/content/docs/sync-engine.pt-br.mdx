@@ -6,7 +6,11 @@ icon: RefreshCw
 
 O Mr. Tick mantém os apontamentos no dispositivo e os sincroniza com a ferramenta conectada. O addon fornece o código que lê e grava nesse serviço externo. O aplicativo coordena as alterações pendentes e a recuperação após falhas.
 
-O executor local cuida das alterações de timer e apontamentos; a interface lê os dados salvos. Consultar tarefas por `core.tasks` ou metadados por `core.metadata` não inicia uma nova requisição ao serviço externo.
+O executor local cuida das alterações de timer e apontamentos; a interface lê os dados salvos. `core.tasks.list` e `core.tasks.get` leem o cache local. `core.tasks.search` consulta explicitamente o provedor e persiste os resultados pelo mesmo executor. Informe `workspaceId`, `connectionInstanceId`, `limit` (1–100) e, opcionalmente, `search`. Trate o `Either` retornado; falhas do provedor permanecem visíveis.
+
+A busca compartilha um orçamento de rede entre janelas e addons: intervalo mínimo de 400 ms entre inícios e no máximo três operações concorrentes. Requisições equivalentes em andamento são compartilhadas. Um limite do servidor adia novas consultas conforme `Retry-After`; o host não repete automaticamente uma consulta que falhou. Resultados locais e IDs manuais explícitos continuam disponíveis durante a busca remota.
+
+Escolha a origem antes de confirmar um ID manual. A ausência no cache não impede selecionar a referência ou enviar seu apontamento; isso não garante aceitação pelo provedor. IDs são identificadores opacos do provedor. `core.metadata.getLocal(workspaceId)` consulta os metadados configurados sem conexão externa. Metadados locais não alteram os campos ou IDs aceitos por um provedor remoto.
 
 ## Recebendo dados (`pull`)
 

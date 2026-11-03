@@ -25,6 +25,23 @@ export class ListTaskService implements IListTasksUseCase {
       const result = await adapter.getAuthenticatedMemberData()
       if (result.isFailure()) return result.forwardFailure()
 
+      if (input.resolveExactId !== undefined) {
+        const exact = await adapter.tasksProvider.findById(input.resolveExactId)
+        if (exact.isSuccess() && exact.success !== null)
+          return Either.success({
+            items: [exact.success],
+            total: 1,
+            page: 1,
+            pageSize: 50,
+          })
+        if (
+          exact.isFailure() &&
+          exact.failure.statusCode !== 404 &&
+          exact.failure.statusCode !== 400
+        )
+          return exact.forwardFailure()
+      }
+
       const tasksResult = await adapter.tasksProvider.findAll({
         page: input.page,
         pageSize: input.pageSize,

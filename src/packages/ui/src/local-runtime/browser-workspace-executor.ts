@@ -11,6 +11,7 @@ import type {
   LocalTimeEntrySnapshot,
   TimeOverlapDetectionResult,
 } from '@mr-tick/application'
+import type { CoreTaskReference } from '@mr-tick/application'
 import {
   detectTimeOverlap,
   emptyResult,
@@ -22,7 +23,9 @@ import { AppError, Either } from '@mr-tick/shared/helpers'
 import type { MangoQuery } from 'rxdb'
 import type { StoreApi } from 'zustand'
 
+import { mapTaskViewModelToRxDB } from '@/lib/tasks-enrichment'
 import type { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
+import type { SyncTimeEntryRxDBDTO } from '@/local-db/schemas/time-entries-sync-schema'
 import type { AppDatabase, SyncStore } from '@/stores/sync-store/types'
 
 import {
@@ -32,6 +35,7 @@ import {
   type CommandReceipt,
   recordFingerprint,
 } from './command-receipts'
+import { readLocalMetadata, saveLocalMetadata } from './local-metadata'
 
 export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
   private tail: Promise<void> = Promise.resolve()
@@ -54,6 +58,76 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
         const db = this.store.getState().db
         if (db === null)
           return Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE'))
+        if (input.action === 'taskReferences') {
+          const literal = input.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          const selector: MangoQuery<SyncTimeEntryRxDBDTO>['selector'] = {
+            _deleted: { $ne: true },
+            'task.id': { $regex: literal, $options: 'i' },
+          }
+
+          if (input.origin === 'remote')
+            selector.connectionInstanceId = input.connectionInstanceId
+          if (input.origin === 'local') selector.syncStatus = 'local_only'
+          const documents = await db.timeEntries
+            .find({
+              selector,
+              sort: [{ updatedAt: 'desc' }],
+              limit: input.limit,
+            })
+            .exec()
+          const references = new Map<string, CoreTaskReference>()
+
+          for (const document of documents) {
+            if (!document.task?.id) continue
+            references.set(document.task.id, {
+              workspaceId: input.workspaceId,
+              connectionInstanceId: input.connectionInstanceId,
+              taskId: document.task.id,
+            })
+          }
+
+          return Either.success({
+            kind: 'taskReferences',
+            references: Array.from(references.values()),
+          })
+        }
+        if (input.action === 'localMetadata') {
+          const values = await readLocalMetadata(db)
+          return Either.success({
+            kind: 'localMetadata',
+            values,
+            revision: JSON.stringify(values),
+          })
+        }
+
+        if (input.action === 'saveLocalMetadata')
+          return saveLocalMetadata(db, input.values, input.revision)
+
+        if (input.action === 'cacheTasks') {
+          for (const task of input.tasks) {
+            const record = mapTaskViewModelToRxDB(
+              task,
+              input.connectionInstanceId,
+              dataSourceId,
+            )
+            const existing = await db.tasks.findOne(record.id).exec()
+
+            if (existing === null) {
+              await db.tasks.insert(record)
+              continue
+            }
+
+            await existing.incrementalModify((current) => {
+              if (current.syncStatus !== 'synced' || current._deleted)
+                return current
+              if (current.updatedAt > record.updatedAt) return current
+              return { ...record, timeEntryIds: current.timeEntryIds }
+            })
+          }
+
+          return Either.success({ kind: 'cachedTasks' })
+        }
+
         if (input.action === 'metadata') {
           let document = await db.metadata
             .findOne(`${input.connectionInstanceId}::metadata`)
@@ -146,13 +220,35 @@ export class BrowserWorkspaceExecutor implements ILocalWorkspaceExecutor {
             ...query.selector,
             sourceId: { $gt: input.cursor },
           }
+        if (input.offset !== undefined) query.skip = input.offset
+        if (input.sortByUpdatedAt !== undefined)
+          query.sort = [{ updatedAt: input.sortByUpdatedAt }]
+        if (input.statusId !== undefined)
+          query.selector = { ...query.selector, 'status.id': input.statusId }
+        if (input.priorityId !== undefined)
+          query.selector = {
+            ...query.selector,
+            'priority.id': input.priorityId,
+          }
+        if (input.assignedMemberId !== undefined)
+          query.selector = {
+            ...query.selector,
+            $or: [
+              { 'assignedTo.id': input.assignedMemberId },
+              { participants: { $elemMatch: { id: input.assignedMemberId } } },
+            ],
+          }
         if (input.search !== undefined && input.search.length > 0) {
           const literal = input.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
           query.selector = {
             ...query.selector,
-            $or: [
-              { title: { $regex: literal, $options: 'i' } },
-              { sourceId: { $regex: literal, $options: 'i' } },
+            $and: [
+              {
+                $or: [
+                  { title: { $regex: literal, $options: 'i' } },
+                  { sourceId: { $regex: literal, $options: 'i' } },
+                ],
+              },
             ],
           }
         }
@@ -554,5 +650,8 @@ function toCoreTask(workspaceId: string, record: SyncTaskRxDBDTO): CoreTask {
   if (record.url !== undefined && record.url !== null) task.url = record.url
   if (record.projectName !== undefined && record.projectName !== null)
     task.projectName = record.projectName
+  if (record.tracker) task.tracker = record.tracker
+  if (record.priority) task.priority = record.priority
+  if (record.assignedTo) task.assignedTo = record.assignedTo
   return task
 }

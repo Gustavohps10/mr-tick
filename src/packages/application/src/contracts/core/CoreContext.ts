@@ -69,8 +69,16 @@ export interface CoreTask extends CoreTaskReference {
   status: { id: string; name: string }
   createdAt: string
   updatedAt: string
+  tracker?: { id: string }
+  priority?: { id: string; name: string }
+  assignedTo?: { id?: string; name: string }
 }
 export interface CoreTaskListRequest extends CoreConnectionScope {
+  offset?: number
+  sortByUpdatedAt?: 'asc' | 'desc'
+  statusId?: string
+  priorityId?: string
+  assignedMemberId?: string
   /** Integer between 1 and 100. Ordered by source task ID ascending. */
   limit: number
   /** Case-insensitive substring of title or source task ID. */
@@ -93,5 +101,22 @@ export interface CoreMetadata extends CoreConnectionScope {
   dataSourceId: string
   lastPulledAt: string | null
   values: MetadataDTO
+}
+
+export interface LocalMetadataSnapshot {
+  values: MetadataDTO
+  revision: string
+}
+
+export interface SaveLocalMetadataRequest extends LocalMetadataSnapshot {
+  workspaceId: string
+}
+
+export interface TaskReferenceLookupRequest {
+  workspaceId: string
+  connectionInstanceId: string
+  origin: 'local' | 'remote'
+  search: string
+  limit: number
 }
 export type CoreRuntimeState = 'starting' | 'ready' | 'restarting' | 'closed'

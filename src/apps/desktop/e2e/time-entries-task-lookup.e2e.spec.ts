@@ -1,7 +1,274 @@
+import type { TimeEntryPullCheckpointDTO } from '@mr-tick/application'
+import { z } from 'zod'
+
 import { expect, test } from './fixtures/electron-fixture'
+import { fakeSyncScope } from './fixtures/fake-sync-observer'
 import { syncStatusIndicator } from './fixtures/sync-status'
 
 test.describe('E2E - Seleção e Busca de Tarefa (TSK-01)', () => {
+  test('TSK-07: confirmar ID ausente do cache e enviar o apontamento ao provider fake', async ({
+    page,
+  }, testInfo) => {
+    await page
+      .locator(`nav a[href*="/workspaces/${fakeSyncScope.workspaceId}"]`)
+      .click()
+    await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+      timeout: 30000,
+    })
+    const since = new Date().toISOString()
+    const missing = await page.evaluate(
+      (scope) =>
+        window.api.core.getTask({
+          body: { ...scope, taskId: 'UNRESOLVED-123456' },
+        }),
+      fakeSyncScope,
+    )
+    expect(missing.statusCode).toBe(404)
+    await page.getByTestId('time-entry-actions-trigger').first().click()
+    await page.getByTestId('time-entry-edit-btn').click()
+    await page.getByTestId('time-entry-task-popover-trigger').first().click()
+    const input = page.getByTestId('time-entry-task-lookup-input')
+    await input.pressSequentially('UNRESOLVED-123456')
+    await expect(input).toHaveValue('UNRESOLVED-123456')
+    await input.press('Enter')
+    await expect(input).not.toBeVisible()
+    await page.getByTestId('time-entry-save-btn').first().click()
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            async ({ scope, since }) => {
+              let checkpoint: TimeEntryPullCheckpointDTO = {
+                updatedAt: new Date(since),
+                id: '',
+              }
+
+              while (true) {
+                const response = await window.api.timeEntries.pull({
+                  body: {
+                    workspaceId: scope.workspaceId,
+                    connectionInstanceId: scope.connectionInstanceId,
+                    checkpoint,
+                    batch: 50,
+                  },
+                })
+                if (!response.isSuccess || !response.data) return false
+                if (
+                  response.data.items.some(
+                    (entry) => entry.task.id === 'UNRESOLVED-123456',
+                  )
+                )
+                  return true
+                if (!response.data.hasMore) return false
+                checkpoint = response.data.checkpoint
+              }
+            },
+            { scope: fakeSyncScope, since },
+          ),
+        { timeout: 30000 },
+      )
+      .toBe(true)
+
+    const references = await page.evaluate(
+      (scope) =>
+        window.api.core.listTaskReferences({
+          body: {
+            ...scope,
+            origin: 'remote',
+            search: 'UNRESOLVED-123456',
+            limit: 5,
+          },
+        }),
+      fakeSyncScope,
+    )
+    expect(
+      references.data?.some(
+        (reference) => reference.taskId === 'UNRESOLVED-123456',
+      ),
+    ).toBe(true)
+    await page.getByTestId('time-entry-actions-trigger').first().click()
+    await page.getByTestId('time-entry-edit-btn').click()
+    await page.getByTestId('time-entry-task-popover-trigger').first().click()
+    const popup = page
+      .locator('[data-slot="popover-content"]')
+      .filter({ has: input })
+    await expect(input).toHaveValue('')
+    await expect(popup.getByText(/detalhes ainda não carregados/)).toHaveCount(
+      0,
+    )
+    await expect(popup.getByTestId('task-use-manual-id')).toHaveCount(0)
+    await expect(
+      popup
+        .getByRole('listbox', { name: 'Tarefas', exact: true })
+        .getByRole('option')
+        .first()
+        .locator('img, svg')
+        .first(),
+    ).toBeVisible()
+    const bounds = await popup.boundingBox()
+    const viewport = page.viewportSize()
+    expect(bounds).not.toBeNull()
+    expect(viewport).not.toBeNull()
+    if (!bounds || !viewport) throw new Error('LOOKUP_VIEWPORT_UNAVAILABLE')
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height)
+    await popup.screenshot({
+      path: testInfo.outputPath('task-lookup-compact.png'),
+    })
+    await input.pressSequentially('123456')
+    const manual = popup.getByTestId('task-use-manual-id')
+    await expect(manual).toHaveCount(1)
+    await expect(manual.locator('img, svg').first()).toBeVisible()
+    const manualBounds = await manual.boundingBox()
+    const loadingBounds = await popup.boundingBox()
+    if (!manualBounds || !loadingBounds)
+      throw new Error('LOOKUP_ACTION_BOUNDS_UNAVAILABLE')
+    expect(manualBounds.y + manualBounds.height).toBeLessThanOrEqual(
+      loadingBounds.y + loadingBounds.height,
+    )
+    await popup.screenshot({
+      path: testInfo.outputPath('task-lookup-manual-id.png'),
+    })
+  })
+
+  test('TSK-06: busca remota controlada mantém ID manual disponível e enriquece cache uma vez', async ({
+    page,
+  }) => {
+    await page
+      .locator(`nav a[href*="/workspaces/${fakeSyncScope.workspaceId}"]`)
+      .click()
+    await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+      timeout: 30000,
+    })
+    const prepared = await page.evaluate(() =>
+      window.api.addons.executeCommand({
+        body: { commandId: 'fake-db:prepare-task-lookup' },
+      }),
+    )
+    expect(prepared.data).toEqual({ prepared: true })
+    await page.getByTestId('time-entry-actions-trigger').first().click()
+    await page.getByTestId('time-entry-edit-btn').click()
+    await page.getByTestId('time-entry-task-popover-trigger').first().click()
+    const input = page.getByTestId('time-entry-task-lookup-input')
+    await page.clock.install({ time: new Date() })
+    await page.clock.pauseAt(new Date(Date.now() + 1000))
+    await input.pressSequentially('LOOKUP-REMOTE-123456')
+    await expect(input).toHaveValue('LOOKUP-REMOTE-123456')
+    await page.clock.runFor(400)
+    await page.clock.resume()
+    await expect(page.getByTestId('task-search-status')).toContainText(
+      'Buscando em',
+    )
+    await expect(page.getByTestId('task-use-manual-id')).toBeEnabled()
+    const missing = await page.evaluate(
+      (scope) =>
+        window.api.core.getTask({
+          body: { ...scope, taskId: 'LOOKUP-REMOTE-123456' },
+        }),
+      fakeSyncScope,
+    )
+    expect(missing.statusCode).toBe(404)
+    const diagnostics = await page.evaluate(() =>
+      window.api.addons.executeCommand({
+        body: { commandId: 'fake-db:get-task-lookup-diagnostics' },
+      }),
+    )
+    const calls = z
+      .object({
+        requests: z.array(z.object({ id: z.string(), startedAt: z.number() })),
+      })
+      .parse(diagnostics.data)
+    expect(
+      calls.requests.filter((request) => request.id === 'LOOKUP-REMOTE-123456'),
+    ).toHaveLength(1)
+    expect(
+      calls.requests.filter(
+        (request) =>
+          request.id.startsWith('LOOKUP-REMOTE-') &&
+          request.id !== 'LOOKUP-REMOTE-123456',
+      ),
+    ).toHaveLength(0)
+    // A second intent queues behind the controlled remote request. Clearing it
+    // must cancel that consumer before the provider gate is released.
+    await input.fill('LOOKUP-CANCELLED')
+    await page.clock.runFor(400)
+    await expect(page.getByTestId('task-search-status')).toContainText(
+      'Buscando em',
+    )
+    await input.clear()
+    await input.fill('LOOKUP-REMOTE-123456')
+    await page.evaluate(() =>
+      window.api.addons.executeCommand({
+        body: { commandId: 'fake-db:release-task-lookups' },
+      }),
+    )
+    await expect(
+      page.getByText('Tarefa remota exclusiva do lookup', { exact: true }),
+    ).toBeVisible()
+    const cached = await page.evaluate(
+      (scope) =>
+        window.api.core.getTask({
+          body: { ...scope, taskId: 'LOOKUP-REMOTE-123456' },
+        }),
+      fakeSyncScope,
+    )
+    expect(cached.isSuccess).toBe(true)
+    expect(cached.data?.taskId).toBe('LOOKUP-REMOTE-123456')
+    await expect(page.getByTestId('task-search-status')).toContainText(
+      'Busca atualizada',
+    )
+    const completed = await page.evaluate(() =>
+      window.api.addons.executeCommand({
+        body: { commandId: 'fake-db:get-task-lookup-diagnostics' },
+      }),
+    )
+    expect(
+      z
+        .object({ requests: z.array(z.object({ id: z.string() })) })
+        .parse(completed.data).requests,
+    ).not.toContainEqual({ id: 'LOOKUP-CANCELLED' })
+    await input.press('ArrowDown')
+    await input.press('Enter')
+    await expect(input).not.toBeVisible()
+    await page.getByTestId('time-entry-save-btn').first().click()
+    await expect(page.getByTestId('time-entry-save-btn')).toHaveCount(0)
+    await expect(
+      page.getByText('#LOOKUP-REMOTE-123456', { exact: true }).first(),
+    ).toBeVisible()
+  })
+
+  test('TSK-05: pesquisar por título e selecionar usando setas e Enter', async ({
+    page,
+  }) => {
+    await page.locator('nav a[href*="/workspaces/"]').first().click()
+    await expect(syncStatusIndicator(page, 'synced')).toBeVisible({
+      timeout: 30000,
+    })
+    await page.getByTestId('time-entry-actions-trigger').first().click()
+    await page.getByTestId('time-entry-edit-btn').click()
+    await page.getByTestId('time-entry-task-popover-trigger').first().click()
+    const input = page.getByTestId('time-entry-task-lookup-input')
+    await input.fill('')
+    await input.pressSequentially('responsividade')
+    await expect(input).toHaveValue('responsividade')
+    const popup = page
+      .locator('[data-slot="popover-content"]')
+      .filter({ has: input })
+    await expect(
+      popup.getByText('Ajustar responsividade do dashboard (API-240)', {
+        exact: true,
+      }),
+    ).toBeVisible()
+    await input.press('ArrowDown')
+    await expect(input).toHaveAttribute('aria-activedescendant', /.+/)
+    await input.press('Enter')
+    await expect(input).not.toBeVisible()
+    await page.getByTestId('time-entry-save-btn').first().click()
+    await expect(page.getByTestId('time-entry-save-btn')).toHaveCount(0)
+    await expect(
+      page.getByText('#API-240', { exact: true }).first(),
+    ).toBeVisible()
+  })
+
   test('deve pesquisar tarefa e atualizar apontamento (TSK-01)', async ({
     page,
   }, testInfo) => {

@@ -86,10 +86,89 @@ describe('ListTasksService', () => {
       getAuthenticatedMemberData: vi.fn(),
       tasksProvider: {
         findAll: vi.fn(),
+        findById: vi.fn(),
       },
     } as unknown as Mocked<IDataSourceAdapter>
 
     sut = new ListTaskService(dataSourceResolverMock)
+  })
+
+  it('resolves opaque IDs without requiring a numeric format or a text search', async () => {
+    const task: TaskDTO = {
+      id: 'PROJECT-123456',
+      title: 'Remote task',
+      status: { id: 'open', name: 'Open' },
+      createdAt: fakeDate,
+      updatedAt: fakeDate,
+    }
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
+    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
+      Either.success(fakeMember),
+    )
+    vi.mocked(adapterMock.tasksProvider.findById).mockResolvedValue(
+      Either.success(task),
+    )
+
+    const result = await sut.execute({
+      ...makeInput(),
+      search: task.id,
+      resolveExactId: task.id,
+    })
+
+    expect(result.success.items).toEqual([task])
+    expect(adapterMock.tasksProvider.findById).toHaveBeenCalledWith(task.id)
+    expect(adapterMock.tasksProvider.findAll).not.toHaveBeenCalled()
+  })
+
+  it.each([400, 404])(
+    'continues title search after an exact-ID response of %s',
+    async (status) => {
+      dataSourceResolverMock.getDataSource.mockResolvedValue(
+        Either.success(adapterMock),
+      )
+      adapterMock.getAuthenticatedMemberData.mockResolvedValue(
+        Either.success(fakeMember),
+      )
+      vi.mocked(adapterMock.tasksProvider.findById).mockResolvedValue(
+        Either.failure(AppError.Http(status, 'TASK_NOT_FOUND')),
+      )
+      vi.mocked(adapterMock.tasksProvider.findAll).mockResolvedValue(
+        Either.success(fakeTasksPage),
+      )
+
+      const result = await sut.execute({
+        ...makeInput(),
+        search: 'login',
+        resolveExactId: 'login',
+      })
+
+      expect(result.success).toEqual(fakeTasksPage)
+      expect(adapterMock.tasksProvider.findAll).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('forwards rate limits without starting a second provider request', async () => {
+    const error = AppError.Http(429, 'RATE_LIMITED', { retryAfter: ['2'] })
+    dataSourceResolverMock.getDataSource.mockResolvedValue(
+      Either.success(adapterMock),
+    )
+    adapterMock.getAuthenticatedMemberData.mockResolvedValue(
+      Either.success(fakeMember),
+    )
+    vi.mocked(adapterMock.tasksProvider.findById).mockResolvedValue(
+      Either.failure(error),
+    )
+
+    const result = await sut.execute({
+      ...makeInput(),
+      search: '123456',
+      resolveExactId: '123456',
+    })
+
+    expect(result.failure).toBe(error)
+    expect(adapterMock.tasksProvider.findAll).not.toHaveBeenCalled()
   })
 
   it('should resolve the data source, fetch tasks and return a paginated result successfully', async () => {

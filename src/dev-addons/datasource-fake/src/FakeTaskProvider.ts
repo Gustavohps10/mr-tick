@@ -37,23 +37,11 @@ export class FakeTaskProvider implements ITaskProvider {
   async findAll(
     pagination?: PaginationOptionsDTO,
   ): Promise<Either<AppError, PagedResultDTO<TaskDTO>>> {
-    const all = this.store.getTasks()
-    const page = pagination?.page ?? 1
-    const pageSize = pagination?.pageSize ?? all.length
-    const startIndex = (page - 1) * pageSize
-    const items = all.slice(startIndex, startIndex + pageSize)
-    return Either.success({
-      items,
-      total: all.length,
-      page,
-      pageSize,
-    })
+    return Either.success(this.store.listTasks(pagination))
   }
 
   async findById(id: string): Promise<Either<AppError, TaskDTO | null>> {
-    const task = this.store.findTaskById(id)
-    if (!task) return Either.success(null)
-    return Either.success(task)
+    return Either.success(await this.store.lookupTask(id))
   }
 
   async create(task: TaskDTO): Promise<Either<AppError, CreatedTaskResult>> {

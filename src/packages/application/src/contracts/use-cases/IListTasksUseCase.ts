@@ -6,6 +6,8 @@ export interface ListTasksInput {
   workspaceId: string
   connectionInstanceId: string
   search?: string
+  resolveExactId?: string
+  consumerId?: string
   ids?: string[]
   page?: number
   pageSize?: number

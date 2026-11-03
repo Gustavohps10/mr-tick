@@ -7,6 +7,7 @@
 - [Testar o SDK sem esperar uma release](../src/dev-addons/desenvolvimento-e-debug-de-addons.md#testar-mudanças-no-sdk-sem-esperar-uma-release): deslinkar, remover instalações anteriores, recompilar e relinkar os addons com o SDK local.
 - [Runtime local do SDK](sdk-local-runtime.md): timer, apontamentos, sugestões e identidade de operação.
 - [Contexto e capacidades do core](sdk-core-capabilities.md): consultas, escopos e lifecycle.
+- [Busca universal de tarefas e metadados locais](superpowers/specs/2026-11-03-universal-task-lookup-local-metadata-design.md): comportamento, limites de rede e critérios de validação.
 - [Autenticação](../src/apps/landing-page/content/docs/capabilities/auth.pt-br.mdx): perfis, autenticadores e credenciais.
 - [OAuth PKCE](../src/apps/landing-page/content/docs/apis/oauth-pkce.pt-br.mdx): fluxo atual e callbacks por ambiente.
 - [Limitações de OAuth e Arquitetura de Autenticação](limitacoes-oauth.md): modelo de segurança (clientes públicos vs confidenciais), Discord IPC, Jira 3LO e governança de addons oficiais vs terceiros.

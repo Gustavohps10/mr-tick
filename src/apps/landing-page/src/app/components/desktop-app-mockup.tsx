@@ -294,6 +294,7 @@ const mockBridgeClient: IHostBridge = {
     quitAndInstall: async () => {},
   },
   tasks: {
+    cancelSearch: async () => {},
     listTasks: async () => mockPaginated([]),
     pull: async () => mockSuccess([]),
   },
@@ -381,6 +382,24 @@ const mockBridgeClient: IHostBridge = {
     },
   },
   core: {
+    listTaskReferences: async () => mockSuccess([]),
+    getLocalMetadata: async () =>
+      mockSuccess({
+        values: {
+          taskStatuses: [],
+          taskPriorities: [],
+          activities: [],
+          trackStatuses: [],
+          participantRoles: [],
+          estimationTypes: [],
+        },
+        revision: 'demo',
+      }),
+    saveLocalMetadata: async () => ({
+      isSuccess: false,
+      statusCode: 503,
+      error: 'A edição de metadados não está disponível nesta demonstração.',
+    }),
     listConnections: async () => ({
       isSuccess: true,
       statusCode: 200,

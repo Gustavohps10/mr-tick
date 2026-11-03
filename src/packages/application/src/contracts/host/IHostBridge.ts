@@ -58,6 +58,9 @@ import type {
   CoreTaskListRequest,
   CoreTaskPage,
   CoreTaskReference,
+  LocalMetadataSnapshot,
+  SaveLocalMetadataRequest,
+  TaskReferenceLookupRequest,
 } from '../core/CoreContext'
 export type {
   CoreConnection,
@@ -150,11 +153,19 @@ export interface IWorkspacesAPI {
 }
 
 export interface ITaskAPI {
+  cancelSearch(
+    input: IRequest<{
+      workspaceId: string
+      connectionInstanceId: string
+      consumerId: string
+    }>,
+  ): Promise<void>
   listTasks: (
     input: IRequest<{
       workspaceId: string
       connectionInstanceId: string
       search?: string
+      consumerId?: string
       ids?: string[]
       page?: number
       pageSize?: number
@@ -619,6 +630,15 @@ export interface ILicensingAPI {
 }
 
 export interface ICoreBridgeAPI {
+  listTaskReferences(
+    request: IRequest<TaskReferenceLookupRequest>,
+  ): Promise<ViewModel<CoreTaskReference[]>>
+  getLocalMetadata(
+    request: IRequest<{ workspaceId: string }>,
+  ): Promise<ViewModel<LocalMetadataSnapshot>>
+  saveLocalMetadata(
+    request: IRequest<SaveLocalMetadataRequest>,
+  ): Promise<ViewModel<LocalMetadataSnapshot>>
   listConnections(
     request: IRequest<{ workspaceId: string; capability?: string }>,
   ): Promise<ViewModel<CoreConnection[]>>

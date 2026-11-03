@@ -6,7 +6,6 @@ import {
   fetchAndPersistTasks,
   mapTaskViewModelToRxDB,
 } from '@/lib/tasks-enrichment'
-import { AppDatabase } from '@/stores/sync-store/types'
 
 describe('tasks-enrichment', () => {
   describe('mapTaskViewModelToRxDB', () => {
@@ -85,13 +84,9 @@ describe('tasks-enrichment', () => {
       const mockBridge = {
         tasks: { listTasks: vi.fn() },
       } as unknown as IHostBridge
-      const mockDb = {
-        tasks: { bulkUpsert: vi.fn() },
-      } as unknown as AppDatabase
 
       const result = await fetchAndPersistTasks({
         hostBridge: mockBridge,
-        db: mockDb,
         workspaceId: '',
         connectionInstanceId: 'conn-1',
         dataSourceId: 'redmine',
@@ -106,13 +101,9 @@ describe('tasks-enrichment', () => {
       const mockBridge = {
         tasks: { listTasks: vi.fn() },
       } as unknown as IHostBridge
-      const mockDb = {
-        tasks: { bulkUpsert: vi.fn() },
-      } as unknown as AppDatabase
 
       const result = await fetchAndPersistTasks({
         hostBridge: mockBridge,
-        db: mockDb,
         workspaceId: 'ws-1',
         connectionInstanceId: 'conn-1',
         dataSourceId: 'redmine',
@@ -124,7 +115,7 @@ describe('tasks-enrichment', () => {
       expect(mockBridge.tasks.listTasks).not.toHaveBeenCalled()
     })
 
-    it('should sanitize task IDs, call hostBridge, and persist to RxDB', async () => {
+    it('delegates enrichment to the host and never writes the reader database', async () => {
       const listTasksMock = vi.fn().mockResolvedValue({
         isSuccess: true,
         statusCode: 200,
@@ -138,18 +129,13 @@ describe('tasks-enrichment', () => {
           },
         ],
       })
-      const bulkUpsertMock = vi.fn().mockResolvedValue([])
 
       const mockBridge = {
         tasks: { listTasks: listTasksMock },
       } as unknown as IHostBridge
-      const mockDb = {
-        tasks: { bulkUpsert: bulkUpsertMock },
-      } as unknown as AppDatabase
 
       const result = await fetchAndPersistTasks({
         hostBridge: mockBridge,
-        db: mockDb,
         workspaceId: 'ws-1',
         connectionInstanceId: 'conn-1',
         dataSourceId: 'redmine',
@@ -167,7 +153,6 @@ describe('tasks-enrichment', () => {
         },
       })
 
-      expect(bulkUpsertMock).toHaveBeenCalledTimes(1)
       expect(result).toHaveLength(1)
       expect(result[0].id).toBe('conn-1::77657')
       expect(result[0].title).toBe('Tarefa Encontrada On Demand')
@@ -179,18 +164,13 @@ describe('tasks-enrichment', () => {
         statusCode: 500,
         error: 'NETWORK_ERROR',
       })
-      const bulkUpsertMock = vi.fn()
 
       const mockBridge = {
         tasks: { listTasks: listTasksMock },
       } as unknown as IHostBridge
-      const mockDb = {
-        tasks: { bulkUpsert: bulkUpsertMock },
-      } as unknown as AppDatabase
 
       const result = await fetchAndPersistTasks({
         hostBridge: mockBridge,
-        db: mockDb,
         workspaceId: 'ws-1',
         connectionInstanceId: 'conn-1',
         dataSourceId: 'redmine',
@@ -198,7 +178,6 @@ describe('tasks-enrichment', () => {
       })
 
       expect(result).toEqual([])
-      expect(bulkUpsertMock).not.toHaveBeenCalled()
     })
   })
 })

@@ -3,6 +3,10 @@ import type { ICoreBridgeAPI } from '@mr-tick/application'
 import { IpcInvoker } from '@/main/adapters/IpcInvoker'
 
 export const coreInvoker: ICoreBridgeAPI = {
+  listTaskReferences: (req) => IpcInvoker.invoke('CORE_TASK_REFERENCES', req),
+  getLocalMetadata: (req) => IpcInvoker.invoke('CORE_LOCAL_METADATA_GET', req),
+  saveLocalMetadata: (req) =>
+    IpcInvoker.invoke('CORE_LOCAL_METADATA_SAVE', req),
   listConnections: (req) => IpcInvoker.invoke('CORE_CONNECTIONS_LIST', req),
   listTasks: (req) => IpcInvoker.invoke('CORE_TASKS_LIST', req),
   getTask: (req) => IpcInvoker.invoke('CORE_TASK_GET', req),

@@ -62,10 +62,12 @@ const mockWorkspaceValue: WorkspaceContextType = {
   isRemoving: false,
 }
 
-function renderWithProviders(ui: React.ReactElement) {
-  const queryClient = new QueryClient({
+function renderWithProviders(
+  ui: React.ReactElement,
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
-  })
+  }),
+) {
   return render(
     <QueryClientProvider client={queryClient}>
       <WorkspaceContext.Provider value={mockWorkspaceValue}>
@@ -87,6 +89,43 @@ beforeAll(() => {
 describe('TaskPopover - Activity selection and remote constraints', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('does not turn unresolved entry history into task results when selecting a source', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    client.setQueryData(['task-references', 'ws-1', 'remote-connection', ''], {
+      isSuccess: true,
+      statusCode: 200,
+      data: Array.from({ length: 50 }, (item, index) => ({
+        taskId: `HISTORY-${index + 1}`,
+      })),
+    })
+    renderWithProviders(
+      <TaskPopover
+        trigger={<button>Abrir Detalhes</button>}
+        workspaceId="ws-1"
+        selectedConnectionId="remote-connection"
+        connections={[
+          { id: 'remote-connection', label: 'Redmine', logo: '/redmine.svg' },
+        ]}
+        tasks={[]}
+        activities={TEST_ACTIVITIES}
+      />,
+      client,
+    )
+    fireEvent.click(screen.getByText('Abrir Detalhes'))
+
+    expect(screen.queryAllByText(/ID HISTORY-/)).toHaveLength(0)
+    expect(screen.queryByTestId('task-use-manual-id')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByTestId('time-entry-task-lookup-input'), {
+      target: { value: '123456' },
+    })
+    const manual = screen.getByTestId('task-use-manual-id')
+    expect(manual).toHaveTextContent('123456')
+    expect(manual.querySelector('img')).toHaveAttribute('src', '/redmine.svg')
+    expect(screen.getAllByTestId('task-use-manual-id')).toHaveLength(1)
   })
 
   it('groups the comment with entry details and commits multiline text when closing', () => {
@@ -211,7 +250,7 @@ describe('TaskPopover - Activity selection and remote constraints', () => {
     expect(screen.queryByRole('option', { name: /Sem atividade/ })).toBeNull()
   })
 
-  it('should prevent clearing task when isRemote is true upon commit', async () => {
+  it('keeps the selected task when confirming an empty search', async () => {
     const toastErrorSpy = vi.spyOn(toast, 'error')
 
     function ControlledTaskTest() {
@@ -240,9 +279,7 @@ describe('TaskPopover - Activity selection and remote constraints', () => {
     fireEvent.keyDown(taskInput, { key: 'Enter' })
 
     // Deve exibir toast de erro e não permitir salvar vazio
-    expect(toastErrorSpy).toHaveBeenCalledWith(
-      'Registros sincronizados com o servidor não podem ficar sem tarefa',
-    )
-    expect(screen.getByText('Detalhes da Tarefa')).toBeTruthy()
+    expect(toastErrorSpy).not.toHaveBeenCalled()
+    expect(screen.queryByText('Detalhes da Tarefa')).toBeNull()
   })
 })

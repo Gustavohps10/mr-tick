@@ -39,6 +39,7 @@ function createMockContext(overrides?: {
         get: vi.fn(),
       } as unknown as ICoreConnectionsAPI,
       tasks: {
+        search: vi.fn(),
         list: vi.fn(),
         get: vi.fn(
           async () =>
@@ -56,6 +57,7 @@ function createMockContext(overrides?: {
         ),
       },
       metadata: {
+        getLocal: vi.fn(),
         get: vi.fn(
           async () =>
             overrides?.metadataResult ??

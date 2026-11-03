@@ -63,6 +63,7 @@ export interface TaskConnectionSelectProps {
   onChange: (value: string) => void
   disabled?: boolean
   testId?: string
+  onCloseAutoFocus?: (event: Event) => void
 }
 
 export function TaskConnectionSelect({
@@ -71,6 +72,7 @@ export function TaskConnectionSelect({
   onChange,
   disabled,
   testId,
+  onCloseAutoFocus,
 }: TaskConnectionSelectProps) {
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>
@@ -81,7 +83,11 @@ export function TaskConnectionSelect({
       >
         <SelectValue placeholder="Selecione uma conexão" />
       </SelectTrigger>
-      <SelectContent className="max-w-[calc(100vw-2rem)]" position="popper">
+      <SelectContent
+        className="max-w-[calc(100vw-2rem)]"
+        position="popper"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         {connections.map((connection) => (
           <SelectItem
             key={connection.id}

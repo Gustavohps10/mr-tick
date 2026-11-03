@@ -493,11 +493,12 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
         ? activitiesByConnection[resolvedConnectionInstanceId]
         : undefined
 
-    const rowActivities = hasSelectedTask
-      ? connectionActivities && connectionActivities.length > 0
-        ? connectionActivities
-        : activities
-      : []
+    let rowActivities: SyncMetadataItem[] = []
+    if (connectionActivities) rowActivities = connectionActivities
+    if (!resolvedConnectionInstanceId && activitiesByConnection) {
+      const local = activitiesByConnection['']
+      if (local) rowActivities = local
+    }
 
     const formattedActivities = rowActivities.map((act) => ({
       id: act.id,
@@ -517,6 +518,22 @@ function TaskCell({ row }: { row: TanStackRow<SuggestionRow> }) {
           align="start"
           isRemote={isRemote}
           taskId={currentTaskId}
+          onSelectReference={(taskId, connectionInstanceId, context) => {
+            let dataSourceId = context.dataSourceId
+            if (!dataSourceId) dataSourceId = resolvedDataSourceId
+
+            let remoteConnectionId: string | undefined
+            if (connectionInstanceId) remoteConnectionId = connectionInstanceId
+            if (!remoteConnectionId)
+              remoteConnectionId = resolvedConnectionInstanceId
+
+            updateField({
+              task: { id: taskId },
+              taskData: undefined,
+              connectionInstanceId: remoteConnectionId,
+              dataSourceId,
+            })
+          }}
           onTaskIdChange={(id) => {
             const clean = extractPureTaskId(id)
             if (isRemote && !clean) return

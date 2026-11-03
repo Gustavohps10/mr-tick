@@ -24,6 +24,7 @@ export const IpcChannels = {
 
   TASKS_PULL: 'tasks:pull',
   TASKS_LIST: 'tasks:list',
+  TASKS_CANCEL_SEARCH: 'tasks:cancel-search',
 
   GET_TOKEN: 'token',
   SAVE_TOKEN: 'token:save',
@@ -82,7 +83,10 @@ export const IpcChannels = {
   CORE_CONNECTIONS_LIST: 'core:connections:list',
   CORE_TASKS_LIST: 'core:tasks:list',
   CORE_TASK_GET: 'core:task:get',
+  CORE_TASK_REFERENCES: 'core:task-references:list',
   CORE_METADATA_GET: 'core:metadata:get',
+  CORE_LOCAL_METADATA_GET: 'core:local-metadata:get',
+  CORE_LOCAL_METADATA_SAVE: 'core:local-metadata:save',
   ADDONS_SET_ACTIVE_WORKSPACE: 'addons:set-active-workspace',
   ADDONS_GET_ACTIVE_THEME: 'addons:get-active-theme',
   ADDONS_LIST_THEMES: 'addons:list-themes',

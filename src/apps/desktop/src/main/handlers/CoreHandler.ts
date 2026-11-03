@@ -1,4 +1,5 @@
 import {
+  type CoreCacheQuery,
   type CoreConnection,
   type CoreConnectionScope,
   type CoreMetadata,
@@ -9,6 +10,9 @@ import {
   type IAddonConnectionProfilesRegistry,
   type ICoreCacheTransport,
   type IWorkspacesRepository,
+  type LocalMetadataSnapshot,
+  type SaveLocalMetadataRequest,
+  type TaskReferenceLookupRequest,
 } from '@mr-tick/application'
 import {
   AppError,
@@ -29,6 +33,73 @@ export class CoreHandler implements HandlerBase<CoreHandler> {
     private readonly localRuntime: ICoreCacheTransport,
     private readonly addonLoader: AddonLoader,
   ) {}
+
+  public async listTaskReferences(
+    event: Electron.IpcMainInvokeEvent,
+    { body }: IRequest<TaskReferenceLookupRequest>,
+  ): Promise<ViewModel<CoreTaskReference[]>> {
+    const result = await this.localRuntime.queryCore({
+      ...body,
+      action: 'taskReferences',
+    })
+    if (!result.ok)
+      return createResponseViewModel(
+        Either.failure(
+          AppError.Http(result.error.statusCode, result.error.messageKey),
+        ),
+      )
+    if (result.value.kind !== 'taskReferences')
+      return createResponseViewModel(
+        Either.failure(AppError.Internal('INVALID_REFERENCE_RESPONSE')),
+      )
+    return createResponseViewModel(Either.success(result.value.references))
+  }
+
+  public getLocalMetadata(
+    event: Electron.IpcMainInvokeEvent,
+    { body }: IRequest<{ workspaceId: string }>,
+  ): Promise<ViewModel<LocalMetadataSnapshot>> {
+    return this.localMetadata({
+      action: 'localMetadata',
+      workspaceId: body.workspaceId,
+      connectionInstanceId: '',
+    })
+  }
+
+  public saveLocalMetadata(
+    event: Electron.IpcMainInvokeEvent,
+    { body }: IRequest<SaveLocalMetadataRequest>,
+  ): Promise<ViewModel<LocalMetadataSnapshot>> {
+    return this.localMetadata({
+      action: 'saveLocalMetadata',
+      workspaceId: body.workspaceId,
+      connectionInstanceId: '',
+      values: body.values,
+      revision: body.revision,
+    })
+  }
+
+  private async localMetadata(
+    input: CoreCacheQuery,
+  ): Promise<ViewModel<LocalMetadataSnapshot>> {
+    const result = await this.localRuntime.queryCore(input)
+    if (!result.ok)
+      return createResponseViewModel(
+        Either.failure(
+          AppError.Http(result.error.statusCode, result.error.messageKey),
+        ),
+      )
+    if (result.value.kind !== 'localMetadata')
+      return createResponseViewModel(
+        Either.failure(AppError.Internal('INVALID_METADATA_RESPONSE')),
+      )
+    return createResponseViewModel(
+      Either.success({
+        values: result.value.values,
+        revision: result.value.revision,
+      }),
+    )
+  }
 
   public async listConnections(
     event: Electron.IpcMainInvokeEvent,
@@ -139,6 +210,11 @@ export class CoreHandler implements HandlerBase<CoreHandler> {
       limit: body.limit,
       search: body.search,
       cursor: body.cursor,
+      offset: body.offset,
+      sortByUpdatedAt: body.sortByUpdatedAt,
+      statusId: body.statusId,
+      priorityId: body.priorityId,
+      assignedMemberId: body.assignedMemberId,
     })
 
     if (!response.ok) {

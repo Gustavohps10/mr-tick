@@ -6,6 +6,8 @@ import type {
   MemberDTO,
   MetadataDTO,
   MetadataItem,
+  PagedResultDTO,
+  PaginationOptionsDTO,
   TaskDTO,
   TimeEntryDTO,
 } from '@mr-tick/sdk'
@@ -147,6 +149,48 @@ function getDatabaseFilePath(): string {
 }
 
 export class FakeDatabaseStore {
+  private lookupOnlyTask: TaskDTO | null = null
+  private taskLookupGate: Promise<void> | null = null
+  private releaseTaskLookup: (() => void) | null = null
+  private readonly taskLookupRequests: Array<{
+    id: string
+    startedAt: number
+  }> = []
+
+  public setLookupOnlyTask(task: TaskDTO): void {
+    this.lookupOnlyTask = task
+  }
+
+  public pauseTaskLookups(): void {
+    if (this.taskLookupGate !== null) return
+    this.taskLookupGate = new Promise((resolve) => {
+      this.releaseTaskLookup = resolve
+    })
+  }
+
+  public releaseTaskLookups(): void {
+    const release = this.releaseTaskLookup
+    this.releaseTaskLookup = null
+    this.taskLookupGate = null
+    if (release !== null) release()
+  }
+
+  public async lookupTask(id: string): Promise<TaskDTO | null> {
+    this.taskLookupRequests.push({ id, startedAt: Date.now() })
+    if (this.taskLookupGate !== null) await this.taskLookupGate
+    if (this.lookupOnlyTask !== null && this.lookupOnlyTask.id === id)
+      return this.lookupOnlyTask
+    const task = this.findTaskById(id)
+    if (task === undefined) return null
+    return task
+  }
+
+  public getTaskLookupDiagnostics(): {
+    requests: Array<{ id: string; startedAt: number }>
+  } {
+    return { requests: [...this.taskLookupRequests] }
+  }
+
   private static instance: FakeDatabaseStore | null = null
 
   private filePath: string
@@ -762,9 +806,36 @@ export class FakeDatabaseStore {
     return { activityId, previousName: activity.name, name }
   }
 
-  public getTasks(): TaskDTO[] {
+  public listTasks(pagination?: PaginationOptionsDTO): PagedResultDTO<TaskDTO> {
     this.ensureLoaded()
-    return [...this.tasks]
+    let page = 1
+    let pageSize = 50
+    let search = ''
+    if (pagination?.page !== undefined) page = pagination.page
+    if (pagination?.pageSize !== undefined) pageSize = pagination.pageSize
+    if (pagination?.search !== undefined)
+      search = pagination.search.trim().toLowerCase()
+    const matches = (task: TaskDTO) => {
+      if (pagination?.ids !== undefined && !pagination.ids.includes(task.id))
+        return false
+      if (
+        search &&
+        !task.id.toLowerCase().includes(search) &&
+        !task.title.toLowerCase().includes(search)
+      )
+        return false
+      return true
+    }
+    const tasks = this.tasks.filter(matches)
+    if (this.lookupOnlyTask !== null && matches(this.lookupOnlyTask))
+      tasks.push(this.lookupOnlyTask)
+    const start = (page - 1) * pageSize
+    return {
+      items: tasks.slice(start, start + pageSize),
+      total: tasks.length,
+      page,
+      pageSize,
+    }
   }
 
   public findTaskById(id: string): TaskDTO | undefined {

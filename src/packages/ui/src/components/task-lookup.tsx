@@ -1,5 +1,6 @@
 'use client'
 
+import type { MetadataDTO } from '@mr-tick/application'
 import {
   useInfiniteQuery,
   useQuery,
@@ -25,14 +26,14 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react'
 import { MangoQuerySelector } from 'rxdb'
-import { useDebounce } from 'use-debounce'
 
+import type { TaskConnectionOption } from '@/components/task-connection-select'
 import { getTaskConnectionOption } from '@/components/task-connection-select'
 import { TaskLookupTaskDetails } from '@/components/task-lookup-results'
+import { TaskSearchStatus } from '@/components/task-search-status'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -57,23 +58,35 @@ import {
   resolveEntityMapping,
   useFieldMappings,
 } from '@/hooks/use-field-mappings'
-import { fetchAndPersistTasks } from '@/lib/tasks-enrichment'
+import { useRemoteTaskSearch } from '@/hooks/use-remote-task-search'
+import { mapCoreTaskToRxDB } from '@/lib/tasks-enrichment'
 import { cn } from '@/lib/utils'
 import { SyncMetadataItem } from '@/local-db/schemas/metadata-sync-schema'
 import { SyncTaskRxDBDTO } from '@/local-db/schemas/tasks-sync-schema'
-import {
-  cleanTaskId,
-  extractPureTaskId,
-} from '@/pages/time-entries/lib/time-entries-utils'
+import { cleanTaskId } from '@/pages/time-entries/lib/time-entries-utils'
 import { useConnectionsWithSync, useSyncStore } from '@/stores/syncStore'
 
 interface TaskLookupModalProps {
+  connections?: readonly TaskConnectionOption[]
+  workspaceId?: string
+  initialSearch?: string
+  initialConnectionId?: string
+  onSelectReference?: (taskId: string, connectionInstanceId: string) => void
   trigger?: React.ReactNode
   onSelect: (task: SyncTaskRxDBDTO) => void
   open?: boolean
   onOpenChange?: (open: boolean) => void
   currentUserId?: string | null
   memberIdsByConnection?: Record<string, string | null | undefined>
+}
+
+interface TaskLookupPage {
+  tasks: SyncTaskRxDBDTO[]
+  errors: string[]
+}
+
+function emptyLookupPage(): TaskLookupPage {
+  return { tasks: [], errors: [] }
 }
 
 const PAGE_SIZE = 50
@@ -98,6 +111,11 @@ const DynamicIcon = ({
 
 export function TaskLookup({
   trigger,
+  connections: explicitConnections,
+  workspaceId: explicitWorkspaceId,
+  initialSearch,
+  initialConnectionId,
+  onSelectReference,
   onSelect,
   open,
   onOpenChange,
@@ -108,6 +126,14 @@ export function TaskLookup({
   const db = useSyncStore((s) => s.db)
   const syncConnections = useConnectionsWithSync()
   const { workspace } = useWorkspace()
+  const hostBridge = useHostBridge()
+  let targetWorkspaceId = ''
+  if (workspace) targetWorkspaceId = workspace.id
+  if (explicitWorkspaceId !== undefined) targetWorkspaceId = explicitWorkspaceId
+  const isCurrentWorkspace =
+    workspace !== null &&
+    workspace !== undefined &&
+    workspace.id === targetWorkspaceId
   const { dataSourceConnections: dsConnections } = useDataSourceConnections()
 
   const memberIdsByConnection = useMemo(() => {
@@ -141,33 +167,32 @@ export function TaskLookup({
   ])
 
   const [searchTerm, setSearchTerm] = useState('')
-  const [debouncedSearch] = useDebounce(searchTerm, 300)
+  const debouncedSearch = searchTerm.trim()
 
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
   const [onlyMyTasks, setOnlyMyTasks] = useState(false)
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
 
-  const availableConnections = useMemo(
-    () =>
-      dsConnections.map((connection) => ({
-        ...getTaskConnectionOption({
-          id: connection.connectionId,
-          addon: connection.addon,
-          identityName: connection.identity?.displayName,
-          memberName: connection.member?.name,
-        }),
-        dataSourceId: connection.dataSourceId,
-      })),
-    [dsConnections],
-  )
+  const availableConnections = useMemo(() => {
+    if (explicitConnections !== undefined) return explicitConnections
+    return dsConnections.map((connection) => ({
+      ...getTaskConnectionOption({
+        id: connection.connectionId,
+        addon: connection.addon,
+        identityName: connection.identity?.displayName,
+        memberName: connection.member?.name,
+      }),
+      dataSourceId: connection.dataSourceId,
+    }))
+  }, [dsConnections, explicitConnections])
 
   // Lista de IDs de instâncias (connections) selecionadas
   const [selectedConnectionIds, setSelectedConnectionIds] = useState<string[]>(
     [],
   )
 
-  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [selectedKey, setSelectedKey] = useState<string | undefined>()
   const [internalOpen, setInternalOpen] = useState(false)
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
     null,
@@ -176,14 +201,47 @@ export function TaskLookup({
   const isModalOpen = open ?? internalOpen
   const setIsModalOpen = onOpenChange ?? setInternalOpen
 
-  const { data: metadataDocs } = useQuery({
-    queryKey: ['sync-metadata-all', db?.name],
+  const { data: metadataDocs } = useQuery<MetadataDTO[]>({
+    queryKey: [
+      'sync-metadata-all',
+      targetWorkspaceId,
+      selectedConnectionIds.join(':'),
+    ],
     queryFn: async () => {
-      if (!db) return []
-      const docs = await db.metadata.find().exec()
-      return docs.map((d) => d.toMutableJSON())
+      let ids = availableConnections.map((connection) => connection.id)
+      if (selectedConnectionIds.length > 0) ids = selectedConnectionIds
+      if (ids.length === 0) return []
+
+      if (isCurrentWorkspace && db) {
+        const documents = await db.metadata
+          .find({
+            selector: { connectionInstanceId: { $in: ids } },
+            limit: ids.length,
+          })
+          .exec()
+        return documents.map((document) => document.toMutableJSON())
+      }
+
+      const metadata: MetadataDTO[] = []
+
+      for (const connectionInstanceId of ids) {
+        if (!connectionInstanceId) {
+          const result = await hostBridge.core.getLocalMetadata({
+            body: { workspaceId: targetWorkspaceId },
+          })
+          if (result.isSuccess && result.data) metadata.push(result.data.values)
+          continue
+        }
+
+        const result = await hostBridge.core.getMetadata({
+          body: { workspaceId: targetWorkspaceId, connectionInstanceId },
+        })
+        if (result.isSuccess && result.data) metadata.push(result.data.values)
+      }
+
+      return metadata
     },
-    enabled: Boolean(isModalOpen && db),
+    enabled: isModalOpen && targetWorkspaceId.length > 0,
   })
 
   const metaLookup = useMemo(() => {
@@ -208,21 +266,17 @@ export function TaskLookup({
   }, [selectedConnectionIds, availableConnections])
 
   const singleSelectedConnection = useMemo(() => {
-    if (selectedConnectionIds.length === 1) {
-      return availableConnections.find(
-        (conn) => conn.id === selectedConnectionIds[0],
-      )
-    }
-    if (availableConnections.length === 1) {
-      return availableConnections[0]
-    }
-    return undefined
+    if (selectedConnectionIds.length !== 1) return undefined
+    return availableConnections.find((connection) =>
+      selectedConnectionIds.includes(connection.id),
+    )
   }, [selectedConnectionIds, availableConnections])
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useInfiniteQuery({
       queryKey: [
         'task-lookup',
+        targetWorkspaceId,
         db?.name,
         debouncedSearch,
         statusFilter,
@@ -232,18 +286,61 @@ export function TaskLookup({
         effectiveConnectionIds.join(','),
       ],
       initialPageParam: 0,
-      queryFn: async ({ pageParam = 0 }) => {
-        if (!db) return []
+      queryFn: async ({ pageParam = 0 }): Promise<TaskLookupPage> => {
+        if (!isCurrentWorkspace) {
+          const pages = await Promise.all(
+            effectiveConnectionIds
+              .filter((id) => id.length > 0)
+              .map(async (connectionInstanceId): Promise<TaskLookupPage> => {
+                const memberId = memberIdsByConnection[connectionInstanceId]
+                if (onlyMyTasks && !memberId) return emptyLookupPage()
+                const response = await hostBridge.core.listTasks({
+                  body: {
+                    workspaceId: targetWorkspaceId,
+                    connectionInstanceId,
+                    limit: PAGE_SIZE,
+                    offset: pageParam * PAGE_SIZE,
+                    search: debouncedSearch,
+                    sortByUpdatedAt: sortOrder,
+                    statusId: statusFilter === 'all' ? undefined : statusFilter,
+                    priorityId:
+                      priorityFilter === 'all' ? undefined : priorityFilter,
+                    assignedMemberId:
+                      onlyMyTasks && memberId ? memberId : undefined,
+                  },
+                })
+                if (!response.isSuccess || !response.data) {
+                  const failed = emptyLookupPage()
+                  if (response.error) failed.errors.push(response.error)
+                  return failed
+                }
+                return {
+                  tasks: response.data.tasks.map(mapCoreTaskToRxDB),
+                  errors: [],
+                }
+              }),
+          )
+          const tasks = pages
+            .flatMap((page) => page.tasks)
+            .sort((left, right) => {
+              const comparison = left.updatedAt.localeCompare(right.updatedAt)
+              if (sortOrder === 'asc') return comparison
+              return -comparison
+            })
+          return { tasks, errors: pages.flatMap((page) => page.errors) }
+        }
 
+        if (!db) return emptyLookupPage()
         const andConditions: MangoQuerySelector<SyncTaskRxDBDTO>[] = [
           { _deleted: { $ne: true } },
         ]
 
         if (debouncedSearch) {
+          const literal = debouncedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
           andConditions.push({
             $or: [
-              { title: { $regex: `.*${debouncedSearch}.*`, $options: 'i' } },
-              { id: { $regex: `.*${debouncedSearch}.*`, $options: 'i' } },
+              { title: { $regex: literal, $options: 'i' } },
+              { sourceId: { $regex: literal, $options: 'i' } },
             ],
           })
         }
@@ -253,38 +350,30 @@ export function TaskLookup({
         if (priorityFilter !== 'all')
           andConditions.push({ 'priority.id': priorityFilter })
 
-        if (effectiveConnectionIds.length > 0) {
-          if (onlyMyTasks) {
-            const myTasksOr = effectiveConnectionIds
-              .map((connId) => {
-                const memberId =
-                  memberIdsByConnection?.[connId] ??
-                  (currentUserId && currentUserId !== 'me'
-                    ? currentUserId
-                    : null)
-                if (!memberId) return null
-                return {
-                  connectionInstanceId: connId,
-                  $or: [
-                    { participants: { $elemMatch: { id: String(memberId) } } },
-                    { 'assignedTo.id': String(memberId) },
-                  ],
-                }
-              })
-              .filter((item) => item !== null)
+        if (effectiveConnectionIds.length > 0)
+          andConditions.push({
+            connectionInstanceId: { $in: effectiveConnectionIds },
+          })
 
-            if (myTasksOr.length > 0) {
-              andConditions.push({ $or: myTasksOr })
-            } else {
-              andConditions.push({
-                connectionInstanceId: { $in: effectiveConnectionIds },
-              })
-            }
-          } else {
-            andConditions.push({
-              connectionInstanceId: { $in: effectiveConnectionIds },
+        if (onlyMyTasks) {
+          const myTasksOr: MangoQuerySelector<SyncTaskRxDBDTO>[] = []
+
+          for (const connectionInstanceId of effectiveConnectionIds) {
+            let memberId = memberIdsByConnection[connectionInstanceId]
+            if (!memberId && currentUserId && currentUserId !== 'me')
+              memberId = currentUserId
+            if (!memberId) continue
+            myTasksOr.push({
+              connectionInstanceId,
+              $or: [
+                { participants: { $elemMatch: { id: memberId } } },
+                { 'assignedTo.id': memberId },
+              ],
             })
           }
+
+          if (myTasksOr.length === 0) return emptyLookupPage()
+          andConditions.push({ $or: myTasksOr })
         }
 
         const selector: MangoQuerySelector<SyncTaskRxDBDTO> =
@@ -299,92 +388,62 @@ export function TaskLookup({
           })
           .exec()
 
-        return docs.map((d) => d.toMutableJSON())
+        return {
+          tasks: docs.map((document) => document.toMutableJSON()),
+          errors: [],
+        }
       },
       getNextPageParam: (lastPage, allPages) => {
-        return lastPage.length === PAGE_SIZE ? allPages.length : undefined
+        return lastPage.tasks.length >= PAGE_SIZE ? allPages.length : undefined
       },
-      enabled: isModalOpen && !!db,
+      enabled: isModalOpen && targetWorkspaceId.length > 0,
     })
 
-  const allTasks = useMemo(() => data?.pages.flat() ?? [], [data])
+  const allTasks = useMemo(() => {
+    if (!data) return []
+    return data.pages.flatMap((page) => page.tasks)
+  }, [data])
+  const readFailures = useMemo(() => {
+    if (!data) return []
+    return data.pages.flatMap((page) => page.errors)
+  }, [data])
 
-  const hostBridge = useHostBridge()
-  const searchedTermsRef = useRef<Set<string>>(new Set())
-  const [isSearchingRemote, setIsSearchingRemote] = useState(false)
+  const remoteOrigins = useMemo(
+    () =>
+      availableConnections.filter(
+        (connection) =>
+          connection.id.length > 0 &&
+          effectiveConnectionIds.includes(connection.id),
+      ),
+    [availableConnections, effectiveConnectionIds],
+  )
+  const remoteSearch = useRemoteTaskSearch(
+    targetWorkspaceId,
+    remoteOrigins,
+    searchTerm,
+    isModalOpen,
+  )
+  const isSearchingRemote = remoteSearch.states.some(
+    (state) => state.phase === 'searching' || state.phase === 'waiting',
+  )
+  const remoteRevision = remoteSearch.queries
+    .map((query) => query.dataUpdatedAt)
+    .join(':')
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    if (!isModalOpen || !db || !workspace?.id || !debouncedSearch.trim()) {
-      return
-    }
+    if (!isModalOpen) return
+    let text = ''
+    if (initialSearch !== undefined) text = initialSearch
+    setSearchTerm(text)
+    if (initialConnectionId !== undefined)
+      setSelectedConnectionIds([initialConnectionId])
+  }, [isModalOpen, initialSearch, initialConnectionId])
 
-    const queryStr = debouncedSearch.trim()
-    const pureId = extractPureTaskId(queryStr)
-    const isPureNumeric = /^\d+$/.test(pureId)
-
-    const targetConnections =
-      effectiveConnectionIds.length > 0
-        ? availableConnections.filter((c) =>
-            effectiveConnectionIds.includes(c.id),
-          )
-        : availableConnections
-
-    if (targetConnections.length === 0) return
-
-    let needsRemoteSearch = false
-    for (const conn of targetConnections) {
-      const searchKey = `${conn.id}::${queryStr}`
-      if (!searchedTermsRef.current.has(searchKey)) {
-        needsRemoteSearch = true
-        searchedTermsRef.current.add(searchKey)
-      }
-    }
-
-    if (!needsRemoteSearch) return
-
-    let isSubscribed = true
-    setIsSearchingRemote(true)
-
-    const promises = targetConnections.map((conn) =>
-      fetchAndPersistTasks({
-        hostBridge,
-        db,
-        workspaceId: workspace.id,
-        connectionInstanceId: conn.id,
-        dataSourceId: conn.dataSourceId,
-        ids: isPureNumeric ? [pureId] : undefined,
-        search: !isPureNumeric ? queryStr : undefined,
-      }),
-    )
-
-    Promise.all(promises)
-      .then((results) => {
-        if (!isSubscribed) return
-        setIsSearchingRemote(false)
-        const totalFetched = results.reduce((acc, curr) => acc + curr.length, 0)
-        if (totalFetched > 0) {
-          queryClient.invalidateQueries({ queryKey: ['task-lookup'] })
-        }
-      })
-      .catch(() => {
-        if (!isSubscribed) return
-        setIsSearchingRemote(false)
-      })
-
-    return () => {
-      isSubscribed = false
-    }
-  }, [
-    isModalOpen,
-    db,
-    workspace?.id,
-    debouncedSearch,
-    effectiveConnectionIds,
-    availableConnections,
-    hostBridge,
-    queryClient,
-  ])
+  useEffect(() => {
+    if (!remoteRevision) return
+    void queryClient.invalidateQueries({ queryKey: ['task-lookup'] })
+  }, [remoteRevision, queryClient])
 
   const rowVirtualizer = useVirtualizer({
     count: hasNextPage ? allTasks.length + 1 : allTasks.length,
@@ -402,7 +461,7 @@ export function TaskLookup({
   useEffect(() => {
     if (scrollElement) {
       rowVirtualizer.scrollToOffset(0)
-      setSelectedIndex(0)
+      setSelectedKey(undefined)
     }
   }, [
     debouncedSearch,
@@ -435,22 +494,32 @@ export function TaskLookup({
     [onSelect, setIsModalOpen],
   )
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!allTasks.length) return
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      const next = Math.min(selectedIndex + 1, allTasks.length - 1)
-      setSelectedIndex(next)
-      rowVirtualizer.scrollToIndex(next, { align: 'center' })
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      const prev = Math.max(selectedIndex - 1, 0)
-      setSelectedIndex(prev)
-      rowVirtualizer.scrollToIndex(prev, { align: 'center' })
-    } else if (e.key === 'Enter') {
-      e.preventDefault()
-      const selectedTask = allTasks[selectedIndex]
-      if (selectedTask) handleSelect(selectedTask)
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const position = allTasks.findIndex((task) => task.id === selectedKey)
+      let next = position + 1
+      if (event.key === 'ArrowUp') next = position - 1
+      if (next < 0) next = allTasks.length - 1
+      if (next >= allTasks.length) next = 0
+      const task = allTasks[next]
+      if (task) {
+        setSelectedKey(task.id)
+        rowVirtualizer.scrollToIndex(next, { align: 'center' })
+      }
+      return
+    }
+
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    const task = allTasks.find((item) => item.id === selectedKey)
+    if (task) {
+      handleSelect(task)
+      return
+    }
+    if (onSelectReference && singleSelectedConnection && searchTerm.trim()) {
+      onSelectReference(searchTerm.trim(), singleSelectedConnection.id)
+      setIsModalOpen(false)
     }
   }
 
@@ -460,10 +529,7 @@ export function TaskLookup({
 
       <DialogPortal>
         <DialogOverlay className="pointer-events-auto bg-black/50 backdrop-blur-md transition-all" />
-        <DialogContent
-          onKeyDown={handleKeyDown}
-          className="bg-card/95 border-border/40 pointer-events-auto flex h-[min(42rem,85vh)] max-h-[85vh] w-[95vw] max-w-3xl min-w-0 flex-col gap-0 overflow-hidden rounded-lg border p-0 shadow-2xl backdrop-blur-xl sm:max-w-3xl"
-        >
+        <DialogContent className="bg-card/95 border-border/40 pointer-events-auto flex h-[min(42rem,85vh)] max-h-[85vh] w-[95vw] max-w-3xl min-w-0 flex-col gap-0 overflow-hidden rounded-lg border p-0 shadow-2xl backdrop-blur-xl sm:max-w-3xl">
           {/* Header Command Input Bar */}
           <DialogHeader className="border-border/30 space-y-0 border-b p-0">
             <div className="border-border/20 relative flex items-center border-b px-4 py-3">
@@ -479,6 +545,7 @@ export function TaskLookup({
                 <Search className="text-muted-foreground/60 h-5 w-5 shrink-0" />
               )}
               <Input
+                onKeyDown={handleKeyDown}
                 data-testid="task-lookup-modal-search-input"
                 autoFocus
                 placeholder={
@@ -685,6 +752,34 @@ export function TaskLookup({
               </div>
             </div>
           </DialogHeader>
+          <TaskSearchStatus states={remoteSearch.states} />
+          {readFailures.map((message, index) => (
+            <p
+              key={`${index}:${message}`}
+              role="alert"
+              className="text-destructive px-6 text-sm"
+            >
+              {message}
+            </p>
+          ))}
+          {onSelectReference &&
+            singleSelectedConnection &&
+            searchTerm.trim() && (
+              <button
+                type="button"
+                className="text-primary px-6 py-2 text-left text-sm"
+                data-testid="task-use-manual-id"
+                onClick={() => {
+                  onSelectReference(
+                    searchTerm.trim(),
+                    singleSelectedConnection.id,
+                  )
+                  setIsModalOpen(false)
+                }}
+              >
+                Usar ID “{searchTerm.trim()}” nesta origem
+              </button>
+            )}
 
           {/* Virtual Task List */}
           <div
@@ -702,13 +797,10 @@ export function TaskLookup({
                 {virtualItems.map((virtualRow) => {
                   const isLoaderRow = virtualRow.index > allTasks.length - 1
                   const task = allTasks[virtualRow.index]
-                  const isSelected = selectedIndex === virtualRow.index
+                  const isSelected =
+                    task !== undefined && selectedKey === task.id
 
                   if (!isLoaderRow && !task) return null
-
-                  const pMeta = task?.priority?.id
-                    ? metaLookup.priorities.get(task.priority.id)
-                    : undefined
 
                   const pResolved = isLoaderRow
                     ? {}
@@ -739,7 +831,7 @@ export function TaskLookup({
                       data-testid="task-lookup-row"
                       onClick={() => !isLoaderRow && task && handleSelect(task)}
                       onMouseEnter={() =>
-                        !isLoaderRow && setSelectedIndex(virtualRow.index)
+                        task && !isLoaderRow && setSelectedKey(task.id)
                       }
                       className={cn(
                         'border-border/20 absolute top-0 left-0 flex w-full cursor-pointer items-center justify-between gap-3 border-b px-4 transition-colors select-none',

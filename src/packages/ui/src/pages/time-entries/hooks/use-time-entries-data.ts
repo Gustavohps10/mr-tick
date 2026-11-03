@@ -174,7 +174,6 @@ export function useTimeEntriesData(options?: UseTimeEntriesDataOptions) {
 
       fetchAndPersistTasks({
         hostBridge,
-        db,
         workspaceId: workspace.id,
         connectionInstanceId: connId,
         dataSourceId: dsId,

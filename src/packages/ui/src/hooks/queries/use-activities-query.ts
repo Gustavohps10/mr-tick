@@ -49,7 +49,7 @@ function extractActivitiesPayload(
     const connId = doc.connectionInstanceId
     const acts = doc.activities ?? []
 
-    if (connId) {
+    if (connId !== undefined) {
       activitiesByConnection[connId] = acts
     }
 

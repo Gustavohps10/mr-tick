@@ -252,82 +252,39 @@ export const UltimateTimeTracker = ({
   const bridge = useHostBridge()
   const setActive = useTimeEntryStore((s) => s.setActive)
 
-  // Carrega dinamicamente as atividades do metadata baseado na Task / Conexões ativas
   useEffect(() => {
     if (!db) return
+    let connectionId = selectedConnectionId
+    if (selectedTask) connectionId = selectedTask.connectionInstanceId
+    const query = db.metadata.find({
+      selector: { connectionInstanceId: connectionId },
+      limit: 1,
+    })
+    const subscription = query.$.subscribe((documents) => {
+      const loaded: Array<{
+        id: string
+        name: string
+        icon: React.ElementType
+      }> = []
+      const icons: Record<string, React.ElementType> = LucideIcons.icons
 
-    let isMounted = true
-
-    const loadMetadataActivities = async () => {
-      try {
-        const connId =
-          selectedTask?.connectionInstanceId || selectedConnectionId
-
-        if (!connId) {
-          if (isMounted) {
-            setActivities([])
-            setSelectedActivity('')
-          }
-          return
+      for (const document of documents) {
+        for (const activity of document.activities) {
+          let Icon: React.ElementType = Code2Icon
+          const configuredIcon = icons[activity.icon]
+          if (configuredIcon) Icon = configuredIcon
+          loaded.push({ id: activity.id, name: activity.name, icon: Icon })
         }
-
-        const docs = await db.metadata
-          .find({
-            selector: {
-              connectionInstanceId: {
-                $eq: connId,
-              },
-            },
-          })
-          .exec()
-
-        const loaded: Array<{
-          id: string
-          name: string
-          icon: React.ElementType
-        }> = []
-
-        docs.forEach((doc) => {
-          const json = doc.toMutableJSON ? doc.toMutableJSON() : doc
-          const acts = json.activities ?? []
-
-          acts.forEach((act) => {
-            if (!loaded.some((a) => a.id === act.id)) {
-              const lucideMap = LucideIcons.icons as Record<
-                string,
-                React.ElementType
-              >
-              const IconComp =
-                (act.icon ? lucideMap[act.icon] : undefined) || Code2Icon
-              loaded.push({
-                id: act.id,
-                name: act.name,
-                icon: IconComp,
-              })
-            }
-          })
-        })
-
-        if (isMounted) {
-          setActivities(loaded)
-
-          if (
-            selectedActivity &&
-            !loaded.some((a) => a.id === selectedActivity)
-          ) {
-            setSelectedActivity('')
-          }
-        }
-      } catch (err) {
-        console.error('[METADATA] Erro ao carregar atividades:', err)
       }
-    }
 
-    loadMetadataActivities()
-
-    return () => {
-      isMounted = false
-    }
+      setActivities(loaded)
+      if (
+        selectedActivity &&
+        !loaded.some((activity) => activity.id === selectedActivity)
+      )
+        setSelectedActivity('')
+    })
+    return () => subscription.unsubscribe()
   }, [db, selectedTask, selectedConnectionId, selectedActivity])
 
   useEffect(() => {
@@ -965,6 +922,7 @@ export const UltimateTimeTracker = ({
         return
       }
       setTaskId(newTaskId)
+      setSelectedTask(null)
       if (!activeEntry || !db) {
         bridge.events.emit('tracker:draft-sync', { taskId: newTaskId })
         return

@@ -481,9 +481,13 @@ export class ElectronHttpClient implements IHttpClient {
     response: Response,
     readMessage: IHttpRequestOptions<JsonValue>['readErrorMessage'],
   ): Promise<AppError> {
+    const retryAfter = response.headers.get('retry-after')
+    let details: Record<string, string[]> | undefined
+    if (retryAfter !== null) details = { retryAfter: [retryAfter] }
     const statusError = AppError.Http(
       response.status,
       `HTTP ${response.status}`,
+      details,
     )
     if (!readMessage) return statusError
     try {
@@ -500,7 +504,7 @@ export class ElectronHttpClient implements IHttpClient {
       }
       const message = readMessage(payload)
       if (message === undefined) return statusError
-      return AppError.Http(response.status, message)
+      return AppError.Http(response.status, message, details)
     } catch {
       return statusError
     }

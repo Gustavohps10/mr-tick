@@ -82,6 +82,71 @@ test.use({
 })
 
 test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neutra & Multi-DataSource)', () => {
+  test('LOOKUP: confirmar ID manual ausente do cache no destino do addon fake', async ({
+    page,
+  }) => {
+    await openWorkspace(page)
+    const prepared = await page.evaluate(() =>
+      window.api.addons.executeCommand({
+        body: { commandId: 'fake-db:prepare-task-lookup' },
+      }),
+    )
+    expect(prepared.data).toEqual({ prepared: true })
+    await page.getByTestId('app-rail-settings-btn').first().click()
+    await page.getByTestId('settings-nav-tab-addons-installed').click()
+    await page
+      .getByTestId('addon-configure-btn-mr-tick-fake-watcher-for-tests')
+      .click()
+    await page
+      .getByTestId('addon-capability-tab-rooms-observer-tab')
+      .or(page.getByTestId('addon-capability-tab-watcher'))
+      .first()
+      .click()
+    await page.getByTestId(`addon-workspace-tab-${workspace.id}`).click()
+    const group = page.getByTestId(`workspace-addon-group-${workspace.id}`)
+    await group.getByTestId('addon-collection-add-roomAllocations').click()
+    await group.getByTestId('addon-task-destination-trigger-targetTask').click()
+    const input = page.getByTestId('addon-task-search-input-targetTask')
+    const popup = page
+      .locator('[data-slot="popover-content"]')
+      .filter({ has: input })
+    await popup.getByRole('combobox', { name: 'Conexão', exact: true }).click()
+    await page.getByRole('option', { name: /DataSource Fake/ }).click()
+    await input.pressSequentially('LOOKUP-REMOTE-123456')
+    await expect(input).toHaveValue('LOOKUP-REMOTE-123456')
+    await expect(popup.getByTestId('task-search-status')).toContainText(
+      'Buscando em',
+    )
+    await expect(popup.getByTestId('task-use-manual-id')).toBeEnabled()
+    await page.evaluate(() =>
+      window.api.addons.executeCommand({
+        body: { commandId: 'fake-db:release-task-lookups' },
+      }),
+    )
+    await expect(
+      page.getByTestId('addon-task-option-LOOKUP-REMOTE-123456'),
+    ).toBeVisible()
+    await input.press('ArrowDown')
+    await input.press('Enter')
+    await expect(
+      group.getByTestId('addon-task-selected-card-targetTask'),
+    ).toContainText('Tarefa remota exclusiva do lookup')
+    await group.getByTestId('addon-task-clear-btn-targetTask').click()
+    await group.getByTestId('addon-task-destination-trigger-targetTask').click()
+    await popup.getByRole('combobox', { name: 'Conexão', exact: true }).click()
+    await page.getByRole('option', { name: /Alpha DataSource/ }).click()
+    await input.pressSequentially('MISSING-123456')
+    await expect(input).toHaveValue('MISSING-123456')
+    await expect(popup.getByTestId('task-use-manual-id')).toContainText(
+      'MISSING-123456',
+    )
+    await input.press('Enter')
+    await expect(input).not.toBeVisible()
+    const selected = group.getByTestId('addon-task-selected-card-targetTask')
+    await expect(selected).toContainText('MISSING-123456')
+    await expect(selected).toContainText('detalhes ainda não carregados')
+  })
+
   test('CEN-01: Resolução relativa de dependências em coleções (relative parent: Prédio -> Andar -> Sala)', async ({
     page,
   }, testInfo) => {
@@ -201,21 +266,23 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
     await expect(item1TaskTrigger).toBeVisible({ timeout: 5000 })
     await item1TaskTrigger.click()
 
-    const item1ConnSelect = page
-      .locator('[data-testid="time-entry-connection-select"]')
-      .last()
-    if (await item1ConnSelect.isVisible().catch(() => false)) {
-      await item1ConnSelect.click()
-      const alphaConnOpt = page.getByRole('option', {
-        name: /Alpha DataSource/,
-      })
-      await expect(alphaConnOpt.first()).toBeVisible({ timeout: 5000 })
-      await alphaConnOpt.first().click()
-    }
+    const item1ConnSelect = page.getByRole('combobox', {
+      name: 'Conexão',
+      exact: true,
+    })
+    await item1ConnSelect.click()
+    const alphaConnOpt = page.getByRole('option', {
+      name: /Alpha DataSource/,
+    })
+    await expect(alphaConnOpt.first()).toBeVisible({ timeout: 5000 })
+    await alphaConnOpt.first().click()
 
     const alphaTask101Opt = page.locator(
       '[data-testid="addon-task-option-ALPHA-101"]',
     )
+    const taskSearch = page.getByTestId('addon-task-search-input-targetTask')
+    await taskSearch.pressSequentially('ALPHA-101')
+    await expect(taskSearch).toHaveValue('ALPHA-101')
     await expect(alphaTask101Opt).toBeVisible({ timeout: 5000 })
     await page.screenshot({
       path: testInfo.outputPath('addon-task-lookup.png'),
@@ -281,17 +348,16 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
     await expect(item2TaskTrigger).toBeVisible({ timeout: 5000 })
     await item2TaskTrigger.click()
 
-    const item2ConnSelect = page
-      .locator('[data-testid="time-entry-connection-select"]')
-      .last()
-    if (await item2ConnSelect.isVisible().catch(() => false)) {
-      await item2ConnSelect.click()
-      const alphaConnOpt2 = page.getByRole('option', {
-        name: /Alpha DataSource/,
-      })
-      await expect(alphaConnOpt2.first()).toBeVisible({ timeout: 5000 })
-      await alphaConnOpt2.first().click()
-    }
+    const item2ConnSelect = page.getByRole('combobox', {
+      name: 'Conexão',
+      exact: true,
+    })
+    await item2ConnSelect.click()
+    const alphaConnOpt2 = page.getByRole('option', {
+      name: /Alpha DataSource/,
+    })
+    await expect(alphaConnOpt2.first()).toBeVisible({ timeout: 5000 })
+    await alphaConnOpt2.first().click()
 
     const alphaTask102Opt = page.locator(
       '[data-testid="addon-task-option-ALPHA-102"]',
@@ -671,17 +737,16 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
     await expect(modalTaskTrigger).toBeVisible({ timeout: 5000 })
     await modalTaskTrigger.click()
 
-    const modalConnSelect = page
-      .locator('[data-testid="time-entry-connection-select"]')
-      .last()
-    if (await modalConnSelect.isVisible().catch(() => false)) {
-      await modalConnSelect.click()
-      const alphaConnOpt = page.getByRole('option', {
-        name: /Alpha DataSource/,
-      })
-      await expect(alphaConnOpt.first()).toBeVisible({ timeout: 5000 })
-      await alphaConnOpt.first().click()
-    }
+    const modalConnSelect = page.getByRole('combobox', {
+      name: 'Conexão',
+      exact: true,
+    })
+    await modalConnSelect.click()
+    const alphaConnOpt = page.getByRole('option', {
+      name: /Alpha DataSource/,
+    })
+    await expect(alphaConnOpt.first()).toBeVisible({ timeout: 5000 })
+    await alphaConnOpt.first().click()
 
     const alphaTask101Opt = page.locator(
       '[data-testid="addon-task-option-ALPHA-101"]',
@@ -1484,6 +1549,8 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
         '[data-testid="addon-task-destination-trigger-destination"]',
       )
       await secondTaskTrigger.click()
+      await win.getByRole('combobox', { name: 'Conexão', exact: true }).click()
+      await win.getByRole('option', { name: /Alpha DataSource/ }).click()
       const popoverTaskOpt = win.locator('[data-testid^="addon-task-option-"]')
       await expect(popoverTaskOpt.first()).toBeVisible({ timeout: 10000 })
       await win.keyboard.press('Escape')

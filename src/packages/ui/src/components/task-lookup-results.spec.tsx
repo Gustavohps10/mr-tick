@@ -28,8 +28,8 @@ describe('shared task lookup presentation', () => {
         )}
       />,
     )
-    const result = screen.getByRole('button', { name: new RegExp(task.title) })
-    expect(result).toHaveAttribute('aria-pressed', 'true')
+    const result = screen.getByRole('option', { name: new RegExp(task.title) })
+    expect(result).toHaveAttribute('aria-selected', 'true')
     expect(result).toHaveAttribute('title', task.title)
     fireEvent.click(screen.getByRole('button', { name: 'Fixar' }))
     expect(pin).toHaveBeenCalledOnce()

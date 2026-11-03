@@ -44,12 +44,16 @@ export const unavailableCore: ICoreAddonCapabilities = {
       Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
   },
   tasks: {
+    search: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
     list: async () =>
       Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
     get: async () =>
       Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
   },
   metadata: {
+    getLocal: async () =>
+      Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
     get: async () =>
       Either.failure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE')),
   },

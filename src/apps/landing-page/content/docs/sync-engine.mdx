@@ -6,7 +6,11 @@ icon: RefreshCw
 
 Mr. Tick keeps time entries on the device and synchronizes them with the connected tool. An addon supplies the code that reads and writes that external service. The application coordinates pending changes and recovery after failures.
 
-The local executor handles timer and time-entry changes; the interface reads saved data. Reading tasks through `core.tasks` or metadata through `core.metadata` does not start a new request to the external service.
+The local executor handles timer and time-entry changes; the interface reads saved data. `core.tasks.list` and `core.tasks.get` read the local cache. `core.tasks.search` explicitly queries the provider and stores results through the same local owner. Supply `workspaceId`, `connectionInstanceId`, `limit` (1–100), and an optional `search` string. Handle the returned `Either`; provider failures remain visible.
+
+Task lookup shares a host network budget across windows and addons: starts are spaced by at least 400 ms, with at most three concurrent operations. Equivalent requests in flight are shared. A server rate limit delays further requests according to `Retry-After`; the host does not automatically repeat a failed query. Local results and explicit manual IDs remain usable while remote search is pending.
+
+Choose an origin before confirming a manual ID. A missing cache entry does not prevent selecting a reference or sending its time entry; it does not guarantee the provider will accept it. IDs are opaque provider identifiers. `core.metadata.getLocal(workspaceId)` reads workspace metadata configured without an external connection. Local metadata never changes a remote provider's accepted fields or IDs.
 
 ## Pull
 

@@ -1,1 +1,5 @@
-export type { CoreMetadata, ICoreMetadataAPI } from '@mr-tick/application'
+export type {
+  CoreMetadata,
+  ICoreMetadataAPI,
+  LocalMetadataSnapshot,
+} from '@mr-tick/application'

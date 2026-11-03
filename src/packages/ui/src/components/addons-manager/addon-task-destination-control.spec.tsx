@@ -428,7 +428,9 @@ describe('AddonTaskDestinationControl', () => {
       />,
     )
 
-    expect(await screen.findByText('Tarefa #1001')).toBeInTheDocument()
+    expect(
+      await screen.findByText('ID 1001 — detalhes ainda não carregados'),
+    ).toBeInTheDocument()
     await waitFor(() => expect(getMetadata).toHaveBeenCalledTimes(1))
     const emit = (event: SyncEvent) => {
       for (const listener of listeners) listener(event)

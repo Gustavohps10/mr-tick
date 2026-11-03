@@ -197,9 +197,7 @@ export class ReplicationModule<
     }
 
     try {
-      if (shouldPull) {
-        activeInstance.reSync()
-      }
+      activeInstance.reSync()
       const inSyncPromise = activeInstance.awaitInSync()
       const errorPromise = firstValueFrom(activeInstance.error$).then(
         (error) => {

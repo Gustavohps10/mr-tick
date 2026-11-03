@@ -164,16 +164,6 @@ function AddonTaskDestinationControlInner({
 
     setConnections(connectedOnly)
     setIsLoadingConnections(false)
-
-    if (!explicitConnectionInstanceId && !value?.connectionInstanceId) {
-      setSelectedConnectionId((current) => {
-        if (current) return current
-        for (const first of connectedOnly) {
-          return first.connectionInstanceId
-        }
-        return ''
-      })
-    }
   }, [
     bridge?.core,
     catalog,
@@ -501,6 +491,7 @@ function AddonTaskDestinationControlInner({
       value.taskId,
     )
     const fromKnown = knownTasksMap.current.get(key)
+
     if (fromKnown) return fromKnown
 
     const fromList = tasks.find((t) => t.taskId === value.taskId)
@@ -811,7 +802,7 @@ function AddonTaskDestinationControlInner({
                 <p className="text-foreground mt-1 text-xs leading-snug font-medium break-words">
                   {selectedTask
                     ? selectedTask.title
-                    : `Tarefa #${value.taskId}`}
+                    : `ID ${value.taskId} — detalhes ainda não carregados`}
                 </p>
               </div>
             </div>
@@ -904,6 +895,20 @@ function AddonTaskDestinationControlInner({
           description={selectedComment}
           onDescriptionChange={handleSelectComment}
           onSelectTask={handleSelectTask}
+          onSelectReference={(taskId, connectionInstanceId, context) => {
+            if (!workspaceId || !connectionInstanceId) return
+            const metadataValues: Record<string, string> = {}
+            if (context.activityId)
+              metadataValues.activityId = context.activityId
+            if (context.comment) metadataValues.comment = context.comment
+            onChange({
+              workspaceId,
+              connectionInstanceId,
+              taskId,
+              metadataValues,
+            })
+            setPopoverOpen(false)
+          }}
           tasks={popoverTasks}
           activities={activities.length > 0 ? popoverActivities : undefined}
           loadingTasks={isLoadingTasks}
@@ -928,7 +933,9 @@ function AddonTaskDestinationControlInner({
           searchInputTestId={`addon-task-search-input-${field.id}`}
           onSearchChange={(query) => {
             setSearchTerm(query)
-            fetchTasks(query)
+          }}
+          onRemoteTasksUpdated={(query) => {
+            void fetchTasks(query)
           }}
           getTestId={(task) =>
             `addon-task-option-${task.sourceId ? task.sourceId : task.id}`

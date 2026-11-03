@@ -404,7 +404,11 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
     const connection = response.data.connections.find(
       (item) => item.id === input.connectionInstanceId,
     )
-    if (connection === undefined)
+    const isLocalMetadata =
+      input.action === 'localMetadata' ||
+      input.action === 'saveLocalMetadata' ||
+      (input.action === 'taskReferences' && input.origin === 'local')
+    if (connection === undefined && !isLocalMetadata)
       return coreFailure(AppError.NotFound('CONNECTION_NOT_FOUND'))
     let executor = this.workspaces.get(input.workspaceId)
     if (executor === undefined) {
@@ -417,10 +421,18 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
       }
     }
 
+    if (executor === undefined && isLocalMetadata) {
+      const opened = await this.open(input.workspaceId)
+      if (opened.isFailure()) return coreFailure(opened.failure)
+      executor = opened.success
+    }
+
     if (executor === undefined)
       return coreFailure(AppError.Http(503, 'CORE_CACHE_UNAVAILABLE'))
     this.touchAccess(input.workspaceId)
-    const result = await executor.queryCore(input, connection.addonId)
+    let dataSourceId = ''
+    if (connection !== undefined) dataSourceId = connection.addonId
+    const result = await executor.queryCore(input, dataSourceId)
     if (result.isFailure()) return coreFailure(result.failure)
     const afterRead = this.admissionError(input.workspaceId)
     if (afterRead !== null) return coreFailure(afterRead)
