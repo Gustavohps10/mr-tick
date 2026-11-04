@@ -1,5 +1,6 @@
 import type { AddonManifestViewModel } from '@mr-tick/shared/view-models'
 import type { AddonLoadFailureViewModel } from '@mr-tick/shared/view-models'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Database } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 
@@ -38,48 +39,57 @@ export function AddonsTrailBar({
   const openSettingsDialog = useAddonSettingsDialogStore((s) => s.open)
   const openAddonsModal = useAddonsModalStore((s) => s.openModal)
 
-  const [installedAddons, setInstalledAddons] = useState<
-    AddonManifestViewModel[]
-  >([])
+  const queryClient = useQueryClient()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [focusedFailureAddonId, setFocusedFailureAddonId] = useState<
     string | null
   >(null)
 
-  React.useEffect(() => {
-    let isMounted = true
-
-    const loadInstalled = () => {
-      if (hostBridge.addons?.listInstalled) {
-        hostBridge.addons.listInstalled().then((res) => {
-          if (isMounted && res && res.isSuccess && res.data) {
-            setInstalledAddons(res.data)
-          }
-        })
+  const { data: installedAddons = [] } = useQuery<AddonManifestViewModel[]>({
+    queryKey: ['plugins', 'installed'],
+    queryFn: async () => {
+      if (!hostBridge.addons?.listInstalled) {
+        return []
       }
+
+      const response = await hostBridge.addons.listInstalled()
+      if (!response || !response.isSuccess) {
+        return []
+      }
+
+      return response.data ?? []
+    },
+  })
+
+  React.useEffect(() => {
+    if (!hostBridge.events?.on) {
+      return
     }
 
-    loadInstalled()
+    const unsubscribeInstalled = hostBridge.events.on(
+      'addons:installed-changed',
+      () => {
+        void queryClient.invalidateQueries({ queryKey: ['plugins'] })
+      },
+    )
 
-    let unsubscribeFailures: (() => void) | undefined
-
-    if (hostBridge.events?.on) {
-      unsubscribeFailures = hostBridge.events.on(
-        'addons:load-failures-changed',
-        () => {
-          loadInstalled()
-        },
-      )
-    }
+    const unsubscribeFailures = hostBridge.events.on(
+      'addons:load-failures-changed',
+      () => {
+        void queryClient.invalidateQueries({ queryKey: ['plugins'] })
+      },
+    )
 
     return () => {
-      isMounted = false
+      if (unsubscribeInstalled) {
+        unsubscribeInstalled()
+      }
 
       if (unsubscribeFailures) {
         unsubscribeFailures()
       }
     }
-  }, [hostBridge, failures])
+  }, [hostBridge, queryClient])
 
   const failedAddonIds = useMemo(() => {
     return new Set(failures.map((f) => f.addonId))

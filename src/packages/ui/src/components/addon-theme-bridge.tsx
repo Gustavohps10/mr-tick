@@ -24,7 +24,7 @@ export function AddonThemeBridge() {
   useEffect(() => {
     if (!bridge?.events?.on) return
 
-    const unsubscribe = bridge.events.on(
+    const unsubscribeTheme = bridge.events.on(
       'addons:theme-changed',
       (theme: unknown) => {
         console.log(
@@ -32,11 +32,20 @@ export function AddonThemeBridge() {
           theme,
         )
         queryClient.setQueryData(['addons', 'activeTheme'], theme)
+        void queryClient.invalidateQueries({ queryKey: ['addons', 'themes'] })
+      },
+    )
+
+    const unsubscribeInstalled = bridge.events.on(
+      'addons:installed-changed',
+      () => {
+        void queryClient.invalidateQueries({ queryKey: ['addons', 'themes'] })
       },
     )
 
     return () => {
-      unsubscribe?.()
+      unsubscribeTheme?.()
+      unsubscribeInstalled?.()
     }
   }, [bridge, queryClient])
 

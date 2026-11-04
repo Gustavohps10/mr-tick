@@ -1460,6 +1460,17 @@ export class AddonLoader implements IAddonReloader {
       this.activeAddons.delete(addonId)
       this.addonSettingsSchemas.delete(addonId)
       this.clearLoadFailure(addonId)
+
+      if (this.activeThemeId !== null) {
+        const themeBelongsToAddon =
+          this.activeThemeId === addonId ||
+          this.activeThemeId.startsWith(`${addonId}:`)
+        const activeTheme = this.getActiveTheme()
+
+        if (themeBelongsToAddon || activeTheme === null) {
+          this.setActiveTheme(null)
+        }
+      }
     }
   }
 

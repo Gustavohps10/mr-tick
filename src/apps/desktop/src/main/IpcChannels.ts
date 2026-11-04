@@ -93,6 +93,7 @@ export const IpcChannels = {
   ADDONS_SET_ACTIVE_THEME: 'addons:set-active-theme',
   ADDONS_GET_LOAD_FAILURES: 'addons:get-load-failures',
   ADDONS_LOAD_FAILURES_CHANGED: 'addons:load-failures-changed',
+  ADDONS_INSTALLED_CHANGED: 'addons:installed-changed',
 
   LICENSING_GET_STATUS: 'licensing:get-status',
   LICENSING_ACTIVATE: 'licensing:activate',

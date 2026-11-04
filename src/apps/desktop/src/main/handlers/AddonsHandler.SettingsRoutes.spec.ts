@@ -1,10 +1,22 @@
 import { AppError, Either } from '@mr-tick/shared/helpers'
-import type { IpcMainInvokeEvent } from 'electron'
+import { type IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AddonLoader } from '@/main/services/addons/loader/AddonLoader'
 
 import { AddonsHandler } from './AddonsHandler'
+
+const mockSend = vi.fn()
+vi.mock('electron', () => ({
+  webContents: {
+    getAllWebContents: vi.fn(() => [
+      {
+        isDestroyed: () => false,
+        send: (...args: unknown[]) => mockSend(...args),
+      },
+    ]),
+  },
+}))
 
 function createHandlerWithLoader(
   addonLoader: Partial<AddonLoader>,
@@ -258,9 +270,11 @@ describe('AddonsHandler Settings & Operational Routes', () => {
     expect(successRes.isSuccess).toBe(true)
     expect(deactivateAddon).toHaveBeenCalledWith('test-addon')
     expect(clearLoadFailure).toHaveBeenCalledWith('test-addon')
+    expect(mockSend).toHaveBeenCalledWith('addons:installed-changed')
 
     clearLoadFailure.mockClear()
     deactivateAddon.mockClear()
+    mockSend.mockClear()
 
     const uninstallAddonFailure = vi
       .fn()

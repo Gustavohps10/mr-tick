@@ -94,7 +94,10 @@ describe('Addon ownership and lifecycle', () => {
       'first:menu',
       'second:menu',
     ])
+    loader.setActiveTheme('first:theme')
+    expect(loader.getActiveTheme()?.id).toBe('first:theme')
     await loader.deactivateAddon('first')
+    expect(loader.getActiveTheme()).toBeNull()
     const callCount = first.listener.mock.calls.length
     loader.systemEventEmitter.emit('timer:update', {})
     expect(first.listener).toHaveBeenCalledTimes(callCount)

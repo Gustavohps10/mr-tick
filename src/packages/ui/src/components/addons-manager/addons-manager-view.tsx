@@ -9,7 +9,7 @@ import {
   isApiVersionCompatible,
   parseSemVer,
 } from '@mr-tick/shared/helpers'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowUpCircle,
   Calendar,
@@ -144,6 +144,7 @@ export function AddonsManagerView({
   hideSidebar = false,
 }: AddonsManagerViewProps) {
   const bridge = useHostBridge()
+  const queryClient = useQueryClient()
   const [internalSection, setInternalSection] =
     useState<SidebarSection>('browse')
   const [internalCapability, setInternalCapability] =
@@ -221,9 +222,35 @@ export function AddonsManagerView({
     }
 
     toast.success('Addon desinstalado com sucesso!')
+    await queryClient.invalidateQueries({ queryKey: ['plugins'] })
+    await queryClient.invalidateQueries({ queryKey: ['addons'] })
+    await queryClient.invalidateQueries({ queryKey: ['core', 'connections'] })
     refetchInstalled()
     refetchAvailable()
   }
+
+  useEffect(() => {
+    if (!bridge.events?.on) {
+      return
+    }
+
+    const unsubscribeInstalled = bridge.events.on(
+      'addons:installed-changed',
+      () => {
+        void queryClient.invalidateQueries({ queryKey: ['plugins'] })
+        void queryClient.invalidateQueries({ queryKey: ['addons'] })
+        void queryClient.invalidateQueries({
+          queryKey: ['core', 'connections'],
+        })
+      },
+    )
+
+    return () => {
+      if (unsubscribeInstalled) {
+        unsubscribeInstalled()
+      }
+    }
+  }, [bridge, queryClient])
 
   const installedAddonsById = useMemo(() => {
     const addonsById = new Map<string, AddonManifestViewModel>()

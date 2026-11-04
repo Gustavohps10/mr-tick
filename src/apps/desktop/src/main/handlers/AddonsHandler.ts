@@ -44,9 +44,10 @@ import {
   PaginatedViewModel,
   ViewModel,
 } from '@mr-tick/shared/view-models'
-import { type IpcMainInvokeEvent } from 'electron'
+import { type IpcMainInvokeEvent, webContents } from 'electron'
 
 import { HandlerBase } from '@/main/handlers/HandlerBase'
+import { IpcChannels } from '@/main/IpcChannels'
 import { AddonLoader } from '@/main/services/addons/loader/AddonLoader'
 import { getSettings, saveSettings } from '@/main/settings'
 
@@ -580,16 +581,23 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         statusCode: 409,
         error: 'ATUALIZACAO_ADDON_EM_ANDAMENTO',
       }
+    if (this.addonLoader) {
+      await this.addonLoader.deactivateAddon(body.addonId)
+    }
+
     const result = await this.addonsFacade.uninstallAddon(
       body.addonId,
       body.version,
     )
+
     if (result.isSuccess() && this.addonLoader) {
-      if (this.addonLoader.hasActiveAddon(body.addonId)) {
-        await this.addonLoader.deactivateAddon(body.addonId)
-      }
       this.addonLoader.clearLoadFailure(body.addonId)
     }
+
+    if (result.isSuccess()) {
+      this.notifyInstalledAddonsChanged()
+    }
+
     return createResponseViewModel(result)
   }
 
@@ -643,6 +651,9 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       return { isSuccess: false, statusCode: 400, error: 'INVALID_EVENT' }
     }
     const result = await this.importAddonService.execute(body.addon)
+    if (result.isSuccess()) {
+      this.notifyInstalledAddonsChanged()
+    }
 
     return createResponseViewModel(result)
   }
@@ -746,6 +757,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         return
       }
 
+      this.notifyInstalledAddonsChanged()
       this.jobEmitter.emit(jobId, { status: 'progress', value: 100 })
       this.jobEmitter.emit(jobId, { status: 'done' })
     } catch {
@@ -839,6 +851,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         )
       }
 
+      this.notifyInstalledAddonsChanged()
       this.jobEmitter.emit(jobId, { status: 'progress', value: 100 })
       this.jobEmitter.emit(jobId, { status: 'done' })
     } catch {
@@ -846,6 +859,26 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
         status: 'error',
         error: 'INSTALL_FAILED',
       })
+    }
+  }
+
+  private notifyInstalledAddonsChanged(): void {
+    try {
+      if (!webContents || !webContents.getAllWebContents) {
+        return
+      }
+
+      const allWebContents = webContents.getAllWebContents()
+      for (const webContent of allWebContents) {
+        if (!webContent.isDestroyed()) {
+          webContent.send(IpcChannels.ADDONS_INSTALLED_CHANGED)
+        }
+      }
+    } catch (err) {
+      console.warn(
+        '⚠️ [AddonsHandler] Falha ao emitir addons:installed-changed:',
+        err,
+      )
     }
   }
 }

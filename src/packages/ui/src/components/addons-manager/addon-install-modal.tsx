@@ -239,6 +239,8 @@ export function AddonInstallModal({
     }
     onSettled?.()
     await queryClient.invalidateQueries({ queryKey: ['plugins'] })
+    await queryClient.invalidateQueries({ queryKey: ['addons'] })
+    await queryClient.invalidateQueries({ queryKey: ['core', 'connections'] })
   }
 
   startInstallationRef.current = handleStartInstallation
