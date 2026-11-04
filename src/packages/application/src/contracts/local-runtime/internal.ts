@@ -220,6 +220,7 @@ export interface LocalSyncRequest {
     | 'drop'
     | 'reset'
     | 'status'
+    | 'purge'
   workspaceId: string
   connectionInstanceId?: string
   dataSourceId?: string

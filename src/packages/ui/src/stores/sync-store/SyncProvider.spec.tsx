@@ -116,6 +116,7 @@ function fixture(
     destroy,
     connectDataSource: connect,
     disconnectDataSource: vi.fn(),
+    purgeConnectionData: vi.fn(),
     drop: vi.fn(),
     resetDatabase: vi.fn(),
     forceSync: vi.fn(),

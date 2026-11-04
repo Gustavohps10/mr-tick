@@ -7,8 +7,14 @@ import type {
 } from '@mr-tick/sdk'
 import { AppError, Either, isString } from '@mr-tick/shared/helpers'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FolderKanban, KeyRound, Plus, SlidersHorizontal } from 'lucide-react'
-import React, { useState } from 'react'
+import {
+  AlertTriangle,
+  FolderKanban,
+  KeyRound,
+  Plus,
+  SlidersHorizontal,
+} from 'lucide-react'
+import React, { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { SafeAddonLogo } from '@/components/addons-manager/addons-manager-view'
@@ -39,6 +45,7 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHostBridge } from '@/hooks/use-host-bridge'
+import { useSyncStore } from '@/stores/syncStore'
 
 import {
   AddonConnection,
@@ -177,6 +184,73 @@ export function WorkspaceAddonConnectionsManager({
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
     null,
   )
+
+  const db = useSyncStore((s) => s?.db)
+  const purgeConnectionData = useSyncStore((s) => s?.purgeConnectionData)
+
+  const [pendingCount, setPendingCount] = useState<number>(0)
+  const [hasConflicts, setHasConflicts] = useState<boolean>(false)
+  const [isCheckingPending, setIsCheckingPending] = useState<boolean>(false)
+
+  useEffect(() => {
+    if (!deleteTarget) {
+      setPendingCount(0)
+      setHasConflicts(false)
+      setIsCheckingPending(false)
+      return
+    }
+
+    if (!db || db.closed || !db.timeEntries) {
+      setPendingCount(0)
+      setHasConflicts(false)
+      setIsCheckingPending(false)
+      return
+    }
+
+    let isSubscribed = true
+    setIsCheckingPending(true)
+
+    const checkPending = async () => {
+      try {
+        const records = await db.timeEntries
+          .find({
+            selector: {
+              connectionInstanceId: deleteTarget.connection.id,
+            },
+          })
+          .exec()
+
+        if (!isSubscribed) return
+
+        const pendingItems = records.filter((record) => {
+          if (record._deleted) {
+            return !record.deletionConfirmed && !record.remoteDeleted
+          }
+          return record.syncStatus !== 'synced'
+        })
+
+        setPendingCount(pendingItems.length)
+        setHasConflicts(
+          pendingItems.some((record) => record.syncStatus === 'conflict'),
+        )
+      } catch {
+        if (isSubscribed) {
+          setPendingCount(0)
+          setHasConflicts(false)
+        }
+      } finally {
+        if (isSubscribed) {
+          setIsCheckingPending(false)
+        }
+      }
+    }
+
+    void checkPending()
+
+    return () => {
+      isSubscribed = false
+    }
+  }, [deleteTarget, db])
 
   const { data: installedList = [] } = useQuery<AddonManifestViewModel[]>({
     queryKey: ['plugins', 'installed'],
@@ -371,13 +445,40 @@ export function WorkspaceAddonConnectionsManager({
       return res
     },
     onSuccess: () => {
-      toast.success('Instância removida do workspace.')
+      toast.success('Instância e dados locais removidos com sucesso.')
       refetchWorkspaces()
       queryClient.invalidateQueries({ queryKey: ['workspaces'] })
       queryClient.invalidateQueries({ queryKey: ['workspace'] })
     },
     onError: (err: Error) => toast.error(err.message),
   })
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+
+    const target = deleteTarget
+    setDeleteTarget(null)
+
+    try {
+      if (purgeConnectionData) {
+        await purgeConnectionData(target.connection.id)
+      }
+      if (bridge.localSync?.request) {
+        await bridge.localSync.request({
+          action: 'purge',
+          workspaceId: target.workspaceId,
+          connectionInstanceId: target.connection.id,
+        })
+      }
+    } catch (err) {
+      console.error('Falha ao purgar dados locais da conexão:', err)
+    }
+
+    unlinkMutation.mutate({
+      targetWorkspaceId: target.workspaceId,
+      connectionInstanceId: target.connection.id,
+    })
+  }
 
   const handleAddConnection = async (
     targetWorkspaceId: string,
@@ -838,14 +939,56 @@ export function WorkspaceAddonConnectionsManager({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover instância?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Deseja realmente remover a instância{' '}
-              <strong className="text-foreground">
-                {deleteTarget?.connection.name}
-              </strong>{' '}
-              deste workspace? Esta ação desvinculará a conexão e não poderá ser
-              desfeita.
+            <AlertDialogTitle>
+              {pendingCount > 0
+                ? 'Remover e descartar dados?'
+                : 'Remover instância?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="text-muted-foreground space-y-3 text-sm">
+                {pendingCount > 0 ? (
+                  <>
+                    <p>
+                      Deseja realmente remover a instância{' '}
+                      <strong className="text-foreground">
+                        {deleteTarget?.connection.name}
+                      </strong>{' '}
+                      deste workspace?
+                    </p>
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                        <div>
+                          <p className="font-semibold">
+                            Atenção: esta instância possui {pendingCount}{' '}
+                            {pendingCount === 1
+                              ? 'apontamento local pendente'
+                              : 'apontamentos locais pendentes'}
+                            {hasConflicts
+                              ? ' (incluindo conflitos não resolvidos)'
+                              : ''}
+                            .
+                          </p>
+                          <p className="mt-1 text-[11px] opacity-90">
+                            Ao confirmar, todos os dados locais e apontamentos
+                            não sincronizados serão permanentemente descartados
+                            e excluídos do seu dispositivo.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p>
+                    Deseja realmente remover a instância{' '}
+                    <strong className="text-foreground">
+                      {deleteTarget?.connection.name}
+                    </strong>{' '}
+                    deste workspace? As credenciais do cofre e o cache local
+                    desta instância serão excluídos.
+                  </p>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -853,18 +996,13 @@ export function WorkspaceAddonConnectionsManager({
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               data-testid="confirm-delete-instance-btn"
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-              onClick={() => {
-                if (!deleteTarget) return
-
-                unlinkMutation.mutate({
-                  targetWorkspaceId: deleteTarget.workspaceId,
-                  connectionInstanceId: deleteTarget.connection.id,
-                })
-                setDeleteTarget(null)
-              }}
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground cursor-pointer"
+              disabled={isCheckingPending || unlinkMutation.isPending}
+              onClick={handleConfirmDelete}
             >
-              Remover
+              {pendingCount > 0
+                ? 'Remover e Descartar Dados'
+                : 'Remover Instância'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -57,12 +57,48 @@ vi.mock('./reconcileTimeEntries', () => ({
     mockReconcileTimeEntries(...args),
 }))
 
+const {
+  mockRemoveTask,
+  mockRemoveEntry,
+  mockRemoveMetadata,
+  mockTasksFind,
+  mockTimeEntriesFind,
+  mockMetadataFind,
+} = vi.hoisted(() => {
+  const mockRemoveTask = vi.fn().mockResolvedValue(undefined)
+  const mockRemoveEntry = vi.fn().mockResolvedValue(undefined)
+  const mockRemoveMetadata = vi.fn().mockResolvedValue(undefined)
+
+  const mockTasksFind = vi.fn().mockReturnValue({
+    exec: vi.fn().mockResolvedValue([{ id: 'task-1', remove: mockRemoveTask }]),
+  })
+  const mockTimeEntriesFind = vi.fn().mockReturnValue({
+    exec: vi
+      .fn()
+      .mockResolvedValue([{ id: 'entry-1', remove: mockRemoveEntry }]),
+  })
+  const mockMetadataFind = vi.fn().mockReturnValue({
+    exec: vi
+      .fn()
+      .mockResolvedValue([{ id: 'meta-1', remove: mockRemoveMetadata }]),
+  })
+
+  return {
+    mockRemoveTask,
+    mockRemoveEntry,
+    mockRemoveMetadata,
+    mockTasksFind,
+    mockTimeEntriesFind,
+    mockMetadataFind,
+  }
+})
+
 vi.mock('./storage', () => ({
   ensurePlugins: vi.fn().mockResolvedValue(undefined),
   getOrCreateDatabase: vi.fn().mockResolvedValue({
-    timeEntries: { name: 'timeEntries' },
-    tasks: { name: 'tasks' },
-    metadata: { name: 'metadata' },
+    timeEntries: { name: 'timeEntries', find: mockTimeEntriesFind },
+    tasks: { name: 'tasks', find: mockTasksFind },
+    metadata: { name: 'metadata', find: mockMetadataFind },
     closed: false,
     remove: vi.fn().mockResolvedValue(undefined),
   }),
@@ -191,5 +227,24 @@ describe('createSyncStore deduplication and idempotency', () => {
 
     // Should only have called reconcileTimeEntries once!
     expect(mockReconcileTimeEntries).toHaveBeenCalledTimes(1)
+  })
+
+  it('purgeConnectionData disconnects modules and removes tasks, timeEntries and metadata', async () => {
+    const store = createSyncStore('ws-1', fakeBridge, false, true)
+    await store.getState().init()
+
+    await store.getState().connectDataSource({
+      connectionInstanceId: 'conn-1',
+      dataSourceId: 'generic-provider',
+    })
+
+    expect(mockModuleStart).toHaveBeenCalledTimes(3)
+
+    await store.getState().purgeConnectionData('conn-1')
+
+    expect(mockModuleDestroy).toHaveBeenCalledTimes(3)
+    expect(mockRemoveTask).toHaveBeenCalled()
+    expect(mockRemoveEntry).toHaveBeenCalled()
+    expect(mockRemoveMetadata).toHaveBeenCalled()
   })
 })

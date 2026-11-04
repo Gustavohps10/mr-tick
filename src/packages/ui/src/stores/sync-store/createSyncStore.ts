@@ -261,6 +261,41 @@ export const createSyncStore = (
       await destroyConnectionModules(connectionInstanceId, set)
     },
 
+    purgeConnectionData: async (connectionInstanceId) => {
+      await get().disconnectDataSource(connectionInstanceId)
+      const { db } = get()
+      if (!db || db.closed) return
+
+      if (db.tasks) {
+        const tasks = await db.tasks
+          .find({ selector: { connectionInstanceId } })
+          .exec()
+        const taskIds = tasks.map((task) => task.id)
+        await Promise.all(tasks.map((doc) => doc.remove()))
+
+        if (db.kanbanTaskColumns && taskIds.length > 0) {
+          const kanbanDocs = await db.kanbanTaskColumns
+            .find({ selector: { taskId: { $in: taskIds } } })
+            .exec()
+          await Promise.all(kanbanDocs.map((doc) => doc.remove()))
+        }
+      }
+
+      if (db.timeEntries) {
+        const entries = await db.timeEntries
+          .find({ selector: { connectionInstanceId } })
+          .exec()
+        await Promise.all(entries.map((doc) => doc.remove()))
+      }
+
+      if (db.metadata) {
+        const metadataDocs = await db.metadata
+          .find({ selector: { connectionInstanceId } })
+          .exec()
+        await Promise.all(metadataDocs.map((doc) => doc.remove()))
+      }
+    },
+
     forceSync: async (
       connectionInstanceId?: string,
       direction: 'pull' | 'push' | 'both' = 'both',

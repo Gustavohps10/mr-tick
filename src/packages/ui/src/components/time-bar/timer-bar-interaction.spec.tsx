@@ -189,6 +189,7 @@ describe('Timer Bar Interactions & Orientation (100% Component Coverage)', () =>
       reconcile: async () => undefined,
       connectDataSource: async () => undefined,
       disconnectDataSource: async () => undefined,
+      purgeConnectionData: async () => undefined,
     }
     let release: () => void = () => expect.fail('Gate not initialized')
     const initialRead = new Promise<void>((resolve) => {

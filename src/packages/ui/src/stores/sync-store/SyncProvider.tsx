@@ -259,6 +259,14 @@ export const SyncProvider: React.FC<SyncProviderProps> = ({
           })
           if (!response.ok) toast.error(response.error.messageKey)
         },
+        purgeConnectionData: async (connectionInstanceId) => {
+          const response = await bridge.localSync.request({
+            action: 'purge',
+            workspaceId,
+            connectionInstanceId,
+          })
+          if (!response.ok) toast.error(response.error.messageKey)
+        },
         resetDatabase: async () => {
           const response = await bridge.localSync.request({
             action: 'reset',

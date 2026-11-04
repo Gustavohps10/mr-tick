@@ -5,26 +5,49 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockBridge, mockToastError } = vi.hoisted(() => ({
-  mockBridge: {
-    addons: {
-      getConnectionProfiles: vi.fn(),
-      getConnectionSchema: vi.fn(),
-      getSchema: vi.fn(),
-      getSettings: vi.fn(),
-      saveSettings: vi.fn(),
-      listInstalled: vi.fn(),
+const {
+  mockBridge,
+  mockToastError,
+  mockPurgeConnectionData,
+  mockTimeEntriesExec,
+  mockSyncDb,
+} = vi.hoisted(() => {
+  const mockTimeEntriesExec = vi.fn().mockResolvedValue([])
+  const mockSyncDb = {
+    timeEntries: {
+      find: vi.fn().mockReturnValue({
+        exec: mockTimeEntriesExec,
+      }),
     },
-    workspaces: {
-      listAll: vi.fn(),
-      linkDataSource: vi.fn(),
-      submitCredentials: vi.fn(),
-      disconnectDataSource: vi.fn(),
-      unlinkDataSource: vi.fn(),
+    closed: false,
+  }
+  return {
+    mockBridge: {
+      addons: {
+        getConnectionProfiles: vi.fn(),
+        getConnectionSchema: vi.fn(),
+        getSchema: vi.fn(),
+        getSettings: vi.fn(),
+        saveSettings: vi.fn(),
+        listInstalled: vi.fn(),
+      },
+      workspaces: {
+        listAll: vi.fn(),
+        linkDataSource: vi.fn(),
+        submitCredentials: vi.fn(),
+        disconnectDataSource: vi.fn(),
+        unlinkDataSource: vi.fn(),
+      },
+      localSync: {
+        request: vi.fn().mockResolvedValue({ ok: true }),
+      },
     },
-  },
-  mockToastError: vi.fn(),
-}))
+    mockToastError: vi.fn(),
+    mockPurgeConnectionData: vi.fn().mockResolvedValue(undefined),
+    mockTimeEntriesExec,
+    mockSyncDb,
+  }
+})
 
 vi.mock('@/hooks/use-host-bridge', () => ({
   useHostBridge: () => mockBridge,
@@ -32,6 +55,11 @@ vi.mock('@/hooks/use-host-bridge', () => ({
 
 vi.mock('@/stores/syncStore', () => ({
   useConnectionsWithSync: () => [],
+  useSyncStore: (selector: (state: unknown) => unknown) =>
+    selector({
+      db: mockSyncDb,
+      purgeConnectionData: mockPurgeConnectionData,
+    }),
 }))
 
 vi.mock('sonner', () => ({
@@ -493,11 +521,86 @@ describe('WorkspaceAddonConnectionsManager', () => {
     fireEvent.click(deleteBtn)
 
     expect(await screen.findByText('Remover instância?')).toBeInTheDocument()
+    expect(screen.getByTestId('confirm-delete-instance-btn')).toHaveTextContent(
+      'Remover Instância',
+    )
     expect(mockBridge.workspaces.unlinkDataSource).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByTestId('confirm-delete-instance-btn'))
 
     await waitFor(() => {
+      expect(mockPurgeConnectionData).toHaveBeenCalledWith('conn-1')
+      expect(mockBridge.workspaces.unlinkDataSource).toHaveBeenCalledWith({
+        body: {
+          workspaceId: 'workspace-a',
+          connectionInstanceId: 'conn-1',
+        },
+      })
+    })
+  })
+
+  it('prompts to remove and discard data when instance has pending items or conflicts', async () => {
+    mockTimeEntriesExec.mockResolvedValueOnce([
+      { id: 'entry-1', syncStatus: 'pending_push', _deleted: false },
+      { id: 'entry-2', syncStatus: 'conflict', _deleted: false },
+    ])
+
+    mockBridge.workspaces.listAll.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: [
+        {
+          id: 'workspace-a',
+          name: 'Workspace A',
+          status: 'configured',
+          connections: [
+            {
+              id: 'conn-1',
+              addonId: 'addon-a',
+              connectionProfileId: 'primary',
+              status: 'disconnected',
+              config: { name: 'Instância Pendente' },
+            },
+          ],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    })
+    mockBridge.workspaces.unlinkDataSource.mockResolvedValue({
+      isSuccess: true,
+      data: {},
+    })
+
+    renderWithClient(<WorkspaceAddonConnectionsManager addonId="addon-a" />)
+
+    const deleteBtn = await screen.findByTitle('Remover conexão')
+    fireEvent.click(deleteBtn)
+
+    expect(
+      await screen.findByText('Remover e descartar dados?'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /esta instância possui 2 apontamentos locais pendentes/i,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/incluindo conflitos não resolvidos/i),
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('confirm-delete-instance-btn')).toHaveTextContent(
+      'Remover e Descartar Dados',
+    )
+
+    fireEvent.click(screen.getByTestId('confirm-delete-instance-btn'))
+
+    await waitFor(() => {
+      expect(mockPurgeConnectionData).toHaveBeenCalledWith('conn-1')
+      expect(mockBridge.localSync.request).toHaveBeenCalledWith({
+        action: 'purge',
+        workspaceId: 'workspace-a',
+        connectionInstanceId: 'conn-1',
+      })
       expect(mockBridge.workspaces.unlinkDataSource).toHaveBeenCalledWith({
         body: {
           workspaceId: 'workspace-a',

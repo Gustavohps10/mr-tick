@@ -89,6 +89,9 @@ export type SyncStore = SyncState & {
   disconnectDataSource: (
     connectionInstanceId: ConnectionInstanceId,
   ) => Promise<void>
+  purgeConnectionData: (
+    connectionInstanceId: ConnectionInstanceId,
+  ) => Promise<void>
 }
 
 export interface DataSourceRef {

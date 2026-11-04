@@ -625,6 +625,14 @@ export class BrowserWorkspaceRegistry implements ILocalWorkspaceFactory {
             await store.disconnectDataSource(input.connectionInstanceId)
             return { ok: true }
           }
+          case 'purge': {
+            if (input.connectionInstanceId === undefined)
+              return syncFailure(
+                AppError.ValidationError('CONNECTION_CONTEXT_REQUIRED'),
+              )
+            await store.purgeConnectionData(input.connectionInstanceId)
+            return { ok: true }
+          }
           case 'forceSync':
             await store.forceSync(input.connectionInstanceId, input.direction)
             return { ok: true }
@@ -1134,6 +1142,7 @@ function validateSyncRequest(input: LocalSyncRequest): Either<AppError, void> {
     'reconcile',
     'drop',
     'reset',
+    'purge',
   ]
   if (!isNonEmptyString(input.action) || !actions.includes(input.action))
     return Either.failure(AppError.ValidationError('SYNC_ACTION_INVALID'))
