@@ -193,7 +193,12 @@ describe('Addon update completion', () => {
     })
     hostBridgeMocks.on.mockImplementation(
       (channel: string, handler: (event: IJobEvent<string>) => void) => {
-        emitJob = handler
+        if (
+          channel !== 'addons:installed-changed' &&
+          channel !== 'addons:load-failures-changed'
+        ) {
+          emitJob = handler
+        }
         return vi.fn()
       },
     )
