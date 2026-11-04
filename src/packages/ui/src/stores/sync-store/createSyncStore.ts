@@ -35,6 +35,8 @@ export const createSyncStore = (
   retryTime?: number,
 ): StoreApi<SyncStore> => {
   const replications: ReplicationMap = new Map()
+  const connectedDataSources = new Map<ConnectionInstanceId, string>()
+  const connectingDataSources = new Map<ConnectionInstanceId, Promise<void>>()
 
   const initialCheckpoint: ReplicationCheckpoint = {
     updatedAt: new Date(Date.now() - 5184000000).toISOString(), // 60 dias
@@ -177,6 +179,7 @@ export const createSyncStore = (
     connectionInstanceId: ConnectionInstanceId,
     set: (fn: (state: SyncStore) => Partial<SyncStore>) => void,
   ) => {
+    connectedDataSources.delete(connectionInstanceId)
     const connectionModules = replications.get(connectionInstanceId)
     if (!connectionModules) return
 
@@ -195,6 +198,8 @@ export const createSyncStore = (
   }
 
   const destroyAllModules = async () => {
+    connectedDataSources.clear()
+    connectingDataSources.clear()
     await Promise.all(
       Array.from(replications.values()).flatMap((connectionModules) =>
         Array.from(connectionModules.values()).map((m) => m.destroy()),
@@ -211,13 +216,48 @@ export const createSyncStore = (
     connectDataSource: async ({ connectionInstanceId, dataSourceId }) => {
       const { db } = get()
       if (!db) return
-      await destroyConnectionModules(connectionInstanceId, set)
-      await startConnectionModules(db, connectionInstanceId, dataSourceId, set)
-      // Dispara a reconciliação (sweep window) logo após conectar
-      get().reconcile(connectionInstanceId).catch(console.error)
+
+      if (
+        connectedDataSources.get(connectionInstanceId) === dataSourceId &&
+        replications.has(connectionInstanceId)
+      ) {
+        return
+      }
+
+      const pending = connectingDataSources.get(connectionInstanceId)
+      if (pending) {
+        await pending
+        if (
+          connectedDataSources.get(connectionInstanceId) === dataSourceId &&
+          replications.has(connectionInstanceId)
+        ) {
+          return
+        }
+      }
+
+      const connectionPromise = (async () => {
+        try {
+          await destroyConnectionModules(connectionInstanceId, set)
+          await startConnectionModules(
+            db,
+            connectionInstanceId,
+            dataSourceId,
+            set,
+          )
+          connectedDataSources.set(connectionInstanceId, dataSourceId)
+          get().reconcile(connectionInstanceId).catch(console.error)
+        } finally {
+          connectingDataSources.delete(connectionInstanceId)
+        }
+      })()
+
+      connectingDataSources.set(connectionInstanceId, connectionPromise)
+      await connectionPromise
     },
 
     disconnectDataSource: async (connectionInstanceId) => {
+      connectedDataSources.delete(connectionInstanceId)
+      connectingDataSources.delete(connectionInstanceId)
       await destroyConnectionModules(connectionInstanceId, set)
     },
 
@@ -282,6 +322,12 @@ export const createSyncStore = (
         console.warn(
           '[SYNC][reconcile] Coleção timeEntries ainda não disponível no db',
         )
+        return
+      }
+
+      if (
+        get().statuses[`timeEntries_${connectionInstanceId}`]?.isReconciling
+      ) {
         return
       }
 

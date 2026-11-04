@@ -881,3 +881,160 @@ describe('T01 Host Path: DataSourceResolver com ElectronHttpClientFactory e Prov
     expect(result.failure.messageKey).toBe('CONNECTION_AUTHORIZATION_CHANGED')
   })
 })
+
+class CountingAddonDataSource extends TestAddonDataSource {
+  created = 0
+
+  createInstance(context: DataSourceContext): IDataSourceInstance {
+    this.created += 1
+    return super.createInstance(context)
+  }
+}
+
+describe('DataSourceResolver reaproveita a instância do addon por conexão', () => {
+  function setup() {
+    const created = Workspace.create({ name: 'Workspace Instance Reuse' })
+    expect(created.isSuccess()).toBe(true)
+    const workspace = created.success
+    const config = { apiUrl: 'http://127.0.0.1:1' }
+    for (const connectionId of ['conn-1', 'conn-2']) {
+      workspace.createConnection(
+        connectionId,
+        'test-addon',
+        testConnectionProfile(),
+      )
+      connectPrimary(
+        workspace,
+        connectionId,
+        testIdentity('tenant', `member-${connectionId}`),
+        config,
+        `authorization-${connectionId}`,
+      )
+    }
+    const vault = new FakeCredentialsVault()
+    const addon = new CountingAddonDataSource()
+    let current: IDataSource = addon
+    const resolver = new DataSourceResolver(
+      new FakeWorkspacesRepository(workspace),
+      vault,
+      {
+        addonsBasePath: '',
+        addonLoader: {
+          getDataSource() {
+            return current
+          },
+        },
+      },
+      new ElectronHttpClientFactory(
+        EMPTY_HTTP_CONFIG,
+        new NodeFetchTransport(),
+      ),
+    )
+
+    return {
+      workspace,
+      vault,
+      addon,
+      resolver,
+      replaceModule(next: IDataSource) {
+        current = next
+      },
+    }
+  }
+
+  it('resolve a mesma conexão várias vezes com uma única instância e uma única leitura do cofre', async () => {
+    const { workspace, vault, addon, resolver } = setup()
+
+    const results = await Promise.all([
+      resolver.getDataSource(workspace.id, 'conn-1'),
+      resolver.getDataSource(workspace.id, 'conn-1'),
+    ])
+    const third = await resolver.getDataSource(workspace.id, 'conn-1')
+
+    expect(results.every((result) => result.isSuccess())).toBe(true)
+    expect(third.isSuccess()).toBe(true)
+    expect(addon.created).toBe(1)
+    expect(vault.requested).toHaveLength(1)
+    expect(third.success.tasksProvider).toBe(results[0].success.tasksProvider)
+  })
+
+  it('mantém instâncias separadas por conexão', async () => {
+    const { workspace, addon, resolver } = setup()
+
+    const first = await resolver.getDataSource(workspace.id, 'conn-1')
+    const second = await resolver.getDataSource(workspace.id, 'conn-2')
+
+    expect(addon.created).toBe(2)
+    expect(second.success.tasksProvider).not.toBe(first.success.tasksProvider)
+  })
+
+  it('cria nova instância e relê o cofre depois de reautorização', async () => {
+    const { workspace, vault, addon, resolver } = setup()
+    await resolver.getDataSource(workspace.id, 'conn-1')
+    connectPrimary(
+      workspace,
+      'conn-1',
+      testIdentity('tenant', 'member-conn-1'),
+      { apiUrl: 'http://127.0.0.1:1' },
+      'authorization-conn-1',
+    )
+
+    const after = await resolver.getDataSource(workspace.id, 'conn-1')
+
+    expect(after.isSuccess()).toBe(true)
+    expect(addon.created).toBe(2)
+    expect(vault.requested).toHaveLength(2)
+  })
+
+  it('cria nova instância quando a configuração da conexão muda', async () => {
+    const { workspace, addon, resolver } = setup()
+    await resolver.getDataSource(workspace.id, 'conn-1')
+    connectPrimary(
+      workspace,
+      'conn-1',
+      testIdentity('tenant', 'member-conn-1'),
+      { apiUrl: 'http://127.0.0.1:2' },
+      'authorization-conn-1',
+    )
+
+    const after = await resolver.getDataSource(workspace.id, 'conn-1')
+
+    expect(after.isSuccess()).toBe(true)
+    expect(addon.created).toBe(2)
+  })
+
+  it('cria nova instância quando o módulo do addon é substituído', async () => {
+    const { workspace, resolver, replaceModule } = setup()
+    await resolver.getDataSource(workspace.id, 'conn-1')
+    const replacement = new CountingAddonDataSource()
+    replaceModule(replacement)
+
+    const after = await resolver.getDataSource(workspace.id, 'conn-1')
+
+    expect(after.isSuccess()).toBe(true)
+    expect(replacement.created).toBe(1)
+  })
+
+  it('não reaproveita instância de conexão desconectada', async () => {
+    const { workspace, resolver } = setup()
+    await resolver.getDataSource(workspace.id, 'conn-1')
+    workspace.disconnectConnection('conn-1')
+
+    const after = await resolver.getDataSource(workspace.id, 'conn-1')
+
+    expect(after.isFailure()).toBe(true)
+  })
+
+  it('contextOverride nunca usa nem popula o cache', async () => {
+    const { workspace, addon, resolver } = setup()
+
+    await resolver.getDataSource(workspace.id, 'conn-1', {
+      config: { apiUrl: 'http://127.0.0.1:3' },
+    })
+    await resolver.getDataSource(workspace.id, 'conn-1', {
+      config: { apiUrl: 'http://127.0.0.1:3' },
+    })
+
+    expect(addon.created).toBe(2)
+  })
+})

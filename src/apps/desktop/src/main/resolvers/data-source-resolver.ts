@@ -38,7 +38,19 @@ export interface DataSourceResolverOptions {
   addonLoader?: IAddonDataSourceLoader
 }
 
+interface CachedDataSourceAdapter {
+  signature: string
+  datasource: IDataSource
+  adapter: IDataSourceAdapter
+}
+
 export class DataSourceResolver implements IDataSourceResolver {
+  private readonly adapterCache = new Map<string, CachedDataSourceAdapter>()
+  private readonly pendingResolutions = new Map<
+    string,
+    Promise<Either<AppError, IDataSourceAdapter>>
+  >()
+
   constructor(
     private readonly workspacesRepository: IWorkspacesRepository,
     private readonly credentialsVault: ICredentialsVault,
@@ -50,6 +62,43 @@ export class DataSourceResolver implements IDataSourceResolver {
     workspaceId: string,
     connectionInstanceId: string,
     contextOverride?: Partial<DataSourceOverrideContext>,
+  ): Promise<Either<AppError, IDataSourceAdapter>> {
+    if (contextOverride)
+      return this.resolveDataSource(
+        workspaceId,
+        connectionInstanceId,
+        contextOverride,
+      )
+    if (
+      !isNonEmptyString(workspaceId) ||
+      !isNonEmptyString(connectionInstanceId)
+    )
+      return this.resolveDataSource(
+        workspaceId,
+        connectionInstanceId,
+        undefined,
+      )
+
+    const resolutionKey = `${workspaceId}::${connectionInstanceId}`
+    const pending = this.pendingResolutions.get(resolutionKey)
+    if (pending) return pending
+
+    const resolution = this.resolveDataSource(
+      workspaceId,
+      connectionInstanceId,
+      undefined,
+    ).finally(() => {
+      this.pendingResolutions.delete(resolutionKey)
+    })
+    this.pendingResolutions.set(resolutionKey, resolution)
+
+    return resolution
+  }
+
+  private async resolveDataSource(
+    workspaceId: string,
+    connectionInstanceId: string,
+    contextOverride: Partial<DataSourceOverrideContext> | undefined,
   ): Promise<Either<AppError, IDataSourceAdapter>> {
     if (!isNonEmptyString(workspaceId)) {
       return Either.failure(AppError.ValidationError('WORKSPACE_ID_REQUIRED'))
@@ -68,6 +117,9 @@ export class DataSourceResolver implements IDataSourceResolver {
     const connection = workspace.connections?.find(
       (c) => c.id === connectionInstanceId,
     )
+
+    const cacheKey = `${workspaceId}::${connectionInstanceId}`
+    let cacheSignature: string | undefined
 
     const connectionHttpClient = this.httpClientFactory.createClient({})
 
@@ -116,13 +168,36 @@ export class DataSourceResolver implements IDataSourceResolver {
         return Either.failure(
           AppError.NotFound('CONEXAO_NAO_ENCONTRADA_OU_INVALIDA'),
         )
-      if (connection.status !== 'connected')
+      if (connection.status !== 'connected') {
+        this.adapterCache.delete(cacheKey)
+
         return Either.failure(
           AppError.Unauthorized('CONNECTION_NOT_AUTHORIZED'),
         )
+      }
       const authorization = selectDataSourceAuthorization(connection)
       if (authorization.isFailure()) return authorization.forwardFailure()
       const selected = authorization.success
+
+      cacheSignature = JSON.stringify({
+        connectionGeneration: connection.generation,
+        authorizationId: selected.authorizationId,
+        authorizationGeneration: selected.generation,
+        credentialReferenceId: selected.credentialReferenceId,
+        identity: selected.identity,
+        config,
+      })
+      const cached = this.adapterCache.get(cacheKey)
+      const registered = this.options.addonLoader?.getDataSource(
+        connection.addonId,
+      )
+      if (
+        cached &&
+        registered &&
+        cached.datasource === registered &&
+        cached.signature === cacheSignature
+      )
+        return Either.success(cached.adapter)
       if (selected.credentialReferenceId === undefined)
         return Either.failure(
           AppError.Unauthorized('CONNECTION_CREDENTIAL_REFERENCE_MISSING'),
@@ -228,7 +303,7 @@ export class DataSourceResolver implements IDataSourceResolver {
     }
     const instance = datasource.createInstance(context)
 
-    return Either.success({
+    const adapter: IDataSourceAdapter = {
       getAuthenticatedMemberData: () => {
         if (!context.authenticatedMemberData)
           return Either.failure(
@@ -242,7 +317,16 @@ export class DataSourceResolver implements IDataSourceResolver {
       timeEntriesProvider: instance.timeEntriesProvider,
       membersProvider: instance.membersProvider,
       metadataProvider: instance.metadataProvider,
-    })
+    }
+
+    if (!contextOverride && cacheSignature)
+      this.adapterCache.set(cacheKey, {
+        signature: cacheSignature,
+        datasource,
+        adapter,
+      })
+
+    return Either.success(adapter)
   }
 
   async getDataSourcesForWorkspace(
