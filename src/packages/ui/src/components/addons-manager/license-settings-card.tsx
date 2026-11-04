@@ -128,7 +128,7 @@ export function LicenseActivationDialog({
       return response.data
     },
     onSuccess: async (state) => {
-      await queryClient.invalidateQueries({ queryKey: ['licensing', 'state'] })
+      queryClient.setQueryData(['licensing', 'state'], state)
       await queryClient.invalidateQueries({ queryKey: ['plugins'] })
       toast.success('Licença Mr. Tick Plus ativada com sucesso!')
       setLicenseKey('')
@@ -222,9 +222,15 @@ export function useLicensingState() {
     const unsubscribe = bridge.events.on<LicensingStatusViewModel>(
       'licensing:updated',
       (nextState) => {
-        queryClient.setQueryData(['licensing', 'state'], nextState)
+        if (nextState) {
+          queryClient.setQueryData(['licensing', 'state'], nextState)
+        } else {
+          void queryClient.invalidateQueries({
+            queryKey: ['licensing', 'state'],
+          })
+        }
         void queryClient.invalidateQueries({ queryKey: ['plugins'] })
-        if (nextState.isPlusActive) {
+        if (nextState && nextState.isPlusActive) {
           toast.success('Licença Mr. Tick Plus ativada via link rápido!')
         }
       },
@@ -243,6 +249,7 @@ export function useLicensingState() {
       }
       return response.data
     },
+    staleTime: 30_000,
   })
 }
 
@@ -266,8 +273,8 @@ export function LicenseSettingsCard() {
       }
       return response.data
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['licensing', 'state'] })
+    onSuccess: async (data) => {
+      queryClient.setQueryData(['licensing', 'state'], data)
       await queryClient.invalidateQueries({ queryKey: ['plugins'] })
       toast.success('Status da licença atualizado!')
     },
@@ -289,8 +296,8 @@ export function LicenseSettingsCard() {
       }
       return response.data
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['licensing', 'state'] })
+    onSuccess: async (data) => {
+      queryClient.setQueryData(['licensing', 'state'], data)
       await queryClient.invalidateQueries({ queryKey: ['plugins'] })
       toast.info('Licença desativada neste dispositivo.')
     },

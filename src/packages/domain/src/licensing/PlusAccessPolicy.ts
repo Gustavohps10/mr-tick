@@ -3,6 +3,7 @@ import { z } from 'zod'
 export type AddonTier = 'free' | 'plus'
 export type AddonExecutionClassification = 'free' | 'plus' | 'unknown'
 export const OFFLINE_AUTHORIZATION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+export const CLOCK_LEEWAY_MS = 60 * 1000
 
 export const offlineAuthorizationClaimsSchema = z
   .object({
@@ -52,7 +53,7 @@ export class PlusAccessPolicy {
       !Number.isFinite(nowMs) ||
       !Number.isFinite(claims.issuedAt) ||
       claims.issuedAt <= 0 ||
-      claims.issuedAt > nowMs
+      claims.issuedAt > nowMs + CLOCK_LEEWAY_MS
     )
       return {
         state: 'revoked',

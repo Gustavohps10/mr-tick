@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  CLOCK_LEEWAY_MS,
   OFFLINE_AUTHORIZATION_WINDOW_MS,
   OfflineAuthorizationClaims,
   offlineAuthorizationClaimsSchema,
@@ -56,7 +57,14 @@ describe('PlusAccessPolicy formato real do Worker', () => {
     ).toBe(false)
     expect(
       PlusAccessPolicy.evaluateClaims(
-        { ...claims, issuedAt: now + 1 },
+        { ...claims, issuedAt: now + 5000 },
+        'installation-one',
+        now,
+      ).isPlusActive,
+    ).toBe(true)
+    expect(
+      PlusAccessPolicy.evaluateClaims(
+        { ...claims, issuedAt: now + CLOCK_LEEWAY_MS + 1 },
         'installation-one',
         now,
       ).isPlusActive,

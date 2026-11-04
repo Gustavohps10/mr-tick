@@ -105,8 +105,8 @@ export function LicenseSettingsTab() {
       }
       return response.data
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['licensing', 'state'] })
+    onSuccess: async (data) => {
+      queryClient.setQueryData(['licensing', 'state'], data)
       await queryClient.invalidateQueries({ queryKey: ['plugins'] })
       toast.success('Licença Mr. Tick Plus ativada com sucesso!')
       setLicenseKeyInput('')
@@ -129,8 +129,8 @@ export function LicenseSettingsTab() {
       }
       return response.data
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['licensing', 'state'] })
+    onSuccess: async (data) => {
+      queryClient.setQueryData(['licensing', 'state'], data)
       await queryClient.invalidateQueries({ queryKey: ['plugins'] })
       toast.success('Status da licença atualizado!')
     },
@@ -152,8 +152,8 @@ export function LicenseSettingsTab() {
       }
       return response.data
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['licensing', 'state'] })
+    onSuccess: async (data) => {
+      queryClient.setQueryData(['licensing', 'state'], data)
       await queryClient.invalidateQueries({ queryKey: ['plugins'] })
       toast.info('Licença desativada neste dispositivo.')
     },

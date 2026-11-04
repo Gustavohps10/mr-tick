@@ -216,10 +216,11 @@ if (gotTheLock) {
       return
     }
     const result = await globalLicensingFacade.activateLicense(key)
+    const nextState = result.isSuccess() ? result.success : undefined
     const windows = BrowserWindow.getAllWindows()
     for (const win of windows) {
       if (!win.isDestroyed()) {
-        win.webContents.send('licensing:updated')
+        win.webContents.send('licensing:updated', nextState)
       }
     }
     if (result.isSuccess()) {
