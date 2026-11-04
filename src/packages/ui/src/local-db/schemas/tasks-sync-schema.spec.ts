@@ -27,7 +27,7 @@ describe('Tasks Schema Validation', () => {
       title: 'TAREFA - DAILY',
       description: null,
       projectName: 'MOVIMENTAÇÕES',
-      url: 'http://redmine.atakone.com.br/issues/76314',
+      url: 'https://redmine.empresa.exemplo.com/issues/76314',
       tracker: { id: '5' },
       status: { id: '1', name: 'Nova' },
       priority: { id: '2', name: 'Normal' },

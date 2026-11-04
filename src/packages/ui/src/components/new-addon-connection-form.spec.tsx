@@ -675,4 +675,83 @@ describe('Unit - NewAddonConnectionForm e AddonFieldRenderer (SDK Schema Dinâmi
     expect(screen.queryByTestId('datasource-instance-connect-btn')).toBeNull()
     expect(submit).not.toHaveBeenCalled()
   })
+
+  it('renders pinned identity banner and locks saved configuration fields', async () => {
+    mockGetConnectionSchema.mockResolvedValueOnce({
+      isSuccess: true,
+      statusCode: 200,
+      data: [
+        {
+          id: 'server_tab',
+          label: 'Servidor',
+          fields: [
+            {
+              id: 'serverUrl',
+              label: 'URL do Servidor',
+              type: 'text',
+            },
+            {
+              id: 'apiKey',
+              label: 'Chave de API',
+              type: 'password',
+              scope: 'credential',
+            },
+          ],
+        },
+      ],
+    })
+
+    const submit = vi.fn()
+    renderWithClient(
+      <NewAddonConnectionForm
+        pluginId="test-plugin"
+        connectionProfileId="profile-1"
+        connectionInstanceId="instance-1"
+        pinnedIdentity={{
+          kind: 'human',
+          providerId: 'generic-provider',
+          tenantId: 'https://redmine.empresa.exemplo.com/',
+          providerSubjectId: '230',
+          displayName: 'Usuário Exemplo',
+        }}
+        initialConfiguration={{
+          serverUrl: 'https://redmine.empresa.exemplo.com/',
+        }}
+        lastAuthenticatedAt="2026-11-04T19:01:12.516Z"
+        onSubmit={submit}
+      />,
+    )
+
+    expect(
+      await screen.findByTestId('pinned-identity-banner'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('Instância com Identidade Vinculada'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Usuário Exemplo')).toBeInTheDocument()
+    expect(
+      screen.getByText('https://redmine.empresa.exemplo.com/'),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Parâmetro fixado/)).toBeInTheDocument()
+
+    const serverUrlInput = screen.getByTestId('addon-field-input-serverUrl')
+    expect(serverUrlInput).toBeDisabled()
+    expect(serverUrlInput).toHaveValue('https://redmine.empresa.exemplo.com/')
+
+    const apiKeyInput = screen.getByTestId('addon-field-input-apiKey')
+    expect(apiKeyInput).not.toBeDisabled()
+
+    fireEvent.change(apiKeyInput, { target: { value: 'new-secret-token' } })
+    fireEvent.click(screen.getByTestId('datasource-instance-connect-btn'))
+
+    await waitFor(() => {
+      expect(submit).toHaveBeenCalledWith({
+        pluginId: 'test-plugin',
+        connectionProfileId: 'profile-1',
+        connectionInstanceId: 'instance-1',
+        credentials: { apiKey: 'new-secret-token' },
+        configuration: { serverUrl: 'https://redmine.empresa.exemplo.com/' },
+      })
+    })
+  })
 })

@@ -363,7 +363,7 @@ export function WorkspaceSettings() {
                     Nome do Workspace
                   </Label>
                   <Input
-                    placeholder="Ex: Redmine Atak, Freelance..."
+                    placeholder="Ex: Redmine Produção, Freelance..."
                     {...register('name')}
                   />
                   {errors.name && (

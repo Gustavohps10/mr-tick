@@ -6,6 +6,8 @@ export interface ConnectionAuthorizationDTO {
   readonly authProfileId: string
   readonly identity: ConnectionIdentity
   readonly status: 'active' | 'revoked' | 'expired' | 'reauth_required'
+  readonly createdAt?: string
+  readonly updatedAt?: string
 }
 
 export interface WorkspaceConnectionMemberDTO {
@@ -25,6 +27,7 @@ export interface WorkspaceConnectionDTO {
   identity?: ConnectionIdentity
   member?: WorkspaceConnectionMemberDTO
   config?: Record<string, string | number | boolean>
+  lastAuthenticatedAt?: string
 }
 
 function resolveMemberFromIdentity(
@@ -59,8 +62,44 @@ export function toWorkspaceConnectionDTO(c: {
     if (activeAuth !== undefined) {
       resolvedIdentity = activeAuth.identity
     }
+    if (resolvedIdentity === undefined && authorizations.length > 0) {
+      const primaryAuth = authorizations.find(
+        (a) => a.authorizationRole === 'primary',
+      )
+      if (primaryAuth !== undefined) {
+        resolvedIdentity = primaryAuth.identity
+      }
+      if (resolvedIdentity === undefined) {
+        const lastAuth = authorizations[authorizations.length - 1]
+        if (lastAuth !== undefined) {
+          resolvedIdentity = lastAuth.identity
+        }
+      }
+    }
   }
+
   const member = resolveMemberFromIdentity(resolvedIdentity)
+
+  let authRecord = authorizations.find((a) => a.status === 'active')
+  if (authRecord === undefined && authorizations.length > 0) {
+    authRecord = authorizations.find((a) => a.authorizationRole === 'primary')
+    if (authRecord === undefined) {
+      authRecord = authorizations[authorizations.length - 1]
+    }
+  }
+
+  let lastAuthenticatedAt: string | undefined
+  if (authRecord !== undefined) {
+    if (authRecord.updatedAt !== undefined) {
+      lastAuthenticatedAt = authRecord.updatedAt
+    }
+    if (
+      lastAuthenticatedAt === undefined &&
+      authRecord.createdAt !== undefined
+    ) {
+      lastAuthenticatedAt = authRecord.createdAt
+    }
+  }
 
   return {
     id: c.id,
@@ -77,6 +116,9 @@ export function toWorkspaceConnectionDTO(c: {
     }),
     ...(c.config !== undefined && {
       config: c.config,
+    }),
+    ...(lastAuthenticatedAt !== undefined && {
+      lastAuthenticatedAt,
     }),
   }
 }

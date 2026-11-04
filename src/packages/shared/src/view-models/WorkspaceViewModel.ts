@@ -25,6 +25,7 @@ export interface WorkspaceConnectionViewModel {
   identity?: WorkspaceConnectionIdentityViewModel
   member?: WorkspaceConnectionMemberViewModel
   config?: Record<string, unknown>
+  lastAuthenticatedAt?: string
 }
 
 export interface WorkspaceViewModel {

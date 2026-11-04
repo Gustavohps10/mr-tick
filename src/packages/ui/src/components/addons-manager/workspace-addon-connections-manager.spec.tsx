@@ -30,6 +30,10 @@ vi.mock('@/hooks/use-host-bridge', () => ({
   useHostBridge: () => mockBridge,
 }))
 
+vi.mock('@/stores/syncStore', () => ({
+  useConnectionsWithSync: () => [],
+}))
+
 vi.mock('sonner', () => ({
   toast: {
     error: mockToastError,
@@ -377,5 +381,167 @@ describe('WorkspaceAddonConnectionsManager', () => {
         },
       }),
     )
+  })
+
+  it('adds a new instance without opening the connection modal', async () => {
+    mockBridge.workspaces.linkDataSource.mockResolvedValue({
+      isSuccess: true,
+      data: {},
+    })
+
+    renderWithClient(<WorkspaceAddonConnectionsManager addonId="addon-a" />)
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Nova Instância' }),
+    )
+
+    await waitFor(() => {
+      expect(mockBridge.workspaces.linkDataSource).toHaveBeenCalledWith({
+        body: {
+          workspaceId: 'workspace-a',
+          addonId: 'addon-a',
+          connectionInstanceId: expect.any(String),
+          connectionProfileId: 'primary',
+        },
+      })
+    })
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('prompts for confirmation before disconnecting an instance', async () => {
+    mockBridge.workspaces.listAll.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: [
+        {
+          id: 'workspace-a',
+          name: 'Workspace A',
+          status: 'configured',
+          connections: [
+            {
+              id: 'conn-1',
+              addonId: 'addon-a',
+              connectionProfileId: 'primary',
+              status: 'connected',
+              config: { name: 'Instância Conectada' },
+            },
+          ],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    })
+    mockBridge.workspaces.disconnectDataSource.mockResolvedValue({
+      isSuccess: true,
+      data: {},
+    })
+
+    renderWithClient(<WorkspaceAddonConnectionsManager addonId="addon-a" />)
+
+    const disconnectBtn = await screen.findByTitle('Desconectar')
+    fireEvent.click(disconnectBtn)
+
+    expect(
+      await screen.findByText('Desconectar instância?'),
+    ).toBeInTheDocument()
+    expect(mockBridge.workspaces.disconnectDataSource).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTestId('confirm-disconnect-instance-btn'))
+
+    await waitFor(() => {
+      expect(mockBridge.workspaces.disconnectDataSource).toHaveBeenCalledWith({
+        body: {
+          workspaceId: 'workspace-a',
+          connectionInstanceId: 'conn-1',
+        },
+      })
+    })
+  })
+
+  it('prompts for confirmation before deleting an instance', async () => {
+    mockBridge.workspaces.listAll.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: [
+        {
+          id: 'workspace-a',
+          name: 'Workspace A',
+          status: 'configured',
+          connections: [
+            {
+              id: 'conn-1',
+              addonId: 'addon-a',
+              connectionProfileId: 'primary',
+              status: 'disconnected',
+              config: { name: 'Instância Pendente' },
+            },
+          ],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    })
+    mockBridge.workspaces.unlinkDataSource.mockResolvedValue({
+      isSuccess: true,
+      data: {},
+    })
+
+    renderWithClient(<WorkspaceAddonConnectionsManager addonId="addon-a" />)
+
+    const deleteBtn = await screen.findByTitle('Remover conexão')
+    fireEvent.click(deleteBtn)
+
+    expect(await screen.findByText('Remover instância?')).toBeInTheDocument()
+    expect(mockBridge.workspaces.unlinkDataSource).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTestId('confirm-delete-instance-btn'))
+
+    await waitFor(() => {
+      expect(mockBridge.workspaces.unlinkDataSource).toHaveBeenCalledWith({
+        body: {
+          workspaceId: 'workspace-a',
+          connectionInstanceId: 'conn-1',
+        },
+      })
+    })
+  })
+
+  it('renders the addon logo in the connection dialog header', async () => {
+    mockBridge.workspaces.linkDataSource.mockResolvedValue({
+      isSuccess: true,
+      data: {},
+    })
+    mockBridge.addons.getConnectionSchema.mockResolvedValue({
+      isSuccess: true,
+      data: [],
+    })
+
+    renderWithClient(
+      <WorkspaceAddonConnectionsManager
+        addonId="addon-a"
+        addon={{
+          id: 'addon-a',
+          name: 'Jira Cloud',
+          version: '0.2.1',
+          creator: 'Mr. Tick',
+          description: 'Issues do Jira',
+          path: '/addons/jira',
+          logo: 'https://example.com/jira-logo.png',
+          downloads: 10,
+          stars: 5,
+          installed: true,
+          capabilities: ['auth', 'dataSource'],
+        }}
+      />,
+    )
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Conectar agora' }),
+    )
+
+    expect(await screen.findByRole('dialog')).toBeVisible()
+    const logoImg = await screen.findByAltText('Jira Cloud')
+    expect(logoImg).toHaveAttribute('src', 'https://example.com/jira-logo.png')
   })
 })

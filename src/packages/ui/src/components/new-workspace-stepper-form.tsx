@@ -1123,7 +1123,7 @@ export function StepperForm({
                       </Label>
                       <Input
                         data-testid="workspace-name-input"
-                        placeholder="Ex: Redmine Atak, Freelance..."
+                        placeholder="Ex: Redmine Produção, Freelance..."
                         {...methods.register('name')}
                       />
                       {methods.formState.errors.name && (

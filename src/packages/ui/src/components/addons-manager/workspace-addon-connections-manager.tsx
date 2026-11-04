@@ -1,6 +1,7 @@
 'use client'
 
 import type {
+  AddonManifestViewModel,
   ConnectionProfileDescriptor,
   WorkspaceViewModel,
 } from '@mr-tick/sdk'
@@ -10,11 +11,22 @@ import { FolderKanban, KeyRound, Plus, SlidersHorizontal } from 'lucide-react'
 import React, { useState } from 'react'
 import { toast } from 'sonner'
 
+import { SafeAddonLogo } from '@/components/addons-manager/addons-manager-view'
 import { MappingConfigModal } from '@/components/mapping-config-modal'
 import {
   AddonConnectionFormData,
   NewAddonConnectionForm,
 } from '@/components/new-addon-connection-form'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,6 +50,7 @@ export interface WorkspaceAddonConnectionsManagerProps {
   addonId: string
   workspaceId?: string
   mode?: 'auth' | 'dataSource'
+  addon?: AddonManifestViewModel
 }
 
 function resolveConnectionName(
@@ -136,6 +149,7 @@ export function WorkspaceAddonConnectionsManager({
   addonId,
   workspaceId,
   mode = 'auth',
+  addon: addonProp,
 }: WorkspaceAddonConnectionsManagerProps) {
   const bridge = useHostBridge()
   const queryClient = useQueryClient()
@@ -147,6 +161,15 @@ export function WorkspaceAddonConnectionsManager({
   const [connectionTargetId, setConnectionTargetId] = useState<string | null>(
     null,
   )
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null)
+  const [disconnectTarget, setDisconnectTarget] = useState<{
+    workspaceId: string
+    connection: AddonConnection
+  } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{
+    workspaceId: string
+    connection: AddonConnection
+  } | null>(null)
   const [mappingTargetId, setMappingTargetId] = useState<string | null>(null)
   const [mappingWorkspaceId, setMappingWorkspaceId] = useState<string | null>(
     null,
@@ -154,6 +177,22 @@ export function WorkspaceAddonConnectionsManager({
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
     null,
   )
+
+  const { data: installedList = [] } = useQuery<AddonManifestViewModel[]>({
+    queryKey: ['plugins', 'installed'],
+    queryFn: async () => {
+      const res = await bridge.addons.listInstalled()
+      if (!res.isSuccess) throw new Error(res.error)
+      if (!res.data) return []
+      return res.data
+    },
+    enabled: addonProp === undefined,
+  })
+
+  let addon = addonProp
+  if (addon === undefined) {
+    addon = installedList.find((candidate) => candidate.id === addonId)
+  }
 
   const {
     data: connectionProfiles = [],
@@ -178,6 +217,16 @@ export function WorkspaceAddonConnectionsManager({
     (profile) => profile.connectionProfileId === selectedConnectionProfileId,
   )
 
+  let profileForDialog = selectedProfile
+  if (activeProfileId !== null) {
+    const matchedProfile = connectionProfiles.find(
+      (profile) => profile.connectionProfileId === activeProfileId,
+    )
+    if (matchedProfile) {
+      profileForDialog = matchedProfile
+    }
+  }
+
   const {
     data: workspaces = [],
     isLoading: isLoadingWorkspaces,
@@ -191,6 +240,28 @@ export function WorkspaceAddonConnectionsManager({
       return res.data
     },
   })
+
+  let targetConnection: AddonConnection | undefined
+  if (activeWorkspaceId && connectionTargetId) {
+    const activeWs = workspaces.find((w) => w.id === activeWorkspaceId)
+    if (activeWs && activeWs.connections) {
+      const conn = activeWs.connections.find((c) => c.id === connectionTargetId)
+      if (conn) {
+        targetConnection = {
+          id: conn.id,
+          name: resolveConnectionName(conn.config, conn.id),
+          url: resolveConnectionUrl(conn.config),
+          status: resolveConnectionStatus(conn.status),
+          member: conn.member,
+          identity: conn.identity,
+          addonId: conn.addonId,
+          connectionProfileId: conn.connectionProfileId,
+          config: conn.config,
+          lastAuthenticatedAt: conn.lastAuthenticatedAt,
+        }
+      }
+    }
+  }
 
   const [connectionFieldErrors, setConnectionFieldErrors] = useState<
     Record<string, string[]> | undefined
@@ -308,15 +379,20 @@ export function WorkspaceAddonConnectionsManager({
     onError: (err: Error) => toast.error(err.message),
   })
 
-  const handleAddConnection = async (targetWorkspaceId: string) => {
+  const handleAddConnection = async (
+    targetWorkspaceId: string,
+    openDialog = false,
+  ) => {
     if (!selectedProfile) {
       toast.error('Selecione um perfil de conexão declarado pelo addon.')
       return
     }
+
     const unique = crypto.randomUUID().slice(0, 8)
     const newId = `${addonId}-${unique}`
     setActiveWorkspaceId(targetWorkspaceId)
     setConnectionTargetId(newId)
+    setActiveProfileId(selectedProfile.connectionProfileId)
 
     try {
       const result = await bridge.workspaces.linkDataSource({
@@ -327,14 +403,27 @@ export function WorkspaceAddonConnectionsManager({
           connectionProfileId: selectedProfile.connectionProfileId,
         },
       })
+
       if (!result.isSuccess) {
         toast.error(result.error ?? 'Falha ao vincular DataSource')
         return
       }
-      setConnectionDialogOpen(true)
+
+      await refetchWorkspaces()
+      await queryClient.invalidateQueries({ queryKey: ['workspaces'] })
+      await queryClient.invalidateQueries({ queryKey: ['workspace'] })
+
+      if (openDialog) {
+        setConnectionDialogOpen(true)
+        return
+      }
+
+      toast.success('Nova instância adicionada.')
     } catch (err) {
       let message = 'Falha ao vincular DataSource'
-      if (err instanceof Error) message = err.message
+      if (err instanceof Error) {
+        message = err.message
+      }
       toast.error(message)
     }
   }
@@ -427,6 +516,11 @@ export function WorkspaceAddonConnectionsManager({
                 url: resolveConnectionUrl(c.config),
                 status: resolveConnectionStatus(c.status),
                 member: c.member,
+                identity: c.identity,
+                addonId: c.addonId,
+                connectionProfileId: c.connectionProfileId,
+                config: c.config,
+                lastAuthenticatedAt: c.lastAuthenticatedAt,
               }),
             )
 
@@ -491,7 +585,7 @@ export function WorkspaceAddonConnectionsManager({
                       size="sm"
                       variant="outline"
                       data-testid={`add-instance-btn-${ws.id}`}
-                      onClick={() => handleAddConnection(ws.id)}
+                      onClick={() => handleAddConnection(ws.id, false)}
                       className="h-7 cursor-pointer gap-1.5 px-2.5 text-xs font-medium"
                     >
                       <Plus className="size-3.5" />
@@ -511,18 +605,21 @@ export function WorkspaceAddonConnectionsManager({
                           onOpenSettings={(c) => {
                             setActiveWorkspaceId(ws.id)
                             setConnectionTargetId(c.id)
+                            if (c.connectionProfileId) {
+                              setActiveProfileId(c.connectionProfileId)
+                            }
                             setConnectionDialogOpen(true)
                           }}
                           onDisconnect={(c) =>
-                            disconnectMutation.mutate({
-                              targetWorkspaceId: ws.id,
-                              connectionInstanceId: c.id,
+                            setDisconnectTarget({
+                              workspaceId: ws.id,
+                              connection: c,
                             })
                           }
                           onUninstall={(c) =>
-                            unlinkMutation.mutate({
-                              targetWorkspaceId: ws.id,
-                              connectionInstanceId: c.id,
+                            setDeleteTarget({
+                              workspaceId: ws.id,
+                              connection: c,
                             })
                           }
                         />
@@ -540,7 +637,7 @@ export function WorkspaceAddonConnectionsManager({
                         <Button
                           variant="link"
                           size="sm"
-                          onClick={() => handleAddConnection(ws.id)}
+                          onClick={() => handleAddConnection(ws.id, true)}
                           className="text-primary mt-1 h-6 cursor-pointer text-xs"
                         >
                           Conectar agora
@@ -651,19 +748,34 @@ export function WorkspaceAddonConnectionsManager({
         onOpenChange={setConnectionDialogOpen}
       >
         <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Conectar Instância</DialogTitle>
-            <DialogDescription>
-              Preencha os parâmetros e credenciais de acesso para esta
-              instância.
-            </DialogDescription>
+          <DialogHeader className="flex flex-row items-center gap-3.5 space-y-0 text-left">
+            <div className="bg-background flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-md border p-1 shadow-2xs">
+              <SafeAddonLogo
+                src={addon?.logo}
+                alt={addon?.name ?? addonId}
+                className="size-full object-contain"
+                fallbackIconClassName="size-5 text-muted-foreground/60"
+              />
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-1">
+              <DialogTitle>Conectar Instância</DialogTitle>
+              <DialogDescription>
+                Preencha os parâmetros e credenciais de acesso para esta
+                instância.
+              </DialogDescription>
+            </div>
           </DialogHeader>
+
           <div className="flex-1 overflow-y-auto px-1 py-2">
-            {connectionTargetId && selectedProfile && (
+            {connectionTargetId && profileForDialog && (
               <NewAddonConnectionForm
                 pluginId={addonId}
                 connectionInstanceId={connectionTargetId}
-                connectionProfileId={selectedProfile.connectionProfileId}
+                connectionProfileId={profileForDialog.connectionProfileId}
+                initialConfiguration={targetConnection?.config}
+                pinnedIdentity={targetConnection?.identity}
+                lastAuthenticatedAt={targetConnection?.lastAuthenticatedAt}
                 isSubmitting={connectMutation.isPending}
                 fieldErrors={connectionFieldErrors}
                 onSubmit={(data) => connectMutation.mutate(data)}
@@ -672,6 +784,91 @@ export function WorkspaceAddonConnectionsManager({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Diálogo de confirmação para desconectar */}
+      <AlertDialog
+        open={disconnectTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDisconnectTarget(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desconectar instância?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja realmente desconectar a instância{' '}
+              <strong className="text-foreground">
+                {disconnectTarget?.connection.name}
+              </strong>
+              ? Os apontamentos e sincronizações automáticas serão interrompidos
+              até que ela seja conectada novamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="confirm-disconnect-instance-btn"
+              onClick={() => {
+                if (!disconnectTarget) return
+
+                disconnectMutation.mutate({
+                  targetWorkspaceId: disconnectTarget.workspaceId,
+                  connectionInstanceId: disconnectTarget.connection.id,
+                })
+                setDisconnectTarget(null)
+              }}
+            >
+              Desconectar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Diálogo de confirmação para deletar */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover instância?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja realmente remover a instância{' '}
+              <strong className="text-foreground">
+                {deleteTarget?.connection.name}
+              </strong>{' '}
+              deste workspace? Esta ação desvinculará a conexão e não poderá ser
+              desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="confirm-delete-instance-btn"
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              onClick={() => {
+                if (!deleteTarget) return
+
+                unlinkMutation.mutate({
+                  targetWorkspaceId: deleteTarget.workspaceId,
+                  connectionInstanceId: deleteTarget.connection.id,
+                })
+                setDeleteTarget(null)
+              }}
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -66,6 +66,13 @@ test.describe('E2E - Configuração de Mapeamento Pós-Autenticação em Instân
     )
     await expect(addInstance).toBeVisible({ timeout: 10000 })
     await addInstance.click()
+
+    const configureBtn = page
+      .locator('[data-testid^="configure-connection-btn-"]')
+      .first()
+    await expect(configureBtn).toBeVisible({ timeout: 10000 })
+    await configureBtn.click()
+
     const connectSubmitBtn = page.locator(
       '[data-testid="datasource-instance-connect-btn"]',
     )
@@ -214,6 +221,13 @@ test.describe('E2E - Configuração de Mapeamento Pós-Autenticação em Instân
     )
     await expect(addInstance).toBeVisible({ timeout: 10000 })
     await addInstance.click()
+
+    const configureBtn = page
+      .locator('[data-testid^="configure-connection-btn-"]')
+      .first()
+    await expect(configureBtn).toBeVisible({ timeout: 10000 })
+    await configureBtn.click()
+
     const connectSubmitBtn = page.locator(
       '[data-testid="datasource-instance-connect-btn"]',
     )

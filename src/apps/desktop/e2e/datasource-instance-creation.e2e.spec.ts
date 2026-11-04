@@ -46,6 +46,12 @@ test.describe('E2E - Criação de Instâncias de Data Source com Schema Dinâmic
     await expect(addInstanceBtn).toBeVisible({ timeout: 10000 })
     await addInstanceBtn.click()
 
+    const configureBtn = page
+      .locator('[data-testid^="configure-connection-btn-"]')
+      .first()
+    await expect(configureBtn).toBeVisible({ timeout: 10000 })
+    await configureBtn.click()
+
     // 6. Valida renderização dinâmica do formulário: apenas credenciais essenciais de autenticação
     const credentialsGroupLabel = page.getByText('Autenticação Simulada (Fake)')
     await expect(credentialsGroupLabel).toBeVisible({ timeout: 10000 })

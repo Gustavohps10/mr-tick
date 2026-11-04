@@ -14,6 +14,7 @@ import type {
   AddonManifestViewModel,
   AddonSettingsTab,
   ConnectionProfileDescriptor,
+  WorkspaceConnectionIdentityViewModel,
   WorkspaceViewModel,
 } from '@mr-tick/sdk'
 import { hasCapability, isDataSource } from '@mr-tick/shared/helpers'
@@ -300,6 +301,7 @@ function WorkspaceSubSidebarSettingsManager({
           addonId={addonId}
           workspaceId={ws.id}
           mode="dataSource"
+          addon={resolvedAddon ?? undefined}
         />
       )
     }
@@ -1073,6 +1075,7 @@ function ScopedAddonSettingsRenderer({
           addonId={addonId}
           workspaceId={workspaceId}
           mode="auth"
+          addon={currentAddon ?? undefined}
         />
       )
     }
@@ -1223,6 +1226,7 @@ function ScopedAddonSettingsRenderer({
           addonId={addonId}
           workspaceId={workspaceId}
           mode="auth"
+          addon={currentAddon ?? undefined}
         />
       )
     }
@@ -1533,6 +1537,9 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
       name: resolveConnectionName(c.config, c.connectionId),
       url: resolveConnectionUrl(c.config),
       status: resolveConnectionStatus(c.status),
+      identity: c.identity,
+      member: c.member,
+      config: c.config,
     }))
   const connectionTargetProfile = connectionProfiles.find(
     (profile) => profile.connectionProfileId === connectionTargetProfileId,
@@ -1656,18 +1663,40 @@ function DataSourceInstancesManager({ addonId }: { addonId: string }) {
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-1 py-2">
-            {connectionTargetId && connectionTargetProfile && (
-              <NewAddonConnectionForm
-                pluginId={addonId}
-                connectionInstanceId={connectionTargetId}
-                connectionProfileId={
-                  connectionTargetProfile.connectionProfileId
+            {(() => {
+              let targetConnectionConfig: Record<string, unknown> | undefined
+              let targetPinnedIdentity:
+                WorkspaceConnectionIdentityViewModel | undefined
+
+              if (connectionTargetId) {
+                const target = connectionState.find(
+                  (c) => c.connectionId === connectionTargetId,
+                )
+                if (target) {
+                  targetConnectionConfig = target.config
+                  targetPinnedIdentity = target.identity
                 }
-                isSubmitting={connectMutation.isPending}
-                fieldErrors={connectionFieldErrors}
-                onSubmit={(data) => connectMutation.mutate(data)}
-              />
-            )}
+              }
+
+              if (!connectionTargetId || !connectionTargetProfile) {
+                return null
+              }
+
+              return (
+                <NewAddonConnectionForm
+                  pluginId={addonId}
+                  connectionInstanceId={connectionTargetId}
+                  connectionProfileId={
+                    connectionTargetProfile.connectionProfileId
+                  }
+                  initialConfiguration={targetConnectionConfig}
+                  pinnedIdentity={targetPinnedIdentity}
+                  isSubmitting={connectMutation.isPending}
+                  fieldErrors={connectionFieldErrors}
+                  onSubmit={(data) => connectMutation.mutate(data)}
+                />
+              )
+            })()}
           </div>
         </DialogContent>
       </Dialog>
