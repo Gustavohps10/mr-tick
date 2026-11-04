@@ -1,4 +1,4 @@
-import { ReplicationOptions, RxCollection, RxError } from 'rxdb'
+import { RxCollection, RxError } from 'rxdb'
 import {
   replicateRxCollection,
   RxReplicationState,
@@ -30,7 +30,8 @@ export interface IReplicationModule {
 export class ReplicationModule<
   DocType extends SyncReplicationDoc = SyncReplicationDoc,
 > implements IReplicationModule {
-  private instance?: RxReplicationState<DocType, ReplicationCheckpoint>
+  private pullInstance?: RxReplicationState<DocType, ReplicationCheckpoint>
+  private pushInstance?: RxReplicationState<DocType, ReplicationCheckpoint>
   private subs: Subscription[] = []
   private resyncInterval?: NodeJS.Timeout
 
@@ -52,20 +53,21 @@ export class ReplicationModule<
     if (!this.strategy.getDocumentError) return null
     return this.strategy.getDocumentError()
   }
+
   async start() {
-    if (this.instance) return
+    if (this.pullInstance || this.pushInstance) return
 
     const resolvedBatchSize =
       this.options.batchSize !== undefined ? this.options.batchSize : 25
 
-    const replicationConfig: ReplicationOptions<
-      DocType,
-      ReplicationCheckpoint
-    > = {
+    const retryTimeout =
+      this.options.retryTime !== undefined ? this.options.retryTime : 30000
+
+    this.pullInstance = replicateRxCollection<DocType, ReplicationCheckpoint>({
       collection: this.collection,
-      replicationIdentifier: this.options.identifier,
+      replicationIdentifier: `${this.options.identifier}-pull`,
       live: true,
-      retryTime: this.options.retryTime ?? 30000,
+      retryTime: retryTimeout,
       waitForLeadership: false,
       autoStart: true,
       pull: {
@@ -99,126 +101,162 @@ export class ReplicationModule<
           }
         },
       },
-    }
+    })
 
     if (this.options.hasPush) {
-      replicationConfig.push = {
-        batchSize: 20,
-        handler: async (rows: RxReplicationWriteToMasterRow<DocType>[]) => {
-          this.options.onStatusChange({
-            isPushing: true,
-            error: await this.documentError(),
-          })
-          try {
-            const result = await this.strategy.push(rows)
+      this.pushInstance = replicateRxCollection<DocType, ReplicationCheckpoint>(
+        {
+          collection: this.collection,
+          replicationIdentifier: `${this.options.identifier}-push`,
+          live: true,
+          retryTime: retryTimeout,
+          waitForLeadership: false,
+          autoStart: true,
+          push: {
+            batchSize: 20,
+            handler: async (rows: RxReplicationWriteToMasterRow<DocType>[]) => {
+              this.options.onStatusChange({
+                isPushing: true,
+                error: await this.documentError(),
+              })
+              try {
+                const result = await this.strategy.push(rows)
 
-            const documentError = await this.documentError()
-            const hasErrors = documentError !== null || result.length > 0
+                const documentError = await this.documentError()
+                const hasErrors = documentError !== null || result.length > 0
 
-            this.options.onStatusChange({
-              isPushing: false,
-              lastPushedAt: new Date(),
-              lastReplication: new Date(),
-              lastPushResult: hasErrors ? 'error' : 'success',
-              error: documentError
-                ? documentError
-                : hasErrors
-                  ? new Error('Alguns registros não puderam ser enviados')
-                  : null,
-            })
-            return result
-          } catch (err) {
-            this.options.onStatusChange({
-              isPushing: false,
-              lastPushResult: 'error',
-              error: err instanceof Error ? err : new Error(String(err)),
-            })
-            throw err
-          }
+                this.options.onStatusChange({
+                  isPushing: false,
+                  lastPushedAt: new Date(),
+                  lastReplication: new Date(),
+                  lastPushResult: hasErrors ? 'error' : 'success',
+                  error: documentError
+                    ? documentError
+                    : hasErrors
+                      ? new Error('Alguns registros não puderam ser enviados')
+                      : null,
+                })
+                return result
+              } catch (err) {
+                this.options.onStatusChange({
+                  isPushing: false,
+                  lastPushResult: 'error',
+                  error: err instanceof Error ? err : new Error(String(err)),
+                })
+                throw err
+              }
+            },
+          },
         },
-      }
+      )
     }
 
-    this.instance = replicateRxCollection(replicationConfig)
+    const instances = [this.pullInstance, this.pushInstance].filter(
+      (inst): inst is RxReplicationState<DocType, ReplicationCheckpoint> =>
+        inst !== undefined,
+    )
 
-    this.subs.push(
-      this.instance.active$.subscribe((isActive) => {
-        if (!isActive) {
+    for (const inst of instances) {
+      this.subs.push(
+        inst.active$.subscribe((isActive) => {
+          if (!isActive) {
+            this.options.onStatusChange({
+              isActive: false,
+              isPulling: false,
+              isPushing: false,
+            })
+            return
+          }
+          this.options.onStatusChange({ isActive: true })
+        }),
+        inst.error$.subscribe((error) =>
           this.options.onStatusChange({
-            isActive,
+            error,
             isPulling: false,
             isPushing: false,
-          })
-        } else {
-          this.options.onStatusChange({ isActive })
-        }
-      }),
-      this.instance.error$.subscribe((error) =>
-        this.options.onStatusChange({
-          error,
-          isPulling: false,
-          isPushing: false,
-        }),
-      ),
-    )
+          }),
+        ),
+      )
+    }
 
     if (this.options.resyncSeconds && this.options.resyncSeconds > 0) {
       this.resyncInterval = setInterval(
-        () => this.instance?.reSync(),
+        () => this.pullInstance?.reSync(),
         this.options.resyncSeconds * 1000,
       )
     }
   }
 
   async forceSync(direction: 'pull' | 'push' | 'both' = 'both'): Promise<void> {
-    const activeInstance = this.instance
-    if (!activeInstance) return
-
     const shouldPull = direction === 'pull' || direction === 'both'
     const shouldPush =
       (direction === 'push' || direction === 'both') &&
-      (this.options.hasPush ?? false)
+      (this.options.hasPush ? true : false)
 
     if (!shouldPull && !shouldPush) {
       return
     }
 
-    if (shouldPull) {
+    const promises: Promise<void>[] = []
+
+    if (shouldPull && this.pullInstance) {
       this.options.onStatusChange({
         isPulling: true,
         error: await this.documentError(),
       })
-    }
-    if (shouldPush) {
-      this.options.onStatusChange({
-        isPushing: true,
-        error: await this.documentError(),
-      })
-    }
-
-    try {
-      activeInstance.reSync()
-      const inSyncPromise = activeInstance.awaitInSync()
-      const errorPromise = firstValueFrom(activeInstance.error$).then(
+      this.pullInstance.reSync()
+      const inSyncPromise = this.pullInstance.awaitInSync()
+      const errorPromise = firstValueFrom(this.pullInstance.error$).then(
         (error) => {
           throw error
         },
       )
-      await Promise.race([inSyncPromise, errorPromise])
+      promises.push(
+        Promise.race([inSyncPromise, errorPromise])
+          .then(() => undefined)
+          .finally(() => {
+            this.options.onStatusChange({ isPulling: false })
+          }),
+      )
+    }
+
+    if (shouldPush && this.pushInstance) {
+      this.options.onStatusChange({
+        isPushing: true,
+        error: await this.documentError(),
+      })
+      this.pushInstance.reSync()
+      const inSyncPromise = this.pushInstance.awaitInSync()
+      const errorPromise = firstValueFrom(this.pushInstance.error$).then(
+        (error) => {
+          throw error
+        },
+      )
+      promises.push(
+        Promise.race([inSyncPromise, errorPromise])
+          .then(() => undefined)
+          .finally(() => {
+            this.options.onStatusChange({ isPushing: false })
+          }),
+      )
+    }
+
+    try {
+      await Promise.all(promises)
     } catch (err) {
       if (err instanceof Error || err instanceof RxError) {
         this.options.onStatusChange({ error: err })
       }
-    } finally {
-      this.options.onStatusChange({ isPulling: false, isPushing: false })
     }
   }
 
   async destroy() {
     if (this.resyncInterval) clearInterval(this.resyncInterval)
     this.subs.forEach((subscription) => subscription.unsubscribe())
-    if (this.instance) await this.instance.cancel()
-    this.instance = undefined
+    if (this.pullInstance) await this.pullInstance.cancel()
+    if (this.pushInstance) await this.pushInstance.cancel()
+    this.pullInstance = undefined
+    this.pushInstance = undefined
   }
 }
 

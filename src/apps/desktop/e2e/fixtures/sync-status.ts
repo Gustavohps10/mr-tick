@@ -35,4 +35,5 @@ export async function closeSyncDiagnostics(page: Page): Promise<void> {
   await expect(drawer).toBeVisible()
   await drawer.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(drawer).not.toBeVisible()
+  await expect(page.locator('[data-slot="sheet-overlay"]')).toHaveCount(0)
 }

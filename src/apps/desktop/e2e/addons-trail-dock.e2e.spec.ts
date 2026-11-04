@@ -65,13 +65,16 @@ test.describe('Addons Dock: real Electron layout, input and IPC', () => {
           body: await page.screenshot(),
           contentType: 'image/png',
         })
+        await close.focus()
         await page.keyboard.press('Escape')
         await expect(drawer).not.toBeVisible()
+        await expect(page.locator('[data-slot="sheet-overlay"]')).toHaveCount(0)
         await expect(diagnostic).toBeFocused()
         await diagnostic.press('Enter')
         await expect(drawer).toBeVisible()
         await drawer.getByRole('button', { name: 'Close', exact: true }).click()
         await expect(drawer).not.toBeVisible()
+        await expect(page.locator('[data-slot="sheet-overlay"]')).toHaveCount(0)
 
         const addon = page
           .getByTestId('addons-trail-dock')
@@ -125,16 +128,17 @@ test.describe('Addons Dock: real Electron layout, input and IPC', () => {
     await expect(checkbox).not.toBeChecked()
     await drawer.getByRole('button', { name: 'Close', exact: true }).click()
     await expect(drawer).not.toBeVisible()
+    await expect(page.locator('[data-slot="sheet-overlay"]')).toHaveCount(0)
     await page
       .getByTestId('workspace-timebar')
       .getByTestId('timerbar-task-popover-trigger')
       .click()
     await expect(
-      page.getByRole('textbox', { name: 'Buscar tarefa', exact: true }),
+      page.getByRole('combobox', { name: 'Buscar tarefa', exact: true }),
     ).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(
-      page.getByRole('textbox', { name: 'Buscar tarefa', exact: true }),
+      page.getByRole('combobox', { name: 'Buscar tarefa', exact: true }),
     ).not.toBeVisible()
   })
 

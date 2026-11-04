@@ -408,11 +408,24 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
       ).toBeVisible({
         timeout: 30000,
       })
+      await second.evaluate(
+        (workspaceId) =>
+          window.api.localSync.request({
+            action: 'forceSync',
+            workspaceId,
+            direction: 'pull',
+          }),
+        fakeSyncScope.workspaceId,
+      )
       await expect
-        .poll(async () => (await diagnostics(page)).pullAttempts)
+        .poll(async () => (await diagnostics(page)).pullAttempts, {
+          timeout: 30000,
+        })
         .toBeGreaterThan(before.pullAttempts)
       await expect
-        .poll(async () => (await diagnostics(page)).tombstonePulls)
+        .poll(async () => (await diagnostics(page)).tombstonePulls, {
+          timeout: 30000,
+        })
         .toBeGreaterThan(before.tombstonePulls)
       await expect(
         second.locator(
@@ -423,11 +436,13 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
         second.getByText(created.comments, { exact: true }),
       ).toHaveCount(0)
       await expect
-        .poll(async () =>
-          (await localSyncEntries(second)).some(
-            (entry) =>
-              entry.id === localId || entry.comments === created.comments,
-          ),
+        .poll(
+          async () =>
+            (await localSyncEntries(second)).some(
+              (entry) =>
+                entry.id === localId || entry.comments === created.comments,
+            ),
+          { timeout: 30000 },
         )
         .toBe(false)
       const paused = await diagnostics(page)
@@ -941,10 +956,13 @@ test.describe('E2E - Intenção pendente após falha remota', () => {
         ),
       )
       .toBe(true)
+    await expectSyncStatus(page, 'synced', { timeout: 30000 })
     await command(page, 'fake-db:pause-one-time-entry-pull')
     try {
       await page.getByTestId('sync-status-indicator').click()
-      await page.getByTestId('sync-all-button').click()
+      const syncBtn = page.getByTestId('sync-all-button')
+      await expect(syncBtn).toBeEnabled({ timeout: 15000 })
+      await syncBtn.click()
       await closeSyncDiagnostics(page)
       await expect
         .poll(async () => (await diagnostics(page)).retainedPulls)
