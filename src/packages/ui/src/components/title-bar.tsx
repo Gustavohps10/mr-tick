@@ -83,12 +83,15 @@ export function TitleBar({ title, children }: TitleBarProps) {
   return (
     <header
       style={dragStyle}
-      className="bg-background/95 text-foreground relative z-50 flex h-9 w-full shrink-0 items-center justify-between backdrop-blur-md select-none"
+      className="bg-background text-foreground border-border/40 pointer-events-auto relative z-[100] flex h-9 w-full shrink-0 items-center justify-between border-b brightness-[0.97] select-none dark:brightness-90"
     >
       {/* 1. SEÇÃO ESQUERDA (macOS Traffic Lights) */}
       <div className="flex items-center gap-2 px-3">
         {isMac && (
-          <div style={noDragStyle} className="flex items-center gap-2 pr-2">
+          <div
+            style={noDragStyle}
+            className="pointer-events-auto flex items-center gap-2 pr-2"
+          >
             <button
               type="button"
               onClick={handleClose}
@@ -129,7 +132,10 @@ export function TitleBar({ title, children }: TitleBarProps) {
 
       {/* 3. SEÇÃO DIREITA (Ajuda & Controles do Sistema) */}
       <div className={`flex h-full items-center ${isMac ? 'pr-3' : ''}`}>
-        <div style={noDragStyle} className="flex h-full items-center gap-1">
+        <div
+          style={noDragStyle}
+          className="pointer-events-auto flex h-full items-center gap-1"
+        >
           {/* Botão de Notificações */}
           <NotificationsPopover />
 
@@ -142,7 +148,7 @@ export function TitleBar({ title, children }: TitleBarProps) {
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="text-muted-foreground/70 hover:text-foreground hover:bg-muted/80 flex h-6 w-6 cursor-pointer items-center justify-center rounded-sm transition-colors"
+                  className="text-muted-foreground/70 hover:text-foreground hover:bg-muted/80 pointer-events-auto flex h-6 w-6 cursor-pointer items-center justify-center rounded-sm transition-colors"
                   aria-label="Ajuda e Documentação"
                 >
                   <HelpCircle className="h-4 w-4" />
@@ -163,7 +169,7 @@ export function TitleBar({ title, children }: TitleBarProps) {
               <button
                 type="button"
                 onClick={handleMinimize}
-                className="hover:bg-muted/80 text-muted-foreground hover:text-foreground flex h-full w-10 items-center justify-center transition-colors"
+                className="hover:bg-muted/80 text-muted-foreground hover:text-foreground pointer-events-auto flex h-full w-10 cursor-pointer items-center justify-center transition-colors"
                 title="Minimizar"
                 aria-label="Minimizar"
               >
@@ -174,7 +180,7 @@ export function TitleBar({ title, children }: TitleBarProps) {
               <button
                 type="button"
                 onClick={handleMaximizeToggle}
-                className="hover:bg-muted/80 text-muted-foreground hover:text-foreground flex h-full w-10 items-center justify-center transition-colors"
+                className="hover:bg-muted/80 text-muted-foreground hover:text-foreground pointer-events-auto flex h-full w-10 cursor-pointer items-center justify-center transition-colors"
                 title={isMaximized ? 'Restaurar' : 'Maximizar'}
                 aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
               >
@@ -198,7 +204,7 @@ export function TitleBar({ title, children }: TitleBarProps) {
               <button
                 type="button"
                 onClick={handleClose}
-                className="text-muted-foreground flex h-full w-10 items-center justify-center transition-colors hover:bg-red-600 hover:text-white active:bg-red-700"
+                className="text-muted-foreground pointer-events-auto flex h-full w-10 cursor-pointer items-center justify-center transition-colors hover:bg-red-600 hover:text-white active:bg-red-700"
                 title="Fechar"
                 aria-label="Fechar"
               >
