@@ -1,5 +1,22 @@
 # @mr-tick/sdk
 
+## 0.14.0
+
+### Minor Changes
+
+- db0d670: Adiciona contratos agnósticos do SDK para observadores configuráveis, formulários dinâmicos, seleção de tarefas, consulta do membro atual e armazenamento isolado de addons.
+
+  Permite revisar sugestões de apontamento com identificação da origem e confirmação de sobreposição de horários. Inclui documentação e fixtures neutras de integração.
+
+  Registra falhas de abertura dos bancos de workspace no diagnóstico e reutiliza o alerta da barra superior, preservando o canvas transparente dos widgets e os dados locais existentes.
+
+- c2606a8: Adiciona suporte canônico a subgrupos (AddonSettingsOptionGroup) e apresentação enriquecida (AddonSettingsOptionPresentation com group e imageUrl) nas opções declarativas do SDK e seletores de configurações.
+- 413089d: Adiciona busca universal de tarefas com pesquisa local imediata, consulta remota compartilhada e limitada, persistência pelo owner, navegação por teclado e confirmação de IDs ainda sem detalhes no cache. Expõe busca explícita e leitura de metadados locais no SDK, e integra o comportamento às entradas de tempo, timerbar, widget e seletores de addons.
+
+  Adiciona catálogo de metadados locais por workspace, com edição de nomes, ícones e cores, proteção de revisões concorrentes e rejeição de remoção de itens em uso. Amplia o datasource fake e os testes para validar digitação, loading, limites de rede e IDs manuais.
+
+  Mantém o popover compacto: referências de apontamentos sem detalhes não compõem a lista de tarefas. A confirmação do ID digitado aparece como uma única ação com ícone da origem, preservando sua visibilidade durante o loading.
+
 ## 0.13.0
 
 ### Minor Changes

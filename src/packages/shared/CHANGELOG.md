@@ -1,5 +1,15 @@
 # @mr-tick/shared
 
+## 1.6.0
+
+### Minor Changes
+
+- 2561ab1: Implementa a dock lateral direita de addons (Addons Trail Dock) com barra de ícones compacta e elegante, migra o indicador e ações de sincronização do header para o botão e gaveta do Local Database, adiciona filtro e escopo universal de conexões ativas por workspace, gaveta de diagnósticos de falhas de carregamento e atalho unificado para configurações de addons.
+
+### Patch Changes
+
+- 9746084: Exibir metadados agnósticos e última autenticação no ConnectionCard, e pré-preenchimento com banner de identidade vinculada no modal de conexão.
+
 ## 1.5.0
 
 ### Minor Changes

@@ -1,5 +1,20 @@
 # @mr-tick/domain
 
+## 2.0.1
+
+### Patch Changes
+
+- db0d670: Adiciona contratos agnósticos do SDK para observadores configuráveis, formulários dinâmicos, seleção de tarefas, consulta do membro atual e armazenamento isolado de addons.
+
+  Permite revisar sugestões de apontamento com identificação da origem e confirmação de sobreposição de horários. Inclui documentação e fixtures neutras de integração.
+
+  Registra falhas de abertura dos bancos de workspace no diagnóstico e reutiliza o alerta da barra superior, preservando o canvas transparente dos widgets e os dados locais existentes.
+
+- 358dd86: Ajusta tolerância de relógio (clock skew leeway) na validação de tokens offline e sincroniza o cache do React Query em mutações de licença.
+- Updated dependencies [2561ab1]
+- Updated dependencies [9746084]
+  - @mr-tick/shared@1.6.0
+
 ## 2.0.0
 
 ### Major Changes

@@ -1,5 +1,44 @@
 # @mr-tick/adapters
 
+## 1.5.0
+
+### Minor Changes
+
+- db0d670: Adiciona contratos agnósticos do SDK para observadores configuráveis, formulários dinâmicos, seleção de tarefas, consulta do membro atual e armazenamento isolado de addons.
+
+  Permite revisar sugestões de apontamento com identificação da origem e confirmação de sobreposição de horários. Inclui documentação e fixtures neutras de integração.
+
+  Registra falhas de abertura dos bancos de workspace no diagnóstico e reutiliza o alerta da barra superior, preservando o canvas transparente dos widgets e os dados locais existentes.
+
+- 199e8f9: Implement observational runtime diagnostics and settings system section:
+
+  - Added canonical diagnostic application contracts (`IDiagnosticsAPI`, `DiagnosticSnapshot`, `DiagnosticCheckResult`, `DiagnosticStorageItem`, `SanitizedDiagnosticReport`, `DIAGNOSTICS_SNAPSHOT_UPDATED_EVENT`) with open storage technology, typed availability, and discriminated pass operations
+  - Added typed startup failure reporting from local runtime renderer (`local-runtime:failed`) before deadline and roundtrip diagnostic probe execution
+  - Extended canonical lifecycle of `LocalRuntimeDispatcher` with explicit failure causality, deadline distinction, delayed ready recovery, and diagnostic event notifications
+  - Added `SqliteMetadataDiagnosticAdapter` with lightweight O(1) read probe and exact physical size measurement distinguishing ENOENT from I/O errors
+  - Added bounded `DiagnosticEventsBuffer` and rotating `BootJournal` with file size caps and credential sanitization
+  - Added `DiagnosticsService` with atomic snapshot revisions, real-clock probe durations, event broadcast to main/widget windows, and deep report sanitization
+  - Integrated diagnostics into `IHostBridge` across Electron preload, IPC client, and web landing demo with explicit 501 unsupported responses
+  - Added "Dados e Diagnóstico" tab under a dedicated "Sistema" group in global settings modal, with real-time lifecycle status, health checks, physical/sandbox storage metrics, workspace isolation status, and searchable events buffer
+  - Adjusted test timeout tolerance for disk-loading dynamic ESM imports on Windows in `AddonLoader.VersionLock.spec.ts`
+
+### Patch Changes
+
+- Updated dependencies [2561ab1]
+- Updated dependencies [db0d670]
+- Updated dependencies [c2606a8]
+- Updated dependencies [9746084]
+- Updated dependencies [c5a672c]
+- Updated dependencies [199e8f9]
+- Updated dependencies [85fbcd6]
+- Updated dependencies [358dd86]
+- Updated dependencies [ef28f1f]
+- Updated dependencies [413089d]
+  - @mr-tick/shared@1.6.0
+  - @mr-tick/application@2.3.0
+  - @mr-tick/sdk@0.14.0
+  - @mr-tick/domain@2.0.1
+
 ## 1.4.3
 
 ### Patch Changes

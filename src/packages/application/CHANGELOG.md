@@ -1,5 +1,51 @@
 # @mr-tick/application
 
+## 2.3.0
+
+### Minor Changes
+
+- 2561ab1: Implementa a dock lateral direita de addons (Addons Trail Dock) com barra de ícones compacta e elegante, migra o indicador e ações de sincronização do header para o botão e gaveta do Local Database, adiciona filtro e escopo universal de conexões ativas por workspace, gaveta de diagnósticos de falhas de carregamento e atalho unificado para configurações de addons.
+- db0d670: Adiciona contratos agnósticos do SDK para observadores configuráveis, formulários dinâmicos, seleção de tarefas, consulta do membro atual e armazenamento isolado de addons.
+
+  Permite revisar sugestões de apontamento com identificação da origem e confirmação de sobreposição de horários. Inclui documentação e fixtures neutras de integração.
+
+  Registra falhas de abertura dos bancos de workspace no diagnóstico e reutiliza o alerta da barra superior, preservando o canvas transparente dos widgets e os dados locais existentes.
+
+- c2606a8: Adiciona suporte canônico a subgrupos (AddonSettingsOptionGroup) e apresentação enriquecida (AddonSettingsOptionPresentation com group e imageUrl) nas opções declarativas do SDK e seletores de configurações.
+- 199e8f9: Implement observational runtime diagnostics and settings system section:
+
+  - Added canonical diagnostic application contracts (`IDiagnosticsAPI`, `DiagnosticSnapshot`, `DiagnosticCheckResult`, `DiagnosticStorageItem`, `SanitizedDiagnosticReport`, `DIAGNOSTICS_SNAPSHOT_UPDATED_EVENT`) with open storage technology, typed availability, and discriminated pass operations
+  - Added typed startup failure reporting from local runtime renderer (`local-runtime:failed`) before deadline and roundtrip diagnostic probe execution
+  - Extended canonical lifecycle of `LocalRuntimeDispatcher` with explicit failure causality, deadline distinction, delayed ready recovery, and diagnostic event notifications
+  - Added `SqliteMetadataDiagnosticAdapter` with lightweight O(1) read probe and exact physical size measurement distinguishing ENOENT from I/O errors
+  - Added bounded `DiagnosticEventsBuffer` and rotating `BootJournal` with file size caps and credential sanitization
+  - Added `DiagnosticsService` with atomic snapshot revisions, real-clock probe durations, event broadcast to main/widget windows, and deep report sanitization
+  - Integrated diagnostics into `IHostBridge` across Electron preload, IPC client, and web landing demo with explicit 501 unsupported responses
+  - Added "Dados e Diagnóstico" tab under a dedicated "Sistema" group in global settings modal, with real-time lifecycle status, health checks, physical/sandbox storage metrics, workspace isolation status, and searchable events buffer
+  - Adjusted test timeout tolerance for disk-loading dynamic ESM imports on Windows in `AddonLoader.VersionLock.spec.ts`
+
+- 413089d: Adiciona busca universal de tarefas com pesquisa local imediata, consulta remota compartilhada e limitada, persistência pelo owner, navegação por teclado e confirmação de IDs ainda sem detalhes no cache. Expõe busca explícita e leitura de metadados locais no SDK, e integra o comportamento às entradas de tempo, timerbar, widget e seletores de addons.
+
+  Adiciona catálogo de metadados locais por workspace, com edição de nomes, ícones e cores, proteção de revisões concorrentes e rejeição de remoção de itens em uso. Amplia o datasource fake e os testes para validar digitação, loading, limites de rede e IDs manuais.
+
+  Mantém o popover compacto: referências de apontamentos sem detalhes não compõem a lista de tarefas. A confirmação do ID digitado aparece como uma única ação com ícone da origem, preservando sua visibilidade durante o loading.
+
+### Patch Changes
+
+- 9746084: Exibir metadados agnósticos e última autenticação no ConnectionCard, e pré-preenchimento com banner de identidade vinculada no modal de conexão.
+- c5a672c: Implementa verificação de pendências locais e conflitos na remoção de instância de conexão com diálogo de confirmação adaptativo ("Remover e Descartar Dados" vs "Remover Instância") e purga determinística de dados locais (tarefas, apontamentos, metadados e colunas kanban) no RxDB e no runtime local.
+- 85fbcd6: Elimina GetCurrentUserService e SessionHandler legados; unifica resolução de membros via identidade persistida da conexão e refina apresentação de erros 401 e 403 no header.
+- ef28f1f: Oferece um seletor pesquisável para campos de fuso horário de qualquer addon, com filtragem das opções estáticas e contenção da rolagem. Ao salvar configurações, persiste os valores escalares padrão confirmados pelo usuário, preservando escolhas existentes e excluindo credenciais.
+
+  Permite consultar tarefas e metadados da conexão de destino de outro addon no mesmo workspace, mantendo o acesso a credenciais e ao lifecycle restrito ao proprietário da conexão.
+
+- Updated dependencies [2561ab1]
+- Updated dependencies [db0d670]
+- Updated dependencies [9746084]
+- Updated dependencies [358dd86]
+  - @mr-tick/shared@1.6.0
+  - @mr-tick/domain@2.0.1
+
 ## 2.2.0
 
 ### Minor Changes
