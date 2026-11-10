@@ -1,10 +1,13 @@
 import type {
   AnalyticsDatasetQueryInput,
+  AnalyticsSyncStrategy,
   IHostBridge,
 } from '@mr-tick/application'
+import type { AnalyticsLoadProgressEvent } from '@mr-tick/shared/transport'
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createDefaultBlankSpace } from '../lib/analytics-types'
 import { useAnalyticsWorkspace } from './use-analytics-workspace'
 
 const calls = vi.hoisted(() => ({
@@ -15,6 +18,9 @@ const calls = vi.hoisted(() => ({
   loadAnalyticsDataset: vi.fn(),
   queryAnalytics: vi.fn(),
   getAnalyticsFilterOptions: vi.fn(),
+  hydrateAnalytics: vi.fn(),
+  saveAnalyticsWorkspaceState: vi.fn(),
+  eventsOn: vi.fn(),
   getMetadata: vi.fn(),
 }))
 const bridge = {
@@ -26,6 +32,12 @@ const bridge = {
     loadAnalyticsDataset: calls.loadAnalyticsDataset,
     queryAnalytics: calls.queryAnalytics,
     getAnalyticsFilterOptions: calls.getAnalyticsFilterOptions,
+    hydrateAnalytics: calls.hydrateAnalytics,
+    saveAnalyticsWorkspaceState: calls.saveAnalyticsWorkspaceState,
+  },
+  events: {
+    on: calls.eventsOn,
+    emit: vi.fn(),
   },
   core: { getMetadata: calls.getMetadata },
 } as unknown as IHostBridge
@@ -53,22 +65,38 @@ const dataset = {
   ],
 }
 
-function reply(generationId: string) {
+function reply(
+  generationId: string,
+  connectionInstanceId = 'reader',
+  selectionKey = 'selection',
+  strategy: AnalyticsSyncStrategy = 'full_replace',
+  syncedAt = '2026-11-09T00:00:00Z',
+) {
   return {
     isSuccess: true,
     statusCode: 200,
     data: {
+      strategy,
       publication: {
         generationId,
-        selectionKey: 'selection',
-        connectionInstanceId: 'reader',
+        selectionKey,
+        connectionInstanceId,
         manifest: dataset,
         query: { datasetId: 'telemetry' },
         rowCount: 201,
-        coverage: 'unverified',
-        loadedAt: '2026-11-09T00:00:00Z',
-        fetchedAt: '2026-11-09T00:00:00Z',
+        coverage: 'unverified' as const,
+        loadedAt: syncedAt,
+        fetchedAt: syncedAt,
         remoteAggregate: false,
+      },
+      syncState: {
+        connectionInstanceId,
+        selectionKey,
+        datasetId: 'telemetry',
+        strategy,
+        lastFastSyncAt: syncedAt,
+        lastFullReconcileAt: syncedAt,
+        coverage: 'unverified' as const,
       },
     },
   }
@@ -76,11 +104,12 @@ function reply(generationId: string) {
 
 async function createSource(expectedConnections = 1) {
   const rendered = renderHook(() => useAnalyticsWorkspace())
-  await waitFor(() =>
+  await waitFor(() => {
+    expect(rendered.result.current.isHydrated).toBe(true)
     expect(rendered.result.current.connectionDisplayOptions).toHaveLength(
       expectedConnections,
-    ),
-  )
+    )
+  })
   act(() => rendered.result.current.setNewNodeSelectedConnectionId('reader'))
   await waitFor(() =>
     expect(rendered.result.current.nodeSourceDatasets).toHaveLength(1),
@@ -99,6 +128,21 @@ async function createSource(expectedConnections = 1) {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  calls.eventsOn.mockImplementation(() => vi.fn())
+  calls.hydrateAnalytics.mockResolvedValue({
+    isSuccess: true,
+    statusCode: 200,
+    data: { publications: [] },
+  })
+  calls.saveAnalyticsWorkspaceState.mockResolvedValue({
+    isSuccess: true,
+    statusCode: 200,
+    data: {
+      workspaceId: 'workspace',
+      pollingIntervalMinutes: 5,
+      updatedAt: '2026-11-10T00:00:00.000Z',
+    },
+  })
   calls.loadAnalyticsDataset.mockResolvedValue(reply('generation'))
   calls.queryAnalytics.mockResolvedValue({
     isSuccess: true,
@@ -203,6 +247,7 @@ describe('Native warehouse UI', () => {
           startDate: expect.anything(),
           endDate: expect.anything(),
         }),
+        policy: { mode: 'auto' },
       },
     })
     expect(calls.queryAnalytics).toHaveBeenCalledWith({
@@ -284,6 +329,7 @@ describe('Native warehouse UI', () => {
       isSuccess: false,
       statusCode: 401,
       error: 'ANALYTICS_AUTHORIZATION_CHANGED',
+      details: { connectionInstanceIds: ['reader'] },
     })
     act(() => result.current.setNodeModalSearch('restricted'))
     await waitFor(() =>
@@ -327,6 +373,7 @@ describe('Native warehouse UI', () => {
     calls.loadAnalyticsDataset.mockResolvedValue({
       ...loaded,
       data: {
+        ...loaded.data,
         publication: {
           ...loaded.data.publication,
           manifest: { ...dataset, columns: [...dataset.columns, discovered] },
@@ -375,12 +422,22 @@ describe('Native warehouse UI', () => {
     })
     calls.loadAnalyticsDataset.mockImplementation(
       async ({ body }: { body: { connectionInstanceId: string } }) => {
-        const loaded = reply(`generation-${body.connectionInstanceId}`)
+        const loaded = reply(
+          `generation-${body.connectionInstanceId}`,
+          body.connectionInstanceId,
+          `selection-${body.connectionInstanceId}`,
+        )
         return {
           ...loaded,
           data: {
+            ...loaded.data,
             publication: {
               ...loaded.data.publication,
+              connectionInstanceId: body.connectionInstanceId,
+              selectionKey: `selection-${body.connectionInstanceId}`,
+            },
+            syncState: {
+              ...loaded.data.syncState,
               connectionInstanceId: body.connectionInstanceId,
               selectionKey: `selection-${body.connectionInstanceId}`,
             },
@@ -420,7 +477,12 @@ describe('Native warehouse UI', () => {
     calls.queryAnalytics.mockImplementation(
       async ({ body }: { body: { targetNodeId: string } }) => {
         if (body.targetNodeId === node.id)
-          return { isSuccess: false, statusCode: 403, error: 'FORBIDDEN_A' }
+          return {
+            isSuccess: false,
+            statusCode: 403,
+            error: 'FORBIDDEN_A',
+            details: { connectionInstanceIds: ['reader'] },
+          }
         return {
           isSuccess: true,
           statusCode: 200,
@@ -492,6 +554,7 @@ describe('Native warehouse UI', () => {
     calls.loadAnalyticsDataset.mockResolvedValue({
       ...loaded,
       data: {
+        ...loaded.data,
         publication: {
           ...loaded.data.publication,
           manifest: { ...remote, columns: resultColumns },
@@ -705,5 +768,584 @@ describe('Native warehouse UI', () => {
       (item) => item.id === widget.id,
     )
     expect(unchanged?.chartVisualType).toBe('bar_vertical')
+  })
+})
+
+describe('Phase 3 offline hydration, polling, deduplication and progress UI hook', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('hydrates DuckDB publications and workspace settings offline without firing remote load when manual polling is configured', async () => {
+    const persistedSpace = {
+      ...createDefaultBlankSpace('ops-space', 'Operações'),
+      workflowNodes: [
+        {
+          id: 'src-hydrated',
+          positionX: 80,
+          positionY: 80,
+          label: 'Hydrated Source',
+          subtitle: 'Analytics Reader • Telemetry',
+          badge: 'E • EXTRACT',
+          kind: 'source' as const,
+          connectionId: 'reader',
+          dataSourceName: 'Analytics Reader',
+          datasetId: 'telemetry',
+          ruleSummary: '',
+          sqlPreview: '',
+          upstreamNodeIds: [],
+        },
+      ],
+    }
+
+    const hydratedReply = reply(
+      'gen-hydrated',
+      'reader',
+      'hash-hydrated',
+      'window_rescan',
+      new Date().toISOString(),
+    )
+
+    calls.hydrateAnalytics.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        settings: {
+          workspaceId: 'workspace',
+          pollingIntervalMinutes: 0,
+          startDate: '2026-09-01',
+          endDate: '2026-09-30',
+          spacesJson: JSON.stringify([persistedSpace]),
+          updatedAt: '2026-11-10T00:00:00.000Z',
+        },
+        publications: [
+          {
+            publication: hydratedReply.data.publication,
+            syncState: hydratedReply.data.syncState,
+          },
+        ],
+      },
+    })
+
+    const { result } = renderHook(() => useAnalyticsWorkspace())
+
+    await waitFor(() => {
+      expect(result.current.isHydrated).toBe(true)
+      expect(result.current.pollingIntervalMinutes).toBe(0)
+    })
+
+    expect(result.current.startDate).toBe('2026-09-01')
+    expect(result.current.endDate).toBe('2026-09-30')
+    expect(result.current.activeSpace.title).toBe('Operações')
+    expect(result.current.syncStatusSummary.hasRollingWindow).toBe(true)
+    expect(result.current.hydrateError).toBeUndefined()
+
+    const [hydratedNode] = result.current.activeSpace.workflowNodes
+    expect(hydratedNode).toBeDefined()
+    if (hydratedNode === undefined) return
+
+    await waitFor(() =>
+      expect(
+        result.current.resolveRowsForWorkflowNode(hydratedNode).rows,
+      ).toEqual([{ value: 7 }]),
+    )
+
+    expect(calls.loadAnalyticsDataset).not.toHaveBeenCalled()
+    expect(calls.saveAnalyticsWorkspaceState).not.toHaveBeenCalled()
+
+    act(() => result.current.setPollingIntervalMinutes(15))
+
+    await waitFor(() =>
+      expect(calls.saveAnalyticsWorkspaceState).toHaveBeenCalledWith({
+        body: {
+          workspaceId: 'workspace',
+          pollingIntervalMinutes: 15,
+          startDate: '2026-09-01',
+          endDate: '2026-09-30',
+          spacesJson: JSON.stringify([persistedSpace]),
+        },
+      }),
+    )
+  })
+
+  it('surfaces failed settings writes and retries the unchanged snapshot explicitly', async () => {
+    const { result } = renderHook(() => useAnalyticsWorkspace())
+    await waitFor(() => expect(result.current.isHydrated).toBe(true))
+    calls.saveAnalyticsWorkspaceState.mockResolvedValueOnce({
+      isSuccess: false,
+      statusCode: 500,
+      error: 'STORAGE_WRITE_FAILED',
+      details: { storage: ['unavailable'] },
+    })
+    act(() => result.current.setPollingIntervalMinutes(15))
+    await waitFor(() =>
+      expect(result.current.settingsError).toBe('STORAGE_WRITE_FAILED'),
+    )
+    expect(result.current.settingsErrorDetails).toEqual({
+      storage: ['unavailable'],
+    })
+    const attempts = calls.saveAnalyticsWorkspaceState.mock.calls.length
+    act(() => result.current.retrySaveWorkspaceState())
+    await waitFor(() =>
+      expect(calls.saveAnalyticsWorkspaceState).toHaveBeenCalledTimes(
+        attempts + 1,
+      ),
+    )
+    await waitFor(() => expect(result.current.settingsError).toBeUndefined())
+    expect(
+      calls.saveAnalyticsWorkspaceState.mock.lastCall?.[0].body
+        .pollingIntervalMinutes,
+    ).toBe(15)
+  })
+
+  it('persists the latest settings when edits return to the initial snapshot during a pending save', async () => {
+    const { result } = renderHook(() => useAnalyticsWorkspace())
+    await waitFor(() => expect(result.current.isHydrated).toBe(true))
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    calls.saveAnalyticsWorkspaceState.mockImplementationOnce(async () => {
+      await gate
+      return { isSuccess: true, statusCode: 200 }
+    })
+    const initial = result.current.pollingIntervalMinutes
+    act(() => result.current.setPollingIntervalMinutes(15))
+    await waitFor(() =>
+      expect(calls.saveAnalyticsWorkspaceState).toHaveBeenCalledTimes(1),
+    )
+    act(() => result.current.setPollingIntervalMinutes(initial))
+    expect(calls.saveAnalyticsWorkspaceState).toHaveBeenCalledTimes(1)
+    await act(async () => release())
+    await waitFor(() =>
+      expect(calls.saveAnalyticsWorkspaceState).toHaveBeenCalledTimes(2),
+    )
+    expect(
+      calls.saveAnalyticsWorkspaceState.mock.lastCall?.[0].body
+        .pollingIntervalMinutes,
+    ).toBe(initial)
+  })
+
+  it('finishes queued settings writes when leaving Analytics', async () => {
+    const { result, unmount } = renderHook(() => useAnalyticsWorkspace())
+    await waitFor(() => expect(result.current.isHydrated).toBe(true))
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    calls.saveAnalyticsWorkspaceState.mockImplementationOnce(async () => {
+      await gate
+      return { isSuccess: true, statusCode: 200 }
+    })
+    act(() => result.current.setPollingIntervalMinutes(15))
+    await waitFor(() =>
+      expect(calls.saveAnalyticsWorkspaceState).toHaveBeenCalledTimes(1),
+    )
+    act(() => result.current.setPollingIntervalMinutes(30))
+    unmount()
+    await act(async () => release())
+    await waitFor(() =>
+      expect(calls.saveAnalyticsWorkspaceState).toHaveBeenCalledTimes(2),
+    )
+    expect(
+      calls.saveAnalyticsWorkspaceState.mock.lastCall?.[0].body
+        .pollingIntervalMinutes,
+    ).toBe(30)
+  })
+
+  it('rejects polling outside the persisted contract before changing settings', async () => {
+    const { result } = renderHook(() => useAnalyticsWorkspace())
+    await waitFor(() => expect(result.current.isHydrated).toBe(true))
+    const interval = result.current.pollingIntervalMinutes
+    act(() => result.current.setPollingIntervalMinutes(2000))
+    expect(result.current.pollingIntervalMinutes).toBe(interval)
+    expect(calls.saveAnalyticsWorkspaceState).not.toHaveBeenCalled()
+  })
+
+  it('polls on mount interval only while mounted and sends full reconcile policy on manual sync', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+
+    const nowIso = new Date().toISOString()
+    const hydratedReply = reply(
+      'gen-recent',
+      'reader',
+      'hash-recent',
+      'incremental_changes',
+      nowIso,
+    )
+    const space = {
+      ...createDefaultBlankSpace(),
+      workflowNodes: [
+        {
+          id: 'src-poll',
+          positionX: 80,
+          positionY: 80,
+          label: 'Polled Source',
+          subtitle: 'Analytics Reader • Telemetry',
+          badge: 'E • EXTRACT',
+          kind: 'source' as const,
+          connectionId: 'reader',
+          dataSourceName: 'Analytics Reader',
+          datasetId: 'telemetry',
+          ruleSummary: '',
+          sqlPreview: '',
+          upstreamNodeIds: [],
+        },
+      ],
+    }
+
+    calls.hydrateAnalytics.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        settings: {
+          workspaceId: 'workspace',
+          pollingIntervalMinutes: 5,
+          startDate: '2026-08-01',
+          endDate: '2026-10-31',
+          spacesJson: JSON.stringify([space]),
+          updatedAt: nowIso,
+        },
+        publications: [
+          {
+            publication: hydratedReply.data.publication,
+            syncState: hydratedReply.data.syncState,
+          },
+        ],
+      },
+    })
+
+    const { result, unmount } = renderHook(() => useAnalyticsWorkspace())
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(result.current.isHydrated).toBe(true)
+    expect(result.current.syncStatusSummary.hasIncrementalChanges).toBe(true)
+    expect(calls.loadAnalyticsDataset).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
+    })
+
+    expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(1)
+    expect(calls.loadAnalyticsDataset).toHaveBeenLastCalledWith({
+      body: expect.objectContaining({
+        connectionInstanceId: 'reader',
+        policy: { mode: 'auto' },
+      }),
+    })
+
+    await act(async () => {
+      await result.current.handleSyncAllSources()
+    })
+
+    expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(2)
+    expect(calls.loadAnalyticsDataset).toHaveBeenLastCalledWith({
+      body: expect.objectContaining({
+        connectionInstanceId: 'reader',
+        policy: { mode: 'full' },
+      }),
+    })
+
+    unmount()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000)
+    })
+
+    expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(2)
+  })
+
+  it('deduplicates shared source selections while separating distinct customDateRange and normalized filters', async () => {
+    const datedDataset = {
+      ...dataset,
+      selection: { dateRange: true, project: true },
+      supportedFilters: [
+        {
+          id: 'closed_range',
+          label: 'Closed Date Range',
+          type: 'date_range' as const,
+        },
+      ],
+    }
+    calls.listAnalyticsDatasets.mockResolvedValue({
+      isSuccess: true,
+      data: [datedDataset],
+    })
+    calls.loadAnalyticsDataset.mockImplementation(
+      async ({ body }: { body: { query: AnalyticsDatasetQueryInput } }) => {
+        const keySuffix = `${body.query.startDate ?? 'none'}_${body.query.endDate ?? 'none'}`
+        return {
+          isSuccess: true,
+          statusCode: 200,
+          data: {
+            strategy: 'window_rescan' as const,
+            publication: {
+              generationId: `gen-${keySuffix}`,
+              selectionKey: `key-${keySuffix}`,
+              connectionInstanceId: 'reader',
+              manifest: datedDataset,
+              query: body.query,
+              rowCount: 10,
+              coverage: 'unverified' as const,
+              loadedAt: '2026-11-10T00:00:00.000Z',
+              fetchedAt: '2026-11-10T00:00:00.000Z',
+              remoteAggregate: false,
+            },
+            syncState: {
+              connectionInstanceId: 'reader',
+              selectionKey: `key-${keySuffix}`,
+              datasetId: 'telemetry',
+              strategy: 'window_rescan' as const,
+              lastFastSyncAt: '2026-11-10T00:00:00.000Z',
+              lastFullReconcileAt: '2026-11-10T00:00:00.000Z',
+              coverage: 'unverified' as const,
+            },
+          },
+        }
+      },
+    )
+
+    const { result } = renderHook(() => useAnalyticsWorkspace())
+    await waitFor(() => {
+      expect(result.current.isHydrated).toBe(true)
+      expect(result.current.connectionDisplayOptions).toHaveLength(1)
+    })
+
+    act(() => result.current.setNewNodeSelectedConnectionId('reader'))
+    await waitFor(() =>
+      expect(result.current.nodeSourceDatasets).toHaveLength(1),
+    )
+
+    act(() => {
+      result.current.handleSelectDatasetId('telemetry')
+      result.current.setNewNodeLabel('Source Panel A')
+    })
+    act(() => result.current.handleAddWorkflowNode())
+
+    await waitFor(() =>
+      expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(1),
+    )
+
+    act(() => {
+      result.current.handleOpenAddNode()
+      result.current.handleSelectDatasetId('telemetry')
+      result.current.setNewNodeLabel('Source Panel B')
+    })
+    act(() => result.current.handleAddWorkflowNode())
+
+    expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(1)
+
+    const nodeB = result.current.activeSpace.workflowNodes.find(
+      (item) => item.label === 'Source Panel B',
+    )
+    expect(nodeB).toBeDefined()
+    if (nodeB !== undefined) {
+      await waitFor(() =>
+        expect(result.current.resolveRowsForWorkflowNode(nodeB).rows).toEqual([
+          { value: 7 },
+        ]),
+      )
+    }
+
+    act(() => {
+      result.current.handleOpenAddNode()
+      result.current.handleSelectDatasetId('telemetry')
+      result.current.setNewNodeLabel('Source Custom Dates')
+      result.current.setNewNodeCustomDateRange({
+        from: '2026-01-01',
+        to: '2026-01-31',
+      })
+      result.current.handleSetNodeFilterValue('closed_range', {
+        from: '2026-02-01',
+        to: '2026-02-28',
+      })
+    })
+    act(() => result.current.handleAddWorkflowNode())
+
+    await waitFor(() =>
+      expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(2),
+    )
+
+    expect(calls.loadAnalyticsDataset).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: expect.objectContaining({
+          query: expect.objectContaining({
+            datasetId: 'telemetry',
+            startDate: '2026-08-01',
+            endDate: '2026-10-31',
+          }),
+        }),
+      }),
+    )
+
+    expect(calls.loadAnalyticsDataset).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: expect.objectContaining({
+          query: expect.objectContaining({
+            datasetId: 'telemetry',
+            startDate: '2026-01-01',
+            endDate: '2026-01-31',
+            filters: {
+              closed_range: { from: '2026-02-01', to: '2026-02-28' },
+            },
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('tracks live analytics:load-progress events per source and clears progress after completion', async () => {
+    let emitProgress: ((event: AnalyticsLoadProgressEvent) => void) | undefined
+    calls.eventsOn.mockImplementation(
+      (
+        channel: string,
+        listener: (event: AnalyticsLoadProgressEvent) => void,
+      ) => {
+        if (channel === 'analytics:load-progress') emitProgress = listener
+        return vi.fn()
+      },
+    )
+
+    let resolveLoad: ((value: unknown) => void) | undefined
+    calls.loadAnalyticsDataset.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLoad = resolve
+        }),
+    )
+
+    const { result, node } = await createSource()
+    expect(node).toBeDefined()
+    if (node === undefined) return
+
+    await waitFor(() =>
+      expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(1),
+    )
+
+    const [firstCallArgs = []] = calls.loadAnalyticsDataset.mock.calls
+    const [sentPayload] = firstCallArgs as Array<
+      { body: { query: AnalyticsDatasetQueryInput } } | undefined
+    >
+    expect(sentPayload).toBeDefined()
+    if (sentPayload === undefined) return
+
+    const { analyticsSelectionKey } = await import('@mr-tick/application')
+    const selectionKey = await analyticsSelectionKey(sentPayload.body.query)
+
+    await waitFor(() =>
+      expect(
+        result.current.upstreamStatusByNodeId[node.id]?.isInitialLoading,
+      ).toBe(true),
+    )
+
+    act(() => {
+      emitProgress?.({
+        workspaceId: 'workspace',
+        connectionInstanceId: 'reader',
+        selectionKey,
+        datasetId: 'telemetry',
+        mode: 'full',
+        phase: 'extracting',
+        batchIndex: 1,
+        fetchedRows: 200,
+        totalRows: 500,
+      })
+    })
+
+    expect(result.current.upstreamStatusByNodeId[node.id]?.progress).toEqual(
+      expect.objectContaining({
+        phase: 'extracting',
+        batchIndex: 1,
+        fetchedRows: 200,
+        totalRows: 500,
+      }),
+    )
+    expect(result.current.syncStatusSummary.activeProgress).toHaveLength(1)
+
+    await act(async () => {
+      resolveLoad?.(reply('gen-prog', 'reader', selectionKey))
+    })
+
+    await waitFor(() =>
+      expect(
+        result.current.upstreamStatusByNodeId[node.id]?.hasPublication,
+      ).toBe(true),
+    )
+    expect(result.current.syncStatusSummary.activeProgress).toHaveLength(0)
+  })
+
+  it('exposes hasIncrementalChanges after initial snapshot when manifest declares changes and syncState has checkpoint', async () => {
+    const incrementalDataset = {
+      ...dataset,
+      id: 'issues_incremental',
+      name: 'Issues Incremental',
+      extraction: {
+        modes: ['snapshot', 'changes'] as const,
+        identity: { kind: 'row' as const, columns: ['value'] },
+        changes: { deletions: 'explicit' as const },
+      },
+    }
+    calls.listAnalyticsDatasets.mockResolvedValue({
+      isSuccess: true,
+      data: [incrementalDataset],
+    })
+    calls.loadAnalyticsDataset.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        strategy: 'full_replace' as const,
+        publication: {
+          generationId: 'gen-init',
+          selectionKey: 'sel-init',
+          connectionInstanceId: 'reader',
+          manifest: incrementalDataset,
+          query: { datasetId: 'issues_incremental' },
+          rowCount: 1,
+          coverage: 'complete' as const,
+          loadedAt: '2026-11-10T10:00:00Z',
+          fetchedAt: '2026-11-10T10:00:00Z',
+          remoteAggregate: false,
+        },
+        syncState: {
+          connectionInstanceId: 'reader',
+          selectionKey: 'sel-init',
+          datasetId: 'issues_incremental',
+          strategy: 'full_replace' as const,
+          checkpoint: '2026-11-10T09:59:00Z',
+          lastFastSyncAt: '2026-11-10T10:00:00Z',
+          lastFullReconcileAt: '2026-11-10T10:00:00Z',
+          coverage: 'complete' as const,
+        },
+      },
+    })
+
+    const rendered = renderHook(() => useAnalyticsWorkspace())
+    await waitFor(() => {
+      expect(rendered.result.current.isHydrated).toBe(true)
+      expect(rendered.result.current.connectionDisplayOptions).toHaveLength(1)
+    })
+
+    act(() => rendered.result.current.setNewNodeSelectedConnectionId('reader'))
+    await waitFor(() =>
+      expect(rendered.result.current.nodeSourceDatasets).toHaveLength(1),
+    )
+
+    act(() => {
+      rendered.result.current.handleSelectDatasetId('issues_incremental')
+      rendered.result.current.setNewNodeLabel('Issues Incremental Node')
+    })
+    act(() => rendered.result.current.handleAddWorkflowNode())
+
+    await waitFor(() =>
+      expect(
+        rendered.result.current.syncStatusSummary.hasIncrementalChanges,
+      ).toBe(true),
+    )
   })
 })

@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   AnalyticsSpaceConfig,
+  AnalyticsUpstreamSourceStatus,
   ReferenceLineMode,
   WidgetId,
 } from '../lib/analytics-types'
@@ -244,6 +245,7 @@ describe('Native widget query contract', () => {
       isSuccess: false,
       statusCode: 403,
       error: 'FORBIDDEN_A',
+      details: { connectionInstanceIds: ['connection'] },
     })
     renderWidget('bar_vertical', 'hours', undefined)
     await waitFor(() =>
@@ -449,4 +451,199 @@ describe('Native widget query contract', () => {
       )
     },
   )
+
+  it('shows initial batch loading progress without firing premature local queries', () => {
+    const onRetrySource = vi.fn()
+    const upstreamStatus: AnalyticsUpstreamSourceStatus = {
+      hasPublication: false,
+      isInitialLoading: true,
+      isRefreshing: false,
+      progress: {
+        workspaceId: 'workspace',
+        connectionInstanceId: 'connection',
+        selectionKey: 'selection',
+        datasetId: 'entries',
+        mode: 'full',
+        phase: 'extracting',
+        batchIndex: 2,
+        fetchedRows: 300,
+        totalRows: 1000,
+      },
+    }
+
+    render(
+      <GenericWidgetRenderer
+        widget={{
+          id: 'widget',
+          widgetType: 'bar_vertical',
+          chartVisualType: 'bar_vertical',
+          title: 'Initial load',
+          subtitle: '',
+          datasetBadge: '',
+          sourceNodeId: 'source',
+          span: 1,
+          visible: true,
+          categoryColumn: 'category',
+          metricColumn: 'hours',
+        }}
+        activeSpace={space}
+        warehousePlan={[]}
+        publicationVersion="[]"
+        upstreamStatus={upstreamStatus}
+        onRetrySource={onRetrySource}
+        onUnauthorized={calls.unauthorized}
+        resolveRowsForWorkflowNode={() => ({ columns: [], rows: [] })}
+        onGenericDrillDown={vi.fn()}
+        overloadTolerancePct={10}
+        onSetOverloadTolerancePct={vi.fn()}
+        idleTolerancePct={10}
+        onSetIdleTolerancePct={vi.fn()}
+        estimationTolerancePct={10}
+        onSetEstimationTolerancePct={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Carregando lote 3 • 300 de 1000 registros',
+    )
+    expect(calls.query).not.toHaveBeenCalled()
+  })
+
+  it('retains rendered chart during background refresh and shows non-destructive cache warning with retry on transient refresh error', async () => {
+    const onRetrySource = vi.fn()
+    const plan = [
+      {
+        id: 'source',
+        kind: 'source' as const,
+        connectionInstanceId: 'connection',
+        selectionKey: 'selection',
+      },
+    ]
+
+    const rendered = render(
+      <GenericWidgetRenderer
+        widget={{
+          id: 'widget',
+          widgetType: 'bar_vertical',
+          chartVisualType: 'bar_vertical',
+          title: 'Cached Chart',
+          subtitle: '',
+          datasetBadge: '',
+          sourceNodeId: 'source',
+          span: 1,
+          visible: true,
+          categoryColumn: 'category',
+          metricColumn: 'hours',
+        }}
+        activeSpace={space}
+        warehousePlan={plan}
+        publicationVersion="gen-1"
+        upstreamStatus={{
+          hasPublication: true,
+          isInitialLoading: false,
+          isRefreshing: false,
+        }}
+        onRetrySource={onRetrySource}
+        onUnauthorized={calls.unauthorized}
+        resolveRowsForWorkflowNode={() => ({ columns: [], rows: [] })}
+        onGenericDrillDown={vi.fn()}
+        overloadTolerancePct={10}
+        onSetOverloadTolerancePct={vi.fn()}
+        idleTolerancePct={10}
+        onSetIdleTolerancePct={vi.fn()}
+        estimationTolerancePct={10}
+        onSetEstimationTolerancePct={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => expect(calls.charts).toHaveBeenCalled())
+    const initialChartCalls = calls.charts.mock.calls.length
+
+    rendered.rerender(
+      <GenericWidgetRenderer
+        widget={{
+          id: 'widget',
+          widgetType: 'bar_vertical',
+          chartVisualType: 'bar_vertical',
+          title: 'Cached Chart',
+          subtitle: '',
+          datasetBadge: '',
+          sourceNodeId: 'source',
+          span: 1,
+          visible: true,
+          categoryColumn: 'category',
+          metricColumn: 'hours',
+        }}
+        activeSpace={space}
+        warehousePlan={plan}
+        publicationVersion="gen-1"
+        upstreamStatus={{
+          hasPublication: true,
+          isInitialLoading: false,
+          isRefreshing: true,
+        }}
+        onRetrySource={onRetrySource}
+        onUnauthorized={calls.unauthorized}
+        resolveRowsForWorkflowNode={() => ({ columns: [], rows: [] })}
+        onGenericDrillDown={vi.fn()}
+        overloadTolerancePct={10}
+        onSetOverloadTolerancePct={vi.fn()}
+        idleTolerancePct={10}
+        onSetIdleTolerancePct={vi.fn()}
+        estimationTolerancePct={10}
+        onSetEstimationTolerancePct={vi.fn()}
+      />,
+    )
+
+    expect(calls.charts.mock.calls.length).toBeGreaterThanOrEqual(
+      initialChartCalls,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Atualizando em segundo plano...',
+    )
+
+    rendered.rerender(
+      <GenericWidgetRenderer
+        widget={{
+          id: 'widget',
+          widgetType: 'bar_vertical',
+          chartVisualType: 'bar_vertical',
+          title: 'Cached Chart',
+          subtitle: '',
+          datasetBadge: '',
+          sourceNodeId: 'source',
+          span: 1,
+          visible: true,
+          categoryColumn: 'category',
+          metricColumn: 'hours',
+        }}
+        activeSpace={space}
+        warehousePlan={plan}
+        publicationVersion="gen-1"
+        upstreamStatus={{
+          hasPublication: true,
+          isInitialLoading: false,
+          isRefreshing: false,
+          error: 'REDMINE_TIMEOUT',
+        }}
+        onRetrySource={onRetrySource}
+        onUnauthorized={calls.unauthorized}
+        resolveRowsForWorkflowNode={() => ({ columns: [], rows: [] })}
+        onGenericDrillDown={vi.fn()}
+        overloadTolerancePct={10}
+        onSetOverloadTolerancePct={vi.fn()}
+        idleTolerancePct={10}
+        onSetIdleTolerancePct={vi.fn()}
+        estimationTolerancePct={10}
+        onSetEstimationTolerancePct={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('REDMINE_TIMEOUT')
+    expect(
+      screen.getByText('Exibindo última versão disponível em cache.'),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }))
+    expect(onRetrySource).toHaveBeenCalledTimes(1)
+  })
 })

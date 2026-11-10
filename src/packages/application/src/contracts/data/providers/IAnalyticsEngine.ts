@@ -10,8 +10,10 @@ import type {
 
 export type AnalyticsFilterOperator =
   'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'not_empty'
+
 export type AnalyticsAggregationOperator =
   'sum' | 'count' | 'count_distinct' | 'avg'
+
 export type AnalyticsFormulaOperator =
   'divide' | 'multiply' | 'subtract' | 'add' | 'percent_of'
 
@@ -105,6 +107,7 @@ export interface AnalyticsLocalFilter {
   operator: AnalyticsFilterOperator
   value: string
 }
+
 export interface AnalyticsLocalMeasure {
   name: string
   column?: string
@@ -142,6 +145,7 @@ export interface AnalyticsQueryResult {
   hasMore: boolean
   version: string
   coverage: 'complete' | 'unverified'
+  coverageReason?: string
   loadedAt: string
   remoteAggregate: boolean
   groupingColumn?: string
@@ -155,18 +159,97 @@ export interface AnalyticsPublication {
   query: AnalyticsDatasetQueryInput
   rowCount: number
   coverage: 'complete' | 'unverified'
+  coverageReason?: string
   loadedAt: string
   fetchedAt: string
   remoteAggregate: boolean
+}
+
+export type AnalyticsRefreshMode = 'auto' | 'fast' | 'full'
+
+export interface AnalyticsRefreshPolicy {
+  mode?: AnalyticsRefreshMode
+  rollingWindowDays?: number
+  fullReconcileIntervalMinutes?: number
+}
+
+export type AnalyticsSyncStrategy =
+  'incremental_changes' | 'window_rescan' | 'full_replace'
+
+export interface AnalyticsSyncState {
+  connectionInstanceId: string
+  selectionKey: string
+  datasetId: string
+  strategy: AnalyticsSyncStrategy
+  checkpoint?: string
+  lastFastSyncAt: string
+  lastFullReconcileAt: string
+  coverage: 'complete' | 'unverified'
+  coverageReason?: string
+  lastWindowStart?: string
+  lastWindowEnd?: string
+  lastError?: string
+  lastErrorAt?: string
+}
+
+export interface AnalyticsSyncMetadata {
+  strategy: AnalyticsSyncStrategy
+  checkpoint?: string
+  coverageReason?: string
+  lastWindowStart?: string
+  lastWindowEnd?: string
+  lastFullReconcileAt?: string
+}
+
+export interface AnalyticsWindowBounds {
+  dateColumn: string
+  startDate: string
+  endDate: string
+}
+
+export interface AnalyticsWorkspaceState {
+  workspaceId: string
+  pollingIntervalMinutes: number
+  spacesJson?: string
+  startDate?: string
+  endDate?: string
+  updatedAt: string
+}
+
+export interface SaveAnalyticsWorkspaceStateInput {
+  workspaceId: string
+  pollingIntervalMinutes: number
+  spacesJson?: string
+  startDate?: string
+  endDate?: string
+}
+
+export interface AnalyticsPublicationEntry {
+  publication: AnalyticsPublication
+  syncState: AnalyticsSyncState
+}
+
+export interface AnalyticsHydrateInput {
+  workspaceId: string
+}
+
+export interface AnalyticsHydrateResult {
+  settings?: AnalyticsWorkspaceState
+  publications: AnalyticsPublicationEntry[]
 }
 
 export interface AnalyticsLoadInput {
   workspaceId: string
   connectionInstanceId: string
   query: AnalyticsDatasetQueryInput
+  policy?: AnalyticsRefreshPolicy
 }
+
 export interface AnalyticsLoadResult {
   publication: AnalyticsPublication
+  syncState: AnalyticsSyncState
+  strategy: AnalyticsSyncStrategy
+  reused?: boolean
 }
 
 /** Owner metadata remains internal; callers cannot choose an authorization key. */
@@ -176,11 +259,13 @@ export interface AnalyticsGenerationOwner {
   authorizationKey: string
   selectionKey: string
 }
+
 export interface AnalyticsGeneration extends AnalyticsGenerationOwner {
   generationId: string
   manifest: AnalyticsDatasetManifest
   query: AnalyticsDatasetQueryInput
 }
+
 export interface AnalyticsQueryAuthorization {
   connectionInstanceId: string
   authorizationKey: string
@@ -201,7 +286,49 @@ export interface IAnalyticsEngine {
     generation: AnalyticsGeneration,
     coverage: 'complete' | 'unverified',
     fetchedAt: string,
+    syncMeta: AnalyticsSyncMetadata,
   ): Promise<Either<AppError, AnalyticsPublication>>
+  publishWindowMerge(
+    owner: AnalyticsGenerationOwner,
+    baseGenerationId: string,
+    windowGeneration: AnalyticsGeneration | undefined,
+    windowBounds: AnalyticsWindowBounds,
+    coverage: 'complete' | 'unverified',
+    fetchedAt: string,
+    syncMeta: AnalyticsSyncMetadata,
+  ): Promise<Either<AppError, AnalyticsPublication>>
+  publishChangesMerge(
+    owner: AnalyticsGenerationOwner,
+    baseGenerationId: string,
+    deltaGeneration: AnalyticsGeneration | undefined,
+    deletedIds: string[],
+    deletions: 'none' | 'explicit',
+    coverage: 'complete' | 'unverified',
+    fetchedAt: string,
+    syncMeta: AnalyticsSyncMetadata,
+  ): Promise<Either<AppError, AnalyticsPublication>>
+  listPublications(
+    workspaceId: string,
+    authorizations: AnalyticsQueryAuthorization[],
+  ): Promise<Either<AppError, AnalyticsPublicationEntry[]>>
+  getSyncState(
+    owner: AnalyticsGenerationOwner,
+  ): Promise<Either<AppError, AnalyticsSyncState | undefined>>
+  recordSyncFailure(
+    owner: AnalyticsGenerationOwner,
+    errorMessage: string,
+    failedAt: string,
+  ): Promise<Either<AppError, void>>
+  revokeConnection(
+    workspaceId: string,
+    connectionInstanceId: string,
+  ): Promise<Either<AppError, void>>
+  getWorkspaceState(
+    workspaceId: string,
+  ): Promise<Either<AppError, AnalyticsWorkspaceState | undefined>>
+  saveWorkspaceState(
+    input: SaveAnalyticsWorkspaceStateInput,
+  ): Promise<Either<AppError, AnalyticsWorkspaceState>>
   remove(generation: AnalyticsGeneration): Promise<Either<AppError, void>>
   query(
     input: AnalyticsQueryInput,
@@ -217,4 +344,10 @@ export interface IAnalyticsWarehouseUseCase {
   query(
     input: AnalyticsQueryInput,
   ): Promise<Either<AppError, AnalyticsQueryResult>>
+  hydrate(
+    input: AnalyticsHydrateInput,
+  ): Promise<Either<AppError, AnalyticsHydrateResult>>
+  saveWorkspaceState(
+    input: SaveAnalyticsWorkspaceStateInput,
+  ): Promise<Either<AppError, AnalyticsWorkspaceState>>
 }

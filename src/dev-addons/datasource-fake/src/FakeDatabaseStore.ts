@@ -51,11 +51,32 @@ interface SerializedTaskDTO {
   doneRatio?: number
 }
 
+interface SerializedDeletedTaskEntry {
+  id: string
+  title: string
+  projectName?: string
+  status: { id: string; name: string }
+  assignedTo?: { id?: string; name: string }
+  createdAt: string
+  deletedAt: string
+}
+
+export interface DeletedTaskLogEntry {
+  id: string
+  title: string
+  projectName?: string
+  status: { id: string; name: string }
+  assignedTo?: { id?: string; name: string }
+  createdAt: Date
+  deletedAt: Date
+}
+
 interface SerializedDatabaseData {
   version: number
   updatedAt: string
   tasks: SerializedTaskDTO[]
   timeEntries: SerializedTimeEntryDTO[]
+  deletedTasksLog?: SerializedDeletedTaskEntry[]
   metadata: MetadataDTO
   members: MemberDTO[]
 }
@@ -138,6 +159,34 @@ function deserializeTask(serialized: SerializedTaskDTO): TaskDTO {
   }
 }
 
+function serializeDeletedTask(
+  entry: DeletedTaskLogEntry,
+): SerializedDeletedTaskEntry {
+  return {
+    id: entry.id,
+    title: entry.title,
+    projectName: entry.projectName,
+    status: entry.status,
+    assignedTo: entry.assignedTo,
+    createdAt: entry.createdAt.toISOString(),
+    deletedAt: entry.deletedAt.toISOString(),
+  }
+}
+
+function deserializeDeletedTask(
+  serialized: SerializedDeletedTaskEntry,
+): DeletedTaskLogEntry {
+  return {
+    id: serialized.id,
+    title: serialized.title,
+    projectName: serialized.projectName,
+    status: serialized.status,
+    assignedTo: serialized.assignedTo,
+    createdAt: new Date(serialized.createdAt),
+    deletedAt: new Date(serialized.deletedAt),
+  }
+}
+
 function getDatabaseFilePath(): string {
   const appData = process.env.APPDATA
   const baseDirectory =
@@ -197,6 +246,8 @@ export class FakeDatabaseStore {
   private isInMemory: boolean
   private timeEntries: TimeEntryDTO[] = []
   private tasks: TaskDTO[] = []
+  private deletedTaskLogs: DeletedTaskLogEntry[] = []
+  private lastTaskMutationMs = 0
   private metadata: MetadataDTO = FAKE_METADATA
   private members: MemberDTO[] = [FAKE_MEMBER]
   private isLoaded: boolean = false
@@ -619,6 +670,13 @@ export class FakeDatabaseStore {
         const parsed: SerializedDatabaseData = JSON.parse(rawContent)
         this.timeEntries = parsed.timeEntries.map(deserializeTimeEntry)
         this.tasks = parsed.tasks.map(deserializeTask)
+        this.deletedTaskLogs = []
+
+        if (parsed.deletedTasksLog !== undefined)
+          this.deletedTaskLogs = parsed.deletedTasksLog.map(
+            deserializeDeletedTask,
+          )
+
         this.metadata = parsed.metadata ?? FAKE_METADATA
         this.members = parsed.members ?? [FAKE_MEMBER]
 
@@ -666,6 +724,7 @@ export class FakeDatabaseStore {
       updatedAt: new Date().toISOString(),
       timeEntries: this.timeEntries.map(serializeTimeEntry),
       tasks: this.tasks.map(serializeTask),
+      deletedTasksLog: this.deletedTaskLogs.map(serializeDeletedTask),
       metadata: this.metadata,
       members: this.members,
     }
@@ -880,46 +939,110 @@ export class FakeDatabaseStore {
     return filtered.slice(0, batchSize)
   }
 
+  private nextTaskMutationDate(): Date {
+    let nextMs = Date.now()
+    if (nextMs <= this.lastTaskMutationMs) nextMs = this.lastTaskMutationMs + 1
+
+    for (const task of this.tasks) {
+      const taskMs = task.updatedAt.getTime()
+      if (taskMs >= nextMs) nextMs = taskMs + 1
+    }
+
+    for (const deleted of this.deletedTaskLogs) {
+      const deletedMs = deleted.deletedAt.getTime()
+      if (deletedMs >= nextMs) nextMs = deletedMs + 1
+    }
+
+    this.lastTaskMutationMs = nextMs
+    return new Date(nextMs)
+  }
+
+  public getTasks(): TaskDTO[] {
+    this.ensureLoaded()
+    return [...this.tasks]
+  }
+
+  public getDeletedTasksSince(sinceMs: number): DeletedTaskLogEntry[] {
+    this.ensureLoaded()
+    return this.deletedTaskLogs.filter(
+      (entry) => entry.deletedAt.getTime() > sinceMs,
+    )
+  }
+
   public saveTask(task: TaskDTO): void {
     this.ensureLoaded()
     const existingIndex = this.tasks.findIndex((item) => item.id === task.id)
-    const now = new Date()
+    const now = this.nextTaskMutationDate()
 
-    const defaultStatus = this.metadata.taskStatuses[0] ?? {
+    let defaultStatus: { id: string; name: string } = {
       id: '1',
       name: 'Novo',
     }
+    const firstMetadataStatus = this.metadata.taskStatuses.find(() => true)
+    if (firstMetadataStatus !== undefined) defaultStatus = firstMetadataStatus
+
+    let status = defaultStatus
+    if (task.status.id && task.status.name) status = task.status
+
+    let createdAt = now
+    if (task.createdAt !== undefined) createdAt = task.createdAt
 
     const dto: TaskDTO = {
+      ...task,
       id: task.id,
       title: task.title,
       description: task.description,
-      status: defaultStatus,
-      createdAt: task.createdAt ?? now,
+      status,
+      createdAt,
       updatedAt: now,
     }
 
+    this.deletedTaskLogs = this.deletedTaskLogs.filter(
+      (entry) => entry.id !== task.id,
+    )
+
     if (existingIndex >= 0) {
-      this.tasks[existingIndex] = {
-        ...this.tasks[existingIndex],
-        ...dto,
+      const existing = this.tasks[existingIndex]
+      if (existing !== undefined) {
+        this.tasks[existingIndex] = {
+          ...existing,
+          ...dto,
+          createdAt: existing.createdAt,
+        }
+        this.persist()
+        return
       }
-    } else {
-      this.tasks.push(dto)
     }
 
+    this.tasks.push(dto)
     this.persist()
   }
 
   public deleteTask(id: string): boolean {
     this.ensureLoaded()
-    const initialLength = this.tasks.length
+    const target = this.tasks.find((task) => task.id === id)
+    if (target === undefined) return false
+
+    const deletedAt = this.nextTaskMutationDate()
     this.tasks = this.tasks.filter((task) => task.id !== id)
-    const wasRemoved = this.tasks.length < initialLength
-    if (wasRemoved) {
-      this.persist()
+    this.deletedTaskLogs = this.deletedTaskLogs.filter(
+      (entry) => entry.id !== id,
+    )
+    const deletedEntry: DeletedTaskLogEntry = {
+      id: target.id,
+      title: target.title,
+      projectName: target.projectName,
+      status: { ...target.status },
+      createdAt: target.createdAt,
+      deletedAt,
     }
-    return wasRemoved
+
+    if (target.assignedTo !== undefined)
+      deletedEntry.assignedTo = { ...target.assignedTo }
+
+    this.deletedTaskLogs.push(deletedEntry)
+    this.persist()
+    return true
   }
 
   // --- METADATA & MEMBERS ---
@@ -1077,6 +1200,8 @@ export class FakeDatabaseStore {
     this.releasePausedTimeEntryCreateRequest()
     this.pauseNextTimeEntryCreate = false
     this.simulateTimeEntryCreateResponseLoss = false
+    this.deletedTaskLogs = []
+    this.lastTaskMutationMs = 0
     this.timeEntries = FAKE_TIME_ENTRIES.map((e) => ({
       id: e.id,
       task: { id: e.task.id },

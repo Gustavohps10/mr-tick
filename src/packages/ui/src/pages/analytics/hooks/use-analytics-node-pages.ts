@@ -9,6 +9,17 @@ import { useHostBridge } from '@/hooks'
 
 import { selectAnalyticsQueryInputs } from '../lib/analytics-plan'
 
+function computePageStructuralKey(input: AnalyticsQueryInput): string {
+  return JSON.stringify({
+    workspaceId: input.workspaceId,
+    targetNodeId: input.targetNodeId,
+    nodes: input.nodes,
+    search: input.search,
+    offset: input.offset,
+    limit: input.limit,
+  })
+}
+
 export function useAnalyticsNodePages(
   revision: number,
   workspaceId: string | undefined,
@@ -25,6 +36,7 @@ export function useAnalyticsNodePages(
       string,
       {
         signature: string
+        structuralKey: string
         data?: AnalyticsQueryResult
         details?: Record<string, string[]>
         error?: string
@@ -61,6 +73,7 @@ export function useAnalyticsNodePages(
 
     for (const [id, input] of Object.entries(inputs)) {
       const signature = JSON.stringify([input, publicationVersion, revision])
+      const structuralKey = computePageStructuralKey(input)
       if (requests.current.get(id) === signature) continue
       requests.current.set(id, signature)
       tail.current = tail.current.then(async () => {
@@ -71,24 +84,47 @@ export function useAnalyticsNodePages(
         if (response.isSuccess && response.data !== undefined) {
           setPages((previous) => ({
             ...previous,
-            [id]: { signature, data: response.data },
+            [id]: { signature, structuralKey, data: response.data },
           }))
           return
         }
 
         let error = 'ANALYTICS_QUERY_FAILED'
         if (response.error !== undefined) error = response.error
-        if (response.statusCode === 401 || response.statusCode === 403)
-          onUnauthorized(
-            input.nodes
-              .filter((node) => node.kind === 'source')
-              .map((node) => node.connectionInstanceId),
-            error,
-          )
-        setPages((previous) => ({
-          ...previous,
-          [id]: { signature, error, details: response.details },
-        }))
+
+        if (response.statusCode === 401 || response.statusCode === 403) {
+          if (response.details?.connectionInstanceIds !== undefined)
+            onUnauthorized(response.details.connectionInstanceIds, error)
+          setPages((previous) => ({
+            ...previous,
+            [id]: {
+              signature,
+              structuralKey,
+              data: undefined,
+              error,
+              details: response.details,
+            },
+          }))
+          return
+        }
+
+        setPages((previous) => {
+          const prior = previous[id]
+          let retainedData: AnalyticsQueryResult | undefined
+          if (prior !== undefined && prior.structuralKey === structuralKey)
+            retainedData = prior.data
+
+          return {
+            ...previous,
+            [id]: {
+              signature,
+              structuralKey,
+              data: retainedData,
+              error,
+              details: response.details,
+            },
+          }
+        })
       })
     }
 
@@ -101,14 +137,29 @@ export function useAnalyticsNodePages(
     },
     [],
   )
+
   return useMemo(() => {
     const current: typeof pages = {}
 
     for (const [id, input] of Object.entries(inputs)) {
       const page = pages[id]
+      const expectedSignature = JSON.stringify([
+        input,
+        publicationVersion,
+        revision,
+      ])
+      const expectedStructuralKey = computePageStructuralKey(input)
+
+      if (page?.signature === expectedSignature) {
+        current[id] = page
+        continue
+      }
+
       if (
-        page?.signature ===
-        JSON.stringify([input, publicationVersion, revision])
+        page !== undefined &&
+        page.structuralKey === expectedStructuralKey &&
+        page.data !== undefined &&
+        page.error === undefined
       )
         current[id] = page
     }

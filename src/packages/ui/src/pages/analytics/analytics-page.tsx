@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 
 import { AnalyticsError } from './components/analytics-error'
 import { AnalyticsTopBar } from './components/analytics-top-bar'
@@ -13,6 +14,10 @@ import { useAnalyticsWorkspace } from './hooks/use-analytics-workspace'
 export function Analytics() {
   const vm = useAnalyticsWorkspace()
 
+  let coverageSuffix = ''
+  if (vm.syncStatusSummary.coverageReasons.length > 0)
+    coverageSuffix = ` (${vm.syncStatusSummary.coverageReasons.join(', ')})`
+
   return (
     <div className="flex flex-col gap-4 pb-8">
       <AnalyticsTopBar
@@ -21,24 +26,74 @@ export function Analytics() {
         layerMode={vm.layerMode}
         dateRange={vm.dateRange}
         isFetchingLive={vm.isFetchingLive}
+        pollingIntervalMinutes={vm.pollingIntervalMinutes}
+        syncStatusSummary={vm.syncStatusSummary}
+        hydrateError={vm.hydrateError}
         onSelectSpace={vm.handleSelectSpace}
         onOpenNewSpaceModal={() => vm.setIsNewSpaceModalOpen(true)}
         onDateRangeChange={vm.handleDateRangeChange}
+        onPollingIntervalChange={vm.setPollingIntervalMinutes}
         onSyncAllSources={vm.handleSyncAllSources}
         onSetLayerMode={vm.setLayerMode}
       />
 
-      {vm.sourceFailures.map((failure) => (
-        <AnalyticsError
-          key={failure.nodeId}
-          message={`${failure.label}: ${failure.message}`}
-          details={failure.details}
-        />
-      ))}
+      {vm.settingsError !== undefined && (
+        <div className="border-destructive/40 flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
+          <div>
+            <AnalyticsError
+              message={vm.settingsError}
+              details={vm.settingsErrorDetails}
+            />
+            <p className="text-muted-foreground text-xs">
+              As alterações deste espaço ainda não foram salvas.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={vm.retrySaveWorkspaceState}
+          >
+            Tentar salvar novamente
+          </Button>
+        </div>
+      )}
+
+      {vm.sourceFailures.map((failure) => {
+        const hasCached =
+          vm.upstreamStatusByNodeId[failure.nodeId]?.hasPublication === true
+
+        return (
+          <div
+            key={failure.nodeId}
+            className="border-destructive/40 bg-destructive/5 flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+          >
+            <div className="space-y-1">
+              <AnalyticsError
+                message={`${failure.label}: ${failure.message}`}
+                details={failure.details}
+              />
+              {hasCached && (
+                <p className="text-muted-foreground text-xs">
+                  Exibindo última versão disponível em cache enquanto a
+                  atualização falhou.
+                </p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void vm.retrySourceNode(failure.nodeId)}
+            >
+              Tentar novamente
+            </Button>
+          </div>
+        )
+      })}
+
       {vm.hasUnverifiedCoverage && (
         <Badge variant="outline" role="status">
           A cobertura desta consulta ainda não foi confirmada pela fonte. Os
-          totais podem estar incompletos.
+          totais podem estar incompletos.{coverageSuffix}
         </Badge>
       )}
 
@@ -48,6 +103,8 @@ export function Analytics() {
           warehousePlan={vm.warehousePlan}
           publicationVersion={vm.publicationVersion}
           activeSpace={vm.activeSpace}
+          upstreamStatusByNodeId={vm.upstreamStatusByNodeId}
+          onRetrySourceNode={(nodeId) => void vm.retrySourceNode(nodeId)}
           resolveRowsForWorkflowNode={vm.resolveRowsForWorkflowNode}
           onGenericDrillDown={vm.handleGenericChartDrillDown}
           onSetLayerMode={vm.setLayerMode}
@@ -151,6 +208,8 @@ export function Analytics() {
         dynamicFilterOptions={vm.dynamicFilterOptions}
         globalStartDate={vm.startDate}
         globalEndDate={vm.endDate}
+        nodeCustomDateRange={vm.newNodeCustomDateRange}
+        onSetNodeCustomDateRange={vm.setNewNodeCustomDateRange}
         onSetNodeFilterValue={vm.handleSetNodeFilterValue}
         onOpenChange={(isOpen) => {
           vm.setIsAddNodeModalOpen(isOpen)

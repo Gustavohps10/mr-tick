@@ -918,6 +918,42 @@ if (gotTheLock) {
 
       openIpcRoutes(serviceProvider, nativeOverlay)
 
+      addonLoader.systemEventEmitter.on(
+        'analytics:load-progress',
+        (payload) => {
+          for (const win of BrowserWindow.getAllWindows())
+            if (!win.isDestroyed())
+              win.webContents.send('analytics:load-progress', payload)
+        },
+      )
+
+      addonLoader.systemEventEmitter.on(
+        'connection:disconnected',
+        (payload) => {
+          if (payload.workspaceId && payload.connectionInstanceId)
+            void analyticsEngine.revokeConnection(
+              payload.workspaceId,
+              payload.connectionInstanceId,
+            )
+        },
+      )
+
+      addonLoader.systemEventEmitter.on('connection:archived', (payload) => {
+        if (payload.workspaceId && payload.connectionInstanceId)
+          void analyticsEngine.revokeConnection(
+            payload.workspaceId,
+            payload.connectionInstanceId,
+          )
+      })
+
+      addonLoader.systemEventEmitter.on('connection:removed', (payload) => {
+        if (payload.workspaceId && payload.connectionInstanceId)
+          void analyticsEngine.revokeConnection(
+            payload.workspaceId,
+            payload.connectionInstanceId,
+          )
+      })
+
       electronApp.setAppUserModelId('com.electron')
 
       app.on('browser-window-created', (event, browserWindow) => {

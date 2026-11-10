@@ -10,6 +10,7 @@ const filterValue = z.union([
 
 const batchSize = z.number().int().min(1).optional()
 const cursor = z.string().min(1).optional()
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u)
 
 /** IPC payloads are untrusted even though renderer callers have TypeScript contracts. */
 export const analyticsDatasetQuerySchema = z
@@ -54,5 +55,34 @@ export const analyticsDatasetQuerySchema = z
           .strict(),
       ])
       .optional(),
+  })
+  .strict()
+
+export const analyticsRefreshPolicySchema = z
+  .object({
+    mode: z.enum(['auto', 'fast', 'full']).optional(),
+    rollingWindowDays: z.number().int().min(1).max(3650).optional(),
+    fullReconcileIntervalMinutes: z
+      .number()
+      .finite()
+      .min(0)
+      .max(43200)
+      .optional(),
+  })
+  .strict()
+
+export const analyticsHydrateSchema = z
+  .object({
+    workspaceId: z.string().min(1),
+  })
+  .strict()
+
+export const analyticsSaveWorkspaceStateSchema = z
+  .object({
+    workspaceId: z.string().min(1),
+    pollingIntervalMinutes: z.number().int().min(0).max(1440),
+    spacesJson: z.string().max(1_000_000).optional(),
+    startDate: isoDate.optional(),
+    endDate: isoDate.optional(),
   })
   .strict()

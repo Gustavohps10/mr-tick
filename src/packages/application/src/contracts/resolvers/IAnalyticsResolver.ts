@@ -1,6 +1,7 @@
 import type { ConnectionIdentity } from '@mr-tick/domain'
 import type { AppError, Either } from '@mr-tick/shared/helpers'
 
+import type { AnalyticsQueryAuthorization } from '../data/providers/IAnalyticsEngine'
 import type { IAnalyticsProvider } from '../data/providers/IAnalyticsProvider'
 import type { AddonConnectionContext } from './IDataSourceResolver'
 
@@ -19,4 +20,7 @@ export interface IAnalyticsResolver {
   ): Promise<
     Either<AppError, { provider: IAnalyticsProvider; authorizationKey: string }>
   >
+  resolveWorkspaceAuthorizations(
+    workspaceId: string,
+  ): Promise<Either<AppError, AnalyticsQueryAuthorization[]>>
 }

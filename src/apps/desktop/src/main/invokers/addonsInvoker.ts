@@ -54,6 +54,10 @@ export const addonsInvoker: IAddonsAPI = {
   loadAnalyticsDataset: (payload) =>
     IpcInvoker.invoke('ANALYTICS_LOAD_DATASET', payload),
   queryAnalytics: (payload) => IpcInvoker.invoke('ANALYTICS_QUERY', payload),
+  hydrateAnalytics: (payload) =>
+    IpcInvoker.invoke('ANALYTICS_HYDRATE', payload),
+  saveAnalyticsWorkspaceState: (payload) =>
+    IpcInvoker.invoke('ANALYTICS_SAVE_WORKSPACE_STATE', payload),
   getSettings: (payload: Parameters<IAddonsAPI['getSettings']>[0]) =>
     IpcInvoker.invoke('ADDON_GET_SETTINGS', payload),
   saveSettings: (payload: Parameters<IAddonsAPI['saveSettings']>[0]) =>

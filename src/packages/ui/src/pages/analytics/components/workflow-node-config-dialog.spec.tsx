@@ -100,6 +100,8 @@ describe('WorkflowNodeConfigDialog - MultiSelect Filters', () => {
             { value: '10', label: 'Reunião' },
           ],
         }}
+        nodeCustomDateRange={undefined}
+        onSetNodeCustomDateRange={vi.fn()}
         onSetNodeFilterValue={onSetNodeFilterValue}
         onOpenChange={vi.fn()}
         onSelectAddNodeType={vi.fn()}
@@ -227,6 +229,8 @@ describe('WorkflowNodeConfigDialog - Remote Aggregate Constraints', () => {
           task_priorities: [],
           sprints_versions: [],
         }}
+        nodeCustomDateRange={undefined}
+        onSetNodeCustomDateRange={vi.fn()}
         onSetNodeFilterValue={vi.fn()}
         onOpenChange={vi.fn()}
         onSelectAddNodeType={vi.fn()}
@@ -361,5 +365,185 @@ describe('WorkflowNodeConfigDialog - Remote Aggregate Constraints', () => {
     expect(
       screen.getByRole('button', { name: 'Adicionar ao Workflow' }),
     ).toBeDisabled()
+  })
+})
+
+describe('WorkflowNodeConfigDialog - Extraction Date vs Secondary Date Filter', () => {
+  beforeAll(() => {
+    window.HTMLElement.prototype.hasPointerCapture = vi.fn(() => false)
+    window.HTMLElement.prototype.releasePointerCapture = vi.fn()
+  })
+
+  const manifestWithDates: AnalyticsDatasetManifest = {
+    id: 'issues_dataset',
+    name: 'Issues Analytics',
+    description:
+      'Dataset com janela de extração e filtro secundário de fechamento',
+    extraction: {
+      modes: ['snapshot', 'changes'],
+      identity: { kind: 'row', columns: ['id'] },
+    },
+    selection: { dateRange: true, project: true },
+    sourceFormat: 'json',
+    endpoint: '/issues.json',
+    columns: [
+      { name: 'id', label: 'ID', type: 'number' },
+      { name: 'subject', label: 'Assunto', type: 'string' },
+    ],
+    supportedFilters: [
+      {
+        id: 'closed_date_range',
+        label: 'Data de fechamento',
+        type: 'date_range',
+      },
+    ],
+  }
+
+  function renderSourceDialog(
+    overrides: Partial<ComponentProps<typeof WorkflowNodeConfigDialog>> = {},
+  ) {
+    return render(
+      <WorkflowNodeConfigDialog
+        transformPreviewError={undefined}
+        transformPreviewDetails={undefined}
+        outputHierarchyColumns={[]}
+        onSetOutputHierarchyColumns={vi.fn()}
+        queryExecution={undefined}
+        onQueryExecutionChange={vi.fn()}
+        open={true}
+        editingNodeId={null}
+        activeSpace={createDefaultBlankSpace()}
+        selectedAddNodeType="source"
+        newNodeLabel="Issues Filtradas"
+        newNodeSelectedConnectionId="conn-redmine"
+        newNodeDatasetId="issues_dataset"
+        nodeSourceDatasets={[manifestWithDates]}
+        filterOptionsFailures={[]}
+        isLoadingNodeDatasets={false}
+        nodeSelectedColumns={['id', 'subject']}
+        newNodeWidgetType="bar_vertical"
+        newNodeSpan={2}
+        outputSourceNodeId=""
+        outputCategoryColumn=""
+        outputMetricColumn=""
+        outputSecondaryMetricColumn=""
+        outputStackColumn=""
+        outputReferenceLineMode="none"
+        outputReferenceLineTarget={0}
+        connectionDisplayOptions={[
+          {
+            id: 'conn-redmine',
+            addonName: 'Redmine',
+            identityName: 'Prod',
+            logoUrl: '',
+          },
+        ]}
+        upstreamAvailableColumns={[]}
+        transformPreviewBeforePayload={{ columns: [], rows: [] }}
+        transformPreviewAfterPayload={{ columns: [], rows: [] }}
+        txUpstreamNodeId=""
+        sqlQueryText=""
+        nodeFilterValues={{}}
+        dynamicFilterOptions={{}}
+        globalStartDate="2026-08-01"
+        globalEndDate="2026-10-31"
+        nodeCustomDateRange={undefined}
+        onSetNodeCustomDateRange={vi.fn()}
+        onSetNodeFilterValue={vi.fn()}
+        onOpenChange={vi.fn()}
+        onSelectAddNodeType={vi.fn()}
+        onChangeNodeLabel={vi.fn()}
+        onSelectConnectionId={vi.fn()}
+        onSelectDatasetId={vi.fn()}
+        onToggleSelectedColumn={vi.fn()}
+        onSelectAllColumns={vi.fn()}
+        onClearAllColumns={vi.fn()}
+        onSelectWidgetType={vi.fn()}
+        onSelectSpan={vi.fn()}
+        onSetOutputSourceNodeId={vi.fn()}
+        onSetOutputCategoryColumn={vi.fn()}
+        onSetOutputMetricColumn={vi.fn()}
+        onSetOutputSecondaryMetricColumn={vi.fn()}
+        onSetOutputStackColumn={vi.fn()}
+        onSetOutputReferenceLineMode={vi.fn()}
+        onSetOutputReferenceLineTarget={vi.fn()}
+        onSetTxUpstreamNodeId={vi.fn()}
+        onSetSqlQueryText={vi.fn()}
+        onSaveEditedNode={vi.fn()}
+        onAddWorkflowNode={vi.fn()}
+        {...overrides}
+      />,
+    )
+  }
+
+  it('keeps canonical node extraction period separated from secondary date_range filters', () => {
+    const onSetNodeCustomDateRange = vi.fn()
+    const onSetNodeFilterValue = vi.fn()
+
+    renderSourceDialog({
+      onSetNodeCustomDateRange,
+      onSetNodeFilterValue,
+    })
+
+    expect(screen.getByText('Período da extração')).toBeInTheDocument()
+    expect(
+      screen.getByText('Painel: 2026-08-01 a 2026-10-31'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Data de fechamento')).toBeInTheDocument()
+    expect(screen.getByText('Sem restrição')).toBeInTheDocument()
+
+    const extractionSelect = screen.getByRole('combobox', {
+      name: 'Período da extração',
+    })
+    fireEvent.keyDown(extractionSelect, { key: 'ArrowDown' })
+    fireEvent.click(
+      screen.getByRole('option', {
+        name: 'Personalizado (Definir datas específicas neste nó)',
+      }),
+    )
+
+    expect(onSetNodeCustomDateRange).toHaveBeenCalledWith({
+      from: '2026-08-01',
+      to: '2026-10-31',
+    })
+    expect(onSetNodeFilterValue).not.toHaveBeenCalled()
+
+    const secondaryFromInput = screen.getByLabelText('Data de fechamento - De')
+    expect(secondaryFromInput).toHaveValue('')
+    fireEvent.change(secondaryFromInput, { target: { value: '2026-03-01' } })
+
+    expect(onSetNodeFilterValue).toHaveBeenCalledWith('closed_date_range', {
+      from: '2026-03-01',
+      to: '',
+    })
+  })
+
+  it('renders custom extraction date inputs and clears secondary date_range independently', () => {
+    const onSetNodeCustomDateRange = vi.fn()
+    const onSetNodeFilterValue = vi.fn()
+
+    renderSourceDialog({
+      nodeCustomDateRange: { from: '2026-01-01', to: '2026-01-31' },
+      nodeFilterValues: {
+        closed_date_range: { from: '2026-04-01', to: '2026-04-15' },
+      },
+      onSetNodeCustomDateRange,
+      onSetNodeFilterValue,
+    })
+
+    expect(screen.getByText('Período personalizado')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Data inicial do nó'), {
+      target: { value: '2026-02-01' },
+    })
+    expect(onSetNodeCustomDateRange).toHaveBeenCalledWith({
+      from: '2026-02-01',
+      to: '2026-01-31',
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar período' }))
+    expect(onSetNodeFilterValue).toHaveBeenCalledWith('closed_date_range', {
+      from: '',
+      to: '',
+    })
   })
 })

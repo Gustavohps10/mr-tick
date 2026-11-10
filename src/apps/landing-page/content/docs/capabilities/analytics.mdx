@@ -57,7 +57,11 @@ Snapshot pages can include `batch: { index, offset, finished, totalRows }`, a co
 
 Declare `selection: { dateRange, project }` to support the built-in date/project inputs. Omission means unsupported; the host sends only declared selections, while provider-owned filters keep their own identifiers.
 
-Redmine uses bounded JSON pages with native IDs. Atom discovery remains a limited feed. DuckDB storage, background analytics synchronization and reconciliation belong to later phases.
+Redmine uses bounded JSON pages with native IDs. Atom discovery remains a limited feed. The desktop ingests batches into DuckDB generations and publishes atomically after completed traversal. Charts query the entire published selection through bounded local pages. Failed refreshes preserve the prior publication and explicit coverage.
+
+Declare `extraction.changes: { deletions: 'none' | 'explicit' }` alongside the `changes` mode for checkpoint updates, or `extraction.windowRescan: { dateColumn }` for date-window rescans. Checkpoints advance only with atomic publication. Deltas without tombstones never delete absent rows. Redmine issues use `updated_on`; time entries use a `spent_on` window because their endpoint ignores `updated_on`.
+
+Analytics restores saved spaces and local publications when reopened. Polling defaults to five minutes while the view is open, with a manual option; full reconciliation runs when due after six hours or through Synchronize. Refreshes preserve visible charts and expose batch progress. Deletions and older edits without a change feed require full reconciliation; remote real-time consistency is not guaranteed.
 
 
 For remote aggregation, also declare `extraction.aggregation` with accepted dimensions/operators and `postProcessing: 'projection-only'`. The host validates measure projection and completed traversal. Remote totals allow local projection/filtering and are never regrouped as raw records. Redmine does not advertise this mode.

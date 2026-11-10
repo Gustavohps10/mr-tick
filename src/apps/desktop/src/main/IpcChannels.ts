@@ -74,6 +74,8 @@ export const IpcChannels = {
   ADDON_FETCH_ANALYTICS_DATASET: 'addon:fetch-analytics-dataset',
   ANALYTICS_LOAD_DATASET: 'analytics:load-dataset',
   ANALYTICS_QUERY: 'analytics:query',
+  ANALYTICS_HYDRATE: 'analytics:hydrate',
+  ANALYTICS_SAVE_WORKSPACE_STATE: 'analytics:save-workspace-state',
   ADDON_GET_ANALYTICS_FILTER_OPTIONS: 'addon:get-analytics-filter-options',
   ADDON_GET_SETTINGS: 'addon:get-settings',
   ADDON_SAVE_SETTINGS: 'addon:save-settings',

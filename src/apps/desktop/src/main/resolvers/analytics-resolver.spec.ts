@@ -221,4 +221,78 @@ describe('Analytics connection resolution and application path', () => {
     expect((await pending).isFailure()).toBe(true)
     expect(f.createInstance).not.toHaveBeenCalled()
   })
+
+  it.each([1, 2])(
+    'excludes authorization revoked during vault read %i while keeping other connections',
+    async (blockedRead) => {
+      const f = fixture()
+      let release = () => {}
+      let entered = () => {}
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const started = new Promise<void>((resolve) => {
+        entered = resolve
+      })
+      let reads = 0
+      vi.mocked(f.vault.getToken).mockImplementation(async () => {
+        reads += 1
+        if (reads === blockedRead) {
+          entered()
+          await gate
+        }
+        return {
+          kind: 'present',
+          token: JSON.stringify({ apiKey: 'secret-a' }),
+        }
+      })
+      const pending = f.resolver.resolveWorkspaceAuthorizations(f.workspace.id)
+      await started
+      f.workspace.disconnectConnection('a')
+      release()
+      const result = await pending
+      expect(result.isSuccess()).toBe(true)
+      expect(result.success.map((item) => item.connectionInstanceId)).toEqual([
+        'b',
+      ])
+      expect(f.createInstance).not.toHaveBeenCalled()
+    },
+  )
+
+  it('resolves workspace authorizations offline without instantiating providers and respects disconnections', async () => {
+    const f = fixture()
+    const resolvedA = await f.resolver.resolve(f.workspace.id, 'a')
+    expect(resolvedA.isSuccess()).toBe(true)
+    const fresh = new AnalyticsResolver(
+      f.repository,
+      f.vault,
+      new ElectronHttpClientFactory({}, new NodeFetchTransport()),
+      f.loader,
+    )
+    const auths = await fresh.resolveWorkspaceAuthorizations(f.workspace.id)
+    expect(auths.isSuccess()).toBe(true)
+    expect(auths.success).toHaveLength(2)
+    expect(auths.success).toContainEqual({
+      connectionInstanceId: 'a',
+      authorizationKey: resolvedA.success.authorizationKey,
+    })
+    expect(f.createInstance).toHaveBeenCalledTimes(1)
+
+    f.workspace.disconnectConnection('b')
+    const afterDisconnect = await fresh.resolveWorkspaceAuthorizations(
+      f.workspace.id,
+    )
+    expect(afterDisconnect.isSuccess()).toBe(true)
+    expect(afterDisconnect.success).toEqual([
+      {
+        connectionInstanceId: 'a',
+        authorizationKey: resolvedA.success.authorizationKey,
+      },
+    ])
+
+    vi.mocked(f.vault.getToken).mockResolvedValueOnce({ kind: 'unavailable' })
+    expect(
+      (await fresh.resolveWorkspaceAuthorizations(f.workspace.id)).isFailure(),
+    ).toBe(true)
+  })
 })

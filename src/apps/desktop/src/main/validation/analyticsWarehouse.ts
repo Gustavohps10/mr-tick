@@ -204,6 +204,7 @@ const column = z
   })
   .strict()
 const option = z.object({ value: z.string(), label: z.string() }).strict()
+
 export const analyticsManifestSchema: z.ZodType<AnalyticsDatasetManifest> = z
   .object({
     id: z.string().min(1),
@@ -238,6 +239,18 @@ export const analyticsManifestSchema: z.ZodType<AnalyticsDatasetManifest> = z
             })
             .strict(),
         ]),
+        changes: z
+          .object({
+            deletions: z.enum(['none', 'explicit']),
+          })
+          .strict()
+          .optional(),
+        windowRescan: z
+          .object({
+            dateColumn: z.string().min(1),
+          })
+          .strict()
+          .optional(),
         aggregation: z
           .object({
             groupByColumns: z.array(z.string()),
@@ -285,3 +298,39 @@ export const analyticsManifestSchema: z.ZodType<AnalyticsDatasetManifest> = z
       .optional(),
   })
   .strict()
+  .superRefine((manifest, ctx) => {
+    const hasChangesMode = manifest.extraction.modes.includes('changes')
+    const hasChangesConfig = manifest.extraction.changes !== undefined
+    const isRowIdentity = manifest.extraction.identity.kind === 'row'
+
+    if (hasChangesMode && (!isRowIdentity || !hasChangesConfig))
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'ANALYTICS_CHANGES_DESCRIPTOR_INVALID',
+      })
+
+    if (hasChangesConfig && (!hasChangesMode || !isRowIdentity))
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'ANALYTICS_CHANGES_DESCRIPTOR_INVALID',
+      })
+
+    const rescan = manifest.extraction.windowRescan
+
+    if (rescan !== undefined) {
+      const dateColumn = manifest.columns.find(
+        (col) => col.name === rescan.dateColumn,
+      )
+
+      if (
+        !isRowIdentity ||
+        manifest.selection?.dateRange !== true ||
+        dateColumn === undefined ||
+        dateColumn.type !== 'date'
+      )
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'ANALYTICS_WINDOW_RESCAN_DESCRIPTOR_INVALID',
+        })
+    }
+  })

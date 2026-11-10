@@ -47,6 +47,32 @@ export function isRemoteAggregateUnsupportedVisual(visual: WidgetId): boolean {
   )
 }
 
+export function collectUpstreamSourceNodeIds(
+  nodes: SpaceWorkflowNodeConfig[],
+  targetNodeId: string,
+): string[] {
+  const sourceIds: string[] = []
+  const visited = new Set<string>()
+
+  const visit = (id: string) => {
+    if (id === '' || visited.has(id)) return
+    visited.add(id)
+    const node = nodes.find((item) => item.id === id)
+    if (node === undefined) return
+
+    if (node.kind === 'source') {
+      if (!sourceIds.includes(node.id)) sourceIds.push(node.id)
+      return
+    }
+
+    for (const upstreamId of node.upstreamNodeIds) visit(upstreamId)
+  }
+
+  visit(targetNodeId)
+
+  return sourceIds
+}
+
 export function buildAnalyticsPlan(
   nodes: SpaceWorkflowNodeConfig[],
   publications: Record<string, AnalyticsPublication>,

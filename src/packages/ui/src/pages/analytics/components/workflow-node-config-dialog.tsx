@@ -107,6 +107,10 @@ export interface WorkflowNodeConfigDialogProps {
   dynamicFilterOptions: Record<string, AnalyticsFilterOption[]>
   globalStartDate?: string
   globalEndDate?: string
+  nodeCustomDateRange: { from?: string; to?: string } | undefined
+  onSetNodeCustomDateRange: (
+    range: { from?: string; to?: string } | undefined,
+  ) => void
   onSetNodeFilterValue: (filterId: string, val: AnalyticsFilterValue) => void
   onOpenChange: (open: boolean) => void
   onSelectAddNodeType: (type: AddNodeTypeOption) => void
@@ -226,8 +230,6 @@ interface DynamicFilterFieldProps {
   nodeFilterValues: Record<string, AnalyticsFilterValue>
   onSetNodeFilterValue: (filterId: string, val: AnalyticsFilterValue) => void
   dynamicFilterOptions: Record<string, AnalyticsFilterOption[]>
-  globalStartDate?: string
-  globalEndDate?: string
 }
 
 function DynamicFilterField({
@@ -235,8 +237,6 @@ function DynamicFilterField({
   nodeFilterValues,
   onSetNodeFilterValue,
   dynamicFilterOptions,
-  globalStartDate,
-  globalEndDate,
 }: DynamicFilterFieldProps) {
   const options = resolveFilterOptions(filterDef, dynamicFilterOptions)
 
@@ -350,66 +350,39 @@ function DynamicFilterField({
   if (filterDef.type === 'date_range') {
     const rawVal = nodeFilterValues[filterDef.id]
     const range = resolveDateRangeFilterValue(rawVal)
+    const hasFilter = range.from !== '' || range.to !== ''
 
-    let isCustomMode = false
-
-    if (range.from || range.to) {
-      if (globalStartDate && range.from && range.from !== globalStartDate)
-        isCustomMode = true
-      if (globalEndDate && range.to && range.to !== globalEndDate)
-        isCustomMode = true
-    }
-
-    let effectiveFrom = ''
-    if (globalStartDate !== undefined) effectiveFrom = globalStartDate
-    if (isCustomMode) effectiveFrom = range.from
-
-    let effectiveTo = ''
-    if (globalEndDate !== undefined) effectiveTo = globalEndDate
-    if (isCustomMode) effectiveTo = range.to
-
-    let globalFromLabel = '-'
-    if (globalStartDate !== undefined && globalStartDate !== '')
-      globalFromLabel = globalStartDate
-
-    let globalToLabel = '-'
-    if (globalEndDate !== undefined && globalEndDate !== '')
-      globalToLabel = globalEndDate
-
-    let effectiveFromLabel = '-'
-    if (effectiveFrom !== '') effectiveFromLabel = effectiveFrom
-
-    let effectiveToLabel = '-'
-    if (effectiveTo !== '') effectiveToLabel = effectiveTo
-
-    let modeStatusText = `Painel: ${effectiveFromLabel} a ${effectiveToLabel}`
-    if (isCustomMode) modeStatusText = 'Período personalizado'
-
-    let selectModeValue = 'global'
-    if (isCustomMode) selectModeValue = 'custom'
-
-    const handleModeChange = (nextMode: string) => {
-      if (nextMode === 'global') {
-        onSetNodeFilterValue(filterDef.id, {
-          from: '',
-          to: '',
-        })
-        return
-      }
-
-      onSetNodeFilterValue(filterDef.id, {
-        from: effectiveFrom,
-        to: effectiveTo,
-      })
+    let statusText = 'Sem restrição'
+    if (hasFilter) {
+      let fromLabel = '...'
+      if (range.from !== '') fromLabel = range.from
+      let toLabel = '...'
+      if (range.to !== '') toLabel = range.to
+      statusText = `${fromLabel} .. ${toLabel}`
     }
 
     return (
       <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <Label className="text-xs font-semibold">{filterDef.label}</Label>
-          <span className="text-muted-foreground font-mono text-[11px]">
-            {modeStatusText}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground font-mono text-[11px]">
+              {statusText}
+            </span>
+            {hasFilter && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-[11px]"
+                onClick={() =>
+                  onSetNodeFilterValue(filterDef.id, { from: '', to: '' })
+                }
+              >
+                Limpar período
+              </Button>
+            )}
+          </div>
         </div>
 
         {Boolean(filterDef.description) && (
@@ -418,26 +391,12 @@ function DynamicFilterField({
           </span>
         )}
 
-        <Select value={selectModeValue} onValueChange={handleModeChange}>
-          <SelectTrigger className="w-full text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="global" className="py-1.5 text-xs">
-                Usar período do painel ({globalFromLabel} a {globalToLabel})
-              </SelectItem>
-              <SelectItem value="custom" className="py-1.5 text-xs">
-                Personalizado (Definir datas específicas neste nó)
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-
-        {isCustomMode && (
-          <div className="mt-1 grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-1">
+            <Label className="text-muted-foreground text-[10px]">De</Label>
             <Input
               type="date"
+              aria-label={`${filterDef.label} - De`}
               value={range.from}
               onChange={(e) =>
                 onSetNodeFilterValue(filterDef.id, {
@@ -446,10 +405,13 @@ function DynamicFilterField({
                 })
               }
               className="h-8 font-mono text-xs"
-              placeholder="De"
             />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-muted-foreground text-[10px]">Até</Label>
             <Input
               type="date"
+              aria-label={`${filterDef.label} - Até`}
               value={range.to}
               onChange={(e) =>
                 onSetNodeFilterValue(filterDef.id, {
@@ -458,10 +420,9 @@ function DynamicFilterField({
                 })
               }
               className="h-8 font-mono text-xs"
-              placeholder="Até"
             />
           </div>
-        )}
+        </div>
       </div>
     )
   }
@@ -523,6 +484,8 @@ export function WorkflowNodeConfigDialog({
   dynamicFilterOptions,
   globalStartDate,
   globalEndDate,
+  nodeCustomDateRange,
+  onSetNodeCustomDateRange,
   onSetNodeFilterValue,
   onOpenChange,
   onSelectAddNodeType,
@@ -676,9 +639,38 @@ export function WorkflowNodeConfigDialog({
   let stackSelectValue = '__none__'
   if (outputStackColumn) stackSelectValue = outputStackColumn
 
+  const supportsExtractionDateRange =
+    selectedDatasetManifest?.selection?.dateRange === true
+
+  let supportedFiltersList: AnalyticsFilterDefinition[] = []
+  if (selectedDatasetManifest?.supportedFilters !== undefined)
+    supportedFiltersList = selectedDatasetManifest.supportedFilters
+
+  let filterItemCount = supportedFiltersList.length
+  if (supportsExtractionDateRange) filterItemCount += 1
+
   let filterSuffix = 'filtros'
-  if (selectedDatasetManifest?.supportedFilters?.length === 1)
-    filterSuffix = 'filtro'
+  if (filterItemCount === 1) filterSuffix = 'filtro'
+
+  let globalFromLabel = '-'
+  if (globalStartDate !== undefined && globalStartDate !== '')
+    globalFromLabel = globalStartDate
+
+  let globalToLabel = '-'
+  if (globalEndDate !== undefined && globalEndDate !== '')
+    globalToLabel = globalEndDate
+
+  const isCustomExtractionDate = nodeCustomDateRange !== undefined
+  let extractionDateModeValue = 'global'
+  if (isCustomExtractionDate) extractionDateModeValue = 'custom'
+
+  let customDateFromVal = ''
+  if (nodeCustomDateRange?.from !== undefined)
+    customDateFromVal = nodeCustomDateRange.from
+
+  let customDateToVal = ''
+  if (nodeCustomDateRange?.to !== undefined)
+    customDateToVal = nodeCustomDateRange.to
 
   let beforeCols: AnalyticsColumnSchema[] = []
   let beforeRows: AnalyticsDatasetRow[] = []
@@ -902,10 +894,9 @@ export function WorkflowNodeConfigDialog({
                   value={queryExecution}
                   onChange={onQueryExecutionChange}
                 />
-                {Boolean(
-                  selectedDatasetManifest?.supportedFilters &&
-                  selectedDatasetManifest.supportedFilters.length > 0,
-                ) && (
+
+                {(supportsExtractionDateRange ||
+                  supportedFiltersList.length > 0) && (
                   <div className="border-border/60 bg-muted/20 flex flex-col gap-3 rounded-lg border p-3 sm:col-span-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
@@ -918,8 +909,7 @@ export function WorkflowNodeConfigDialog({
                         variant="outline"
                         className="font-mono text-[10px]"
                       >
-                        {selectedDatasetManifest?.supportedFilters?.length}{' '}
-                        {filterSuffix}
+                        {filterItemCount} {filterSuffix}
                       </Badge>
                     </div>
                     {filterOptionsFailures.map((failure) => (
@@ -933,19 +923,118 @@ export function WorkflowNodeConfigDialog({
                     </span>
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {selectedDatasetManifest?.supportedFilters?.map(
-                        (filterDef) => (
-                          <DynamicFilterField
-                            key={filterDef.id}
-                            filterDef={filterDef}
-                            nodeFilterValues={nodeFilterValues}
-                            onSetNodeFilterValue={onSetNodeFilterValue}
-                            dynamicFilterOptions={dynamicFilterOptions}
-                            globalStartDate={globalStartDate}
-                            globalEndDate={globalEndDate}
-                          />
-                        ),
+                      {supportsExtractionDateRange && (
+                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-semibold">
+                              Período da extração
+                            </Label>
+                            <span className="text-muted-foreground font-mono text-[11px]">
+                              {isCustomExtractionDate &&
+                                'Período personalizado'}
+                              {!isCustomExtractionDate &&
+                                `Painel: ${globalFromLabel} a ${globalToLabel}`}
+                            </span>
+                          </div>
+
+                          <Select
+                            value={extractionDateModeValue}
+                            onValueChange={(nextMode) => {
+                              if (nextMode === 'global') {
+                                onSetNodeCustomDateRange(undefined)
+                                return
+                              }
+
+                              let initFrom = ''
+                              if (globalStartDate !== undefined)
+                                initFrom = globalStartDate
+
+                              let initTo = ''
+                              if (globalEndDate !== undefined)
+                                initTo = globalEndDate
+
+                              onSetNodeCustomDateRange({
+                                from: initFrom,
+                                to: initTo,
+                              })
+                            }}
+                          >
+                            <SelectTrigger
+                              aria-label="Período da extração"
+                              className="w-full text-xs"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                <SelectItem
+                                  value="global"
+                                  className="py-1.5 text-xs"
+                                >
+                                  Usar período do painel ({globalFromLabel} a{' '}
+                                  {globalToLabel})
+                                </SelectItem>
+                                <SelectItem
+                                  value="custom"
+                                  className="py-1.5 text-xs"
+                                >
+                                  Personalizado (Definir datas específicas neste
+                                  nó)
+                                </SelectItem>
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+
+                          {isCustomExtractionDate && (
+                            <div className="mt-1 grid grid-cols-2 gap-2">
+                              <div className="flex flex-col gap-1">
+                                <Label className="text-muted-foreground text-[10px]">
+                                  Data inicial do nó
+                                </Label>
+                                <Input
+                                  type="date"
+                                  aria-label="Data inicial do nó"
+                                  value={customDateFromVal}
+                                  onChange={(e) =>
+                                    onSetNodeCustomDateRange({
+                                      from: e.target.value,
+                                      to: customDateToVal,
+                                    })
+                                  }
+                                  className="h-8 font-mono text-xs"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <Label className="text-muted-foreground text-[10px]">
+                                  Data final do nó
+                                </Label>
+                                <Input
+                                  type="date"
+                                  aria-label="Data final do nó"
+                                  value={customDateToVal}
+                                  onChange={(e) =>
+                                    onSetNodeCustomDateRange({
+                                      from: customDateFromVal,
+                                      to: e.target.value,
+                                    })
+                                  }
+                                  className="h-8 font-mono text-xs"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
+
+                      {supportedFiltersList.map((filterDef) => (
+                        <DynamicFilterField
+                          key={filterDef.id}
+                          filterDef={filterDef}
+                          nodeFilterValues={nodeFilterValues}
+                          onSetNodeFilterValue={onSetNodeFilterValue}
+                          dynamicFilterOptions={dynamicFilterOptions}
+                        />
+                      ))}
                     </div>
                   </div>
                 )}

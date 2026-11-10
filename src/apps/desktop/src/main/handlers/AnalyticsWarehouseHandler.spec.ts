@@ -25,7 +25,12 @@ const query: AnalyticsQueryInput = {
 }
 
 function fixture() {
-  const service: IAnalyticsWarehouseUseCase = { load: vi.fn(), query: vi.fn() }
+  const service: IAnalyticsWarehouseUseCase = {
+    load: vi.fn(),
+    query: vi.fn(),
+    hydrate: vi.fn(),
+    saveWorkspaceState: vi.fn(),
+  }
   return { service, handler: new AnalyticsWarehouseHandler(service) }
 }
 
@@ -70,7 +75,7 @@ describe('Analytical warehouse IPC boundary', () => {
     expect(f.service.query).toHaveBeenCalledWith(query)
   })
 
-  it('requires a connection and validates source extraction requests before loading', async () => {
+  it('requires a connection and validates source extraction requests and refresh policies before loading', async () => {
     const f = fixture()
     expect(
       (
@@ -97,6 +102,58 @@ describe('Analytical warehouse IPC boundary', () => {
         })
       ).statusCode,
     ).toBe(400)
+    expect(
+      (
+        await f.handler.load(event, {
+          body: {
+            workspaceId: 'workspace',
+            connectionInstanceId: 'connection',
+            query: { datasetId: 'entries' },
+            policy: { rollingWindowDays: 0 },
+          },
+        })
+      ).statusCode,
+    ).toBe(400)
     expect(f.service.load).not.toHaveBeenCalled()
+  })
+
+  it('validates hydrate and saveWorkspaceState payloads strictly before delegating', async () => {
+    const f = fixture()
+    expect(
+      (await f.handler.hydrate(event, { body: { workspaceId: '' } }))
+        .statusCode,
+    ).toBe(400)
+    expect(
+      (
+        await f.handler.saveWorkspaceState(event, {
+          body: {
+            workspaceId: 'workspace',
+            pollingIntervalMinutes: -1,
+          },
+        })
+      ).statusCode,
+    ).toBe(400)
+    expect(
+      (
+        await f.handler.saveWorkspaceState(event, {
+          body: {
+            workspaceId: 'workspace',
+            pollingIntervalMinutes: 5,
+            startDate: 'invalid-date',
+          },
+        })
+      ).statusCode,
+    ).toBe(400)
+    expect(f.service.hydrate).not.toHaveBeenCalled()
+    expect(f.service.saveWorkspaceState).not.toHaveBeenCalled()
+
+    vi.mocked(f.service.hydrate).mockResolvedValue(
+      Either.success({ publications: [] }),
+    )
+    const hydrated = await f.handler.hydrate(event, {
+      body: { workspaceId: 'workspace' },
+    })
+    expect(hydrated.isSuccess).toBe(true)
+    expect(f.service.hydrate).toHaveBeenCalledWith({ workspaceId: 'workspace' })
   })
 })

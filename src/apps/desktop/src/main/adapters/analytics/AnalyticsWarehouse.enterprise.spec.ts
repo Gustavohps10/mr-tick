@@ -9,6 +9,7 @@ import type {
 } from '@mr-tick/application'
 import { AnalyticsWarehouseService } from '@mr-tick/application'
 import { Either } from '@mr-tick/shared/helpers'
+import { NoOpSystemEventEmitter } from '@mr-tick/shared/transport'
 import { expect, it } from 'vitest'
 import { z } from 'zod'
 
@@ -120,11 +121,22 @@ it.skipIf(process.env.METRIC_ANALYTICS_REDMINE_URL === undefined)(
           provider,
           authorizationKey: 'enterprise-test-authorization',
         }),
+      resolveWorkspaceAuthorizations: async () =>
+        Either.success([
+          {
+            connectionInstanceId: 'redmine',
+            authorizationKey: 'enterprise-test-authorization',
+          },
+        ]),
     }
     const engine = new DuckDBAnalyticsEngine(
       await mkdtemp(join(tmpdir(), 'metric-native-enterprise-')),
     )
-    const service = new AnalyticsWarehouseService(resolver, engine)
+    const service = new AnalyticsWarehouseService(
+      resolver,
+      engine,
+      new NoOpSystemEventEmitter(),
+    )
     const memoryBefore = process.memoryUsage()
     const started = performance.now()
 

@@ -5,13 +5,19 @@ import type {
   AnalyticsFilterType,
   AnalyticsFilterValue,
   AnalyticsQueryResult,
+  AnalyticsSyncState,
+  AnalyticsSyncStrategy,
 } from '@mr-tick/application'
+import type { AnalyticsLoadProgressEvent } from '@mr-tick/shared/transport'
 
 export type {
   AnalyticsFilterDefinition,
   AnalyticsFilterOption,
   AnalyticsFilterType,
   AnalyticsFilterValue,
+  AnalyticsLoadProgressEvent,
+  AnalyticsSyncState,
+  AnalyticsSyncStrategy,
 }
 
 export type CanvasLayerMode = 'front' | 'background'
@@ -258,6 +264,7 @@ export interface SpaceWorkflowNodeConfig {
   selectedProject?: string
   selectedColumns?: string[]
   customFieldTypes?: Record<string, 'string' | 'number' | 'date'>
+  customDateRange?: { from?: string; to?: string }
   queryExecution?: AnalyticsExecutionRequest
   filterValues?: Record<string, AnalyticsFilterValue>
   transformConfig?: NodeTransformConfig
@@ -351,6 +358,34 @@ export interface ConnectionDisplayOption {
 }
 
 export type AddNodeTypeOption = 'source' | 'transform' | 'output'
+
+export interface AnalyticsSourceFailureItem {
+  nodeId: string
+  label: string
+  message: string
+  details?: Record<string, string[]>
+}
+
+export interface AnalyticsUpstreamSourceStatus {
+  hasPublication: boolean
+  isInitialLoading: boolean
+  isRefreshing: boolean
+  progress?: AnalyticsLoadProgressEvent
+  error?: string
+  errorDetails?: Record<string, string[]>
+}
+
+export interface AnalyticsSyncStatusSummary {
+  isBackgroundSyncing: boolean
+  isManualSyncing: boolean
+  activeProgress: AnalyticsLoadProgressEvent[]
+  lastFastSyncAt?: string
+  lastFullReconcileAt?: string
+  strategies: AnalyticsSyncStrategy[]
+  hasRollingWindow: boolean
+  hasIncrementalChanges: boolean
+  coverageReasons: string[]
+}
 
 export function buildNewSpaceWidgetOptions(
   models: typeof GENERIC_CHART_MODELS,

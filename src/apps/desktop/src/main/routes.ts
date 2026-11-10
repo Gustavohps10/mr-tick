@@ -310,6 +310,12 @@ export function openIpcRoutes(
   IpcHandler.register('ANALYTICS_QUERY', (event, request) =>
     analyticsWarehouseHandler.query(event, request),
   )
+  IpcHandler.register('ANALYTICS_HYDRATE', (event, request) =>
+    analyticsWarehouseHandler.hydrate(event, request),
+  )
+  IpcHandler.register('ANALYTICS_SAVE_WORKSPACE_STATE', (event, request) =>
+    analyticsWarehouseHandler.saveWorkspaceState(event, request),
+  )
   IpcHandler.register('ADDON_GET_SETTINGS', (e, req) =>
     addonsHandler.getSettings(e, req),
   )

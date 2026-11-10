@@ -1,4 +1,3 @@
-import { createAnalyticsDatasetScope } from '@mr-tick/sdk'
 import {
   type AnalyticsDatasetManifest,
   type AnalyticsDatasetQueryInput,
@@ -6,22 +5,30 @@ import {
   type AnalyticsDatasetRow,
   type AnalyticsFilterDynamicSource,
   type AnalyticsFilterOption,
+  type AnalyticsFilterValue,
   AppError,
+  createAnalyticsDatasetScope,
   Either,
   type IAnalyticsProvider,
+  type TaskDTO,
 } from '@mr-tick/sdk'
 
 import { FAKE_MEMBER } from './fakeData'
-import { FakeDatabaseStore } from './FakeDatabaseStore'
+import {
+  type DeletedTaskLogEntry,
+  FakeDatabaseStore,
+} from './FakeDatabaseStore'
 
 const FAKE_ANALYTICS_DATASETS: AnalyticsDatasetManifest[] = [
   {
     id: 'fake_time_entries',
     name: 'Apontamentos',
     description: '/fake/time_entries',
+    selection: { dateRange: true, project: true },
     extraction: {
       modes: ['snapshot', 'aggregate'],
-      identity: { kind: 'scope' },
+      identity: { kind: 'row', columns: ['id'] },
+      windowRescan: { dateColumn: 'date' },
       aggregation: {
         groupByColumns: ['project', 'user', 'activity'],
         operators: ['count', 'sum', 'average', 'minimum', 'maximum'],
@@ -49,12 +56,6 @@ const FAKE_ANALYTICS_DATASETS: AnalyticsDatasetManifest[] = [
     ],
     supportedFilters: [
       {
-        id: 'date_range',
-        label: 'Período',
-        type: 'date_range',
-        required: true,
-      },
-      {
         id: 'project_id',
         label: 'Projeto',
         type: 'select',
@@ -78,7 +79,12 @@ const FAKE_ANALYTICS_DATASETS: AnalyticsDatasetManifest[] = [
     id: 'fake_issues',
     name: 'Tarefas',
     description: '/fake/issues',
-    extraction: { modes: ['snapshot'], identity: { kind: 'scope' } },
+    selection: { dateRange: true, project: true },
+    extraction: {
+      modes: ['snapshot', 'changes'],
+      identity: { kind: 'row', columns: ['id'] },
+      changes: { deletions: 'explicit' },
+    },
     sourceFormat: 'json',
     endpoint: '/fake/issues',
     columns: [
@@ -132,6 +138,12 @@ const FAKE_ANALYTICS_DATASETS: AnalyticsDatasetManifest[] = [
         unit: 'none',
       },
       {
+        name: 'updated_date',
+        label: 'Data Atualização',
+        type: 'date',
+        unit: 'none',
+      },
+      {
         name: 'closed_date',
         label: 'Data Fechamento',
         type: 'date',
@@ -164,12 +176,6 @@ const FAKE_ANALYTICS_DATASETS: AnalyticsDatasetManifest[] = [
     ],
     supportedFilters: [
       {
-        id: 'date_range',
-        label: 'Data Criação',
-        type: 'date_range',
-        required: true,
-      },
-      {
         id: 'project_id',
         label: 'Projeto',
         type: 'select',
@@ -193,6 +199,7 @@ const FAKE_ANALYTICS_DATASETS: AnalyticsDatasetManifest[] = [
     id: 'fake_projects',
     name: 'Projetos',
     description: '/fake/projects',
+    selection: { dateRange: false, project: false },
     extraction: { modes: ['snapshot'], identity: { kind: 'scope' } },
     sourceFormat: 'json',
     endpoint: '/fake/projects',
@@ -212,6 +219,7 @@ const FAKE_ANALYTICS_DATASETS: AnalyticsDatasetManifest[] = [
     id: 'fake_users',
     name: 'Usuários',
     description: '/fake/users',
+    selection: { dateRange: false, project: false },
     extraction: { modes: ['snapshot'], identity: { kind: 'scope' } },
     sourceFormat: 'json',
     endpoint: '/fake/users',
@@ -226,6 +234,7 @@ const FAKE_ANALYTICS_DATASETS: AnalyticsDatasetManifest[] = [
     id: 'fake_versions',
     name: 'Versões',
     description: '/fake/versions',
+    selection: { dateRange: false, project: true },
     extraction: { modes: ['snapshot'], identity: { kind: 'scope' } },
     sourceFormat: 'json',
     endpoint: '/fake/versions',
@@ -249,6 +258,7 @@ const FAKE_ANALYTICS_DATASETS: AnalyticsDatasetManifest[] = [
     id: 'fake_issue_journals',
     name: 'Histórico',
     description: '/fake/journals',
+    selection: { dateRange: false, project: false },
     extraction: { modes: ['snapshot'], identity: { kind: 'scope' } },
     sourceFormat: 'json',
     endpoint: '/fake/journals',
@@ -280,32 +290,205 @@ const FAKE_ANALYTICS_DATASETS: AnalyticsDatasetManifest[] = [
   },
 ]
 
-for (const dataset of FAKE_ANALYTICS_DATASETS) {
-  let dateRange = false
-  let project = false
+interface CursorState {
+  kind: 'snapshot' | 'changes'
+  scope: string
+  offset: number
+  touched: number
+  rows: AnalyticsDatasetRow[]
+  deletedIds: string[]
+  finalCheckpoint?: string
+}
 
-  if (dataset.supportedFilters !== undefined) {
-    dateRange = dataset.supportedFilters.some(
-      (filter) => filter.id === 'date_range',
+function isIsoDateOnly(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false
+  if (!Number.isFinite(Date.parse(value))) return false
+
+  return new Date(value).toISOString().slice(0, 10) === value
+}
+
+function validateScopeSelection(
+  manifest: AnalyticsDatasetManifest,
+  input: AnalyticsDatasetQueryInput,
+): Either<AppError, void> {
+  if (
+    (input.startDate !== undefined || input.endDate !== undefined) &&
+    manifest.selection?.dateRange !== true
+  )
+    return Either.failure(
+      AppError.ValidationError('ANALYTICS_DATE_SELECTION_NOT_SUPPORTED'),
     )
-    project = dataset.supportedFilters.some(
-      (filter) => filter.id === 'project_id',
+
+  if (input.startDate !== undefined && !isIsoDateOnly(input.startDate))
+    return Either.failure(
+      AppError.ValidationError('ANALYTICS_DATE_FILTER_INVALID'),
+    )
+
+  if (input.endDate !== undefined && !isIsoDateOnly(input.endDate))
+    return Either.failure(
+      AppError.ValidationError('ANALYTICS_DATE_FILTER_INVALID'),
+    )
+
+  if (
+    input.startDate !== undefined &&
+    input.endDate !== undefined &&
+    input.startDate > input.endDate
+  )
+    return Either.failure(
+      AppError.ValidationError('ANALYTICS_DATE_RANGE_INVALID'),
+    )
+
+  if (
+    input.projectId !== undefined &&
+    input.projectId !== 'all' &&
+    manifest.selection?.project !== true
+  )
+    return Either.failure(
+      AppError.ValidationError('ANALYTICS_PROJECT_SELECTION_NOT_SUPPORTED'),
+    )
+
+  if (input.filters !== undefined) {
+    for (const name of Object.keys(input.filters)) {
+      if (!manifest.supportedFilters?.some((filter) => filter.id === name))
+        return Either.failure(
+          AppError.ValidationError('ANALYTICS_FILTER_NOT_SUPPORTED'),
+        )
+    }
+  }
+
+  return Either.success(undefined)
+}
+
+function matchesSelectionValue(
+  filterValue: AnalyticsFilterValue,
+  candidates: readonly (string | undefined)[],
+): boolean {
+  if (Array.isArray(filterValue)) {
+    if (filterValue.length === 0) return true
+
+    return filterValue.some((target) =>
+      candidates.some((candidate) => candidate === target),
     )
   }
 
-  dataset.selection = { dateRange, project }
+  if (typeof filterValue === 'string') {
+    const trimmed = filterValue.trim()
+    if (trimmed === '' || trimmed === 'all') return true
+
+    return candidates.some((candidate) => candidate === trimmed)
+  }
+
+  return true
+}
+
+function matchesIssueScope(
+  issue: Pick<
+    TaskDTO | DeletedTaskLogEntry,
+    'projectName' | 'status' | 'assignedTo' | 'createdAt'
+  >,
+  input: AnalyticsDatasetQueryInput,
+): boolean {
+  let projectVal = 'Projeto Alpha'
+  if (issue.projectName) projectVal = issue.projectName
+
+  if (
+    input.projectId !== undefined &&
+    input.projectId !== 'all' &&
+    projectVal !== input.projectId
+  )
+    return false
+
+  const createdDate = issue.createdAt.toISOString().slice(0, 10)
+  if (input.startDate !== undefined && createdDate < input.startDate)
+    return false
+  if (input.endDate !== undefined && createdDate > input.endDate) return false
+
+  if (input.filters === undefined) return true
+
+  const projectFilter = input.filters.project_id
+  if (
+    typeof projectFilter === 'string' &&
+    projectFilter !== '' &&
+    projectFilter !== 'all' &&
+    projectVal !== projectFilter
+  )
+    return false
+
+  let assigneeName = 'Não atribuído'
+  if (issue.assignedTo && issue.assignedTo.name)
+    assigneeName = issue.assignedTo.name
+
+  const assigneeFilter = input.filters.assignee_id
+  if (
+    assigneeFilter !== undefined &&
+    !matchesSelectionValue(assigneeFilter, [
+      issue.assignedTo?.id,
+      issue.assignedTo?.name,
+      assigneeName,
+    ])
+  )
+    return false
+
+  const statusFilter = input.filters.status_id
+  if (
+    statusFilter !== undefined &&
+    !matchesSelectionValue(statusFilter, [issue.status.id, issue.status.name])
+  )
+    return false
+
+  return true
+}
+
+function toIssueRow(task: TaskDTO): AnalyticsDatasetRow {
+  let projectVal = 'Projeto Alpha'
+  if (task.projectName) projectVal = task.projectName
+
+  let assigneeName = 'Não atribuído'
+  if (task.assignedTo && task.assignedTo.name)
+    assigneeName = task.assignedTo.name
+
+  let doneRatio = 50
+  if (task.doneRatio !== undefined) doneRatio = task.doneRatio
+
+  const isClosedVal = doneRatio >= 100
+  const updatedIso = task.updatedAt.toISOString()
+
+  let closedDate: string | null = null
+  if (isClosedVal) closedDate = updatedIso.slice(0, 10)
+
+  return {
+    id: task.id,
+    parent_id: '',
+    title: task.title,
+    subject: task.title,
+    project: projectVal,
+    tracker: 'Feature',
+    status: task.status.name,
+    is_closed: isClosedVal,
+    assignee: assigneeName,
+    target_version: 'Sprint 308',
+    estimated_hours: 8,
+    spent_hours: 4.5,
+    done_ratio: doneRatio,
+    created_date: task.createdAt.toISOString().slice(0, 10),
+    updated_date: updatedIso,
+    closed_date: closedDate,
+    custom_pontos: 5,
+    custom_revisor: 'Carlos Silva',
+    custom_qa: 'Beatriz Ramos',
+  }
 }
 
 export class FakeAnalyticsProvider implements IAnalyticsProvider {
-  private readonly cursors = new Map<
-    string,
-    { scope: string; offset: number; touched: number }
-  >()
+  private readonly cursors = new Map<string, CursorState>()
   private readonly store = FakeDatabaseStore.getInstance()
 
   public async getFilterOptions(
     source: AnalyticsFilterDynamicSource,
   ): Promise<Either<AppError, AnalyticsFilterOption[]>> {
+    if (this.store.getSimulateAuthError())
+      return Either.failure(AppError.Unauthorized('FAKE_UNAUTHORIZED'))
+
     const metadata = this.store.getMetadata()
     let items: { id: string; name: string }[] = []
 
@@ -344,10 +527,16 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
           return Either.failure(
             AppError.ValidationError('ANALYTICS_FILTER_SOURCE_NOT_SUPPORTED'),
           )
-        const result = await this.fetchFixtureDataset({ datasetId })
-        if (result.isFailure()) return result.forwardFailure()
+        const manifest = FAKE_ANALYTICS_DATASETS.find(
+          (item) => item.id === datasetId,
+        )
+        if (manifest === undefined)
+          return Either.failure(
+            AppError.ValidationError('ANALYTICS_FILTER_SOURCE_NOT_SUPPORTED'),
+          )
+        const data = this.buildSnapshotData(manifest, { datasetId })
         return Either.success(
-          result.success.rows.flatMap((row) => {
+          data.rows.flatMap((row) => {
             if (typeof row.id !== 'string' || typeof row.name !== 'string')
               return []
             return [{ value: row.id, label: row.name }]
@@ -369,20 +558,21 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
 
   /** Synthetic remote server for exercising the public aggregation contract. */
   private async aggregateFixture(
+    manifest: AnalyticsDatasetManifest,
     input: AnalyticsDatasetQueryInput,
   ): Promise<Either<AppError, AnalyticsDatasetResult>> {
     const execution = input.execution
-    const manifest = FAKE_ANALYTICS_DATASETS.find(
-      (item) => item.id === input.datasetId,
-    )
+
     if (
       execution?.kind !== 'aggregate' ||
-      manifest?.extraction.aggregation === undefined
+      manifest.extraction.aggregation === undefined
     )
       return Either.failure(
         AppError.ValidationError('ANALYTICS_EXECUTION_NOT_SUPPORTED'),
       )
+
     const descriptor = manifest.extraction.aggregation
+
     if (
       execution.cursor !== undefined ||
       execution.groupBy.some(
@@ -395,6 +585,7 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
       return Either.failure(
         AppError.ValidationError('ANALYTICS_AGGREGATE_INVALID'),
       )
+
     const names = [
       ...execution.groupBy,
       ...execution.measures.map((measure) => measure.name),
@@ -403,6 +594,7 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
       return Either.failure(
         AppError.ValidationError('ANALYTICS_AGGREGATE_INVALID'),
       )
+
     for (const measure of execution.measures) {
       if (measure.operator === 'count' && measure.column === undefined) continue
       const column = manifest.columns.find(
@@ -416,35 +608,45 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
           AppError.ValidationError('ANALYTICS_AGGREGATE_MEASURE_INVALID'),
         )
     }
-    const full = await this.fetchFixtureDataset(
+
+    const full = this.buildSnapshotData(
+      manifest,
       createAnalyticsDatasetScope(input),
     )
-    if (full.isFailure()) return full.forwardFailure()
     const groups = new Map<string, AnalyticsDatasetRow[]>()
     if (execution.groupBy.length === 0) groups.set('[]', [])
-    for (const row of full.success.rows) {
+
+    for (const row of full.rows) {
       const key = JSON.stringify(execution.groupBy.map((name) => row[name]))
       const group = groups.get(key)
+
       if (group !== undefined) {
         group.push(row)
         continue
       }
+
       groups.set(key, [row])
     }
+
     const rows: AnalyticsDatasetRow[] = []
+
     for (const group of groups.values()) {
       const row: AnalyticsDatasetRow = {}
       const representative = group.find(() => true)
       if (representative !== undefined)
         for (const name of execution.groupBy) row[name] = representative[name]
+
       for (const measure of execution.measures) {
         const values: number[] = []
+
         for (const item of group) {
           if (measure.column === undefined) continue
           const value = item[measure.column]
           if (typeof value === 'number') values.push(value)
         }
+
         const total = values.reduce((sum, value) => sum + value, 0)
+
         switch (measure.operator) {
           case 'count':
             row[measure.name] = group.length
@@ -473,9 +675,12 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
             break
         }
       }
+
       rows.push(row)
     }
+
     const columns: AnalyticsDatasetManifest['columns'] = []
+
     for (const name of execution.groupBy) {
       const column = manifest.columns.find((item) => item.name === name)
       if (column === undefined)
@@ -484,17 +689,20 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
         )
       columns.push(column)
     }
-    for (const measure of execution.measures)
+
+    for (const measure of execution.measures) {
       columns.push({
         name: measure.name,
         label: measure.name,
         type: 'number',
         origin: 'computed',
       })
+    }
+
     return Either.success({
       dataset: { ...manifest, columns },
       rows,
-      fetchedAt: full.success.fetchedAt,
+      fetchedAt: new Date().toISOString(),
       execution: {
         kind: 'aggregate',
         scope: createAnalyticsDatasetScope(input),
@@ -506,41 +714,128 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
   public async fetchAnalyticsDataset(
     input: AnalyticsDatasetQueryInput,
   ): Promise<Either<AppError, AnalyticsDatasetResult>> {
+    if (this.store.getSimulateAuthError())
+      return Either.failure(AppError.Unauthorized('FAKE_UNAUTHORIZED'))
+
+    const manifest = FAKE_ANALYTICS_DATASETS.find(
+      (item) => item.id === input.datasetId,
+    )
+    if (manifest === undefined)
+      return Either.failure(
+        AppError.NotFound(
+          `Dataset analítico simulado não encontrado: ${input.datasetId}`,
+        ),
+      )
+
+    const validScope = validateScopeSelection(manifest, input)
+    if (validScope.isFailure()) return validScope.forwardFailure()
+
     if (input.execution?.kind === 'aggregate')
-      return this.aggregateFixture(input)
-    if (input.execution !== undefined && input.execution.kind !== 'snapshot')
+      return this.aggregateFixture(manifest, input)
+
+    let requestedKind: 'snapshot' | 'changes' = 'snapshot'
+
+    if (input.execution !== undefined) {
+      if (
+        input.execution.kind !== 'snapshot' &&
+        input.execution.kind !== 'changes'
+      )
+        return Either.failure(
+          AppError.ValidationError('ANALYTICS_EXECUTION_NOT_SUPPORTED'),
+        )
+
+      requestedKind = input.execution.kind
+    }
+
+    if (!manifest.extraction.modes.includes(requestedKind))
       return Either.failure(
         AppError.ValidationError('ANALYTICS_EXECUTION_NOT_SUPPORTED'),
       )
-    let batchSize = 10
+
+    let batchSize = 100
     if (input.execution?.batchSize !== undefined)
       batchSize = input.execution.batchSize
+
     if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 100)
       return Either.failure(
         AppError.ValidationError('ANALYTICS_BATCH_SIZE_INVALID'),
       )
-    const scope = createAnalyticsDatasetScope(input)
-    const scopeKey = JSON.stringify([scope, batchSize])
-    let offset = 0
+
+    const nowMs = Date.now()
 
     for (const [key, entry] of this.cursors) {
-      if (Date.now() - entry.touched > 600000) this.cursors.delete(key)
+      if (nowMs - entry.touched > 600000) this.cursors.delete(key)
     }
 
-    if (input.execution?.cursor !== undefined) {
-      const entry = this.cursors.get(input.execution.cursor)
-      if (entry === undefined || entry.scope !== scopeKey)
+    if (input.execution?.kind === 'changes')
+      return this.fetchChangesBatch(
+        manifest,
+        input,
+        input.execution.checkpoint,
+        input.execution.cursor,
+        batchSize,
+        nowMs,
+      )
+
+    return this.fetchSnapshotBatch(
+      manifest,
+      input,
+      input.execution?.cursor,
+      batchSize,
+      nowMs,
+    )
+  }
+
+  private fetchChangesBatch(
+    manifest: AnalyticsDatasetManifest,
+    input: AnalyticsDatasetQueryInput,
+    checkpoint: string,
+    cursor: string | undefined,
+    batchSize: number,
+    nowMs: number,
+  ): Either<AppError, AnalyticsDatasetResult> {
+    const checkpointMs = Date.parse(checkpoint)
+    if (checkpoint.trim() === '' || !Number.isFinite(checkpointMs))
+      return Either.failure(
+        AppError.ValidationError('ANALYTICS_CHANGES_CHECKPOINT_INVALID'),
+      )
+
+    const scope = createAnalyticsDatasetScope(input)
+    const scopeKey = JSON.stringify([scope, 'changes', checkpoint, batchSize])
+    let offset = 0
+    let rows: AnalyticsDatasetRow[] = []
+    let deletedIds: string[] = []
+    let finalCheckpoint = checkpoint
+
+    if (cursor !== undefined) {
+      const entry = this.cursors.get(cursor)
+      if (
+        entry === undefined ||
+        entry.kind !== 'changes' ||
+        entry.scope !== scopeKey
+      )
         return Either.failure(
           AppError.ValidationError('ANALYTICS_CURSOR_INVALID_OR_EXPIRED'),
         )
+
+      this.cursors.delete(cursor)
       offset = entry.offset
+      rows = entry.rows
+      deletedIds = entry.deletedIds
+      if (entry.finalCheckpoint !== undefined)
+        finalCheckpoint = entry.finalCheckpoint
     }
 
-    const full = await this.fetchFixtureDataset(scope)
-    if (full.isFailure()) return full.forwardFailure()
-    const total = full.success.rows.length
-    const rows = full.success.rows.slice(offset, offset + batchSize)
-    const finished = offset + rows.length >= total
+    if (cursor === undefined) {
+      const delta = this.buildIssueDelta(input, checkpoint, checkpointMs)
+      rows = delta.rows
+      deletedIds = delta.deletedIds
+      finalCheckpoint = delta.finalCheckpoint
+    }
+
+    const total = rows.length
+    const slice = rows.slice(offset, offset + batchSize)
+    const finished = offset + slice.length >= total
     let continuation: { cursor: string } | undefined
 
     if (!finished) {
@@ -548,24 +843,40 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
         return Either.failure(
           AppError.Http(429, 'ANALYTICS_ACTIVE_SCANS_LIMIT'),
         )
+
       continuation = { cursor: crypto.randomUUID() }
       this.cursors.set(continuation.cursor, {
+        kind: 'changes',
         scope: scopeKey,
-        offset: offset + rows.length,
-        touched: Date.now(),
+        offset: offset + slice.length,
+        touched: nowMs,
+        rows,
+        deletedIds,
+        finalCheckpoint,
       })
     }
 
+    let batchDeletedIds: string[] = []
+    if (offset === 0) batchDeletedIds = deletedIds
+
+    let coverage: 'complete' | 'partial' = 'partial'
+    if (finished) coverage = 'complete'
+
+    let responseCheckpoint = checkpoint
+    if (finished) responseCheckpoint = finalCheckpoint
+
     return Either.success({
-      ...full.success,
-      rows,
+      dataset: manifest,
+      rows: slice,
+      fetchedAt: new Date().toISOString(),
       execution: {
-        kind: 'snapshot',
+        kind: 'changes',
         scope,
-        coverage: 'unverified',
-        coverageReason: 'FIXTURE_PREVIEW',
+        checkpoint: responseCheckpoint,
+        deletedIds: batchDeletedIds,
+        coverage,
         batch: {
-          index: offset / batchSize,
+          index: Math.floor(offset / batchSize),
           offset,
           finished,
           totalRows: total,
@@ -575,234 +886,207 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
     })
   }
 
-  /** Synthetic development data, not an example of remote extraction. */
-  private async fetchFixtureDataset(
+  private fetchSnapshotBatch(
+    manifest: AnalyticsDatasetManifest,
     input: AnalyticsDatasetQueryInput,
-  ): Promise<Either<AppError, AnalyticsDatasetResult>> {
-    const request = input.execution
-    if (
-      request !== undefined &&
-      (request.kind !== 'snapshot' ||
-        request.cursor !== undefined ||
-        request.batchSize !== undefined)
-    )
-      return Either.failure(
-        AppError.ValidationError('ANALYTICS_EXECUTION_NOT_SUPPORTED'),
-      )
+    cursor: string | undefined,
+    batchSize: number,
+    nowMs: number,
+  ): Either<AppError, AnalyticsDatasetResult> {
+    const scope = createAnalyticsDatasetScope(input)
+    const scopeKey = JSON.stringify([scope, 'snapshot', batchSize])
+    let offset = 0
+    let rows: AnalyticsDatasetRow[] = []
+    let finalCheckpoint: string | undefined
 
-    const dataset = FAKE_ANALYTICS_DATASETS.find(
-      (d) => d.id === input.datasetId,
-    )
-
-    if (!dataset) {
-      return Either.failure(
-        AppError.NotFound(
-          `Dataset analítico simulado não encontrado: ${input.datasetId}`,
-        ),
+    if (cursor !== undefined) {
+      const entry = this.cursors.get(cursor)
+      if (
+        entry === undefined ||
+        entry.kind !== 'snapshot' ||
+        entry.scope !== scopeKey
       )
+        return Either.failure(
+          AppError.ValidationError('ANALYTICS_CURSOR_INVALID_OR_EXPIRED'),
+        )
+
+      this.cursors.delete(cursor)
+      offset = entry.offset
+      rows = entry.rows
+      finalCheckpoint = entry.finalCheckpoint
     }
 
-    if (input.datasetId === 'fake_time_entries') {
-      const allEntries = this.store.getTimeEntries()
-      const rows: AnalyticsDatasetRow[] = []
+    if (cursor === undefined) {
+      const snapshot = this.buildSnapshotData(manifest, input)
+      rows = snapshot.rows
+      finalCheckpoint = snapshot.finalCheckpoint
+    }
 
-      for (const entry of allEntries) {
-        let entryDate = ''
-        if (entry.startDate) {
-          const [isoPart] = entry.startDate.toISOString().split('T')
-          if (isoPart) entryDate = isoPart
-        }
+    const total = rows.length
+    const slice = rows.slice(offset, offset + batchSize)
+    const finished = offset + slice.length >= total
+    let continuation: { cursor: string } | undefined
 
-        if (input.startDate && entryDate && entryDate < input.startDate) {
-          continue
-        }
+    if (!finished) {
+      if (this.cursors.size >= 64)
+        return Either.failure(
+          AppError.Http(429, 'ANALYTICS_ACTIVE_SCANS_LIMIT'),
+        )
 
-        if (input.endDate && entryDate && entryDate > input.endDate) {
-          continue
-        }
+      continuation = { cursor: crypto.randomUUID() }
+      this.cursors.set(continuation.cursor, {
+        kind: 'snapshot',
+        scope: scopeKey,
+        offset: offset + slice.length,
+        touched: nowMs,
+        rows,
+        deletedIds: [],
+        finalCheckpoint,
+      })
+    }
 
-        const projectVal = 'Projeto Alpha'
-        if (
-          input.projectId &&
-          input.projectId !== 'all' &&
-          projectVal !== input.projectId
-        ) {
-          continue
-        }
+    let coverage: 'complete' | 'partial' | 'unverified' = 'partial'
+    let coverageReason: string | undefined
+    let checkpoint: string | undefined
 
-        let entryId = ''
-        if (entry.id) {
-          entryId = entry.id
-        }
+    if (finished && manifest.id === 'fake_issues') {
+      coverage = 'complete'
+      checkpoint = finalCheckpoint
+    }
 
-        let userName = 'Usuário Simulado'
-        if (entry.user.name) {
-          userName = entry.user.name
-        }
+    if (finished && manifest.id !== 'fake_issues') {
+      coverage = 'unverified'
+      coverageReason = 'FIXTURE_PREVIEW'
+    }
 
-        let activityName = 'Desenvolvimento'
-        if (entry.activity.name) {
-          activityName = entry.activity.name
-        }
+    return Either.success({
+      dataset: manifest,
+      rows: slice,
+      fetchedAt: new Date().toISOString(),
+      execution: {
+        kind: 'snapshot',
+        scope,
+        coverage,
+        coverageReason,
+        checkpoint,
+        batch: {
+          index: Math.floor(offset / batchSize),
+          offset,
+          finished,
+          totalRows: total,
+        },
+        continuation,
+      },
+    })
+  }
 
-        let commentText = ''
-        if (entry.comments) {
-          commentText = entry.comments
-        }
+  private buildIssueDelta(
+    input: AnalyticsDatasetQueryInput,
+    checkpoint: string,
+    checkpointMs: number,
+  ): {
+    rows: AnalyticsDatasetRow[]
+    deletedIds: string[]
+    finalCheckpoint: string
+  } {
+    let maxMs = checkpointMs
+    const changedTasks = this.store
+      .getTasks()
+      .filter(
+        (task) =>
+          task.updatedAt.getTime() > checkpointMs &&
+          matchesIssueScope(task, input),
+      )
+      .sort((left, right) => {
+        const timeDiff = left.updatedAt.getTime() - right.updatedAt.getTime()
+        if (timeDiff !== 0) return timeDiff
 
-        if (input.filters) {
-          if (input.filters.project_id && input.filters.project_id !== 'all') {
-            if (projectVal !== input.filters.project_id) {
-              continue
-            }
-          }
+        return left.id.localeCompare(right.id)
+      })
 
-          if (input.filters.user_id) {
-            const userFilter = input.filters.user_id
-            if (Array.isArray(userFilter) && userFilter.length > 0) {
-              const matches = userFilter.some(
-                (target) =>
-                  target === entry.user.id ||
-                  target === entry.user.name ||
-                  target === userName,
-              )
-              if (!matches) {
-                continue
-              }
-            }
-            if (
-              typeof userFilter === 'string' &&
-              userFilter !== 'all' &&
-              userFilter.trim().length > 0
-            ) {
-              if (
-                userFilter !== entry.user.id &&
-                userFilter !== entry.user.name &&
-                userFilter !== userName
-              ) {
-                continue
-              }
-            }
-          }
+    const rows: AnalyticsDatasetRow[] = []
 
-          if (input.filters.activity_id) {
-            const actFilter = input.filters.activity_id
-            if (Array.isArray(actFilter) && actFilter.length > 0) {
-              const matches = actFilter.some(
-                (target) =>
-                  target === entry.activity.id ||
-                  target === entry.activity.name ||
-                  target === activityName,
-              )
-              if (!matches) {
-                continue
-              }
-            }
-            if (
-              typeof actFilter === 'string' &&
-              actFilter !== 'all' &&
-              actFilter.trim().length > 0
-            ) {
-              if (
-                actFilter !== entry.activity.id &&
-                actFilter !== entry.activity.name &&
-                actFilter !== activityName
-              ) {
-                continue
-              }
-            }
-          }
-        }
+    for (const task of changedTasks) {
+      const updatedMs = task.updatedAt.getTime()
+      if (updatedMs > maxMs) maxMs = updatedMs
+      rows.push(toIssueRow(task))
+    }
 
-        rows.push({
-          id: entryId,
-          project: projectVal,
-          date: entryDate,
-          user: userName,
-          activity: activityName,
-          issue: entry.task.id,
-          issue_id: entry.task.id,
-          issue_tracker: 'Feature',
-          hours: Math.round((entry.timeSpent / 3600) * 100) / 100,
-          comment: commentText,
-        })
+    const deletedSet = new Set<string>()
+
+    for (const entry of this.store.getDeletedTasksSince(checkpointMs)) {
+      if (!matchesIssueScope(entry, input)) continue
+      const deletedMs = entry.deletedAt.getTime()
+      if (deletedMs > maxMs) maxMs = deletedMs
+      deletedSet.add(entry.id)
+    }
+
+    let finalCheckpoint = checkpoint
+    if (maxMs > checkpointMs) finalCheckpoint = new Date(maxMs).toISOString()
+
+    return {
+      rows,
+      deletedIds: Array.from(deletedSet),
+      finalCheckpoint,
+    }
+  }
+
+  /** Synthetic development data, not an example of remote extraction. */
+  private buildSnapshotData(
+    manifest: AnalyticsDatasetManifest,
+    input: AnalyticsDatasetQueryInput,
+  ): {
+    rows: AnalyticsDatasetRow[]
+    finalCheckpoint?: string
+  } {
+    if (manifest.id === 'fake_time_entries')
+      return { rows: this.buildTimeEntryRows(input) }
+
+    if (manifest.id === 'fake_projects') {
+      return {
+        rows: [
+          {
+            id: 'proj_alpha',
+            name: 'Projeto Alpha',
+            identifier: 'alpha',
+            status: 'Ativo',
+          },
+          {
+            id: 'proj_beta',
+            name: 'Projeto Beta',
+            identifier: 'beta',
+            status: 'Ativo',
+          },
+        ],
       }
-
-      return Either.success({
-        dataset,
-        rows,
-        fetchedAt: new Date().toISOString(),
-        execution: {
-          kind: 'snapshot',
-          coverage: 'unverified',
-          scope: createAnalyticsDatasetScope(input),
-        },
-      })
     }
 
-    if (input.datasetId === 'fake_projects') {
-      const rows: AnalyticsDatasetRow[] = [
-        {
-          id: 'proj_alpha',
-          name: 'Projeto Alpha',
-          identifier: 'alpha',
-          status: 'Ativo',
-        },
-        {
-          id: 'proj_beta',
-          name: 'Projeto Beta',
-          identifier: 'beta',
-          status: 'Ativo',
-        },
-      ]
-
-      return Either.success({
-        dataset,
-        rows,
-        fetchedAt: new Date().toISOString(),
-        execution: {
-          kind: 'snapshot',
-          coverage: 'unverified',
-          scope: createAnalyticsDatasetScope(input),
-        },
-      })
+    if (manifest.id === 'fake_users') {
+      return {
+        rows: [
+          {
+            id: 'user_1',
+            name: 'Carlos Silva',
+            email: 'carlos@empresa.com',
+            role: 'Desenvolvedor',
+          },
+          {
+            id: 'user_2',
+            name: 'Mariana Souza',
+            email: 'mariana@empresa.com',
+            role: 'Gestora',
+          },
+          {
+            id: 'user_3',
+            name: 'Beatriz Ramos',
+            email: 'beatriz@empresa.com',
+            role: 'QA',
+          },
+        ],
+      }
     }
 
-    if (input.datasetId === 'fake_users') {
-      const rows: AnalyticsDatasetRow[] = [
-        {
-          id: 'user_1',
-          name: 'Carlos Silva',
-          email: 'carlos@empresa.com',
-          role: 'Desenvolvedor',
-        },
-        {
-          id: 'user_2',
-          name: 'Mariana Souza',
-          email: 'mariana@empresa.com',
-          role: 'Gestora',
-        },
-        {
-          id: 'user_3',
-          name: 'Beatriz Ramos',
-          email: 'beatriz@empresa.com',
-          role: 'QA',
-        },
-      ]
-
-      return Either.success({
-        dataset,
-        rows,
-        fetchedAt: new Date().toISOString(),
-        execution: {
-          kind: 'snapshot',
-          coverage: 'unverified',
-          scope: createAnalyticsDatasetScope(input),
-        },
-      })
-    }
-
-    if (input.datasetId === 'fake_versions') {
+    if (manifest.id === 'fake_versions') {
       const sprintRows: AnalyticsDatasetRow[] = [
         {
           id: 'v_1',
@@ -820,176 +1104,172 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
         },
       ]
 
-      return Either.success({
-        dataset,
-        rows: sprintRows,
-        fetchedAt: new Date().toISOString(),
-        execution: {
-          kind: 'snapshot',
-          coverage: 'unverified',
-          scope: createAnalyticsDatasetScope(input),
-        },
-      })
+      let projectFilter = input.projectId
+      if (
+        (projectFilter === undefined || projectFilter === 'all') &&
+        input.filters !== undefined &&
+        typeof input.filters.project_id === 'string'
+      )
+        projectFilter = input.filters.project_id
+
+      if (projectFilter !== undefined && projectFilter !== 'all')
+        return {
+          rows: sprintRows.filter((row) => row.project === projectFilter),
+        }
+
+      return { rows: sprintRows }
     }
 
-    if (input.datasetId === 'fake_issue_journals') {
-      const journalRows: AnalyticsDatasetRow[] = [
-        {
-          issue_id: '101',
-          journal_id: 'j_1',
-          user: 'Carlos Silva',
-          field_name: 'status_id',
-          old_value: 'Em Revisão',
-          new_value: 'Validada',
-          notes: 'Código aprovado sem ressalvas',
-          created_date: '2026-09-12',
-        },
-        {
-          issue_id: '102',
-          journal_id: 'j_2',
-          user: 'Beatriz Ramos',
-          field_name: 'status_id',
-          old_value: 'Em Revisão',
-          new_value: 'Rejeitada Revisão',
-          notes: 'Faltou validar arredondamento de casas decimais',
-          created_date: '2026-09-15',
-        },
-      ]
-
-      return Either.success({
-        dataset,
-        rows: journalRows,
-        fetchedAt: new Date().toISOString(),
-        execution: {
-          kind: 'snapshot',
-          coverage: 'unverified',
-          scope: createAnalyticsDatasetScope(input),
-        },
-      })
+    if (manifest.id === 'fake_issue_journals') {
+      return {
+        rows: [
+          {
+            issue_id: '101',
+            journal_id: 'j_1',
+            user: 'Carlos Silva',
+            field_name: 'status_id',
+            old_value: 'Em Revisão',
+            new_value: 'Validada',
+            notes: 'Código aprovado sem ressalvas',
+            created_date: '2026-09-12',
+          },
+          {
+            issue_id: '102',
+            journal_id: 'j_2',
+            user: 'Beatriz Ramos',
+            field_name: 'status_id',
+            old_value: 'Em Revisão',
+            new_value: 'Rejeitada Revisão',
+            notes: 'Faltou validar arredondamento de casas decimais',
+            created_date: '2026-09-15',
+          },
+        ],
+      }
     }
 
-    const tasksPage = this.store.listTasks()
+    const tasks = this.store
+      .getTasks()
+      .filter((task) => matchesIssueScope(task, input))
+      .sort((left, right) => {
+        const timeDiff = left.updatedAt.getTime() - right.updatedAt.getTime()
+        if (timeDiff !== 0) return timeDiff
+
+        return left.id.localeCompare(right.id)
+      })
+
+    let maxUpdatedMs: number | undefined
     const rows: AnalyticsDatasetRow[] = []
 
-    for (const task of tasksPage.items) {
-      let projectVal = 'Projeto Alpha'
-      if (task.projectName) {
-        projectVal = task.projectName
-      }
+    for (const task of tasks) {
+      const updatedMs = task.updatedAt.getTime()
+      if (maxUpdatedMs === undefined || updatedMs > maxUpdatedMs)
+        maxUpdatedMs = updatedMs
+
+      rows.push(toIssueRow(task))
+    }
+
+    let finalCheckpoint: string | undefined
+    if (maxUpdatedMs !== undefined)
+      finalCheckpoint = new Date(maxUpdatedMs).toISOString()
+
+    return { rows, finalCheckpoint }
+  }
+
+  private buildTimeEntryRows(
+    input: AnalyticsDatasetQueryInput,
+  ): AnalyticsDatasetRow[] {
+    const allEntries = this.store.getTimeEntries()
+    const rows: AnalyticsDatasetRow[] = []
+
+    for (const entry of allEntries) {
+      let entryDate: string | null = null
+      let sourceDate = entry.startDate
+      if (sourceDate === undefined) sourceDate = entry.createdAt
+
+      const [isoPart] = sourceDate.toISOString().split('T')
+      if (isoPart) entryDate = isoPart
 
       if (
-        input.projectId &&
+        input.startDate !== undefined &&
+        entryDate !== null &&
+        entryDate < input.startDate
+      )
+        continue
+
+      if (
+        input.endDate !== undefined &&
+        entryDate !== null &&
+        entryDate > input.endDate
+      )
+        continue
+
+      const projectVal = 'Projeto Alpha'
+      if (
+        input.projectId !== undefined &&
         input.projectId !== 'all' &&
         projectVal !== input.projectId
-      ) {
+      )
         continue
-      }
 
-      let assigneeName = 'Não atribuído'
-      if (task.assignedTo && task.assignedTo.name) {
-        assigneeName = task.assignedTo.name
-      }
+      let entryId = ''
+      if (entry.id) entryId = entry.id
 
-      if (input.filters) {
-        if (input.filters.project_id && input.filters.project_id !== 'all') {
-          if (projectVal !== input.filters.project_id) {
-            continue
-          }
-        }
+      let userName = 'Usuário Simulado'
+      if (entry.user.name) userName = entry.user.name
 
-        if (input.filters.assignee_id) {
-          const assFilter = input.filters.assignee_id
-          if (Array.isArray(assFilter) && assFilter.length > 0) {
-            const matches = assFilter.some(
-              (target) =>
-                (task.assignedTo && target === task.assignedTo.id) ||
-                (task.assignedTo && target === task.assignedTo.name) ||
-                target === assigneeName,
-            )
-            if (!matches) {
-              continue
-            }
-          }
-          if (
-            typeof assFilter === 'string' &&
-            assFilter !== 'all' &&
-            assFilter.trim().length > 0
-          ) {
-            const matches =
-              (task.assignedTo && assFilter === task.assignedTo.id) ||
-              (task.assignedTo && assFilter === task.assignedTo.name) ||
-              assFilter === assigneeName
-            if (!matches) {
-              continue
-            }
-          }
-        }
+      let activityName = 'Desenvolvimento'
+      if (entry.activity.name) activityName = entry.activity.name
 
-        if (input.filters.status_id) {
-          const stFilter = input.filters.status_id
-          if (Array.isArray(stFilter) && stFilter.length > 0) {
-            const matches = stFilter.some(
-              (target) =>
-                target === task.status.id || target === task.status.name,
-            )
-            if (!matches) {
-              continue
-            }
-          }
-          if (
-            typeof stFilter === 'string' &&
-            stFilter !== 'all' &&
-            stFilter.trim().length > 0
-          ) {
-            if (stFilter !== task.status.id && stFilter !== task.status.name) {
-              continue
-            }
-          }
-        }
-      }
+      let commentText = ''
+      if (entry.comments) commentText = entry.comments
 
-      let doneRatio = 50
-      if (task.doneRatio !== undefined) {
-        doneRatio = task.doneRatio
-      }
+      if (input.filters !== undefined) {
+        const projectFilter = input.filters.project_id
+        if (
+          typeof projectFilter === 'string' &&
+          projectFilter !== '' &&
+          projectFilter !== 'all' &&
+          projectVal !== projectFilter
+        )
+          continue
 
-      const isClosedVal = doneRatio >= 100
-      let closedDate = ''
-      if (isClosedVal) {
-        closedDate = '2026-09-18'
+        const userFilter = input.filters.user_id
+        if (
+          userFilter !== undefined &&
+          !matchesSelectionValue(userFilter, [
+            entry.user.id,
+            entry.user.name,
+            userName,
+          ])
+        )
+          continue
+
+        const activityFilter = input.filters.activity_id
+        if (
+          activityFilter !== undefined &&
+          !matchesSelectionValue(activityFilter, [
+            entry.activity.id,
+            entry.activity.name,
+            activityName,
+          ])
+        )
+          continue
       }
 
       rows.push({
-        id: task.id,
-        parent_id: '',
-        title: task.title,
-        subject: task.title,
+        id: entryId,
         project: projectVal,
-        tracker: 'Feature',
-        status: task.status.name,
-        is_closed: isClosedVal,
-        assignee: assigneeName,
-        target_version: 'Sprint 308',
-        estimated_hours: 8,
-        spent_hours: 4.5,
-        done_ratio: doneRatio,
-        created_date: '2026-09-05',
-        closed_date: closedDate,
-        custom_pontos: 5,
-        custom_revisor: 'Carlos Silva',
-        custom_qa: 'Beatriz Ramos',
+        date: entryDate,
+        user: userName,
+        activity: activityName,
+        issue: entry.task.id,
+        issue_id: entry.task.id,
+        issue_tracker: 'Feature',
+        hours: Math.round((entry.timeSpent / 3600) * 100) / 100,
+        comment: commentText,
       })
     }
 
-    return Either.success({
-      dataset,
-      rows,
-      fetchedAt: new Date().toISOString(),
-      execution: {
-        kind: 'snapshot',
-        coverage: 'unverified',
-        scope: createAnalyticsDatasetScope(input),
-      },
-    })
+    return rows
   }
 }

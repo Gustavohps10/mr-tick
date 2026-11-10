@@ -245,6 +245,13 @@ const mockBridgeClient: IHostBridge = {
       error: 'ANALYTICS_PUBLICATION_NOT_AVAILABLE',
     }),
     getAnalyticsFilterOptions: async () => mockSuccess([]),
+    hydrateAnalytics: async () => mockSuccess({ publications: [] }),
+    saveAnalyticsWorkspaceState: async () =>
+      mockSuccess({
+        workspaceId: 'mock-workspace',
+        pollingIntervalMinutes: 5,
+        updatedAt: '2026-11-10T00:00:00Z',
+      }),
     fetchAnalyticsDataset: async () => ({
       isSuccess: false,
       statusCode: 404,

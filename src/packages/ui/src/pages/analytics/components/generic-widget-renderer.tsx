@@ -53,7 +53,9 @@ import {
 
 import { useAnalyticsQuery } from '../hooks/use-analytics-query'
 import type {
+  AnalyticsLoadProgressEvent,
   AnalyticsSpaceConfig,
+  AnalyticsUpstreamSourceStatus,
   SpaceWidgetConfig,
   SpaceWorkflowNodeConfig,
 } from '../lib/analytics-types'
@@ -61,12 +63,28 @@ import { getPaletteColor } from '../lib/analytics-utils'
 import { AnalyticsError } from './analytics-error'
 import { AnalyticsHierarchyTable } from './analytics-hierarchy-table'
 
+function formatBatchProgressLabel(
+  progress: AnalyticsLoadProgressEvent | undefined,
+): string {
+  if (progress === undefined) return 'Carregando base analítica...'
+
+  if (progress.phase === 'publishing')
+    return `Publicando base analítica (${progress.fetchedRows} registros)...`
+
+  if (progress.totalRows !== undefined)
+    return `Carregando lote ${progress.batchIndex + 1} • ${progress.fetchedRows} de ${progress.totalRows} registros`
+
+  return `Carregando lote ${progress.batchIndex + 1} • ${progress.fetchedRows} registros carregados`
+}
+
 export interface GenericWidgetRendererProps {
   onUnauthorized: (connectionIds: string[], message: string) => void
   warehousePlan: AnalyticsPlanNode[]
   publicationVersion: string
   widget: SpaceWidgetConfig
   activeSpace: AnalyticsSpaceConfig
+  upstreamStatus?: AnalyticsUpstreamSourceStatus
+  onRetrySource?: () => void
   resolveRowsForWorkflowNode: (node: SpaceWorkflowNodeConfig) => {
     columns: AnalyticsColumnSchema[]
     rows: AnalyticsDatasetRow[]
@@ -93,6 +111,8 @@ export function GenericWidgetRenderer({
   activeSpace,
   warehousePlan,
   publicationVersion,
+  upstreamStatus,
+  onRetrySource,
   onGenericDrillDown,
   overloadTolerancePct,
   onSetOverloadTolerancePct,
@@ -117,8 +137,16 @@ export function GenericWidgetRenderer({
   const node = activeSpace.workflowNodes.find(
     (item) => item.id === widget.sourceNodeId,
   )
+  const sourceReadyInPlan =
+    node !== undefined && warehousePlan.some((item) => item.id === node.id)
+  const canQuerySource =
+    workspaceId !== undefined &&
+    node !== undefined &&
+    sourceReadyInPlan &&
+    (upstreamStatus === undefined || upstreamStatus.hasPublication)
+
   let baseInput: AnalyticsQueryInput | undefined
-  if (workspaceId !== undefined && node !== undefined)
+  if (canQuerySource && workspaceId !== undefined && node !== undefined)
     baseInput = {
       workspaceId,
       nodes: warehousePlan,
@@ -126,6 +154,7 @@ export function GenericWidgetRenderer({
       offset: 0,
       limit: 1,
     }
+
   const base = useAnalyticsQuery(baseInput, publicationVersion, onUnauthorized)
   const groups: string[] = []
   if (widget.categoryColumn !== undefined && widget.categoryColumn !== '')
@@ -287,9 +316,41 @@ export function GenericWidgetRenderer({
     publicationVersion,
     onUnauthorized,
   )
+
+  let retrySourceAction = base.retry
+  if (onRetrySource !== undefined) retrySourceAction = onRetrySource
+
+  if (upstreamStatus !== undefined && !upstreamStatus.hasPublication) {
+    if (upstreamStatus.error !== undefined) {
+      return (
+        <div className="space-y-2">
+          <AnalyticsError
+            message={upstreamStatus.error}
+            details={upstreamStatus.errorDetails}
+          />
+          <Button variant="outline" size="sm" onClick={retrySourceAction}>
+            Tentar novamente
+          </Button>
+        </div>
+      )
+    }
+
+    if (upstreamStatus.isInitialLoading || !sourceReadyInPlan) {
+      return (
+        <div role="status" className="space-y-2">
+          <Skeleton className="h-64 w-full rounded-md" />
+          <p className="text-muted-foreground text-xs">
+            {formatBatchProgressLabel(upstreamStatus.progress)}
+          </p>
+        </div>
+      )
+    }
+  }
+
   if (base.loading || result.loading)
     return <Skeleton className="h-64 w-full rounded-md" />
-  if (base.error !== undefined)
+
+  if (base.error !== undefined && base.data === undefined)
     return (
       <div>
         <AnalyticsError message={base.error} details={base.details} />
@@ -298,7 +359,8 @@ export function GenericWidgetRenderer({
         </Button>
       </div>
     )
-  if (result.error !== undefined)
+
+  if (result.error !== undefined && result.data === undefined)
     return (
       <div>
         <AnalyticsError message={result.error} details={result.details} />
@@ -307,10 +369,58 @@ export function GenericWidgetRenderer({
         </Button>
       </div>
     )
+
   if (node === undefined || result.data === undefined)
     return <p>Selecione a fonte, a dimensão e a métrica da visualização.</p>
+
   const data = result.data
-  if (data.rows.length === 0) return <p>Nenhum registro para esta seleção.</p>
+
+  let refreshErrorMessage: string | undefined
+  let refreshErrorDetails: Record<string, string[]> | undefined
+  let refreshRetryAction = result.retry
+
+  if (upstreamStatus?.error !== undefined) {
+    refreshErrorMessage = upstreamStatus.error
+    refreshErrorDetails = upstreamStatus.errorDetails
+    refreshRetryAction = retrySourceAction
+  }
+
+  if (refreshErrorMessage === undefined && result.error !== undefined) {
+    refreshErrorMessage = result.error
+    refreshErrorDetails = result.details
+    refreshRetryAction = result.retry
+  }
+
+  if (refreshErrorMessage === undefined && base.error !== undefined) {
+    refreshErrorMessage = base.error
+    refreshErrorDetails = base.details
+    refreshRetryAction = base.retry
+  }
+
+  const isBackgroundRefreshing =
+    upstreamStatus?.isRefreshing === true ||
+    base.isRefreshing ||
+    result.isRefreshing
+
+  if (data.rows.length === 0) {
+    return (
+      <div className="space-y-2">
+        {refreshErrorMessage !== undefined && (
+          <div className="border-destructive/40 bg-destructive/5 space-y-2 rounded-md border p-2.5">
+            <AnalyticsError
+              message={refreshErrorMessage}
+              details={refreshErrorDetails}
+            />
+            <Button variant="outline" size="sm" onClick={refreshRetryAction}>
+              Tentar novamente
+            </Button>
+          </div>
+        )}
+        <p>Nenhum registro para esta seleção.</p>
+      </div>
+    )
+  }
+
   let category = widget.categoryColumn
   if (category === undefined) category = ''
   let metric = primary
@@ -551,6 +661,23 @@ export function GenericWidgetRenderer({
 
   return (
     <div className="space-y-3">
+      {refreshErrorMessage !== undefined && (
+        <div className="border-destructive/40 bg-destructive/5 space-y-2 rounded-md border p-2.5">
+          <AnalyticsError
+            message={refreshErrorMessage}
+            details={refreshErrorDetails}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-muted-foreground text-xs">
+              Exibindo última versão disponível em cache.
+            </span>
+            <Button variant="outline" size="sm" onClick={refreshRetryAction}>
+              Tentar novamente
+            </Button>
+          </div>
+        </div>
+      )}
+
       {!data.remoteAggregate && widget.metricColumn !== '' && (
         <Select
           value={operator}
@@ -629,6 +756,12 @@ export function GenericWidgetRenderer({
       <div className="text-muted-foreground flex items-center justify-between gap-2 text-xs">
         <span>
           {data.totalRows} grupos · {data.coverage} · {data.loadedAt}
+          {isBackgroundRefreshing && (
+            <>
+              {' '}
+              · <span role="status">Atualizando em segundo plano...</span>
+            </>
+          )}
         </span>
         <div className="flex gap-2">
           <Button

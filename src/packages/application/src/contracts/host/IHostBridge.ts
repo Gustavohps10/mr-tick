@@ -18,10 +18,14 @@ import type { AddonSettingsView } from '../addons/settings/IAddonSettingsReposit
 import type { AddonVaultScope } from '../addons/vault/IAddonVaultAPI'
 import type { AddonSettingValue } from '../addons/vault/IAddonVaultAPI'
 import type {
+  AnalyticsHydrateInput,
+  AnalyticsHydrateResult,
   AnalyticsLoadInput,
   AnalyticsLoadResult,
   AnalyticsQueryInput,
   AnalyticsQueryResult,
+  AnalyticsWorkspaceState,
+  SaveAnalyticsWorkspaceStateInput,
 } from '../data/providers/IAnalyticsEngine'
 import type {
   AnalyticsFilterDynamicSource,
@@ -437,6 +441,12 @@ export interface IAddonsAPI {
   queryAnalytics(
     payload: IRequest<AnalyticsQueryInput>,
   ): Promise<ViewModel<AnalyticsQueryResult>>
+  hydrateAnalytics(
+    payload: IRequest<AnalyticsHydrateInput>,
+  ): Promise<ViewModel<AnalyticsHydrateResult>>
+  saveAnalyticsWorkspaceState(
+    payload: IRequest<SaveAnalyticsWorkspaceStateInput>,
+  ): Promise<ViewModel<AnalyticsWorkspaceState>>
   listAvailable(): Promise<PaginatedViewModel<AddonManifestViewModel[]>>
 
   listInstalled(): Promise<PaginatedViewModel<AddonManifestViewModel[]>>

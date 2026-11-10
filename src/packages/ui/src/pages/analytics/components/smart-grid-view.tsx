@@ -35,7 +35,10 @@ import {
   isRemoteAggregateUnsupportedVisual,
   isRemoteAggregateUpstream,
 } from '../lib/analytics-plan'
-import type { CanvasLayerMode } from '../lib/analytics-types'
+import type {
+  AnalyticsUpstreamSourceStatus,
+  CanvasLayerMode,
+} from '../lib/analytics-types'
 import {
   type AnalyticsSpaceConfig,
   type ChartVisualType,
@@ -50,6 +53,8 @@ export interface SmartGridViewProps {
   warehousePlan: AnalyticsPlanNode[]
   publicationVersion: string
   activeSpace: AnalyticsSpaceConfig
+  upstreamStatusByNodeId: Record<string, AnalyticsUpstreamSourceStatus>
+  onRetrySourceNode: (nodeId: string) => void
   resolveRowsForWorkflowNode: (node: SpaceWorkflowNodeConfig) => {
     columns: AnalyticsColumnSchema[]
     rows: AnalyticsDatasetRow[]
@@ -80,6 +85,8 @@ export function SmartGridView({
   warehousePlan,
   publicationVersion,
   activeSpace,
+  upstreamStatusByNodeId,
+  onRetrySourceNode,
   resolveRowsForWorkflowNode,
   onGenericDrillDown,
   onSetLayerMode,
@@ -258,6 +265,8 @@ export function SmartGridView({
                 publicationVersion={publicationVersion}
                 widget={widget}
                 activeSpace={activeSpace}
+                upstreamStatus={upstreamStatusByNodeId[widget.sourceNodeId]}
+                onRetrySource={() => onRetrySourceNode(widget.sourceNodeId)}
                 resolveRowsForWorkflowNode={resolveRowsForWorkflowNode}
                 onGenericDrillDown={onGenericDrillDown}
                 overloadTolerancePct={overloadTolerancePct}

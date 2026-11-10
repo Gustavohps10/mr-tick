@@ -6,13 +6,23 @@ import type {
   AnalyticsDatasetScope,
   AnalyticsExecutionRequest,
   AnalyticsFilterDynamicSource,
+  AnalyticsFilterOption,
+  AnalyticsFilterValue,
   AnalyticsPlanNode,
   AnalyticsPublication,
+  AnalyticsRefreshMode,
+  AnalyticsSyncState,
+  AnalyticsSyncStrategy,
+  SaveAnalyticsWorkspaceStateInput,
   WorkspaceViewModel,
 } from '@mr-tick/application'
-import { createAnalyticsDatasetScope } from '@mr-tick/application'
+import {
+  analyticsSelectionKey,
+  createAnalyticsDatasetScope,
+} from '@mr-tick/application'
 import type { AddonManifestViewModel } from '@mr-tick/sdk'
 import { isAnalytics } from '@mr-tick/shared/helpers'
+import type { AnalyticsLoadProgressEvent } from '@mr-tick/shared/transport'
 import {
   type Edge,
   MarkerType,
@@ -29,14 +39,29 @@ import { useHostBridge } from '@/hooks'
 
 import {
   buildAnalyticsPlan,
+  collectUpstreamSourceNodeIds,
   isRemoteAggregateUnsupportedVisual,
   isRemoteAggregateUpstream,
 } from '../lib/analytics-plan'
 import {
+  normalizeCustomDateRange,
+  normalizeSourceFilters,
+  queryWithDatasetSelection,
+  resolveEffectiveNodeDates,
+  resolveEffectiveNodeProject,
+  selectionSignature,
+} from '../lib/analytics-selection'
+import {
+  isIsoDateString,
+  isoDateToLocalDate,
+  parsePersistedSpaces,
+} from '../lib/analytics-spaces-schema'
+import {
   type AddNodeTypeOption,
-  type AnalyticsFilterOption,
-  type AnalyticsFilterValue,
+  type AnalyticsSourceFailureItem,
   type AnalyticsSpaceConfig,
+  type AnalyticsSyncStatusSummary,
+  type AnalyticsUpstreamSourceStatus,
   type AvailableProjectOption,
   type CanvasLayerMode,
   type ChartVisualType,
@@ -54,70 +79,55 @@ import {
 } from '../lib/analytics-types'
 import { useAnalyticsNodePages } from './use-analytics-node-pages'
 
-function queryWithDatasetSelection(
-  input: AnalyticsDatasetQueryInput,
-  manifest: AnalyticsDatasetManifest | undefined,
-): AnalyticsDatasetQueryInput {
-  const scope = createAnalyticsDatasetScope(input)
+const DEFAULT_POLLING_INTERVAL_MINUTES = 5
+const DEFAULT_FULL_RECONCILE_INTERVAL_MINUTES = 360
+const MAX_CONCURRENT_SELECTIONS = 2
 
-  if (manifest?.selection?.dateRange !== true) {
-    delete scope.startDate
-    delete scope.endDate
-  }
-
-  if (manifest?.selection?.project !== true) delete scope.projectId
-  return { ...scope, execution: input.execution }
-}
-
-interface CachedAnalyticsResult {
+interface StoredSelectionEntry {
   workspaceId: string
   connectionId: string
+  scopeSignature: string
+  computedSelectionKey: string
   scope: AnalyticsDatasetScope
   publication: AnalyticsPublication
+  syncState: AnalyticsSyncState
 }
 
-function resolveEffectiveNodeDates(
-  filterValues: Record<string, AnalyticsFilterValue> | undefined,
-  fallbackStart: string,
-  fallbackEnd: string,
-): { from: string; to: string } {
-  if (!filterValues) return { from: fallbackStart, to: fallbackEnd }
-
-  const rangeVal = filterValues.date_range
-
-  if (
-    typeof rangeVal === 'object' &&
-    rangeVal !== null &&
-    !Array.isArray(rangeVal)
-  ) {
-    let from = fallbackStart
-    let to = fallbackEnd
-
-    if (
-      'from' in rangeVal &&
-      typeof rangeVal.from === 'string' &&
-      rangeVal.from
-    )
-      from = rangeVal.from
-
-    if ('to' in rangeVal && typeof rangeVal.to === 'string' && rangeVal.to)
-      to = rangeVal.to
-
-    return { from, to }
-  }
-
-  return { from: fallbackStart, to: fallbackEnd }
+interface SourceSelectionDescriptor {
+  selKey: string
+  nodeId: string
+  connectionId: string
+  rawQuery: AnalyticsDatasetQueryInput
+  selectedQuery: AnalyticsDatasetQueryInput
+  scopeSignature: string
+  computedSelectionKey?: string
 }
 
-function resolveEffectiveNodeProject(
-  filterValues: Record<string, AnalyticsFilterValue> | undefined,
+function buildSettingsSnapshotKey(
+  input: SaveAnalyticsWorkspaceStateInput,
 ): string {
-  if (!filterValues) return 'all'
-  const p = filterValues.project_id
+  return JSON.stringify({
+    workspaceId: input.workspaceId,
+    pollingIntervalMinutes: input.pollingIntervalMinutes,
+    spacesJson: input.spacesJson,
+    startDate: input.startDate,
+    endDate: input.endDate,
+  })
+}
 
-  if (typeof p === 'string' && p.trim()) return p.trim()
+function maxIsoTimestamp(
+  current: string | undefined,
+  candidate: string | undefined,
+): string | undefined {
+  if (candidate === undefined || candidate.trim() === '') return current
+  if (current === undefined) return candidate
 
-  return 'all'
+  const currentMs = Date.parse(current)
+  const candidateMs = Date.parse(candidate)
+
+  if (!Number.isFinite(currentMs) || candidateMs > currentMs) return candidate
+
+  return current
 }
 
 export function useAnalyticsWorkspace() {
@@ -133,7 +143,22 @@ export function useAnalyticsWorkspace() {
   ])
   const [layerMode, setLayerMode] = useState<CanvasLayerMode>('front')
   const [workspace, setWorkspace] = useState<WorkspaceViewModel | null>(null)
-  const [selectedConnectionId, setSelectedConnectionId] = useState<string>('')
+  const [pollingIntervalMinutes, setPollingIntervalMinutes] = useState<number>(
+    DEFAULT_POLLING_INTERVAL_MINUTES,
+  )
+  const [isHydrated, setIsHydrated] = useState<boolean>(false)
+  const [hydrateError, setHydrateError] = useState<string | undefined>(
+    undefined,
+  )
+  const [settingsError, setSettingsError] = useState<string | undefined>()
+  const [settingsErrorDetails, setSettingsErrorDetails] = useState<
+    Record<string, string[]> | undefined
+  >()
+  const [settingsSaveRevision, setSettingsSaveRevision] = useState(0)
+  const retrySaveWorkspaceState = useCallback(
+    () => setSettingsSaveRevision((value) => value + 1),
+    [],
+  )
 
   const [startDate, setStartDate] = useState<string>('2026-08-01')
   const [endDate, setEndDate] = useState<string>('2026-10-31')
@@ -142,13 +167,28 @@ export function useAnalyticsWorkspace() {
     to: new Date(2026, 9, 31),
   }))
 
-  const [datasetResults, setDatasetResults] = useState<
-    Record<string, CachedAnalyticsResult>
+  const [selectionEntries, setSelectionEntries] = useState<
+    Record<string, StoredSelectionEntry>
   >({})
+  const [computedKeysBySelKey, setComputedKeysBySelKey] = useState<
+    Record<string, string>
+  >({})
+  const [selectionProgress, setSelectionProgress] = useState<
+    Record<string, AnalyticsLoadProgressEvent>
+  >({})
+  const [activeSelectionModes, setActiveSelectionModes] = useState<
+    Record<string, AnalyticsRefreshMode>
+  >({})
+  const [selectionErrors, setSelectionErrors] = useState<
+    Record<string, string>
+  >({})
+  const [selectionErrorDetails, setSelectionErrorDetails] = useState<
+    Record<string, Record<string, string[]>>
+  >({})
+
   const [installedAddons, setInstalledAddons] = useState<
     AddonManifestViewModel[]
   >([])
-  const [isFetchingLive, setIsFetchingLive] = useState<boolean>(false)
 
   const [overloadTolerancePct, setOverloadTolerancePct] = useState<number>(10)
   const [idleTolerancePct, setIdleTolerancePct] = useState<number>(15)
@@ -177,32 +217,12 @@ export function useAnalyticsWorkspace() {
   const [queryExecution, setQueryExecution] =
     useState<AnalyticsExecutionRequest>()
   const [newNodeDatasetId, setNewNodeDatasetId] = useState<string>('')
+  const [newNodeCustomDateRange, setNewNodeCustomDateRange] = useState<
+    { from?: string; to?: string } | undefined
+  >(undefined)
   const [sourceCatalog, setNodeSourceDatasets] = useState<
     AnalyticsDatasetManifest[]
   >([])
-  const nodeSourceDatasets = useMemo(() => {
-    if (editingNodeId === null) return sourceCatalog
-    const cached = datasetResults[editingNodeId]
-    if (
-      cached === undefined ||
-      cached.workspaceId !== workspaceId ||
-      cached.connectionId !== newNodeSelectedConnectionId ||
-      cached.publication.remoteAggregate ||
-      cached.publication.manifest.id !== newNodeDatasetId
-    )
-      return sourceCatalog
-    return sourceCatalog.map((dataset) => {
-      if (dataset.id !== cached.publication.manifest.id) return dataset
-      return { ...dataset, columns: cached.publication.manifest.columns }
-    })
-  }, [
-    sourceCatalog,
-    editingNodeId,
-    datasetResults,
-    workspaceId,
-    newNodeSelectedConnectionId,
-    newNodeDatasetId,
-  ])
   const [isLoadingNodeDatasets, setIsLoadingNodeDatasets] =
     useState<boolean>(false)
   const [nodeSelectedColumns, setNodeSelectedColumns] = useState<string[]>([])
@@ -224,16 +244,6 @@ export function useAnalyticsWorkspace() {
     sprints_versions: [],
   })
 
-  const handleSetNodeFilterValue = useCallback(
-    (filterId: string, val: AnalyticsFilterValue) => {
-      setNewNodeFilterValues((prev) => ({
-        ...prev,
-        [filterId]: val,
-      }))
-    },
-    [],
-  )
-
   const [newNodeWidgetType, setNewNodeWidgetType] =
     useState<WidgetId>('bar_vertical')
   const [newNodeSpan, setNewNodeSpan] = useState<WidgetSpan>(2)
@@ -254,6 +264,42 @@ export function useAnalyticsWorkspace() {
   const [txUpstreamNodeId, setTxUpstreamNodeId] = useState<string>('')
   const [sqlQueryText, setSqlQueryText] = useState<string>('')
 
+  const analyticsCatalogs = useRef(
+    new Map<string, AnalyticsDatasetManifest[]>(),
+  )
+  const lastSavedWorkspaceSnapshotRef = useRef<string>('')
+  const settingsSaveTailRef = useRef(Promise.resolve())
+  const pendingSettingsSavesRef = useRef(0)
+  const canAutoPersistSettingsRef = useRef<boolean>(false)
+  const userMutatedStateRef = useRef<boolean>(false)
+  const inFlightSelectionsRef = useRef(
+    new Map<string, { mode: AnalyticsRefreshMode; promise: Promise<void> }>(),
+  )
+  const latestSelectionRequestsRef = useRef(new Map<string, symbol>())
+  const attemptedMissingKeysRef = useRef(new Set<string>())
+  const checkedHydratedOverdueRef = useRef(new Set<string>())
+  const eventKeyToSelKeyRef = useRef(new Map<string, string>())
+  const computedKeysRef = useRef<Record<string, string>>({})
+  const isMountedRef = useRef<boolean>(false)
+
+  useEffect(() => {
+    isMountedRef.current = true
+
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
+  const handleSetNodeFilterValue = useCallback(
+    (filterId: string, val: AnalyticsFilterValue) => {
+      setNewNodeFilterValues((prev) => ({
+        ...prev,
+        [filterId]: val,
+      }))
+    },
+    [],
+  )
+
   const activeSpace = useMemo<AnalyticsSpaceConfig>(() => {
     if (pageId) {
       const matched = spaces.find((s) => s.id === pageId)
@@ -263,16 +309,161 @@ export function useAnalyticsWorkspace() {
     const [firstSpace] = spaces
     if (firstSpace) return firstSpace
 
-    return {
-      id: 'default',
-      title: 'Analytics',
-      subtitle: 'Espaço Analítico',
-      badge: 'Ativo',
-      widgets: [],
-      workflowNodes: [],
-      workflowEdges: [],
-    }
+    return createDefaultBlankSpace()
   }, [pageId, spaces])
+
+  const activeWorkflowNodesRef = useRef(activeSpace.workflowNodes)
+  activeWorkflowNodesRef.current = activeSpace.workflowNodes
+
+  const selectionEntriesRef = useRef(selectionEntries)
+  selectionEntriesRef.current = selectionEntries
+
+  const startDateRef = useRef(startDate)
+  startDateRef.current = startDate
+
+  const endDateRef = useRef(endDate)
+  endDateRef.current = endDate
+
+  const findCachedManifest = useCallback(
+    (
+      connectionId: string,
+      datasetId: string,
+    ): AnalyticsDatasetManifest | undefined => {
+      if (workspaceId !== undefined) {
+        const catalogKey = JSON.stringify([workspaceId, connectionId])
+        const catalog = analyticsCatalogs.current.get(catalogKey)
+        const matched = catalog?.find((item) => item.id === datasetId)
+        if (matched !== undefined) return matched
+      }
+
+      for (const entry of Object.values(selectionEntriesRef.current)) {
+        if (
+          entry.connectionId === connectionId &&
+          entry.publication.manifest.id === datasetId
+        )
+          return entry.publication.manifest
+      }
+
+      return undefined
+    },
+    [workspaceId],
+  )
+
+  const nodeSelectionPlans = useMemo<
+    Record<string, SourceSelectionDescriptor>
+  >(() => {
+    const result: Record<string, SourceSelectionDescriptor> = {}
+
+    for (const node of activeSpace.workflowNodes) {
+      if (node.kind !== 'source' || !node.connectionId || !node.datasetId)
+        continue
+
+      const effDates = resolveEffectiveNodeDates(
+        node.customDateRange,
+        startDate,
+        endDate,
+      )
+      const effProject = resolveEffectiveNodeProject(node.filterValues)
+      const rawQuery: AnalyticsDatasetQueryInput = {
+        datasetId: node.datasetId,
+        projectId: effProject,
+        startDate: effDates.from,
+        endDate: effDates.to,
+        execution: node.queryExecution,
+        filters: normalizeSourceFilters(node.filterValues),
+      }
+      const manifest = findCachedManifest(node.connectionId, node.datasetId)
+      const selectedQuery = queryWithDatasetSelection(rawQuery, manifest)
+      const scopeSig = selectionSignature(selectedQuery)
+      const selKey = `${node.connectionId}::${scopeSig}`
+      let computedKey = computedKeysBySelKey[selKey]
+      const existingEntry = selectionEntries[selKey]
+      if (computedKey === undefined && existingEntry !== undefined)
+        computedKey = existingEntry.computedSelectionKey
+
+      result[node.id] = {
+        selKey,
+        nodeId: node.id,
+        connectionId: node.connectionId,
+        rawQuery,
+        selectedQuery,
+        scopeSignature: scopeSig,
+        computedSelectionKey: computedKey,
+      }
+    }
+
+    return result
+  }, [
+    activeSpace.workflowNodes,
+    computedKeysBySelKey,
+    endDate,
+    findCachedManifest,
+    selectionEntries,
+    startDate,
+  ])
+
+  useEffect(() => {
+    let active = true
+    const descriptors = Object.values(nodeSelectionPlans)
+
+    for (const desc of descriptors) {
+      if (desc.computedSelectionKey !== undefined) {
+        const eventKey = `${desc.connectionId}::${desc.computedSelectionKey}`
+        eventKeyToSelKeyRef.current.set(eventKey, desc.selKey)
+        continue
+      }
+
+      void analyticsSelectionKey(desc.selectedQuery).then((hashKey) => {
+        if (!active) return
+        const eventKey = `${desc.connectionId}::${hashKey}`
+        eventKeyToSelKeyRef.current.set(eventKey, desc.selKey)
+        if (computedKeysRef.current[desc.selKey] === hashKey) return
+        computedKeysRef.current = {
+          ...computedKeysRef.current,
+          [desc.selKey]: hashKey,
+        }
+        setComputedKeysBySelKey((previous) => {
+          if (previous[desc.selKey] === hashKey) return previous
+          return { ...previous, [desc.selKey]: hashKey }
+        })
+      })
+    }
+
+    return () => {
+      active = false
+    }
+  }, [nodeSelectionPlans])
+
+  const nodeSourceDatasets = useMemo(() => {
+    if (editingNodeId === null) return sourceCatalog
+
+    const plan = nodeSelectionPlans[editingNodeId]
+    let cached: StoredSelectionEntry | undefined
+    if (plan !== undefined) cached = selectionEntries[plan.selKey]
+
+    if (
+      cached === undefined ||
+      cached.workspaceId !== workspaceId ||
+      cached.connectionId !== newNodeSelectedConnectionId ||
+      cached.publication.remoteAggregate ||
+      cached.publication.manifest.id !== newNodeDatasetId
+    )
+      return sourceCatalog
+
+    return sourceCatalog.map((dataset) => {
+      if (dataset.id !== cached.publication.manifest.id) return dataset
+
+      return { ...dataset, columns: cached.publication.manifest.columns }
+    })
+  }, [
+    sourceCatalog,
+    editingNodeId,
+    nodeSelectionPlans,
+    selectionEntries,
+    workspaceId,
+    newNodeSelectedConnectionId,
+    newNodeDatasetId,
+  ])
 
   const handleSelectSpace = useCallback(
     (targetSpaceId: string) => {
@@ -286,6 +477,7 @@ export function useAnalyticsWorkspace() {
 
   const handleDateRangeChange = useCallback(
     (nextRange: DateRange | undefined) => {
+      userMutatedStateRef.current = true
       setDateRange(nextRange)
       if (!nextRange || !nextRange.from) return
 
@@ -330,6 +522,212 @@ export function useAnalyticsWorkspace() {
       active = false
     }
   }, [bridge.addons])
+
+  useEffect(() => {
+    if (!workspaceId) return
+    let active = true
+
+    canAutoPersistSettingsRef.current = false
+    userMutatedStateRef.current = false
+    setIsHydrated(false)
+    setHydrateError(undefined)
+    setSettingsError(undefined)
+    setSettingsErrorDetails(undefined)
+    setSelectionEntries({})
+    setComputedKeysBySelKey({})
+    computedKeysRef.current = {}
+    setSelectionProgress({})
+    setSelectionErrors({})
+    setSelectionErrorDetails({})
+    setActiveSelectionModes({})
+    attemptedMissingKeysRef.current.clear()
+    checkedHydratedOverdueRef.current.clear()
+    eventKeyToSelKeyRef.current.clear()
+
+    void bridge.addons
+      .hydrateAnalytics({ body: { workspaceId } })
+      .then((res) => {
+        if (!active) return
+
+        if (!res.isSuccess || res.data === undefined) {
+          let message = 'ANALYTICS_HYDRATE_FAILED'
+          if (res.error !== undefined) message = res.error
+          setHydrateError(message)
+          setIsHydrated(true)
+          return
+        }
+
+        let restoredSpaces = [createDefaultBlankSpace()]
+        let restoredPolling = DEFAULT_POLLING_INTERVAL_MINUTES
+        let restoredStart = '2026-08-01'
+        let restoredEnd = '2026-10-31'
+
+        if (res.data.settings !== undefined) {
+          restoredPolling = res.data.settings.pollingIntervalMinutes
+
+          if (
+            res.data.settings.startDate !== undefined &&
+            isIsoDateString(res.data.settings.startDate)
+          )
+            restoredStart = res.data.settings.startDate
+
+          if (
+            res.data.settings.endDate !== undefined &&
+            isIsoDateString(res.data.settings.endDate)
+          )
+            restoredEnd = res.data.settings.endDate
+
+          if (res.data.settings.spacesJson !== undefined) {
+            const parsed = parsePersistedSpaces(res.data.settings.spacesJson)
+
+            if (parsed.isSuccess() && parsed.success.length > 0)
+              restoredSpaces = parsed.success
+
+            if (parsed.isFailure()) setHydrateError(parsed.failure.messageKey)
+          }
+        }
+
+        const nextEntries: Record<string, StoredSelectionEntry> = {}
+        const nextComputed: Record<string, string> = {}
+
+        for (const item of res.data.publications) {
+          const scopeSig = selectionSignature(item.publication.query)
+          const selKey = `${item.publication.connectionInstanceId}::${scopeSig}`
+          const eventKey = `${item.publication.connectionInstanceId}::${item.publication.selectionKey}`
+          eventKeyToSelKeyRef.current.set(eventKey, selKey)
+          nextComputed[selKey] = item.publication.selectionKey
+          nextEntries[selKey] = {
+            workspaceId,
+            connectionId: item.publication.connectionInstanceId,
+            scopeSignature: scopeSig,
+            computedSelectionKey: item.publication.selectionKey,
+            scope: createAnalyticsDatasetScope(item.publication.query),
+            publication: item.publication,
+            syncState: item.syncState,
+          }
+        }
+
+        canAutoPersistSettingsRef.current = true
+        computedKeysRef.current = nextComputed
+
+        if (!userMutatedStateRef.current) {
+          lastSavedWorkspaceSnapshotRef.current = buildSettingsSnapshotKey({
+            workspaceId,
+            pollingIntervalMinutes: restoredPolling,
+            spacesJson: JSON.stringify(restoredSpaces),
+            startDate: restoredStart,
+            endDate: restoredEnd,
+          })
+          setSpaces(restoredSpaces)
+          setPollingIntervalMinutes(restoredPolling)
+          setStartDate(restoredStart)
+          setEndDate(restoredEnd)
+          setDateRange({
+            from: isoDateToLocalDate(restoredStart),
+            to: isoDateToLocalDate(restoredEnd),
+          })
+        }
+
+        setComputedKeysBySelKey(nextComputed)
+        setSelectionEntries(nextEntries)
+        setIsHydrated(true)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [bridge.addons, workspaceId])
+
+  useEffect(() => {
+    if (!isHydrated || !workspaceId || !canAutoPersistSettingsRef.current)
+      return
+
+    const payload: SaveAnalyticsWorkspaceStateInput = {
+      workspaceId,
+      pollingIntervalMinutes,
+      spacesJson: JSON.stringify(spaces),
+    }
+
+    if (isIsoDateString(startDate)) payload.startDate = startDate
+    if (isIsoDateString(endDate)) payload.endDate = endDate
+
+    const snapshot = buildSettingsSnapshotKey(payload)
+    if (
+      snapshot === lastSavedWorkspaceSnapshotRef.current &&
+      pendingSettingsSavesRef.current === 0
+    )
+      return
+
+    let active = true
+    pendingSettingsSavesRef.current += 1
+    settingsSaveTailRef.current = settingsSaveTailRef.current
+      .then(async () => {
+        if (active) {
+          setSettingsError(undefined)
+          setSettingsErrorDetails(undefined)
+        }
+
+        const response = await bridge.addons.saveAnalyticsWorkspaceState({
+          body: payload,
+        })
+        if (!active) return
+
+        if (response.isSuccess) {
+          lastSavedWorkspaceSnapshotRef.current = snapshot
+          return
+        }
+
+        let message = 'ANALYTICS_SETTINGS_SAVE_FAILED'
+        if (response.error !== undefined) message = response.error
+        setSettingsError(message)
+        setSettingsErrorDetails(response.details)
+      })
+      .finally(() => {
+        pendingSettingsSavesRef.current -= 1
+      })
+
+    return () => {
+      active = false
+    }
+  }, [
+    bridge.addons,
+    endDate,
+    isHydrated,
+    pollingIntervalMinutes,
+    settingsSaveRevision,
+    spaces,
+    startDate,
+    workspaceId,
+  ])
+
+  useEffect(() => {
+    const unsubscribe = bridge.events.on(
+      'analytics:load-progress',
+      (payload) => {
+        if (payload.workspaceId !== workspaceId) return
+        const eventKey = `${payload.connectionInstanceId}::${payload.selectionKey}`
+
+        if (payload.phase === 'completed' || payload.phase === 'failed') {
+          setSelectionProgress((previous) => {
+            if (previous[eventKey] === undefined) return previous
+            const next = { ...previous }
+            delete next[eventKey]
+            return next
+          })
+          return
+        }
+
+        setSelectionProgress((previous) => ({
+          ...previous,
+          [eventKey]: payload,
+        }))
+      },
+    )
+
+    return () => {
+      unsubscribe()
+    }
+  }, [bridge.events, workspaceId])
 
   const connectionDisplayOptions = useMemo<ConnectionDisplayOption[]>(() => {
     if (!workspace || workspace.connections.length === 0) return []
@@ -396,24 +794,6 @@ export function useAnalyticsWorkspace() {
   }, [connectionDisplayOptions, newNodeSelectedConnectionId])
 
   useEffect(() => {
-    if (connectionDisplayOptions.length === 0) {
-      if (selectedConnectionId) setSelectedConnectionId('')
-
-      return
-    }
-
-    const exists = connectionDisplayOptions.some(
-      (opt) => opt.id === selectedConnectionId,
-    )
-
-    if (!exists) setSelectedConnectionId('')
-  }, [connectionDisplayOptions, selectedConnectionId])
-
-  const analyticsCatalogs = useRef(
-    new Map<string, AnalyticsDatasetManifest[]>(),
-  )
-
-  useEffect(() => {
     if (!newNodeSelectedConnectionId || !workspaceId) {
       setNodeSourceDatasets([])
       setNewNodeDatasetId('')
@@ -464,8 +844,7 @@ export function useAnalyticsWorkspace() {
   >({})
 
   useEffect(() => {
-    let connectionId = newNodeSelectedConnectionId
-    if (!connectionId) connectionId = selectedConnectionId
+    const connectionId = newNodeSelectedConnectionId
     setFilterOptionsErrors({})
     setConnectionMetadataOptions({
       projects: [],
@@ -525,199 +904,567 @@ export function useAnalyticsWorkspace() {
   }, [
     bridge.addons,
     newNodeSelectedConnectionId,
-    selectedConnectionId,
     workspaceId,
     nodeSourceDatasets,
     newNodeDatasetId,
   ])
 
-  const latestSourceRequests = useRef(new Map<string, symbol>())
-  const [loadingSourceIds, setLoadingSourceIds] = useState(new Set<string>())
-  const [sourceErrorDetails, setSourceErrorDetails] = useState<
-    Record<string, Record<string, string[]>>
-  >({})
-  const [sourceErrors, setSourceErrors] = useState<Record<string, string>>({})
   const clearConnectionPublications = useCallback(
     (connectionIds: string[], message: string) => {
-      setSourceErrors((previous) => {
-        const next = { ...previous }
+      if (connectionIds.length === 0) return
 
-        for (const [id, entry] of Object.entries(datasetResults))
-          if (connectionIds.includes(entry.connectionId)) next[id] = message
+      const affectedSelKeys = new Set<string>()
 
-        return next
+      for (const [selKey, entry] of Object.entries(
+        selectionEntriesRef.current,
+      )) {
+        if (connectionIds.includes(entry.connectionId))
+          affectedSelKeys.add(selKey)
+      }
+
+      for (const node of activeWorkflowNodesRef.current) {
+        if (
+          node.kind !== 'source' ||
+          node.connectionId === undefined ||
+          !connectionIds.includes(node.connectionId)
+        )
+          continue
+
+        const effDates = resolveEffectiveNodeDates(
+          node.customDateRange,
+          startDateRef.current,
+          endDateRef.current,
+        )
+        const effProject = resolveEffectiveNodeProject(node.filterValues)
+        const manifest = findCachedManifest(node.connectionId, node.datasetId)
+        const selectedQuery = queryWithDatasetSelection(
+          {
+            datasetId: node.datasetId,
+            projectId: effProject,
+            startDate: effDates.from,
+            endDate: effDates.to,
+            execution: node.queryExecution,
+            filters: normalizeSourceFilters(node.filterValues),
+          },
+          manifest,
+        )
+        const selKey = `${node.connectionId}::${selectionSignature(selectedQuery)}`
+        affectedSelKeys.add(selKey)
+      }
+
+      setSelectionEntries((previousEntries) => {
+        const remainingEntries: Record<string, StoredSelectionEntry> = {}
+
+        for (const [selKey, entry] of Object.entries(previousEntries)) {
+          if (connectionIds.includes(entry.connectionId)) continue
+
+          remainingEntries[selKey] = entry
+        }
+
+        return remainingEntries
       })
-      setDatasetResults((previous) =>
-        Object.fromEntries(
-          Object.entries(previous).filter(
-            ([, entry]) => !connectionIds.includes(entry.connectionId),
-          ),
-        ),
-      )
-    },
-    [datasetResults],
-  )
-  const fetchSourceDataset = useCallback(
-    async (
-      nodeId: string,
-      connectionId: string,
-      query: AnalyticsDatasetQueryInput,
-    ) => {
-      if (!workspaceId) return
-      const request = Symbol()
-      latestSourceRequests.current.set(nodeId, request)
-      setLoadingSourceIds((previous) => new Set([...previous, nodeId]))
-      setSourceErrors((previous) => {
-        const next = { ...previous }
-        delete next[nodeId]
-        return next
-      })
-      setSourceErrorDetails((previous) => {
-        const next = { ...previous }
-        delete next[nodeId]
-        return next
-      })
-      const fail = (message: string) => {
-        setLoadingSourceIds((previous) => {
-          const next = new Set(previous)
-          next.delete(nodeId)
+
+      if (affectedSelKeys.size > 0) {
+        setSelectionErrors((previousErrors) => {
+          const next = { ...previousErrors }
+
+          for (const key of affectedSelKeys) next[key] = message
+
           return next
         })
-        setSourceErrors((previous) => ({ ...previous, [nodeId]: message }))
       }
-      const catalogKey = JSON.stringify([workspaceId, connectionId])
-      let catalog = analyticsCatalogs.current.get(catalogKey)
 
-      if (catalog === undefined) {
-        const listed = await bridge.addons.listAnalyticsDatasets({
-          body: { workspaceId, connectionInstanceId: connectionId },
+      setSelectionProgress((previous) => {
+        const next: Record<string, AnalyticsLoadProgressEvent> = {}
+
+        for (const [eventKey, evt] of Object.entries(previous)) {
+          if (!connectionIds.includes(evt.connectionInstanceId))
+            next[eventKey] = evt
+        }
+
+        return next
+      })
+    },
+    [findCachedManifest],
+  )
+
+  const syncUniqueSelection = useCallback(
+    async (
+      connectionId: string,
+      rawQuery: AnalyticsDatasetQueryInput,
+      mode: AnalyticsRefreshMode,
+    ): Promise<void> => {
+      if (!workspaceId || !connectionId) return
+
+      const resolveCanonicalTarget = async (): Promise<{
+        manifest?: AnalyticsDatasetManifest
+        selectedQuery: AnalyticsDatasetQueryInput
+        scopeSignature: string
+        selKey: string
+        computedKey: string
+        catalogError?: string
+      }> => {
+        const catalogKey = JSON.stringify([workspaceId, connectionId])
+        let catalog = analyticsCatalogs.current.get(catalogKey)
+
+        if (catalog === undefined) {
+          const cachedManifest = findCachedManifest(
+            connectionId,
+            rawQuery.datasetId,
+          )
+          if (cachedManifest !== undefined) {
+            const selectedQuery = queryWithDatasetSelection(
+              rawQuery,
+              cachedManifest,
+            )
+            const scopeSignature = selectionSignature(selectedQuery)
+            const selKey = `${connectionId}::${scopeSignature}`
+            const computedKey = await analyticsSelectionKey(selectedQuery)
+            return {
+              manifest: cachedManifest,
+              selectedQuery,
+              scopeSignature,
+              selKey,
+              computedKey,
+            }
+          }
+
+          const listed = await bridge.addons.listAnalyticsDatasets({
+            body: { workspaceId, connectionInstanceId: connectionId },
+          })
+
+          if (!listed.isSuccess || listed.data === undefined) {
+            let errorMessage = 'ANALYTICS_CATALOG_UNAVAILABLE'
+            if (listed.error !== undefined) errorMessage = listed.error
+            const fallbackQuery = queryWithDatasetSelection(rawQuery, undefined)
+            const fallbackScopeSignature = selectionSignature(fallbackQuery)
+            const fallbackSelKey = `${connectionId}::${fallbackScopeSignature}`
+            const computedKey = await analyticsSelectionKey(fallbackQuery)
+            return {
+              selectedQuery: fallbackQuery,
+              scopeSignature: fallbackScopeSignature,
+              selKey: fallbackSelKey,
+              computedKey,
+              catalogError: errorMessage,
+            }
+          }
+
+          catalog = listed.data
+          analyticsCatalogs.current.set(catalogKey, catalog)
+        }
+
+        const manifest = catalog.find((item) => item.id === rawQuery.datasetId)
+        const selectedQuery = queryWithDatasetSelection(rawQuery, manifest)
+        const scopeSignature = selectionSignature(selectedQuery)
+        const selKey = `${connectionId}::${scopeSignature}`
+        const computedKey = await analyticsSelectionKey(selectedQuery)
+
+        return {
+          manifest,
+          selectedQuery,
+          scopeSignature,
+          selKey,
+          computedKey,
+        }
+      }
+
+      const target = await resolveCanonicalTarget()
+      if (!isMountedRef.current) return
+
+      const eventKey = `${connectionId}::${target.computedKey}`
+      eventKeyToSelKeyRef.current.set(eventKey, target.selKey)
+
+      if (computedKeysRef.current[target.selKey] !== target.computedKey) {
+        computedKeysRef.current = {
+          ...computedKeysRef.current,
+          [target.selKey]: target.computedKey,
+        }
+        setComputedKeysBySelKey((previous) => ({
+          ...previous,
+          [target.selKey]: target.computedKey,
+        }))
+      }
+
+      if (target.catalogError !== undefined) {
+        const catalogError = target.catalogError
+
+        setSelectionErrors((previous) => ({
+          ...previous,
+          [target.selKey]: catalogError,
+        }))
+
+        return
+      }
+
+      if (target.manifest === undefined) {
+        setSelectionErrors((previous) => ({
+          ...previous,
+          [target.selKey]: 'ANALYTICS_DATASET_NOT_AVAILABLE',
+        }))
+        return
+      }
+
+      const existingInFlight = inFlightSelectionsRef.current.get(target.selKey)
+
+      if (existingInFlight !== undefined) {
+        if (mode !== 'full' || existingInFlight.mode === 'full')
+          return existingInFlight.promise
+
+        await existingInFlight.promise
+        if (!isMountedRef.current) return
+        const postWait = inFlightSelectionsRef.current.get(target.selKey)
+        if (postWait !== undefined && postWait.mode === 'full')
+          return postWait.promise
+      }
+
+      attemptedMissingKeysRef.current.add(target.selKey)
+      checkedHydratedOverdueRef.current.add(target.selKey)
+
+      const executeLoad = async (): Promise<void> => {
+        if (!isMountedRef.current) return
+
+        const requestToken = Symbol()
+        latestSelectionRequestsRef.current.set(target.selKey, requestToken)
+        setActiveSelectionModes((previous) => ({
+          ...previous,
+          [target.selKey]: mode,
+        }))
+        setSelectionErrors((previous) => {
+          if (previous[target.selKey] === undefined) return previous
+          const next = { ...previous }
+          delete next[target.selKey]
+          return next
         })
-        if (latestSourceRequests.current.get(nodeId) !== request) return
+        setSelectionErrorDetails((previous) => {
+          if (previous[target.selKey] === undefined) return previous
+          const next = { ...previous }
+          delete next[target.selKey]
+          return next
+        })
 
-        if (!listed.isSuccess || listed.data === undefined) {
-          let message = 'ANALYTICS_CATALOG_UNAVAILABLE'
-          if (listed.error !== undefined) message = listed.error
-          fail(message)
+        const response = await bridge.addons.loadAnalyticsDataset({
+          body: {
+            workspaceId,
+            connectionInstanceId: connectionId,
+            query: target.selectedQuery,
+            policy: { mode },
+          },
+        })
+
+        if (
+          !isMountedRef.current ||
+          latestSelectionRequestsRef.current.get(target.selKey) !== requestToken
+        )
+          return
+
+        setActiveSelectionModes((previous) => {
+          if (previous[target.selKey] === undefined) return previous
+          const next = { ...previous }
+          delete next[target.selKey]
+          return next
+        })
+        setSelectionProgress((previous) => {
+          if (previous[eventKey] === undefined) return previous
+          const next = { ...previous }
+          delete next[eventKey]
+          return next
+        })
+
+        if (!response.isSuccess || response.data === undefined) {
+          let message = 'ANALYTICS_REQUEST_FAILED'
+          if (response.error !== undefined) message = response.error
+
+          if (response.statusCode === 401 || response.statusCode === 403)
+            clearConnectionPublications([connectionId], message)
+
+          setSelectionErrors((previous) => ({
+            ...previous,
+            [target.selKey]: message,
+          }))
+
+          if (response.details !== undefined) {
+            const details = response.details
+            setSelectionErrorDetails((previous) => ({
+              ...previous,
+              [target.selKey]: details,
+            }))
+          }
+
           return
         }
 
-        catalog = listed.data
-        analyticsCatalogs.current.set(catalogKey, catalog)
+        const publication = response.data.publication
+        const syncState = response.data.syncState
+        const pubEventKey = `${connectionId}::${publication.selectionKey}`
+        eventKeyToSelKeyRef.current.set(pubEventKey, target.selKey)
+
+        setSelectionEntries((previous) => ({
+          ...previous,
+          [target.selKey]: {
+            workspaceId,
+            connectionId,
+            scopeSignature: target.scopeSignature,
+            computedSelectionKey: publication.selectionKey,
+            scope: createAnalyticsDatasetScope(target.selectedQuery),
+            publication,
+            syncState,
+          },
+        }))
       }
 
-      const manifest = catalog.find((item) => item.id === query.datasetId)
-
-      if (manifest === undefined) {
-        fail('ANALYTICS_DATASET_NOT_AVAILABLE')
-        return
-      }
-
-      const selectedQuery = queryWithDatasetSelection(query, manifest)
-      const response = await bridge.addons.loadAnalyticsDataset({
-        body: {
-          workspaceId,
-          connectionInstanceId: connectionId,
-          query: selectedQuery,
-        },
-      })
-      if (latestSourceRequests.current.get(nodeId) !== request) return
-      setLoadingSourceIds((previous) => {
-        const next = new Set(previous)
-        next.delete(nodeId)
-        return next
-      })
-
-      if (!response.isSuccess || response.data === undefined) {
-        let message = 'ANALYTICS_REQUEST_FAILED'
-        if (response.error !== undefined) message = response.error
-        if (response.statusCode === 401 || response.statusCode === 403)
-          clearConnectionPublications([connectionId], message)
-        setSourceErrors((previous) => ({ ...previous, [nodeId]: message }))
-        const details = response.details
-        if (details !== undefined)
-          setSourceErrorDetails((previous) => ({
-            ...previous,
-            [nodeId]: details,
-          }))
-        return
-      }
-
-      const publication = response.data.publication
-      const scope = createAnalyticsDatasetScope(selectedQuery)
-      setDatasetResults((previous) => ({
-        ...previous,
-        [nodeId]: { workspaceId, connectionId, scope, publication },
-      }))
-    },
-    [bridge.addons, workspaceId, clearConnectionPublications],
-  )
-
-  const loadAnalyticsFromConnection = useCallback(
-    async (connectionId: string) => {
-      if (!workspaceId || !connectionId) {
-        setDatasetResults({})
-        return
-      }
-
-      setIsFetchingLive(true)
-
-      const listRes = await bridge.addons.listAnalyticsDatasets({
-        body: {
-          workspaceId,
-          connectionInstanceId: connectionId,
-        },
+      const promise = executeLoad().finally(() => {
+        const current = inFlightSelectionsRef.current.get(target.selKey)
+        if (current !== undefined && current.promise === promise)
+          inFlightSelectionsRef.current.delete(target.selKey)
       })
 
-      if (!listRes.isSuccess || !listRes.data || listRes.data.length === 0) {
-        setDatasetResults({})
-        setIsFetchingLive(false)
-        return
-      }
+      inFlightSelectionsRef.current.set(target.selKey, { mode, promise })
 
-      const remoteDatasets = listRes.data
-      analyticsCatalogs.current.set(
-        JSON.stringify([workspaceId, connectionId]),
-        remoteDatasets,
-      )
-
-      const activeSourceNodes = activeSpace.workflowNodes.filter(
-        (node) => node.kind === 'source',
-      )
-
-      for (const node of activeSourceNodes) {
-        if (!node.connectionId) continue
-        const dates = resolveEffectiveNodeDates(
-          node.filterValues,
-          startDate,
-          endDate,
-        )
-        await fetchSourceDataset(node.id, node.connectionId, {
-          datasetId: node.datasetId,
-          projectId: resolveEffectiveNodeProject(node.filterValues),
-          startDate: dates.from,
-          endDate: dates.to,
-          execution: node.queryExecution,
-          filters: node.filterValues,
-        })
-      }
-
-      setIsFetchingLive(false)
+      return promise
     },
     [
-      fetchSourceDataset,
-      queryExecution,
-      activeSpace.workflowNodes,
       bridge.addons,
-      endDate,
-      startDate,
+      clearConnectionPublications,
+      findCachedManifest,
       workspaceId,
     ],
   )
 
+  const syncUniqueSelections = useCallback(
+    async (
+      descriptors: Array<{
+        connectionId: string
+        rawQuery: AnalyticsDatasetQueryInput
+      }>,
+      mode: AnalyticsRefreshMode,
+    ): Promise<void> => {
+      if (!workspaceId || descriptors.length === 0) return
+
+      const deduplicated = new Map<
+        string,
+        { connectionId: string; rawQuery: AnalyticsDatasetQueryInput }
+      >()
+
+      for (const item of descriptors) {
+        if (!item.connectionId || !item.rawQuery.datasetId) continue
+        const manifest = findCachedManifest(
+          item.connectionId,
+          item.rawQuery.datasetId,
+        )
+        const normalizedQuery = queryWithDatasetSelection(
+          item.rawQuery,
+          manifest,
+        )
+        const key = `${item.connectionId}::${selectionSignature(normalizedQuery)}`
+        if (!deduplicated.has(key))
+          deduplicated.set(key, {
+            connectionId: item.connectionId,
+            rawQuery: item.rawQuery,
+          })
+      }
+
+      const queue = Array.from(deduplicated.values())
+      if (queue.length === 0) return
+
+      let workerCount = MAX_CONCURRENT_SELECTIONS
+      if (queue.length < workerCount) workerCount = queue.length
+
+      let cursorIndex = 0
+      const workers: Promise<void>[] = []
+
+      for (let idx = 0; idx < workerCount; idx += 1) {
+        workers.push(
+          (async () => {
+            while (cursorIndex < queue.length) {
+              const nextIndex = cursorIndex
+              cursorIndex += 1
+              const target = queue[nextIndex]
+              if (target === undefined) return
+              await syncUniqueSelection(
+                target.connectionId,
+                target.rawQuery,
+                mode,
+              )
+            }
+          })(),
+        )
+      }
+
+      await Promise.all(workers)
+    },
+    [findCachedManifest, syncUniqueSelection, workspaceId],
+  )
+
+  const collectActiveUniqueSourceDescriptors = useCallback(() => {
+    const items: Array<{
+      selKey: string
+      connectionId: string
+      rawQuery: AnalyticsDatasetQueryInput
+    }> = []
+    const seen = new Set<string>()
+
+    for (const node of activeWorkflowNodesRef.current) {
+      if (node.kind !== 'source' || !node.connectionId || !node.datasetId)
+        continue
+
+      const effDates = resolveEffectiveNodeDates(
+        node.customDateRange,
+        startDateRef.current,
+        endDateRef.current,
+      )
+      const effProject = resolveEffectiveNodeProject(node.filterValues)
+      const rawQuery: AnalyticsDatasetQueryInput = {
+        datasetId: node.datasetId,
+        projectId: effProject,
+        startDate: effDates.from,
+        endDate: effDates.to,
+        execution: node.queryExecution,
+        filters: normalizeSourceFilters(node.filterValues),
+      }
+      const manifest = findCachedManifest(node.connectionId, node.datasetId)
+      const normalized = queryWithDatasetSelection(rawQuery, manifest)
+      const selKey = `${node.connectionId}::${selectionSignature(normalized)}`
+      if (seen.has(selKey)) continue
+      seen.add(selKey)
+      items.push({ selKey, connectionId: node.connectionId, rawQuery })
+    }
+
+    return items
+  }, [findCachedManifest])
+
   useEffect(() => {
-    if (!selectedConnectionId) return
-    void loadAnalyticsFromConnection(selectedConnectionId)
-  }, [loadAnalyticsFromConnection, selectedConnectionId])
+    if (!isHydrated || !workspaceId) return
+
+    const toFetch: Array<{
+      connectionId: string
+      rawQuery: AnalyticsDatasetQueryInput
+    }> = []
+    const nowMs = Date.now()
+    const planList = Object.values(nodeSelectionPlans)
+    const scheduledKeys = new Set<string>()
+
+    for (const plan of planList) {
+      if (scheduledKeys.has(plan.selKey)) continue
+      const entry = selectionEntriesRef.current[plan.selKey]
+
+      if (entry === undefined) {
+        if (
+          !attemptedMissingKeysRef.current.has(plan.selKey) &&
+          activeSelectionModes[plan.selKey] === undefined
+        ) {
+          attemptedMissingKeysRef.current.add(plan.selKey)
+          scheduledKeys.add(plan.selKey)
+          toFetch.push({
+            connectionId: plan.connectionId,
+            rawQuery: plan.rawQuery,
+          })
+        }
+
+        continue
+      }
+
+      if (
+        pollingIntervalMinutes > 0 &&
+        !checkedHydratedOverdueRef.current.has(plan.selKey) &&
+        activeSelectionModes[plan.selKey] === undefined
+      ) {
+        checkedHydratedOverdueRef.current.add(plan.selKey)
+        const lastFastMs = Date.parse(entry.syncState.lastFastSyncAt)
+        const lastFullMs = Date.parse(entry.syncState.lastFullReconcileAt)
+        const fastDue =
+          !Number.isFinite(lastFastMs) ||
+          nowMs - lastFastMs >= pollingIntervalMinutes * 60_000
+        const fullDue =
+          !Number.isFinite(lastFullMs) ||
+          nowMs - lastFullMs >= DEFAULT_FULL_RECONCILE_INTERVAL_MINUTES * 60_000
+
+        if (fastDue || fullDue) {
+          scheduledKeys.add(plan.selKey)
+          toFetch.push({
+            connectionId: plan.connectionId,
+            rawQuery: plan.rawQuery,
+          })
+        }
+      }
+    }
+
+    if (toFetch.length > 0) void syncUniqueSelections(toFetch, 'auto')
+  }, [
+    activeSelectionModes,
+    isHydrated,
+    nodeSelectionPlans,
+    pollingIntervalMinutes,
+    syncUniqueSelections,
+    workspaceId,
+  ])
+
+  useEffect(() => {
+    if (!isHydrated || !workspaceId || pollingIntervalMinutes <= 0) return
+
+    const intervalMs = pollingIntervalMinutes * 60_000
+    const timerId = window.setInterval(() => {
+      const activeItems = collectActiveUniqueSourceDescriptors()
+      if (activeItems.length === 0) return
+      void syncUniqueSelections(activeItems, 'auto')
+    }, intervalMs)
+
+    return () => {
+      window.clearInterval(timerId)
+    }
+  }, [
+    collectActiveUniqueSourceDescriptors,
+    isHydrated,
+    pollingIntervalMinutes,
+    syncUniqueSelections,
+    workspaceId,
+  ])
+
+  const handleSyncAllSources = useCallback(async () => {
+    if (!workspaceId) return
+    const items = collectActiveUniqueSourceDescriptors()
+    if (items.length === 0) return
+
+    for (const item of items) attemptedMissingKeysRef.current.add(item.selKey)
+
+    await syncUniqueSelections(items, 'full')
+  }, [collectActiveUniqueSourceDescriptors, syncUniqueSelections, workspaceId])
+
+  const retrySourceNode = useCallback(
+    async (targetNodeId: string) => {
+      if (!workspaceId) return
+      const sourceIds = collectUpstreamSourceNodeIds(
+        activeWorkflowNodesRef.current,
+        targetNodeId,
+      )
+      const items: Array<{
+        connectionId: string
+        rawQuery: AnalyticsDatasetQueryInput
+      }> = []
+
+      for (const sourceId of sourceIds) {
+        const plan = nodeSelectionPlans[sourceId]
+        if (plan === undefined) continue
+        attemptedMissingKeysRef.current.add(plan.selKey)
+        items.push({
+          connectionId: plan.connectionId,
+          rawQuery: plan.rawQuery,
+        })
+      }
+
+      if (items.length === 0) {
+        await handleSyncAllSources()
+        return
+      }
+
+      await syncUniqueSelections(items, 'full')
+    },
+    [
+      handleSyncAllSources,
+      nodeSelectionPlans,
+      syncUniqueSelections,
+      workspaceId,
+    ],
+  )
 
   const [inspectionPage, setInspectionPage] = useState<{
     id: string
@@ -725,39 +1472,22 @@ export function useAnalyticsWorkspace() {
     offset: number
     version?: string
   }>({ id: '', search: '', offset: 0 })
+
   const publications: Record<string, AnalyticsPublication> = {}
 
   for (const node of activeSpace.workflowNodes) {
-    const cached = datasetResults[node.id]
+    if (node.kind !== 'source') continue
+    const plan = nodeSelectionPlans[node.id]
+    if (plan === undefined) continue
+    const entry = selectionEntries[plan.selKey]
     if (
-      cached === undefined ||
-      cached.workspaceId !== workspaceId ||
-      cached.connectionId !== node.connectionId
+      entry === undefined ||
+      entry.workspaceId !== workspaceId ||
+      entry.connectionId !== node.connectionId
     )
       continue
-    const dates = resolveEffectiveNodeDates(
-      node.filterValues,
-      startDate,
-      endDate,
-    )
-    const scope = createAnalyticsDatasetScope(
-      queryWithDatasetSelection(
-        {
-          datasetId: node.datasetId,
-          projectId: resolveEffectiveNodeProject(node.filterValues),
-          startDate: dates.from,
-          endDate: dates.to,
-          filters: node.filterValues,
-        },
-        cached.publication.manifest,
-      ),
-    )
-    if (
-      JSON.stringify(scope) === JSON.stringify(cached.scope) &&
-      JSON.stringify(node.queryExecution) ===
-        JSON.stringify(cached.publication.query.execution)
-    )
-      publications[node.id] = cached.publication
+
+    publications[node.id] = entry.publication
   }
 
   const warehousePlan = buildAnalyticsPlan(
@@ -770,6 +1500,188 @@ export function useAnalyticsWorkspace() {
       publication.generationId,
     ]),
   )
+
+  const findProgressForPlan = useCallback(
+    (
+      plan: SourceSelectionDescriptor,
+    ): AnalyticsLoadProgressEvent | undefined => {
+      const entry = selectionEntries[plan.selKey]
+      if (entry !== undefined) {
+        const pubKey = `${plan.connectionId}::${entry.computedSelectionKey}`
+        const byPub = selectionProgress[pubKey]
+        if (byPub !== undefined) return byPub
+      }
+
+      if (plan.computedSelectionKey !== undefined) {
+        const compKey = `${plan.connectionId}::${plan.computedSelectionKey}`
+        const byComp = selectionProgress[compKey]
+        if (byComp !== undefined) return byComp
+      }
+
+      return undefined
+    },
+    [selectionEntries, selectionProgress],
+  )
+
+  const upstreamStatusByNodeId = useMemo<
+    Record<string, AnalyticsUpstreamSourceStatus>
+  >(() => {
+    const map: Record<string, AnalyticsUpstreamSourceStatus> = {}
+
+    for (const node of activeSpace.workflowNodes) {
+      const upstreamSources = collectUpstreamSourceNodeIds(
+        activeSpace.workflowNodes,
+        node.id,
+      )
+      if (upstreamSources.length === 0) continue
+
+      let hasAllPublications = true
+      let isInitialLoading = false
+      let isRefreshing = false
+      let progress: AnalyticsLoadProgressEvent | undefined
+      let error: string | undefined
+      let errorDetails: Record<string, string[]> | undefined
+
+      for (const sourceId of upstreamSources) {
+        const plan = nodeSelectionPlans[sourceId]
+        if (plan === undefined) {
+          hasAllPublications = false
+          continue
+        }
+
+        const pub = publications[sourceId]
+        const activeMode = activeSelectionModes[plan.selKey]
+        const sourceError = selectionErrors[plan.selKey]
+        const sourceErrDetails = selectionErrorDetails[plan.selKey]
+        const sourceProg = findProgressForPlan(plan)
+
+        if (pub === undefined) {
+          hasAllPublications = false
+          if (
+            sourceError === undefined &&
+            (activeMode !== undefined || isHydrated)
+          )
+            isInitialLoading = true
+        }
+
+        if (pub !== undefined && activeMode !== undefined) isRefreshing = true
+        if (progress === undefined && sourceProg !== undefined)
+          progress = sourceProg
+
+        if (error === undefined && sourceError !== undefined) {
+          error = sourceError
+          errorDetails = sourceErrDetails
+        }
+      }
+
+      if (error !== undefined && !hasAllPublications) isInitialLoading = false
+
+      map[node.id] = {
+        hasPublication: hasAllPublications,
+        isInitialLoading,
+        isRefreshing,
+        progress,
+        error,
+        errorDetails,
+      }
+    }
+
+    return map
+  }, [
+    activeSelectionModes,
+    activeSpace.workflowNodes,
+    findProgressForPlan,
+    isHydrated,
+    nodeSelectionPlans,
+    publications,
+    selectionErrorDetails,
+    selectionErrors,
+  ])
+
+  const syncStatusSummary = useMemo<AnalyticsSyncStatusSummary>(() => {
+    let isBackgroundSyncing = false
+    let isManualSyncing = false
+    const activeProgress: AnalyticsLoadProgressEvent[] = []
+    let lastFastSyncAt: string | undefined
+    let lastFullReconcileAt: string | undefined
+    const strategySet = new Set<AnalyticsSyncStrategy>()
+    let hasRollingWindow = false
+    let hasIncrementalChanges = false
+    const reasonSet = new Set<string>()
+    const seenSelKeys = new Set<string>()
+
+    for (const plan of Object.values(nodeSelectionPlans)) {
+      if (seenSelKeys.has(plan.selKey)) continue
+      seenSelKeys.add(plan.selKey)
+
+      const mode = activeSelectionModes[plan.selKey]
+      if (mode === 'full') isManualSyncing = true
+      if (mode === 'auto' || mode === 'fast') isBackgroundSyncing = true
+
+      const prog = findProgressForPlan(plan)
+      if (prog !== undefined) activeProgress.push(prog)
+
+      const entry = selectionEntries[plan.selKey]
+      if (entry === undefined) continue
+
+      lastFastSyncAt = maxIsoTimestamp(
+        lastFastSyncAt,
+        entry.syncState.lastFastSyncAt,
+      )
+      lastFullReconcileAt = maxIsoTimestamp(
+        lastFullReconcileAt,
+        entry.syncState.lastFullReconcileAt,
+      )
+      strategySet.add(entry.syncState.strategy)
+
+      if (
+        entry.syncState.strategy === 'window_rescan' ||
+        (!entry.publication.remoteAggregate &&
+          entry.publication.manifest.extraction.windowRescan !== undefined &&
+          entry.publication.manifest.selection?.dateRange === true)
+      )
+        hasRollingWindow = true
+
+      if (
+        entry.syncState.strategy === 'incremental_changes' ||
+        (!entry.publication.remoteAggregate &&
+          entry.publication.manifest.extraction.modes.includes('changes') &&
+          entry.syncState.checkpoint !== undefined &&
+          entry.syncState.checkpoint.trim() !== '')
+      )
+        hasIncrementalChanges = true
+
+      if (entry.publication.coverage !== 'complete') {
+        if (entry.publication.coverageReason !== undefined)
+          reasonSet.add(entry.publication.coverageReason)
+        if (entry.syncState.coverageReason !== undefined)
+          reasonSet.add(entry.syncState.coverageReason)
+      }
+    }
+
+    const strategies = Array.from(strategySet)
+
+    return {
+      isBackgroundSyncing,
+      isManualSyncing,
+      activeProgress,
+      lastFastSyncAt,
+      lastFullReconcileAt,
+      strategies,
+      hasRollingWindow,
+      hasIncrementalChanges,
+      coverageReasons: Array.from(reasonSet),
+    }
+  }, [
+    activeSelectionModes,
+    findProgressForPlan,
+    nodeSelectionPlans,
+    selectionEntries,
+  ])
+
+  const isFetchingLive =
+    syncStatusSummary.isBackgroundSyncing || syncStatusSummary.isManualSyncing
+
   const previewInputs = activeSpace.workflowNodes
     .filter(
       (node) =>
@@ -778,7 +1690,9 @@ export function useAnalyticsWorkspace() {
         (txUpstreamNodeId === '__all__' || node.id === txUpstreamNodeId),
     )
     .map((node) => node.id)
+
   const queryNodes: AnalyticsPlanNode[] = [...warehousePlan]
+
   if (
     isAddNodeModalOpen &&
     selectedAddNodeType === 'transform' &&
@@ -791,6 +1705,7 @@ export function useAnalyticsWorkspace() {
       upstreamNodeIds: previewInputs,
       sqlConfig: { sqlQuery: sqlQueryText },
     })
+
   let inspection:
     { id: string; search: string; offset: number; version?: string } | undefined
 
@@ -812,6 +1727,7 @@ export function useAnalyticsWorkspace() {
     clearConnectionPublications,
     inspection,
   )
+
   const resolveRowsForWorkflowNode = useCallback(
     (node: SpaceWorkflowNodeConfig) => {
       const data = nodePages[node.id]?.data
@@ -953,6 +1869,7 @@ export function useAnalyticsWorkspace() {
       if (node.connectionId) setNewNodeSelectedConnectionId(node.connectionId)
 
       setNewNodeDatasetId(node.datasetId)
+      setNewNodeCustomDateRange(normalizeCustomDateRange(node.customDateRange))
 
       if (node.selectedColumns) setNodeSelectedColumns(node.selectedColumns)
 
@@ -974,7 +1891,8 @@ export function useAnalyticsWorkspace() {
 
       if (!node.filterValues) {
         const initFilters: Record<string, AnalyticsFilterValue> = {}
-        if (node.selectedProject) initFilters.project_id = node.selectedProject
+        if (node.selectedProject && node.selectedProject !== 'all')
+          initFilters.project_id = node.selectedProject
         setNewNodeFilterValues(initFilters)
       }
 
@@ -1050,12 +1968,7 @@ export function useAnalyticsWorkspace() {
       setInspectedNodeId(null)
       setIsAddNodeModalOpen(true)
     },
-    [
-      activeSpace.widgets,
-      activeSpace.workflowNodes,
-      availableProjects,
-      nodeSourceDatasets,
-    ],
+    [activeSpace.widgets, activeSpace.workflowNodes, nodeSourceDatasets],
   )
 
   const handleOpenAddNode = useCallback(() => {
@@ -1064,6 +1977,7 @@ export function useAnalyticsWorkspace() {
     setNewNodeLabel('')
     setSelectedAddNodeType('source')
     setNewNodeFilterValues({})
+    setNewNodeCustomDateRange(undefined)
 
     const matchedDs = nodeSourceDatasets.find((d) => d.id === newNodeDatasetId)
     if (matchedDs) setNodeSelectedColumns(matchedDs.columns.map((c) => c.name))
@@ -1083,7 +1997,7 @@ export function useAnalyticsWorkspace() {
     setOutputReferenceLineMode('none')
     setOutputReferenceLineTarget(24)
     setIsAddNodeModalOpen(true)
-  }, [activeSpace.workflowNodes, newNodeDatasetId, nodeSourceDatasets])
+  }, [newNodeDatasetId, nodeSourceDatasets])
 
   const initialPipelineNodes = useMemo<Array<Node<PipelineNodeData>>>(() => {
     return activeSpace.workflowNodes.map((nodeCfg) => {
@@ -1107,11 +2021,7 @@ export function useAnalyticsWorkspace() {
         },
       }
     })
-  }, [
-    activeSpace.workflowNodes,
-    handleOpenEditNode,
-    resolveRowsForWorkflowNode,
-  ])
+  }, [activeSpace.workflowNodes, handleOpenEditNode, nodePages])
 
   const initialPipelineEdges = useMemo<Edge[]>(() => {
     return activeSpace.workflowEdges.map((edgeCfg) => ({
@@ -1141,6 +2051,7 @@ export function useAnalyticsWorkspace() {
 
   const updateWidgetSpan = useCallback(
     (widgetId: string, nextSpan: WidgetSpan) => {
+      userMutatedStateRef.current = true
       setSpaces((prev) =>
         prev.map((space) => {
           if (space.id !== activeSpace.id) return space
@@ -1160,6 +2071,7 @@ export function useAnalyticsWorkspace() {
 
   const updateWidgetVisualType = useCallback(
     (widgetId: string, nextType: ChartVisualType) => {
+      userMutatedStateRef.current = true
       setSpaces((prev) =>
         prev.map((space) => {
           if (space.id !== activeSpace.id) return space
@@ -1195,6 +2107,7 @@ export function useAnalyticsWorkspace() {
 
   const moveWidgetOrder = useCallback(
     (widgetId: string, direction: -1 | 1) => {
+      userMutatedStateRef.current = true
       setSpaces((prev) =>
         prev.map((space) => {
           if (space.id !== activeSpace.id) return space
@@ -1282,6 +2195,7 @@ export function useAnalyticsWorkspace() {
       workflowEdges: [],
     }
 
+    userMutatedStateRef.current = true
     setSpaces((prev) => [...prev, newSpace])
     setNewSpaceTitle('')
     setNewSpaceSubtitle('')
@@ -1316,12 +2230,16 @@ export function useAnalyticsWorkspace() {
     let ruleSummaryText = ''
     let sqlPreviewText = ''
 
+    const normalizedCustomDates = normalizeCustomDateRange(
+      newNodeCustomDateRange,
+    )
+    const normalizedFilters = normalizeSourceFilters(newNodeFilterValues)
     const effDates = resolveEffectiveNodeDates(
-      newNodeFilterValues,
+      normalizedCustomDates,
       startDate,
       endDate,
     )
-    const effProject = resolveEffectiveNodeProject(newNodeFilterValues)
+    const effProject = resolveEffectiveNodeProject(normalizedFilters)
 
     if (selectedAddNodeType === 'source') {
       kindVal = 'source'
@@ -1352,40 +2270,43 @@ export function useAnalyticsWorkspace() {
 
       const filterParts: string[] = []
 
-      if (effDates.from || effDates.to)
-        filterParts.push(`período [${effDates.from} .. ${effDates.to}]`)
+      if (effDates.from !== undefined || effDates.to !== undefined) {
+        let fromText = '...'
+        if (effDates.from !== undefined) fromText = effDates.from
+        let toText = '...'
+        if (effDates.to !== undefined) toText = effDates.to
+        filterParts.push(`período [${fromText} .. ${toText}]`)
+      }
 
-      if (effProject !== 'all') filterParts.push(`projeto ${effProject}`)
+      if (effProject !== undefined) filterParts.push(`projeto ${effProject}`)
 
-      const filterSummarySuffix =
-        filterParts.length > 0
-          ? ` filtrando por ${filterParts.join(' e ')}`
-          : ''
+      let filterSummarySuffix = ''
+      if (filterParts.length > 0)
+        filterSummarySuffix = ` filtrando por ${filterParts.join(' e ')}`
 
       ruleSummaryText = `Nó Extract (E): ${resolvedDsName} (${datasetLabel})${filterSummarySuffix}.`
 
       const whereClauses: string[] = []
 
-      if (effDates.from && effDates.to) {
+      if (effDates.from !== undefined && effDates.to !== undefined) {
         whereClauses.push(
           `date >= '${effDates.from}' AND date <= '${effDates.to}'`,
         )
       }
 
-      if (effProject !== 'all') whereClauses.push(`project = '${effProject}'`)
+      if (effProject !== undefined)
+        whereClauses.push(`project = '${effProject}'`)
 
-      const sqlWhereStr =
-        whereClauses.length > 0 ? ` WHERE ${whereClauses.join(' AND ')}` : ''
+      let sqlWhereStr = ''
+      if (whereClauses.length > 0)
+        sqlWhereStr = ` WHERE ${whereClauses.join(' AND ')}`
 
       if (
         nodeSelectedColumns.length === 0 &&
         queryExecution?.kind !== 'aggregate'
       )
         return
-      let colsSelectStr = nodeSelectedColumns.join(', ')
-
-      if (nodeSelectedColumns.length > 0)
-        colsSelectStr = nodeSelectedColumns.join(', ')
+      const colsSelectStr = nodeSelectedColumns.join(', ')
 
       sqlPreviewText = `SELECT ${colsSelectStr} FROM ${resolvedDataset}${sqlWhereStr}`
       if (queryExecution?.kind === 'aggregate')
@@ -1488,8 +2409,9 @@ export function useAnalyticsWorkspace() {
       selectedProject: effProject,
       selectedColumns: nodeSelectedColumns,
       customFieldTypes: nodeCustomFieldTypes,
+      customDateRange: normalizedCustomDates,
       queryExecution,
-      filterValues: newNodeFilterValues,
+      filterValues: normalizedFilters,
       sqlConfig: {
         sqlQuery: sqlQueryText,
       },
@@ -1505,6 +2427,7 @@ export function useAnalyticsWorkspace() {
       label: 'Fluxo',
     }))
 
+    userMutatedStateRef.current = true
     setSpaces((prev) =>
       prev.map((space) => {
         if (space.id !== activeSpace.id) return space
@@ -1577,23 +2500,33 @@ export function useAnalyticsWorkspace() {
       newNodeDatasetId &&
       workspaceId
     ) {
-      void fetchSourceDataset(generatedId, newNodeSelectedConnectionId, {
+      const rawQuery: AnalyticsDatasetQueryInput = {
         datasetId: newNodeDatasetId,
         projectId: effProject,
         startDate: effDates.from,
         endDate: effDates.to,
         execution: queryExecution,
-        filters: newNodeFilterValues,
-      })
+        filters: normalizedFilters,
+      }
+      const manifest = findCachedManifest(
+        newNodeSelectedConnectionId,
+        newNodeDatasetId,
+      )
+      const normalized = queryWithDatasetSelection(rawQuery, manifest)
+      const selKey = `${newNodeSelectedConnectionId}::${selectionSignature(normalized)}`
+
+      if (selectionEntriesRef.current[selKey] === undefined) {
+        attemptedMissingKeysRef.current.add(selKey)
+        void syncUniqueSelection(newNodeSelectedConnectionId, rawQuery, 'auto')
+      }
     }
   }, [
-    fetchSourceDataset,
-    queryExecution,
     activeSpace.id,
     activeSpace.workflowNodes,
-    bridge.addons,
     connectionDisplayOptions,
     endDate,
+    findCachedManifest,
+    newNodeCustomDateRange,
     newNodeDatasetId,
     newNodeFilterValues,
     newNodeLabel,
@@ -1604,16 +2537,18 @@ export function useAnalyticsWorkspace() {
     nodeSelectedColumns,
     nodeSourceDatasets,
     outputCategoryColumn,
+    outputHierarchyColumns,
     outputMetricColumn,
     outputReferenceLineMode,
     outputReferenceLineTarget,
     outputSecondaryMetricColumn,
     outputSourceNodeId,
-    outputHierarchyColumns,
     outputStackColumn,
+    queryExecution,
     selectedAddNodeType,
     sqlQueryText,
     startDate,
+    syncUniqueSelection,
     txUpstreamNodeId,
     workspaceId,
   ])
@@ -1651,37 +2586,48 @@ export function useAnalyticsWorkspace() {
     let updatedKind = matchedNode.kind
     let updatedUpstreamIds = matchedNode.upstreamNodeIds
 
+    const normalizedCustomDates = normalizeCustomDateRange(
+      newNodeCustomDateRange,
+    )
+    const normalizedFilters = normalizeSourceFilters(newNodeFilterValues)
     const effDates = resolveEffectiveNodeDates(
-      newNodeFilterValues,
+      normalizedCustomDates,
       startDate,
       endDate,
     )
-    const effProject = resolveEffectiveNodeProject(newNodeFilterValues)
+    const effProject = resolveEffectiveNodeProject(normalizedFilters)
 
     const filterParts: string[] = []
 
-    if (effDates.from || effDates.to)
-      filterParts.push(`período [${effDates.from} .. ${effDates.to}]`)
+    if (effDates.from !== undefined || effDates.to !== undefined) {
+      let fromText = '...'
+      if (effDates.from !== undefined) fromText = effDates.from
+      let toText = '...'
+      if (effDates.to !== undefined) toText = effDates.to
+      filterParts.push(`período [${fromText} .. ${toText}]`)
+    }
 
-    if (effProject !== 'all') filterParts.push(`projeto ${effProject}`)
+    if (effProject !== undefined) filterParts.push(`projeto ${effProject}`)
 
-    const filterSummarySuffix =
-      filterParts.length > 0 ? ` filtrando por ${filterParts.join(' e ')}` : ''
+    let filterSummarySuffix = ''
+    if (filterParts.length > 0)
+      filterSummarySuffix = ` filtrando por ${filterParts.join(' e ')}`
 
     let updatedRuleSummary = `Nó configurado: ${resolvedDsName} (${datasetLabel})${filterSummarySuffix}.`
 
     const whereClauses: string[] = []
 
-    if (effDates.from && effDates.to) {
+    if (effDates.from !== undefined && effDates.to !== undefined) {
       whereClauses.push(
         `date >= '${effDates.from}' AND date <= '${effDates.to}'`,
       )
     }
 
-    if (effProject !== 'all') whereClauses.push(`project = '${effProject}'`)
+    if (effProject !== undefined) whereClauses.push(`project = '${effProject}'`)
 
-    const sqlWhereStr =
-      whereClauses.length > 0 ? ` WHERE ${whereClauses.join(' AND ')}` : ''
+    let sqlWhereStr = ''
+    if (whereClauses.length > 0)
+      sqlWhereStr = ` WHERE ${whereClauses.join(' AND ')}`
 
     if (
       nodeSelectedColumns.length === 0 &&
@@ -1689,10 +2635,7 @@ export function useAnalyticsWorkspace() {
       queryExecution?.kind !== 'aggregate'
     )
       return
-    let colsSelectStr = nodeSelectedColumns.join(', ')
-
-    if (nodeSelectedColumns.length > 0)
-      colsSelectStr = nodeSelectedColumns.join(', ')
+    const colsSelectStr = nodeSelectedColumns.join(', ')
 
     let updatedSqlPreview = `SELECT ${colsSelectStr} FROM ${newNodeDatasetId}${sqlWhereStr}`
     if (queryExecution?.kind === 'aggregate')
@@ -1773,8 +2716,9 @@ export function useAnalyticsWorkspace() {
       selectedProject: effProject,
       selectedColumns: nodeSelectedColumns,
       customFieldTypes: nodeCustomFieldTypes,
+      customDateRange: normalizedCustomDates,
       queryExecution,
-      filterValues: newNodeFilterValues,
+      filterValues: normalizedFilters,
       sqlConfig: {
         sqlQuery: sqlQueryText,
       },
@@ -1783,6 +2727,7 @@ export function useAnalyticsWorkspace() {
       upstreamNodeIds: updatedUpstreamIds,
     }
 
+    userMutatedStateRef.current = true
     setSpaces((prev) =>
       prev.map((s) => {
         if (s.id !== activeSpace.id) return s
@@ -1848,27 +2793,37 @@ export function useAnalyticsWorkspace() {
       newNodeDatasetId &&
       workspaceId
     ) {
-      void fetchSourceDataset(editingNodeId, newNodeSelectedConnectionId, {
+      const rawQuery: AnalyticsDatasetQueryInput = {
         datasetId: newNodeDatasetId,
         projectId: effProject,
         startDate: effDates.from,
         endDate: effDates.to,
         execution: queryExecution,
-        filters: newNodeFilterValues,
-      })
+        filters: normalizedFilters,
+      }
+      const manifest = findCachedManifest(
+        newNodeSelectedConnectionId,
+        newNodeDatasetId,
+      )
+      const normalized = queryWithDatasetSelection(rawQuery, manifest)
+      const selKey = `${newNodeSelectedConnectionId}::${selectionSignature(normalized)}`
+
+      if (selectionEntriesRef.current[selKey] === undefined) {
+        attemptedMissingKeysRef.current.add(selKey)
+        void syncUniqueSelection(newNodeSelectedConnectionId, rawQuery, 'auto')
+      }
     }
 
     setIsAddNodeModalOpen(false)
     setEditingNodeId(null)
   }, [
-    fetchSourceDataset,
-    queryExecution,
     activeSpace.id,
     activeSpace.workflowNodes,
-    bridge.addons,
     connectionDisplayOptions,
     editingNodeId,
     endDate,
+    findCachedManifest,
+    newNodeCustomDateRange,
     newNodeDatasetId,
     newNodeFilterValues,
     newNodeLabel,
@@ -1879,63 +2834,18 @@ export function useAnalyticsWorkspace() {
     nodeSelectedColumns,
     nodeSourceDatasets,
     outputCategoryColumn,
+    outputHierarchyColumns,
     outputMetricColumn,
     outputReferenceLineMode,
     outputReferenceLineTarget,
     outputSecondaryMetricColumn,
     outputSourceNodeId,
-    outputHierarchyColumns,
     outputStackColumn,
+    queryExecution,
     sqlQueryText,
     startDate,
+    syncUniqueSelection,
     txUpstreamNodeId,
-    workspaceId,
-  ])
-
-  const handleSyncAllSources = useCallback(async () => {
-    if (!workspaceId) return
-    setIsFetchingLive(true)
-
-    const sourceNodes = activeSpace.workflowNodes.filter(
-      (n) => n.kind === 'source',
-    )
-
-    if (sourceNodes.length === 0 && selectedConnectionId) {
-      await loadAnalyticsFromConnection(selectedConnectionId)
-      setIsFetchingLive(false)
-      return
-    }
-
-    for (const node of sourceNodes) {
-      if (!node.connectionId || !node.datasetId) continue
-
-      const effDates = resolveEffectiveNodeDates(
-        node.filterValues,
-        startDate,
-        endDate,
-      )
-      const effProject = resolveEffectiveNodeProject(node.filterValues)
-
-      await fetchSourceDataset(node.id, node.connectionId, {
-        datasetId: node.datasetId,
-        projectId: effProject,
-        startDate: effDates.from,
-        endDate: effDates.to,
-        execution: node.queryExecution,
-        filters: node.filterValues,
-      })
-    }
-
-    setIsFetchingLive(false)
-  }, [
-    fetchSourceDataset,
-    queryExecution,
-    activeSpace.workflowNodes,
-    bridge.addons,
-    endDate,
-    loadAnalyticsFromConnection,
-    selectedConnectionId,
-    startDate,
     workspaceId,
   ])
 
@@ -1974,11 +2884,20 @@ export function useAnalyticsWorkspace() {
   if (inspectedNodeConfig !== null)
     inspectedNodeResolvedData = resolveRowsForWorkflowNode(inspectedNodeConfig)
 
+  const handleSetPollingIntervalMinutes = useCallback((minutes: number) => {
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) return
+    userMutatedStateRef.current = true
+    setPollingIntervalMinutes(minutes)
+  }, [])
+
   const handleSelectDatasetId = useCallback(
     (datasetId: string) => {
       setQueryExecution(undefined)
       setNewNodeDatasetId(datasetId)
       const matched = nodeSourceDatasets.find((d) => d.id === datasetId)
+
+      if (matched !== undefined && matched.selection?.dateRange !== true)
+        setNewNodeCustomDateRange(undefined)
 
       if (matched && matched.columns) {
         setNodeSelectedColumns(matched.columns.map((c) => c.name))
@@ -2028,7 +2947,7 @@ export function useAnalyticsWorkspace() {
       const page = nodePages[nodeId]
 
       if (page === undefined) {
-        await handleSyncAllSources()
+        await retrySourceNode(nodeId)
         return
       }
 
@@ -2047,8 +2966,9 @@ export function useAnalyticsWorkspace() {
         version: data.version,
       })
     },
-    [nodePages, handleSyncAllSources, nodeModalSearch],
+    [nodeModalSearch, nodePages, retrySourceNode],
   )
+
   let inspectedBatch:
     | { index: number; offset: number; finished: boolean; totalRows?: number }
     | undefined
@@ -2058,11 +2978,13 @@ export function useAnalyticsWorkspace() {
 
   if (inspectedNodeConfig !== null) {
     const page = nodePages[inspectedNodeConfig.id]
-    inspectedSourceLoading =
-      loadingSourceIds.has(inspectedNodeConfig.id) || page === undefined
+    const plan = nodeSelectionPlans[inspectedNodeConfig.id]
+    const isSourceSyncing =
+      plan !== undefined && activeSelectionModes[plan.selKey] !== undefined
+    inspectedSourceLoading = isSourceSyncing || page === undefined
     inspectedSourceError = page?.error
-    if (sourceErrors[inspectedNodeConfig.id] !== undefined)
-      inspectedSourceError = sourceErrors[inspectedNodeConfig.id]
+    if (plan !== undefined && selectionErrors[plan.selKey] !== undefined)
+      inspectedSourceError = selectionErrors[plan.selKey]
 
     if (page?.data !== undefined) {
       inspectedBatch = {
@@ -2079,18 +3001,26 @@ export function useAnalyticsWorkspace() {
     (publication) => publication.coverage !== 'complete',
   )
 
-  const sourceFailures = activeSpace.workflowNodes.flatMap((node) => {
-    const message = sourceErrors[node.id]
-    if (message === undefined) return []
-    return [
-      {
+  const sourceFailures: AnalyticsSourceFailureItem[] =
+    activeSpace.workflowNodes.flatMap((node) => {
+      if (node.kind !== 'source') return []
+
+      const plan = nodeSelectionPlans[node.id]
+      if (plan === undefined) return []
+
+      const message = selectionErrors[plan.selKey]
+      if (message === undefined) return []
+
+      const item: AnalyticsSourceFailureItem = {
         nodeId: node.id,
         label: node.label,
         message,
-        details: sourceErrorDetails[node.id],
-      },
-    ]
-  })
+      }
+      const details = selectionErrorDetails[plan.selKey]
+      if (details !== undefined) item.details = details
+
+      return [item]
+    })
 
   return {
     clearConnectionPublications,
@@ -2104,6 +3034,16 @@ export function useAnalyticsWorkspace() {
       ([source, message]) => ({ source, message }),
     ),
     sourceFailures,
+    retrySourceNode,
+    upstreamStatusByNodeId,
+    syncStatusSummary,
+    pollingIntervalMinutes,
+    setPollingIntervalMinutes: handleSetPollingIntervalMinutes,
+    isHydrated,
+    hydrateError,
+    settingsError,
+    settingsErrorDetails,
+    retrySaveWorkspaceState,
     handleLoadNextSourceBatch,
     inspectedBatch,
     canLoadNextBatch,
@@ -2167,6 +3107,8 @@ export function useAnalyticsWorkspace() {
     setNewNodeSelectedConnectionId,
     newNodeDatasetId,
     setNewNodeDatasetId,
+    newNodeCustomDateRange,
+    setNewNodeCustomDateRange,
     handleSelectDatasetId,
     nodeSourceDatasets,
     isLoadingNodeDatasets,

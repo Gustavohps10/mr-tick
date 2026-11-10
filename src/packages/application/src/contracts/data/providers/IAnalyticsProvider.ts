@@ -74,6 +74,12 @@ export type AnalyticsRowIdentity =
 export interface AnalyticsExtractionDescriptor {
   modes: readonly AnalyticsExecutionKind[]
   identity: AnalyticsRowIdentity
+  changes?: {
+    deletions: 'none' | 'explicit'
+  }
+  windowRescan?: {
+    dateColumn: string
+  }
   aggregation?: {
     groupByColumns: readonly string[]
     operators: readonly AnalyticsAggregateMeasure['operator'][]
@@ -156,6 +162,7 @@ export type AnalyticsDatasetExecution =
       scope: AnalyticsDatasetScope
       coverage: 'complete' | 'partial' | 'unverified'
       coverageReason?: string
+      checkpoint?: string
       batch?: AnalyticsBatchInfo
       continuation?: AnalyticsContinuation
     }
@@ -164,6 +171,9 @@ export type AnalyticsDatasetExecution =
       scope: AnalyticsDatasetScope
       checkpoint: string
       deletedIds: string[]
+      coverage: 'complete' | 'partial' | 'unverified'
+      coverageReason?: string
+      batch?: AnalyticsBatchInfo
       continuation?: AnalyticsContinuation
     }
   | {
