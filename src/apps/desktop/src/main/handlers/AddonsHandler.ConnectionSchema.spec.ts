@@ -16,6 +16,7 @@ function createHandler(
     {} as ConstructorParameters<typeof AddonsHandler>[4],
     {} as ConstructorParameters<typeof AddonsHandler>[5],
     profiles,
+    {} as ConstructorParameters<typeof AddonsHandler>[7],
   )
 }
 

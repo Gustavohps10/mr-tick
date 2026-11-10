@@ -99,9 +99,8 @@ export interface IDataSourceOAuthAPI {
   ): Promise<DataSourceOAuthResult>
 }
 
-export interface DataSourceContext {
+export interface AddonConnectionContext {
   httpClient: IHttpClient
-  authenticatedMemberData?: AuthenticatedMember
   config?: Record<string, string | number | boolean>
   credentials?: Record<string, string | number | boolean>
   oauth?: IDataSourceOAuthAPI
@@ -109,6 +108,10 @@ export interface DataSourceContext {
     workspaceId: string
     connectionInstanceId: string
   }
+}
+
+export interface DataSourceContext extends AddonConnectionContext {
+  authenticatedMemberData?: AuthenticatedMember
 }
 
 export type DataSourceOverrideContext = Omit<

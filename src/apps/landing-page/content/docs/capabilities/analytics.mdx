@@ -1,0 +1,63 @@
+---
+title: Analytics
+description: Offer datasets independently of personal synchronization.
+icon: ChartNoAxesCombined
+---
+
+Declare `analytics` in your manifest and register an `IAnalyticsSource` through `contributions.analytics`. Add `auth` when connecting external accounts and register connection profiles/authenticators as described in [authentication](/docs/capabilities/auth). `dataSource` is not required.
+
+Each authorized connection gets its own provider context with identity, credentials, configuration and HTTP client. The host owns registration and binding lifetime. Handle the `Either` returned by registration; unregister during deactivation when needed.
+
+The provider owns datasets and dynamic filter options. It declares extraction modes, native row identity or whole-scope identity, coverage and continuation. An absent execution request means the initial snapshot. Reject unsupported execution requests. Never label partial or unverified data as complete, or infer deletions from an incomplete page. Changes and remote aggregation have explicit contracts; support depends on the addon.
+
+This example exposes a small in-memory dataset. External providers must validate requests and implement only the modes/filters they advertise.
+
+```ts
+import {
+  type AddonContext,
+  type AnalyticsDatasetManifest,
+  type IAnalyticsSource,
+  createAnalyticsDatasetScope,
+  Either,
+} from '@mr-tick/sdk'
+
+const dataset: AnalyticsDatasetManifest = {
+  id: 'readings',
+  name: 'Readings',
+  description: 'An in-memory example',
+  sourceFormat: 'json',
+  endpoint: '/readings',
+  extraction: { modes: ['snapshot'], identity: { kind: 'row', columns: ['id'] } },
+  columns: [{ name: 'id', label: 'ID', type: 'string' }],
+}
+
+const source: IAnalyticsSource = {
+  createInstance: () => ({
+    listAnalyticsDatasets: async () => Either.success([dataset]),
+    getFilterOptions: async () => Either.success([]),
+    fetchAnalyticsDataset: async (input) => Either.success({
+      dataset,
+      rows: [{ id: 'reading-1' }],
+      fetchedAt: new Date().toISOString(),
+      execution: {
+        kind: 'snapshot',
+        coverage: 'complete',
+        scope: createAnalyticsDatasetScope(input),
+      },
+    }),
+  }),
+}
+
+export function registerAnalytics(context: AddonContext) {
+  return context.contributions.analytics.register(source)
+}
+```
+
+Snapshot pages can include `batch: { index, offset, finished, totalRows }`, a continuation and a coverage reason. Follow the continuation using the same scope and batch size. `finished` describes traversal, not snapshot consistency: multi-page Redmine reads remain unverified. A preview page never represents a global total, even when it closes traversal. Failed pages do not advance the cursor.
+
+Declare `selection: { dateRange, project }` to support the built-in date/project inputs. Omission means unsupported; the host sends only declared selections, while provider-owned filters keep their own identifiers.
+
+Redmine uses bounded JSON pages with native IDs. Atom discovery remains a limited feed. DuckDB storage, background analytics synchronization and reconciliation belong to later phases.
+
+
+For remote aggregation, also declare `extraction.aggregation` with accepted dimensions/operators and `postProcessing: 'projection-only'`. The host validates measure projection and completed traversal. Remote totals allow local projection/filtering and are never regrouped as raw records. Redmine does not advertise this mode.

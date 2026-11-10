@@ -233,6 +233,23 @@ const mockBridgeClient: IHostBridge = {
         },
       ]),
     getMappingFields: async () => mockSuccess([]),
+    listAnalyticsDatasets: async () => mockSuccess([]),
+    loadAnalyticsDataset: async () => ({
+      isSuccess: false,
+      statusCode: 404,
+      error: 'ANALYTICS_PROVIDER_NOT_AVAILABLE',
+    }),
+    queryAnalytics: async () => ({
+      isSuccess: false,
+      statusCode: 404,
+      error: 'ANALYTICS_PUBLICATION_NOT_AVAILABLE',
+    }),
+    getAnalyticsFilterOptions: async () => mockSuccess([]),
+    fetchAnalyticsDataset: async () => ({
+      isSuccess: false,
+      statusCode: 404,
+      error: 'ANALYTICS_PROVIDER_NOT_AVAILABLE',
+    }),
     getSettings: async () =>
       mockSuccess({
         schemaVersion: 1,

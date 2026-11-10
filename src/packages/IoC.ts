@@ -16,10 +16,12 @@ import { AddonsFacade } from '@mr-tick/adapters/facades'
 import { LicensingApiConfiguration } from '@mr-tick/adapters/http'
 import { LicensingHttpClient } from '@mr-tick/adapters/http'
 import { FileManager, KeyedMutex } from '@mr-tick/adapters/tools'
-import { AddonAccessService } from '@mr-tick/application'
+import { AddonAccessService, IAnalyticsEngine } from '@mr-tick/application'
 import {
   AddonAuthenticatorRegistry,
   AddonConnectionProfilesResolver,
+  AnalyticsService,
+  AnalyticsWarehouseService,
   ConnectAddonConnectionService,
   ConnectionLifecycleCoordinator,
   CreateWorkspaceService,
@@ -28,6 +30,7 @@ import {
   GetMappingFieldsService,
   GetWorkspaceService,
   IAddonReloader,
+  IAnalyticsResolver,
   IConnectionLifecycleRepository,
   IConnectionLifecycleTransactionBoundary,
   IConnectionReservationRepository,
@@ -114,6 +117,8 @@ export interface PlatformDependencies {
   reservationRepository: IConnectionReservationRepository
   credentialRegistry: IWorkspaceCredentialReferenceRegistry
   dataSourceResolver: IDataSourceResolver
+  analyticsResolver: IAnalyticsResolver
+  analyticsEngine: IAnalyticsEngine
   fileStorage: IFileStorage
   httpClient: IHttpClient
   httpClientFactory: IHttpClientFactory
@@ -171,6 +176,8 @@ export class ContainerBuilder {
       reservationRepository: asValue(deps.reservationRepository),
       credentialRegistry: asValue(deps.credentialRegistry),
       dataSourceResolver: asValue(deps.dataSourceResolver),
+      analyticsResolver: asValue(deps.analyticsResolver),
+      analyticsEngine: asValue(deps.analyticsEngine),
       fileStorage: asValue(deps.fileStorage),
       httpClient: asValue(deps.httpClient),
       httpClientFactory: asValue(deps.httpClientFactory),
@@ -209,6 +216,8 @@ export class ContainerBuilder {
         DisconnectAddonConnectionService,
       ).scoped(),
       getMappingFieldsService: asClass(GetMappingFieldsService).scoped(),
+      analyticsService: asClass(AnalyticsService).scoped(),
+      analyticsWarehouseService: asClass(AnalyticsWarehouseService).scoped(),
       getWorkspaceService: asClass(GetWorkspaceService).scoped(),
       updateWorkspaceIdentityService: asClass(
         UpdateWorkspaceIdentityService,

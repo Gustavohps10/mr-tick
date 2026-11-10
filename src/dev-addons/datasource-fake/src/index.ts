@@ -12,6 +12,7 @@ import {
 } from '@mr-tick/sdk'
 import { z } from 'zod'
 
+import { FakeAnalyticsProvider } from './FakeAnalyticsProvider'
 import { FAKE_MEMBER, FAKE_METADATA, FAKE_TASKS } from './fakeData'
 import { FakeDatabaseStore } from './FakeDatabaseStore'
 import { FakeMemberProvider } from './FakeMemberProvider'
@@ -64,7 +65,7 @@ export const FakeDataSource: IDataSource = {
     tasksProvider: new FakeTaskProvider(context),
     timeEntriesProvider: new FakeTimeEntryProvider(context),
     membersProvider: new FakeMemberProvider(context),
-    metadataProvider: new FakeMetadataProvider(context),
+    metadataProvider: new FakeMetadataProvider(),
   }),
 }
 
@@ -154,6 +155,13 @@ export default class FakeDataSourceAddon implements IAddon {
       return
     }
 
+    const analytics = context.contributions.analytics.register({
+      createInstance: () => new FakeAnalyticsProvider(),
+    })
+    if (analytics.isFailure()) {
+      void context.host.notifications.error(analytics.failure.messageKey)
+      return
+    }
     context.contributions.dataSources.register(FakeDataSource)
 
     context.contributions.themes.register({

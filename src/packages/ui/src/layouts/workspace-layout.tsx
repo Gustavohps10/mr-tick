@@ -4,6 +4,7 @@ import {
   ListTodo,
   Puzzle,
   Timer,
+  Workflow,
 } from 'lucide-react'
 import { Outlet, useLocation, useParams } from 'react-router'
 
@@ -38,6 +39,14 @@ export function WorkspaceLayout() {
         href: `/workspaces/${workspaceId}/time-entries${location.search}`,
       },
     ]
+
+    if (location.pathname.includes('analytics')) {
+      return [
+        ...base,
+        { label: 'Workspace' },
+        { label: 'Analytics 2D Canvas', icon: Workflow },
+      ]
+    }
 
     if (
       location.pathname.includes('my-metric') ||

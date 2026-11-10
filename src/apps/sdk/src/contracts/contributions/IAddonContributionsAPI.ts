@@ -1,3 +1,4 @@
+import type { IAddonAnalyticsAPI } from './analytics'
 import type { IAddonCommandsAPI } from './commands'
 import type { IAddonConnectionsContributionAPI } from './connections'
 import type { IAddonDataSourcesAPI } from './data-sources'
@@ -7,6 +8,7 @@ import type { IAddonThemesAPI } from './themes'
 
 /** Contributions registered with the host and owned by this addon. */
 export interface IAddonContributionsAPI {
+  readonly analytics: IAddonAnalyticsAPI
   readonly commands: IAddonCommandsAPI
   readonly menus: IAddonMenusAPI
   readonly settings: IAddonSettingsAPI

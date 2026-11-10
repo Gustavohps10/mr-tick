@@ -82,6 +82,7 @@ export default defineConfig((options) => ({
     /^@maskito\//,
     /^@faker-js\//,
     /^@stepperize\//,
+    /^@xyflow\//,
     /^nuqs\//,
     /^rxdb\//,
     /^date-fns\//,

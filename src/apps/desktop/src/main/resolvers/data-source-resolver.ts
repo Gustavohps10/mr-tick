@@ -11,11 +11,7 @@ import {
   IWorkspacesRepository,
   ResolvedConnection,
 } from '@mr-tick/application'
-import {
-  type ConnectionAuthorizationRecord,
-  type ConnectionIdentity,
-  type DataSourceConnection,
-} from '@mr-tick/domain'
+import { type ConnectionIdentity } from '@mr-tick/domain'
 import { AppError, Either, type IDataSource } from '@mr-tick/sdk'
 import { isNonEmptyString } from '@mr-tick/shared/helpers'
 import { existsSync } from 'fs'
@@ -26,6 +22,7 @@ import {
   parseConnectionCredentialPayload,
   type StoredConnectionCredentialPayload,
 } from '@/main/utils/credentialPayload'
+import { selectPrimaryAuthorization } from '@/main/utils/selectPrimaryAuthorization'
 
 export interface IAddonDataSourceLoader {
   getDataSource(dataSourceId: string): IDataSource | undefined
@@ -175,7 +172,7 @@ export class DataSourceResolver implements IDataSourceResolver {
           AppError.Unauthorized('CONNECTION_NOT_AUTHORIZED'),
         )
       }
-      const authorization = selectDataSourceAuthorization(connection)
+      const authorization = selectPrimaryAuthorization(connection)
       if (authorization.isFailure()) return authorization.forwardFailure()
       const selected = authorization.success
 
@@ -266,7 +263,7 @@ export class DataSourceResolver implements IDataSourceResolver {
       datasource = await this.loadModule(connection.addonId)
     } catch (err) {
       console.error(
-        `[DataSourceResolver] Erro ao carregar módulo do datasource ${connection.addonId}:`,
+        `[DataSourceResolver] Erro ao carregar mÃ³dulo do datasource ${connection.addonId}:`,
         err,
       )
       return Either.failure(AppError.Internal('DATASOURCE_LOAD_FAILED'))
@@ -288,8 +285,7 @@ export class DataSourceResolver implements IDataSourceResolver {
         return Either.failure(
           AppError.Unauthorized('CONNECTION_AUTHORIZATION_CHANGED'),
         )
-      const currentAuthorization =
-        selectDataSourceAuthorization(currentConnection)
+      const currentAuthorization = selectPrimaryAuthorization(currentConnection)
       if (
         currentAuthorization.isFailure() ||
         currentAuthorization.success.authorizationId !==
@@ -355,7 +351,7 @@ export class DataSourceResolver implements IDataSourceResolver {
     const addonPath = resolve(this.options.addonsBasePath, pluginId, 'index.js')
 
     if (!existsSync(addonPath)) {
-      throw new Error(`Datasource não encontrado: ${pluginId}.`)
+      throw new Error(`Datasource nÃ£o encontrado: ${pluginId}.`)
     }
 
     const addonURL = pathToFileURL(addonPath).href
@@ -367,7 +363,7 @@ export class DataSourceResolver implements IDataSourceResolver {
       typeof defaultExport !== 'object' ||
       !isDataSource(defaultExport)
     ) {
-      throw new Error(`Datasource inválido ou corrompido em ${addonPath}`)
+      throw new Error(`Datasource invÃ¡lido ou corrompido em ${addonPath}`)
     }
 
     return defaultExport
@@ -376,28 +372,6 @@ export class DataSourceResolver implements IDataSourceResolver {
 
 function isDataSource(candidate: object): candidate is IDataSource {
   return 'createInstance' in candidate
-}
-
-const DATA_SOURCE_AUTHORIZATION_ROLE = 'primary'
-
-function selectDataSourceAuthorization(
-  connection: DataSourceConnection,
-): Either<AppError, ConnectionAuthorizationRecord> {
-  const active = connection.authorizations.filter(
-    (candidate) =>
-      candidate.authorizationRole === DATA_SOURCE_AUTHORIZATION_ROLE &&
-      candidate.status === 'active',
-  )
-  if (active.length > 1)
-    return Either.failure(
-      AppError.Unauthorized('CONNECTION_AUTHORIZATION_AMBIGUOUS'),
-    )
-  const [selected] = active
-  if (selected === undefined)
-    return Either.failure(
-      AppError.Unauthorized('CONNECTION_AUTHORIZATION_MISSING'),
-    )
-  return Either.success(selected)
 }
 
 function adaptIdentityToMember(

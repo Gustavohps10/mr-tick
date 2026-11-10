@@ -3,6 +3,7 @@ export {
   type AddonCapability,
   hasCapability,
   isAddonCapability,
+  isAnalytics,
   isDataSource,
   isTheme,
   isWatcher,
