@@ -24,6 +24,8 @@ import type {
   AnalyticsLoadResult,
   AnalyticsQueryInput,
   AnalyticsQueryResult,
+  AnalyticsResetStorageInput,
+  AnalyticsResetStorageResult,
   AnalyticsWorkspaceState,
   SaveAnalyticsWorkspaceStateInput,
 } from '../data/providers/IAnalyticsEngine'
@@ -447,6 +449,9 @@ export interface IAddonsAPI {
   saveAnalyticsWorkspaceState(
     payload: IRequest<SaveAnalyticsWorkspaceStateInput>,
   ): Promise<ViewModel<AnalyticsWorkspaceState>>
+  resetAnalyticsStorage(
+    payload: IRequest<AnalyticsResetStorageInput>,
+  ): Promise<ViewModel<AnalyticsResetStorageResult>>
   listAvailable(): Promise<PaginatedViewModel<AddonManifestViewModel[]>>
 
   listInstalled(): Promise<PaginatedViewModel<AddonManifestViewModel[]>>

@@ -1,71 +1,29 @@
+import {
+  ANALYTICS_AGGREGATION_OPERATORS,
+  ANALYTICS_FILTER_OPERATORS,
+  ANALYTICS_FORMULA_OPERATORS,
+  ANALYTICS_REFERENCE_LINE_MODES,
+  ANALYTICS_WIDGET_IDS,
+  ANALYTICS_WORKFLOW_NODE_KINDS,
+} from '@mr-tick/application'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import { z } from 'zod'
 
 import type { AnalyticsSpaceConfig } from './analytics-types'
 
-const widgetIdSchema = z.enum([
-  'bar_vertical',
-  'bar_horizontal',
-  'bar_stacked',
-  'bar_grouped',
-  'combo_multiaxis',
-  'line',
-  'line_reference',
-  'split_pane_chart',
-  'area',
-  'area_stacked',
-  'pie_donut',
-  'radar',
-  'pivot_matrix',
-  'tree_grid',
-  'conditional_table',
-  'kpi_card',
-])
+const widgetIdSchema = z.enum(ANALYTICS_WIDGET_IDS)
 
 const widgetSpanSchema = z.union([z.literal(1), z.literal(2), z.literal(3)])
 
-const referenceLineModeSchema = z.enum([
-  'none',
-  'average',
-  'weighted_ratio',
-  'fixed_target',
-])
+const referenceLineModeSchema = z.enum(ANALYTICS_REFERENCE_LINE_MODES)
 
-const workflowNodeKindSchema = z.enum([
-  'source',
-  'transform',
-  'filter',
-  'join',
-  'aggregate',
-  'sql',
-  'output',
-])
+const workflowNodeKindSchema = z.enum(ANALYTICS_WORKFLOW_NODE_KINDS)
 
-const filterOperatorSchema = z.enum([
-  'eq',
-  'neq',
-  'gt',
-  'gte',
-  'lt',
-  'lte',
-  'contains',
-  'not_empty',
-])
+const filterOperatorSchema = z.enum(ANALYTICS_FILTER_OPERATORS)
 
-const aggregationOperatorSchema = z.enum([
-  'sum',
-  'count',
-  'count_distinct',
-  'avg',
-])
+const aggregationOperatorSchema = z.enum(ANALYTICS_AGGREGATION_OPERATORS)
 
-const formulaOperatorSchema = z.enum([
-  'divide',
-  'multiply',
-  'subtract',
-  'add',
-  'percent_of',
-])
+const formulaOperatorSchema = z.enum(ANALYTICS_FORMULA_OPERATORS)
 
 const dateRangeFilterSchema = z.object({
   from: z.string().optional(),

@@ -93,17 +93,20 @@ test('analytics extracts a selected dataset, edits its source and publishes a ch
 
   await page.getByText('Horas da conexão selecionada', { exact: true }).click()
   await expect(
-    dialog.getByRole('status').filter({ hasText: 'Página local' }),
-  ).toContainText('Página local 1')
-  await expect(
-    dialog.getByRole('status').filter({ hasText: 'Página local' }),
-  ).toContainText('conjunto publicado completo')
+    dialog
+      .getByRole('status')
+      .filter({ hasText: 'conjunto publicado completo' }),
+  ).toContainText(/Mostrando 1–100 de \d+ registros/)
+  await expect(dialog.getByText(/Página 1 de \d+/)).toBeVisible()
   await dialog
-    .getByRole('button', { name: 'Próxima página', exact: true })
+    .getByRole('button', { name: 'Ir para a próxima página', exact: true })
     .click()
+  await expect(dialog.getByText(/Página 2 de \d+/)).toBeVisible()
   await expect(
-    dialog.getByRole('status').filter({ hasText: 'Página local' }),
-  ).toContainText('Página local 2')
+    dialog
+      .getByRole('status')
+      .filter({ hasText: 'conjunto publicado completo' }),
+  ).toContainText(/Mostrando 101–\d+ de \d+ registros/)
   await dialog
     .getByRole('button', { name: 'Fechar Inspeção', exact: true })
     .click()

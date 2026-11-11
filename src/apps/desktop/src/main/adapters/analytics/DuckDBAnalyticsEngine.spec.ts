@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -1240,5 +1241,159 @@ describe('Phase 3 DuckDB v2 durable sync, merge & workspace settings', () => {
       startDate: '2026-11-01',
       endDate: '2026-11-10',
     })
+  })
+
+  it('inspects missing, v1, WAL-orphan, invalid spaces_json, corrupt and open storages without creating or migrating files', async () => {
+    const { value, directory } = await engine()
+    const missing = await value.inspectWorkspaceStorage('never-opened')
+    expect(missing.isSuccess()).toBe(true)
+    expect(missing.success.exists).toBe(false)
+    expect(existsSync(missing.success.dbPath)).toBe(false)
+
+    // v1 legacy database
+    const legacyPaths = value.storagePaths('ws-v1')
+    const legacyInst = await DuckDBInstance.create(legacyPaths.dbPath)
+    const legacyConn = await legacyInst.connect()
+    await legacyConn.run(
+      'CREATE TABLE analytics_format(version INTEGER NOT NULL)',
+    )
+    await legacyConn.run('INSERT INTO analytics_format VALUES (1)')
+    legacyConn.closeSync()
+    legacyInst.closeSync()
+
+    const inspectedV1 = await value.inspectWorkspaceStorage('ws-v1')
+    expect(inspectedV1.isSuccess()).toBe(true)
+    if (inspectedV1.isSuccess() && inspectedV1.success.exists) {
+      expect(inspectedV1.success.healthy).toBe(false)
+      if (!inspectedV1.success.healthy) {
+        expect(inspectedV1.success.reason).toBe(
+          'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+        )
+        expect(inspectedV1.success.details).toEqual({
+          storagePath: [legacyPaths.dbPath],
+          storedFormatVersion: ['1'],
+          supportedFormatVersion: ['2'],
+        })
+      }
+    }
+
+    // WAL orphan without main .duckdb
+    const walPaths = value.storagePaths('ws-wal-orphan')
+    await writeFile(walPaths.walPath, 'wal-bytes', 'utf8')
+    const inspectedWal = await value.inspectWorkspaceStorage('ws-wal-orphan')
+    expect(inspectedWal.isSuccess()).toBe(true)
+    if (
+      inspectedWal.isSuccess() &&
+      inspectedWal.success.exists &&
+      !inspectedWal.success.healthy
+    ) {
+      expect(inspectedWal.success.reason).toBe('ANALYTICS_STORAGE_WAL_ORPHAN')
+    }
+    expect(existsSync(walPaths.dbPath)).toBe(false)
+
+    // Corrupt database bytes
+    const corruptPaths = value.storagePaths('ws-corrupt')
+    await writeFile(corruptPaths.dbPath, 'not-a-duckdb-file', 'utf8')
+    const inspectedCorrupt = await value.inspectWorkspaceStorage('ws-corrupt')
+    expect(inspectedCorrupt.isSuccess()).toBe(true)
+    if (
+      inspectedCorrupt.isSuccess() &&
+      inspectedCorrupt.success.exists &&
+      !inspectedCorrupt.success.healthy
+    ) {
+      expect(inspectedCorrupt.success.reason).toBe(
+        'ANALYTICS_STORAGE_UNREADABLE',
+      )
+    }
+
+    // Invalid spaces_json inside an already-open cached database
+    const savedInvalid = await value.saveWorkspaceState({
+      workspaceId: 'ws-invalid-spaces',
+      pollingIntervalMinutes: 5,
+      spacesJson: '{broken-json',
+    })
+    expect(savedInvalid.isSuccess()).toBe(true)
+    const inspectedInvalidSpaces =
+      await value.inspectWorkspaceStorage('ws-invalid-spaces')
+    expect(inspectedInvalidSpaces.isSuccess()).toBe(true)
+    if (
+      inspectedInvalidSpaces.isSuccess() &&
+      inspectedInvalidSpaces.success.exists &&
+      !inspectedInvalidSpaces.success.healthy
+    ) {
+      expect(inspectedInvalidSpaces.success.reason).toBe(
+        'ANALYTICS_SPACES_STATE_INVALID',
+      )
+    }
+
+    // Healthy open database + listStorageEntries coverage
+    const savedHealthy = await value.saveWorkspaceState({
+      workspaceId: 'ws-healthy',
+      pollingIntervalMinutes: 10,
+      spacesJson: '[]',
+    })
+    expect(savedHealthy.isSuccess()).toBe(true)
+    const inspectedHealthy = await value.inspectWorkspaceStorage('ws-healthy')
+    expect(inspectedHealthy.isSuccess()).toBe(true)
+    if (
+      inspectedHealthy.isSuccess() &&
+      inspectedHealthy.success.exists &&
+      inspectedHealthy.success.healthy
+    ) {
+      expect(inspectedHealthy.success.bytes).toBeGreaterThan(0)
+      expect(inspectedHealthy.success.spacesCount).toBe(0)
+    }
+
+    const entries = await value.listStorageEntries()
+    expect(entries.isSuccess()).toBe(true)
+    expect(entries.success.length).toBeGreaterThanOrEqual(4)
+    void directory
+  })
+
+  it('rejects resetStorage with 409 during active generation and cleanly deletes storage files afterwards', async () => {
+    const { value } = await engine()
+    const paths = value.storagePaths('workspace')
+
+    // Active generation blocks reset with 409
+    const created = await value.create(defaultOwner, manifest, {
+      datasetId: 'entries',
+    })
+    expect(created.isSuccess()).toBe(true)
+
+    const conflict = await value.resetStorage('workspace')
+    expect(conflict.isFailure()).toBe(true)
+    expect(conflict.failure.statusCode).toBe(409)
+    expect(conflict.failure.messageKey).toBe('ANALYTICS_RESET_ACTIVE_LOAD')
+    expect(existsSync(paths.dbPath)).toBe(true)
+
+    await value.remove(created.success)
+    await writeFile(paths.tmpPath, 'stale-tmp', 'utf8')
+
+    const reset = await value.resetStorage('workspace')
+    expect(reset.isSuccess()).toBe(true)
+    expect(reset.success).toEqual({ workspaceId: 'workspace', removed: true })
+    expect(existsSync(paths.dbPath)).toBe(false)
+    expect(existsSync(paths.walPath)).toBe(false)
+    expect(existsSync(paths.tmpPath)).toBe(false)
+
+    // Leftover closed WAL + TMP + DB files from a prior crash are also cleaned
+    const crashedPaths = value.storagePaths('workspace-crashed')
+    await writeFile(crashedPaths.dbPath, 'corrupt-db', 'utf8')
+    await writeFile(crashedPaths.walPath, 'stale-wal', 'utf8')
+    await writeFile(crashedPaths.tmpPath, 'stale-tmp', 'utf8')
+    const resetCrashed = await value.resetStorage('workspace-crashed')
+    expect(resetCrashed.isSuccess()).toBe(true)
+    expect(resetCrashed.success).toEqual({
+      workspaceId: 'workspace-crashed',
+      removed: true,
+    })
+    expect(existsSync(crashedPaths.dbPath)).toBe(false)
+    expect(existsSync(crashedPaths.walPath)).toBe(false)
+    expect(existsSync(crashedPaths.tmpPath)).toBe(false)
+
+    // Reopening after reset creates fresh healthy v2 DB
+    const reopened = await value.getWorkspaceState('workspace')
+    expect(reopened.isSuccess()).toBe(true)
+    expect(reopened.success).toBeUndefined()
   })
 })

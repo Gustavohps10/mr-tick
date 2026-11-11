@@ -515,6 +515,51 @@ export class FakeDatabaseStore {
   }
 
   private retainedPulls = 0
+  private analyticsPageRequests = 0
+  private retainedAnalyticsPages = 0
+  private analyticsPagesBeforePause = 0
+  private analyticsPageGate: Promise<0 | 499 | 503> | undefined
+  private resolveAnalyticsPage: ((status: 0 | 499 | 503) => void) | undefined
+
+  public pauseAnalyticsAfterFirstPage(): void {
+    this.releaseAnalyticsPage(0)
+    this.analyticsPageRequests = 0
+    this.retainedAnalyticsPages = 0
+    this.analyticsPagesBeforePause = 1
+    this.analyticsPageGate = new Promise((resolve) => {
+      this.resolveAnalyticsPage = resolve
+    })
+  }
+
+  public async waitForAnalyticsPage(): Promise<0 | 499 | 503> {
+    this.analyticsPageRequests += 1
+    if (this.analyticsPageGate === undefined) return 0
+
+    if (this.analyticsPagesBeforePause > 0) {
+      this.analyticsPagesBeforePause -= 1
+      return 0
+    }
+
+    this.retainedAnalyticsPages += 1
+    return this.analyticsPageGate
+  }
+
+  public releaseAnalyticsPage(status: 0 | 499 | 503): boolean {
+    const resolve = this.resolveAnalyticsPage
+    if (resolve === undefined) return false
+    this.resolveAnalyticsPage = undefined
+    this.analyticsPageGate = undefined
+    resolve(status)
+    return true
+  }
+
+  public getAnalyticsPageDiagnostics(): { requests: number; retained: number } {
+    return {
+      requests: this.analyticsPageRequests,
+      retained: this.retainedAnalyticsPages,
+    }
+  }
+
   private pullPauseRemaining = 0
   private pullGate: Promise<void> | undefined
   private releasePullGate: (() => void) | undefined
@@ -1185,6 +1230,9 @@ export class FakeDatabaseStore {
   }
 
   public resetToSeed(): void {
+    this.releaseAnalyticsPage(0)
+    this.analyticsPageRequests = 0
+    this.retainedAnalyticsPages = 0
     this.releaseCanonicalReadRecovery()
     this.retainedCanonicalReads = 0
     this.failNextTimeEntryList = false

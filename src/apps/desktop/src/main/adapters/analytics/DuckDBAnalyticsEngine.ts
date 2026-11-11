@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import {
@@ -8,29 +8,32 @@ import {
   DuckDBTypeId,
   DuckDBValue,
 } from '@duckdb/node-api'
-import type {
-  AnalyticsColumnSchema,
-  AnalyticsDatasetCellValue,
-  AnalyticsDatasetManifest,
-  AnalyticsDatasetQueryInput,
-  AnalyticsDatasetResult,
-  AnalyticsDatasetRow,
-  AnalyticsGeneration,
-  AnalyticsGenerationOwner,
-  AnalyticsPublication,
-  AnalyticsPublicationEntry,
-  AnalyticsQueryAuthorization,
-  AnalyticsQueryInput,
-  AnalyticsQueryResult,
-  AnalyticsSyncMetadata,
-  AnalyticsSyncState,
-  AnalyticsSyncStrategy,
-  AnalyticsWindowBounds,
-  AnalyticsWorkspaceState,
-  IAnalyticsEngine,
-  SaveAnalyticsWorkspaceStateInput,
+import {
+  type AnalyticsColumnSchema,
+  type AnalyticsDatasetCellValue,
+  type AnalyticsDatasetManifest,
+  type AnalyticsDatasetQueryInput,
+  type AnalyticsDatasetResult,
+  type AnalyticsDatasetRow,
+  type AnalyticsGeneration,
+  type AnalyticsGenerationOwner,
+  type AnalyticsPublication,
+  type AnalyticsPublicationEntry,
+  type AnalyticsQueryAuthorization,
+  type AnalyticsQueryInput,
+  type AnalyticsQueryResult,
+  type AnalyticsResetStorageResult,
+  type AnalyticsSyncMetadata,
+  type AnalyticsSyncState,
+  type AnalyticsSyncStrategy,
+  type AnalyticsWindowBounds,
+  type AnalyticsWorkspaceState,
+  type IAnalyticsEngine,
+  type JsonValue,
+  type SaveAnalyticsWorkspaceStateInput,
+  validatePersistedAnalyticsSpacesJson,
 } from '@mr-tick/application'
-import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either, type FieldErrors } from '@mr-tick/shared/helpers'
 import { z } from 'zod'
 
 import { analyticsDatasetQuerySchema } from '../../validation/analyticsQuery'
@@ -45,6 +48,48 @@ import {
   storageType,
   StoredAnalyticsSource,
 } from './AnalyticsSqlCompiler'
+
+export interface AnalyticsStorageDirectoryEntry {
+  hash: string
+  dbPath: string
+  bytes: number
+}
+
+export type AnalyticsStorageInspection =
+  | { exists: false; dbPath: string }
+  | {
+      exists: true
+      healthy: true
+      dbPath: string
+      bytes: number
+      spacesCount: number
+      publicationsCount: number
+    }
+  | {
+      exists: true
+      healthy: false
+      dbPath: string
+      bytes: number
+      reason: string
+      details?: FieldErrors
+    }
+
+type FileStatOutcome =
+  | { exists: false; bytes: 0 }
+  | { exists: true; bytes: number }
+  | { exists: true; bytes: 0; errorReason: string }
+
+const systemErrorSchema = z.object({
+  code: z.string().optional(),
+  message: z.string().optional(),
+})
+
+const REQUIRED_ANALYTICS_TABLES = [
+  'analytics_generations',
+  'analytics_publications',
+  'analytics_sync_states',
+  'analytics_workspace_settings',
+]
 
 interface Database {
   instance: DuckDBInstance
@@ -213,17 +258,119 @@ function buildPublication(
 /** One native store for analytical generations; no operational entities or credentials. */
 export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
   private readonly databases = new Map<string, Database>()
-  private readonly activeGenerations = new Set<string>()
+  private readonly activeGenerations = new Map<string, string>()
   private tail: Promise<void> = Promise.resolve()
   private pending = 0
   private closed = false
 
   constructor(private readonly directory: string) {}
 
-  private execute<T>(
-    workspaceId: string,
-    operation: (db: Database) => Promise<Either<AppError, T>>,
-    admission: 'normal' | 'cleanup' = 'normal',
+  public storagePaths(workspaceId: string): {
+    hash: string
+    dbPath: string
+    walPath: string
+    tmpPath: string
+  } {
+    const hash = createHash('sha256').update(workspaceId).digest('hex')
+    const dbPath = join(this.directory, `${hash}.duckdb`)
+
+    return {
+      hash,
+      dbPath,
+      walPath: `${dbPath}.wal`,
+      tmpPath: `${dbPath}.tmp`,
+    }
+  }
+
+  public async listStorageEntries(): Promise<
+    Either<AppError, AnalyticsStorageDirectoryEntry[]>
+  > {
+    try {
+      const entries = await readdir(this.directory)
+      const byHash = new Map<
+        string,
+        { hasDb: boolean; hasWal: boolean; files: string[] }
+      >()
+
+      for (const entry of entries) {
+        const match = /^([0-9a-f]{64})\.duckdb(\.wal|\.tmp)?$/u.exec(entry)
+        const hash = match?.[1]
+        if (hash === undefined) continue
+
+        let current = byHash.get(hash)
+
+        if (current === undefined) {
+          current = { hasDb: false, hasWal: false, files: [] }
+          byHash.set(hash, current)
+        }
+
+        if (match?.[2] === undefined) current.hasDb = true
+        if (match?.[2] === '.wal') current.hasWal = true
+        current.files.push(join(this.directory, entry))
+      }
+
+      const result: AnalyticsStorageDirectoryEntry[] = []
+
+      for (const [hash, item] of byHash.entries()) {
+        if (!item.hasDb && !item.hasWal) continue
+
+        let bytes = 0
+
+        for (const filePath of item.files) {
+          const outcome = await this.inspectFileStat(filePath)
+          bytes += outcome.bytes
+        }
+
+        let primaryPath = join(this.directory, `${hash}.duckdb`)
+        if (!item.hasDb)
+          primaryPath = join(this.directory, `${hash}.duckdb.wal`)
+
+        result.push({
+          hash,
+          dbPath: primaryPath,
+          bytes,
+        })
+      }
+
+      return Either.success(result)
+    } catch (error) {
+      const parsed = systemErrorSchema.safeParse(error)
+      if (parsed.success && parsed.data.code === 'ENOENT')
+        return Either.success([])
+
+      let reason = 'ANALYTICS_STORAGE_UNREADABLE'
+      if (parsed.success && parsed.data.message !== undefined)
+        reason = parsed.data.message
+
+      return Either.failure(
+        AppError.Internal('ANALYTICS_STORAGE_UNREADABLE', {
+          storagePath: [this.directory],
+          reason: [reason],
+        }),
+      )
+    }
+  }
+
+  private async inspectFileStat(filePath: string): Promise<FileStatOutcome> {
+    try {
+      const info = await stat(filePath)
+      return { exists: true, bytes: info.size }
+    } catch (error) {
+      const parsed = systemErrorSchema.safeParse(error)
+      if (parsed.success && parsed.data.code === 'ENOENT')
+        return { exists: false, bytes: 0 }
+
+      let reason = 'STORAGE_STAT_FAILED'
+      if (parsed.success && parsed.data.message !== undefined)
+        reason = parsed.data.message
+
+      return { exists: true, bytes: 0, errorReason: reason }
+    }
+  }
+
+  private runSerialized<T>(
+    admission: 'normal' | 'cleanup',
+    task: () => Promise<Either<AppError, T>>,
   ): Promise<Either<AppError, T>> {
     if (this.closed) return Promise.resolve(failure('ANALYTICS_ENGINE_CLOSED'))
 
@@ -244,20 +391,7 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
     this.pending += 1
 
     return previous
-      .then(async () => {
-        const opened = await this.open(workspaceId)
-        if (opened.isFailure()) return opened.forwardFailure<T>()
-
-        const deadline = AbortSignal.timeout(30000)
-        const interrupt = () => opened.success.connection.interrupt()
-        deadline.addEventListener('abort', interrupt, { once: true })
-
-        try {
-          return await operation(opened.success)
-        } finally {
-          deadline.removeEventListener('abort', interrupt)
-        }
-      })
+      .then(task)
       .catch((error: Error) => {
         const decoded = z.object({ message: z.string() }).safeParse(error)
         if (decoded.success)
@@ -273,6 +407,27 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
         this.pending -= 1
         release()
       })
+  }
+
+  private execute<T>(
+    workspaceId: string,
+    operation: (db: Database) => Promise<Either<AppError, T>>,
+    admission: 'normal' | 'cleanup' = 'normal',
+  ): Promise<Either<AppError, T>> {
+    return this.runSerialized(admission, async () => {
+      const opened = await this.open(workspaceId)
+      if (opened.isFailure()) return opened.forwardFailure<T>()
+
+      const deadline = AbortSignal.timeout(30000)
+      const interrupt = () => opened.success.connection.interrupt()
+      deadline.addEventListener('abort', interrupt, { once: true })
+
+      try {
+        return await operation(opened.success)
+      } finally {
+        deadline.removeEventListener('abort', interrupt)
+      }
+    })
   }
 
   private async open(workspaceId: string): Promise<Either<AppError, Database>> {
@@ -299,17 +454,31 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
     }
 
     await mkdir(this.directory, { recursive: true })
-    const path = join(
-      this.directory,
-      `${createHash('sha256').update(workspaceId).digest('hex')}.duckdb`,
-    )
-    const instance = await DuckDBInstance.create(path, {
-      threads: '2',
-      memory_limit: '256MB',
-      enable_external_access: 'false',
-      autoinstall_known_extensions: 'false',
-      allow_community_extensions: 'false',
-    })
+    const { dbPath: path } = this.storagePaths(workspaceId)
+    let instance: DuckDBInstance
+
+    try {
+      instance = await DuckDBInstance.create(path, {
+        threads: '2',
+        memory_limit: '256MB',
+        enable_external_access: 'false',
+        autoinstall_known_extensions: 'false',
+        allow_community_extensions: 'false',
+      })
+    } catch (error) {
+      const parsed = systemErrorSchema.safeParse(error)
+      let reason = 'ANALYTICS_STORAGE_UNREADABLE'
+      if (parsed.success && parsed.data.message !== undefined)
+        reason = parsed.data.message
+
+      return Either.failure(
+        AppError.Internal('ANALYTICS_STORAGE_UNREADABLE', {
+          storagePath: [path],
+          reason: [reason],
+        }),
+      )
+    }
+
     let connection: DuckDBConnection | undefined
     let ready = false
 
@@ -327,7 +496,13 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
       if (versions.length === 0)
         await connection.run('INSERT INTO analytics_format VALUES (2)')
       if (versions.length > 1 || versions.some((row) => row.version !== 2))
-        return failure('ANALYTICS_STORAGE_FORMAT_UNSUPPORTED')
+        return Either.failure(
+          AppError.ValidationError('ANALYTICS_STORAGE_FORMAT_UNSUPPORTED', {
+            storagePath: [path],
+            storedFormatVersion: versions.map((row) => String(row.version)),
+            supportedFormatVersion: ['2'],
+          }),
+        )
 
       await connection.run(
         'CREATE TABLE IF NOT EXISTS analytics_generations(generation_id VARCHAR PRIMARY KEY, connection_id VARCHAR NOT NULL, authorization_key VARCHAR NOT NULL, selection_key VARCHAR NOT NULL, manifest_json VARCHAR NOT NULL, query_json VARCHAR NOT NULL, row_count BIGINT NOT NULL, state VARCHAR NOT NULL, coverage VARCHAR NOT NULL, fetched_at VARCHAR NOT NULL, loaded_at VARCHAR NOT NULL)',
@@ -658,7 +833,7 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
       })
 
       if (outcome.isSuccess())
-        this.activeGenerations.add(generation.generationId)
+        this.activeGenerations.set(generation.generationId, owner.workspaceId)
 
       return outcome
     })
@@ -1887,6 +2062,283 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
       if (input.endDate !== undefined) saved.endDate = input.endDate
 
       return Either.success(saved)
+    })
+  }
+
+  private async inspectConnection(
+    connection: DuckDBConnection,
+    workspaceId: string,
+    dbPath: string,
+    bytes: number,
+  ): Promise<AnalyticsStorageInspection> {
+    const tablesReader = await connection.runAndReadAll(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema='main'",
+    )
+    const tableNames = new Set<string>()
+
+    for (const row of tablesReader.getRowObjects()) {
+      if (typeof row.table_name === 'string') tableNames.add(row.table_name)
+    }
+
+    tablesReader.closeSync()
+
+    if (tableNames.has('analytics_format')) {
+      const formatReader = await connection.runAndReadAll(
+        'SELECT version FROM analytics_format LIMIT 2',
+      )
+      const versions = formatReader.getRowObjects()
+      formatReader.closeSync()
+
+      if (
+        versions.length === 0 ||
+        versions.length > 1 ||
+        versions.some((row) => row.version !== 2)
+      )
+        return {
+          exists: true,
+          healthy: false,
+          dbPath,
+          bytes,
+          reason: 'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+          details: {
+            storagePath: [dbPath],
+            storedFormatVersion: versions.map((row) => String(row.version)),
+            supportedFormatVersion: ['2'],
+          },
+        }
+    }
+
+    if (
+      !tableNames.has('analytics_format') ||
+      REQUIRED_ANALYTICS_TABLES.some((name) => !tableNames.has(name))
+    )
+      return {
+        exists: true,
+        healthy: false,
+        dbPath,
+        bytes,
+        reason: 'ANALYTICS_STORAGE_METADATA_INVALID',
+        details: { storagePath: [dbPath] },
+      }
+
+    const settingsReader = await connection.runAndReadAll(
+      'SELECT spaces_json FROM analytics_workspace_settings WHERE workspace_id=?',
+      [workspaceId],
+    )
+    const settingsRow = settingsReader.getRowObjects().find(() => true)
+    settingsReader.closeSync()
+
+    let spacesCount = 0
+
+    if (settingsRow !== undefined && settingsRow.spaces_json !== null) {
+      if (typeof settingsRow.spaces_json !== 'string')
+        return {
+          exists: true,
+          healthy: false,
+          dbPath,
+          bytes,
+          reason: 'ANALYTICS_STORAGE_METADATA_INVALID',
+          details: { storagePath: [dbPath] },
+        }
+
+      const validSpaces = validatePersistedAnalyticsSpacesJson(
+        settingsRow.spaces_json,
+      )
+      if (validSpaces.isFailure())
+        return {
+          exists: true,
+          healthy: false,
+          dbPath,
+          bytes,
+          reason: 'ANALYTICS_SPACES_STATE_INVALID',
+          details: { storagePath: [dbPath] },
+        }
+
+      const parsedSpaces: JsonValue = JSON.parse(settingsRow.spaces_json)
+      if (Array.isArray(parsedSpaces)) spacesCount = parsedSpaces.length
+    }
+
+    const publicationsReader = await connection.runAndReadAll(
+      'SELECT count(1) AS total FROM analytics_publications',
+    )
+    const publicationsTotal = publicationsReader
+      .getRowObjects()
+      .find(() => true)?.total
+    publicationsReader.closeSync()
+
+    if (typeof publicationsTotal !== 'bigint')
+      return {
+        exists: true,
+        healthy: false,
+        dbPath,
+        bytes,
+        reason: 'ANALYTICS_STORAGE_METADATA_INVALID',
+        details: { storagePath: [dbPath] },
+      }
+
+    return {
+      exists: true,
+      healthy: true,
+      dbPath,
+      bytes,
+      spacesCount,
+      publicationsCount: Number(publicationsTotal),
+    }
+  }
+
+  public inspectWorkspaceStorage(
+    workspaceId: string,
+  ): Promise<Either<AppError, AnalyticsStorageInspection>> {
+    if (!workspaceId.trim())
+      return Promise.resolve(failure('WORKSPACE_ID_REQUIRED'))
+
+    return this.runSerialized('normal', async () => {
+      const paths = this.storagePaths(workspaceId)
+      const [dbStat, walStat, tmpStat] = await Promise.all([
+        this.inspectFileStat(paths.dbPath),
+        this.inspectFileStat(paths.walPath),
+        this.inspectFileStat(paths.tmpPath),
+      ])
+
+      const statFailure = [dbStat, walStat, tmpStat].find(
+        (item) => 'errorReason' in item,
+      )
+
+      if (statFailure !== undefined && 'errorReason' in statFailure)
+        return Either.success<AnalyticsStorageInspection>({
+          exists: true,
+          healthy: false,
+          dbPath: paths.dbPath,
+          bytes: dbStat.bytes + walStat.bytes + tmpStat.bytes,
+          reason: 'ANALYTICS_STORAGE_UNREADABLE',
+          details: {
+            storagePath: [paths.dbPath],
+            reason: [statFailure.errorReason],
+          },
+        })
+
+      const totalBytes = dbStat.bytes + walStat.bytes + tmpStat.bytes
+
+      if (!dbStat.exists && walStat.exists)
+        return Either.success<AnalyticsStorageInspection>({
+          exists: true,
+          healthy: false,
+          dbPath: paths.dbPath,
+          bytes: totalBytes,
+          reason: 'ANALYTICS_STORAGE_WAL_ORPHAN',
+          details: { storagePath: [paths.walPath] },
+        })
+
+      if (!dbStat.exists)
+        return Either.success<AnalyticsStorageInspection>({
+          exists: false,
+          dbPath: paths.dbPath,
+        })
+
+      const cached = this.databases.get(workspaceId)
+      if (cached !== undefined)
+        return Either.success(
+          await this.inspectConnection(
+            cached.connection,
+            workspaceId,
+            paths.dbPath,
+            totalBytes,
+          ),
+        )
+
+      let instance: DuckDBInstance | undefined
+      let connection: DuckDBConnection | undefined
+
+      try {
+        instance = await DuckDBInstance.create(paths.dbPath, {
+          access_mode: 'READ_ONLY',
+          threads: '2',
+          memory_limit: '128MB',
+          enable_external_access: 'false',
+          autoinstall_known_extensions: 'false',
+          allow_community_extensions: 'false',
+        })
+        connection = await instance.connect()
+        const result = await this.inspectConnection(
+          connection,
+          workspaceId,
+          paths.dbPath,
+          totalBytes,
+        )
+        return Either.success(result)
+      } catch (error) {
+        const parsed = systemErrorSchema.safeParse(error)
+        let reason = 'ANALYTICS_STORAGE_UNREADABLE'
+        if (parsed.success && parsed.data.message !== undefined)
+          reason = parsed.data.message
+
+        return Either.success<AnalyticsStorageInspection>({
+          exists: true,
+          healthy: false,
+          dbPath: paths.dbPath,
+          bytes: totalBytes,
+          reason: 'ANALYTICS_STORAGE_UNREADABLE',
+          details: {
+            storagePath: [paths.dbPath],
+            reason: [reason],
+          },
+        })
+      } finally {
+        if (connection !== undefined) connection.closeSync()
+        if (instance !== undefined) instance.closeSync()
+      }
+    })
+  }
+
+  public resetStorage(
+    workspaceId: string,
+  ): Promise<Either<AppError, AnalyticsResetStorageResult>> {
+    if (!workspaceId.trim())
+      return Promise.resolve(failure('WORKSPACE_ID_REQUIRED'))
+
+    return this.runSerialized('cleanup', async () => {
+      for (const activeWorkspaceId of this.activeGenerations.values()) {
+        if (activeWorkspaceId === workspaceId)
+          return Either.failure(
+            AppError.Http(409, 'ANALYTICS_RESET_ACTIVE_LOAD'),
+          )
+      }
+
+      const cached = this.databases.get(workspaceId)
+
+      if (cached !== undefined) {
+        cached.connection.closeSync()
+        cached.instance.closeSync()
+        this.databases.delete(workspaceId)
+      }
+
+      const paths = this.storagePaths(workspaceId)
+      const [dbStat, walStat, tmpStat] = await Promise.all([
+        this.inspectFileStat(paths.dbPath),
+        this.inspectFileStat(paths.walPath),
+        this.inspectFileStat(paths.tmpPath),
+      ])
+      const removed = dbStat.exists || walStat.exists || tmpStat.exists
+
+      try {
+        await rm(paths.dbPath, { force: true })
+        await rm(paths.walPath, { force: true })
+        await rm(paths.tmpPath, { recursive: true, force: true })
+      } catch (error) {
+        const parsed = systemErrorSchema.safeParse(error)
+        let reason = 'ANALYTICS_STORAGE_RESET_FAILED'
+        if (parsed.success && parsed.data.message !== undefined)
+          reason = parsed.data.message
+
+        return Either.failure(
+          AppError.Internal('ANALYTICS_STORAGE_UNREADABLE', {
+            storagePath: [paths.dbPath],
+            reason: [reason],
+          }),
+        )
+      }
+
+      return Either.success({ workspaceId, removed })
     })
   }
 

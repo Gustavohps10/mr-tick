@@ -55,6 +55,7 @@ import installExtension, {
   REACT_DEVELOPER_TOOLS,
 } from 'electron-devtools-installer'
 
+import { AnalyticsDiagnosticAdapter } from '@/main/adapters/analytics/AnalyticsDiagnosticAdapter'
 import { DuckDBAnalyticsEngine } from '@/main/adapters/analytics/DuckDBAnalyticsEngine'
 import {
   DefaultElectronFetchTransport,
@@ -680,6 +681,13 @@ if (gotTheLock) {
       })
       runtimeWindow.windowType = 'runtime'
       const localRuntime = new LocalRuntimeDispatcher(runtimeWindow)
+      const analyticsEngine = new DuckDBAnalyticsEngine(
+        join(userDataPath, 'analytics'),
+      )
+      const analyticsDiagnosticAdapter = new AnalyticsDiagnosticAdapter(
+        analyticsEngine,
+        workspacesRepository,
+      )
       const metadataDiagnosticAdapter = new SqliteMetadataDiagnosticAdapter(
         workspacesRepository.db,
         userDataPath,
@@ -687,6 +695,7 @@ if (gotTheLock) {
       const diagnosticsService = new DiagnosticsService(
         localRuntime,
         metadataDiagnosticAdapter,
+        analyticsDiagnosticAdapter,
         eventsBuffer,
         bootJournal,
         userDataPath,
@@ -824,9 +833,6 @@ if (gotTheLock) {
         electronHttpClientFactory,
       )
 
-      const analyticsEngine = new DuckDBAnalyticsEngine(
-        join(userDataPath, 'analytics'),
-      )
       let analyticsClosing = false
       let analyticsClosed = false
       const platformDeps: PlatformDependencies = {
@@ -924,6 +930,26 @@ if (gotTheLock) {
           for (const win of BrowserWindow.getAllWindows())
             if (!win.isDestroyed())
               win.webContents.send('analytics:load-progress', payload)
+        },
+      )
+
+      addonLoader.systemEventEmitter.on(
+        'analytics:storage-error',
+        (payload) => {
+          void diagnosticsService.recordAnalyticsStorageError(payload)
+        },
+      )
+
+      addonLoader.systemEventEmitter.on(
+        'analytics:storage-reset',
+        (payload) => {
+          void diagnosticsService.clearAnalyticsStorageError(
+            payload.workspaceId,
+          )
+
+          for (const win of BrowserWindow.getAllWindows())
+            if (!win.isDestroyed())
+              win.webContents.send('analytics:storage-reset', payload)
         },
       )
 

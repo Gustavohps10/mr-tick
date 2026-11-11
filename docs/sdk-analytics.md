@@ -83,3 +83,5 @@ Query authorization errors identify affected connections in `details.connectionI
 `hydrateAnalytics` restores publications, spaces, dates and polling settings locally from the workspace DuckDB. Manual polling opens existing valid publications without HTTP. Enabled polling defaults to five minutes while Analytics is mounted, checks overdue publications when opening, and stops on leaving the view. The `analytics:load-progress` event reports batches and publication phases; background refresh preserves the visible previous result. No daemon updates closed workspaces.
 
 Storage format is v2. Older analytical files fail explicitly with `ANALYTICS_STORAGE_FORMAT_UNSUPPORTED`; the host does not migrate or delete user databases automatically. See [phase 3 validation](analytics-phase3-validation.md) for evidence and remaining limits.
+
+The [phase 4 validation](analytics-phase4-validation.md) records the scenario matrix, independent HTTP provider contract and personal-runtime concurrency proofs. Cancellation coverage means transport/provider abortion with no partial publication; the current contract does not expose a universal user cancellation operation.

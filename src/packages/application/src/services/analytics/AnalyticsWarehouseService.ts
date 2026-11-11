@@ -1,6 +1,7 @@
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import type {
   AnalyticsLoadProgressEvent,
+  AnalyticsStorageErrorEvent,
   ISystemEventEmitter,
 } from '@mr-tick/shared/transport'
 
@@ -23,6 +24,8 @@ import type {
   AnalyticsQueryResult,
   AnalyticsRefreshMode,
   AnalyticsRefreshPolicy,
+  AnalyticsResetStorageInput,
+  AnalyticsResetStorageResult,
   AnalyticsSyncMetadata,
   AnalyticsSyncState,
   AnalyticsSyncStrategy,
@@ -34,8 +37,18 @@ import type {
   SaveAnalyticsWorkspaceStateInput,
 } from '@/contracts'
 
+import { validatePersistedAnalyticsSpacesJson } from '../../utils/analytics-spaces-validation'
+
 const DEFAULT_ROLLING_WINDOW_DAYS = 14
 const DEFAULT_FULL_RECONCILE_INTERVAL_MINUTES = 360
+const ANALYTICS_STORAGE_ERROR_KEYS = new Set([
+  'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+  'ANALYTICS_STORAGE_METADATA_INVALID',
+  'ANALYTICS_SPACES_STATE_INVALID',
+  'ANALYTICS_STORAGE_WAL_ORPHAN',
+  'ANALYTICS_STORAGE_UNREADABLE',
+  'ANALYTICS_ENGINE_FAILURE',
+])
 
 function invalid(message: string) {
   return Either.failure(AppError.ValidationError(message))
@@ -370,6 +383,7 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
   private readonly loads = new Map<
     string,
     {
+      workspaceId: string
       mode: AnalyticsRefreshMode
       promise: Promise<Either<AppError, AnalyticsLoadResult>>
     }
@@ -380,6 +394,24 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
     private readonly analyticsEngine: IAnalyticsEngine,
     private readonly systemEventEmitter: ISystemEventEmitter,
   ) {}
+
+  private emitStorageError(
+    workspaceId: string,
+    operation: AnalyticsStorageErrorEvent['operation'],
+    error: AppError,
+  ): void {
+    if (!ANALYTICS_STORAGE_ERROR_KEYS.has(error.messageKey)) return
+
+    const payload: AnalyticsStorageErrorEvent = {
+      workspaceId,
+      operation,
+      messageKey: error.messageKey,
+    }
+
+    if (error.details !== undefined) payload.details = error.details
+
+    this.systemEventEmitter.emit('analytics:storage-error', payload)
+  }
 
   public async hydrate(
     input: AnalyticsHydrateInput,
@@ -395,13 +427,29 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
     const settings = await this.analyticsEngine.getWorkspaceState(
       input.workspaceId,
     )
-    if (settings.isFailure()) return settings.forwardFailure()
+
+    if (settings.isFailure()) {
+      this.emitStorageError(input.workspaceId, 'hydrate', settings.failure)
+      return settings.forwardFailure()
+    }
+
+    if (settings.success?.spacesJson !== undefined) {
+      const spacesValid = validatePersistedAnalyticsSpacesJson(
+        settings.success.spacesJson,
+      )
+      if (spacesValid.isFailure())
+        this.emitStorageError(input.workspaceId, 'hydrate', spacesValid.failure)
+    }
 
     const publications = await this.analyticsEngine.listPublications(
       input.workspaceId,
       authorizations.success,
     )
-    if (publications.isFailure()) return publications.forwardFailure()
+
+    if (publications.isFailure()) {
+      this.emitStorageError(input.workspaceId, 'hydrate', publications.failure)
+      return publications.forwardFailure()
+    }
 
     const current = await this.analyticsResolver.resolveWorkspaceAuthorizations(
       input.workspaceId,
@@ -428,10 +476,58 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
     })
   }
 
-  public saveWorkspaceState(
+  public async saveWorkspaceState(
     input: SaveAnalyticsWorkspaceStateInput,
   ): Promise<Either<AppError, AnalyticsWorkspaceState>> {
-    return this.analyticsEngine.saveWorkspaceState(input)
+    const saved = await this.analyticsEngine.saveWorkspaceState(input)
+
+    if (saved.isFailure()) {
+      this.emitStorageError(
+        input.workspaceId,
+        'saveWorkspaceState',
+        saved.failure,
+      )
+      return saved
+    }
+
+    if (saved.success.spacesJson !== undefined) {
+      const spacesValid = validatePersistedAnalyticsSpacesJson(
+        saved.success.spacesJson,
+      )
+      if (spacesValid.isFailure())
+        this.emitStorageError(
+          input.workspaceId,
+          'saveWorkspaceState',
+          spacesValid.failure,
+        )
+    }
+
+    return saved
+  }
+
+  public async resetStorage(
+    input: AnalyticsResetStorageInput,
+  ): Promise<Either<AppError, AnalyticsResetStorageResult>> {
+    if (!input.workspaceId.trim()) return invalid('WORKSPACE_ID_REQUIRED')
+
+    for (const activeLoad of this.loads.values()) {
+      if (activeLoad.workspaceId === input.workspaceId)
+        return Either.failure(AppError.Http(409, 'ANALYTICS_RESET_ACTIVE_LOAD'))
+    }
+
+    const result = await this.analyticsEngine.resetStorage(input.workspaceId)
+
+    if (result.isFailure()) {
+      this.emitStorageError(input.workspaceId, 'resetStorage', result.failure)
+      return result.forwardFailure()
+    }
+
+    this.systemEventEmitter.emit('analytics:storage-reset', {
+      workspaceId: input.workspaceId,
+      removed: result.success.removed,
+    })
+
+    return result
   }
 
   public async load(
@@ -512,7 +608,11 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
           if (this.loads.get(key)?.promise === queued) this.loads.delete(key)
         })
 
-      this.loads.set(key, { mode: 'full', promise: queued })
+      this.loads.set(key, {
+        workspaceId: input.workspaceId,
+        mode: 'full',
+        promise: queued,
+      })
       return queued
     }
 
@@ -530,7 +630,11 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
       if (this.loads.get(key)?.promise === work) this.loads.delete(key)
     })
 
-    this.loads.set(key, { mode: policy.mode, promise: work })
+    this.loads.set(key, {
+      workspaceId: input.workspaceId,
+      mode: policy.mode,
+      promise: work,
+    })
     return work
   }
 
@@ -589,7 +693,10 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
         },
       ],
     )
-    if (entriesResult.isFailure()) return entriesResult.forwardFailure()
+    if (entriesResult.isFailure()) {
+      this.emitStorageError(input.workspaceId, 'load', entriesResult.failure)
+      return entriesResult.forwardFailure()
+    }
 
     const existingEntry = entriesResult.success.find(
       (item) => item.publication.selectionKey === selectionKey,
@@ -603,6 +710,8 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
       totalRows: number | undefined,
       emitFailed: boolean,
     ): Promise<Either<AppError, AnalyticsLoadResult>> => {
+      this.emitStorageError(input.workspaceId, 'load', error)
+
       if (isUnauthorizedOrForbidden(error))
         await this.analyticsEngine.revokeConnection(
           input.workspaceId,
@@ -1535,7 +1644,11 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
       { ...input, nodes: plan.success },
       authorizations,
     )
-    if (result.isFailure()) return result.forwardFailure()
+
+    if (result.isFailure()) {
+      this.emitStorageError(input.workspaceId, 'query', result.failure)
+      return result.forwardFailure()
+    }
 
     for (const authorization of authorizations) {
       const current = await this.analyticsResolver.resolve(

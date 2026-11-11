@@ -56,6 +56,19 @@ export interface AnalyticsLoadProgressEvent {
   coverage?: 'complete' | 'unverified'
 }
 
+export interface AnalyticsStorageErrorEvent {
+  workspaceId: string
+  operation:
+    'hydrate' | 'load' | 'query' | 'saveWorkspaceState' | 'resetStorage'
+  messageKey: string
+  details?: Record<string, string[]>
+}
+
+export interface AnalyticsStorageResetEvent {
+  workspaceId: string
+  removed: boolean
+}
+
 export interface ISystemEvents {
   'timer:start': TimerStartPayload
   'timer:pause': TimerPausePayload
@@ -84,6 +97,8 @@ export interface ISystemEvents {
   'connection:removed': ConnectionEventPayload
   'addon:settings:saved': AddonSettingsSavedEventPayload
   'analytics:load-progress': AnalyticsLoadProgressEvent
+  'analytics:storage-error': AnalyticsStorageErrorEvent
+  'analytics:storage-reset': AnalyticsStorageResetEvent
 }
 
 export interface ISystemEventEmitter {

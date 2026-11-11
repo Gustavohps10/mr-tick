@@ -30,6 +30,7 @@ function fixture() {
     query: vi.fn(),
     hydrate: vi.fn(),
     saveWorkspaceState: vi.fn(),
+    resetStorage: vi.fn(),
   }
   return { service, handler: new AnalyticsWarehouseHandler(service) }
 }
@@ -155,5 +156,41 @@ describe('Analytical warehouse IPC boundary', () => {
     })
     expect(hydrated.isSuccess).toBe(true)
     expect(f.service.hydrate).toHaveBeenCalledWith({ workspaceId: 'workspace' })
+  })
+
+  it('validates resetStorage payload strictly and forwards 409 conflicts', async () => {
+    const f = fixture()
+    expect(
+      (await f.handler.resetStorage(event, { body: { workspaceId: '' } }))
+        .statusCode,
+    ).toBe(400)
+    expect(f.service.resetStorage).not.toHaveBeenCalled()
+
+    vi.mocked(f.service.resetStorage).mockResolvedValueOnce(
+      Either.failure(AppError.Http(409, 'ANALYTICS_RESET_ACTIVE_LOAD')),
+    )
+    const conflict = await f.handler.resetStorage(event, {
+      body: { workspaceId: 'workspace' },
+    })
+    expect(conflict).toMatchObject({
+      isSuccess: false,
+      statusCode: 409,
+      error: 'ANALYTICS_RESET_ACTIVE_LOAD',
+    })
+
+    vi.mocked(f.service.resetStorage).mockResolvedValueOnce(
+      Either.success({ workspaceId: 'workspace', removed: true }),
+    )
+    const reset = await f.handler.resetStorage(event, {
+      body: { workspaceId: 'workspace' },
+    })
+    expect(reset).toMatchObject({
+      isSuccess: true,
+      statusCode: 200,
+      data: { workspaceId: 'workspace', removed: true },
+    })
+    expect(f.service.resetStorage).toHaveBeenCalledWith({
+      workspaceId: 'workspace',
+    })
   })
 })

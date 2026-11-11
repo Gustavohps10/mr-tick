@@ -3,7 +3,7 @@ import type {
   AnalyticsDatasetRow,
 } from '@mr-tick/application'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { memo, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 
 import {
   Table,
@@ -17,13 +17,19 @@ import {
 export interface VirtualizedNodeTableProps {
   columns: AnalyticsColumnSchema[]
   rows: AnalyticsDatasetRow[]
+  offset?: number
 }
 
 export const VirtualizedNodeTable = memo(function VirtualizedNodeTable({
   columns,
   rows,
+  offset = 0,
 }: VirtualizedNodeTableProps) {
   const parentRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (parentRef.current) parentRef.current.scrollTop = 0
+  }, [offset])
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -50,7 +56,7 @@ export const VirtualizedNodeTable = memo(function VirtualizedNodeTable({
   return (
     <div
       ref={parentRef}
-      className="border-border/70 h-[360px] overflow-auto rounded-lg border"
+      className="border-border/70 h-[360px] max-h-[40vh] min-h-48 overflow-auto rounded-lg border"
     >
       <Table>
         <TableHeader className="bg-muted/85 sticky top-0 z-10 backdrop-blur-xs">
@@ -81,7 +87,7 @@ export const VirtualizedNodeTable = memo(function VirtualizedNodeTable({
             return (
               <TableRow key={virtualRow.key} className="h-9">
                 <TableCell className="text-muted-foreground text-center font-mono text-[10px]">
-                  {virtualRow.index + 1}
+                  {offset + virtualRow.index + 1}
                 </TableCell>
                 {columns.map((col) => {
                   const rawVal = row[col.name]

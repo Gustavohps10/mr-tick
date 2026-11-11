@@ -809,6 +809,29 @@ export default class FakeDataSourceAddon implements IAddon {
         },
       )
       context.contributions.commands.register(
+        'fake-db:pause-analytics-after-first-page',
+        () => {
+          store.pauseAnalyticsAfterFirstPage()
+          return { configured: true }
+        },
+      )
+      context.contributions.commands.register(
+        'fake-db:release-analytics-page',
+        () => ({ released: store.releaseAnalyticsPage(0) }),
+      )
+      context.contributions.commands.register(
+        'fake-db:fail-analytics-page',
+        () => ({ released: store.releaseAnalyticsPage(503) }),
+      )
+      context.contributions.commands.register(
+        'fake-db:cancel-analytics-page',
+        () => ({ released: store.releaseAnalyticsPage(499) }),
+      )
+      context.contributions.commands.register(
+        'fake-db:get-analytics-page-diagnostics',
+        () => store.getAnalyticsPageDiagnostics(),
+      )
+      context.contributions.commands.register(
         'fake-db:pause-two-time-entry-pulls',
         () => {
           store.pauseTimeEntryPulls(2)

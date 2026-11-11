@@ -22,7 +22,10 @@ import {
 } from '@mr-tick/application'
 import type { AddonManifestViewModel } from '@mr-tick/sdk'
 import { isAnalytics } from '@mr-tick/shared/helpers'
-import type { AnalyticsLoadProgressEvent } from '@mr-tick/shared/transport'
+import type {
+  AnalyticsLoadProgressEvent,
+  AnalyticsStorageResetEvent,
+} from '@mr-tick/shared/transport'
 import {
   type Edge,
   MarkerType,
@@ -150,6 +153,19 @@ export function useAnalyticsWorkspace() {
   const [hydrateError, setHydrateError] = useState<string | undefined>(
     undefined,
   )
+  const [hydrateErrorDetails, setHydrateErrorDetails] = useState<
+    Record<string, string[]> | undefined
+  >()
+  const [hydrationAttempt, setHydrationAttempt] = useState(0)
+  const retryHydration = useCallback(
+    () => setHydrationAttempt((value) => value + 1),
+    [],
+  )
+  const [isResettingStorage, setIsResettingStorage] = useState(false)
+  const [resetError, setResetError] = useState<string | undefined>()
+  const [resetErrorDetails, setResetErrorDetails] = useState<
+    Record<string, string[]> | undefined
+  >()
   const [settingsError, setSettingsError] = useState<string | undefined>()
   const [settingsErrorDetails, setSettingsErrorDetails] = useState<
     Record<string, string[]> | undefined
@@ -197,6 +213,23 @@ export function useAnalyticsWorkspace() {
 
   const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null)
   const [nodeModalSearch, setNodeModalSearch] = useState<string>('')
+  const [inspectionPage, setInspectionPage] = useState<{
+    id: string
+    search: string
+    offset: number
+    limit: number
+    version?: string
+  }>({ id: '', search: '', offset: 0, limit: 100 })
+
+  const handleSetInspectedNodeId = useCallback((nodeId: string | null) => {
+    setInspectedNodeId(nodeId)
+    setInspectionPage((previous) => ({
+      id: '',
+      search: '',
+      offset: 0,
+      limit: previous.limit,
+    }))
+  }, [])
   const [drillDown, setDrillDown] = useState<DrillDownSelection | null>(null)
 
   const [isNewSpaceModalOpen, setIsNewSpaceModalOpen] = useState<boolean>(false)
@@ -280,6 +313,7 @@ export function useAnalyticsWorkspace() {
   const checkedHydratedOverdueRef = useRef(new Set<string>())
   const eventKeyToSelKeyRef = useRef(new Map<string, string>())
   const computedKeysRef = useRef<Record<string, string>>({})
+  const isResettingStorageRef = useRef<boolean>(false)
   const isMountedRef = useRef<boolean>(false)
 
   useEffect(() => {
@@ -531,6 +565,9 @@ export function useAnalyticsWorkspace() {
     userMutatedStateRef.current = false
     setIsHydrated(false)
     setHydrateError(undefined)
+    setHydrateErrorDetails(undefined)
+    setResetError(undefined)
+    setResetErrorDetails(undefined)
     setSettingsError(undefined)
     setSettingsErrorDetails(undefined)
     setSelectionEntries({})
@@ -553,7 +590,7 @@ export function useAnalyticsWorkspace() {
           let message = 'ANALYTICS_HYDRATE_FAILED'
           if (res.error !== undefined) message = res.error
           setHydrateError(message)
-          setIsHydrated(true)
+          setHydrateErrorDetails(res.details)
           return
         }
 
@@ -580,10 +617,13 @@ export function useAnalyticsWorkspace() {
           if (res.data.settings.spacesJson !== undefined) {
             const parsed = parsePersistedSpaces(res.data.settings.spacesJson)
 
-            if (parsed.isSuccess() && parsed.success.length > 0)
-              restoredSpaces = parsed.success
+            if (parsed.isFailure()) {
+              setHydrateError(parsed.failure.messageKey)
+              setHydrateErrorDetails(parsed.failure.details)
+              return
+            }
 
-            if (parsed.isFailure()) setHydrateError(parsed.failure.messageKey)
+            if (parsed.success.length > 0) restoredSpaces = parsed.success
           }
         }
 
@@ -636,7 +676,7 @@ export function useAnalyticsWorkspace() {
     return () => {
       active = false
     }
-  }, [bridge.addons, workspaceId])
+  }, [bridge.addons, hydrationAttempt, workspaceId])
 
   useEffect(() => {
     if (!isHydrated || !workspaceId || !canAutoPersistSettingsRef.current)
@@ -728,6 +768,78 @@ export function useAnalyticsWorkspace() {
       unsubscribe()
     }
   }, [bridge.events, workspaceId])
+
+  const applyResetAnalyticsState = useCallback(() => {
+    lastSavedWorkspaceSnapshotRef.current = ''
+    canAutoPersistSettingsRef.current = false
+    userMutatedStateRef.current = false
+    setSpaces([createDefaultBlankSpace()])
+    setPollingIntervalMinutes(DEFAULT_POLLING_INTERVAL_MINUTES)
+    setStartDate('2026-08-01')
+    setEndDate('2026-10-31')
+    setDateRange({
+      from: isoDateToLocalDate('2026-08-01'),
+      to: isoDateToLocalDate('2026-10-31'),
+    })
+    setSelectionEntries({})
+    setComputedKeysBySelKey({})
+    computedKeysRef.current = {}
+    setSelectionProgress({})
+    setSelectionErrors({})
+    setSelectionErrorDetails({})
+    setActiveSelectionModes({})
+    setResetError(undefined)
+    setResetErrorDetails(undefined)
+    setHydrateError(undefined)
+    setHydrateErrorDetails(undefined)
+    setHydrationAttempt((value) => value + 1)
+  }, [])
+
+  const resetAnalyticsStorage = useCallback(async () => {
+    if (!workspaceId || isResettingStorageRef.current) return
+
+    isResettingStorageRef.current = true
+    setIsResettingStorage(true)
+    setResetError(undefined)
+    setResetErrorDetails(undefined)
+
+    try {
+      const response = await bridge.addons.resetAnalyticsStorage({
+        body: { workspaceId },
+      })
+
+      if (!isMountedRef.current) return
+
+      if (!response.isSuccess) {
+        let message = 'ANALYTICS_STORAGE_RESET_FAILED'
+        if (response.error !== undefined) message = response.error
+        setResetError(message)
+        setResetErrorDetails(response.details)
+        return
+      }
+
+      applyResetAnalyticsState()
+    } finally {
+      isResettingStorageRef.current = false
+      if (isMountedRef.current) setIsResettingStorage(false)
+    }
+  }, [applyResetAnalyticsState, bridge.addons, workspaceId])
+
+  useEffect(() => {
+    const unsubscribe = bridge.events.on<AnalyticsStorageResetEvent>(
+      'analytics:storage-reset',
+      (payload) => {
+        if (payload.workspaceId !== workspaceId) return
+        if (isResettingStorageRef.current) return
+
+        applyResetAnalyticsState()
+      },
+    )
+
+    return () => {
+      unsubscribe()
+    }
+  }, [applyResetAnalyticsState, bridge.events, workspaceId])
 
   const connectionDisplayOptions = useMemo<ConnectionDisplayOption[]>(() => {
     if (!workspace || workspace.connections.length === 0) return []
@@ -1466,13 +1578,6 @@ export function useAnalyticsWorkspace() {
     ],
   )
 
-  const [inspectionPage, setInspectionPage] = useState<{
-    id: string
-    search: string
-    offset: number
-    version?: string
-  }>({ id: '', search: '', offset: 0 })
-
   const publications: Record<string, AnalyticsPublication> = {}
 
   for (const node of activeSpace.workflowNodes) {
@@ -1707,10 +1812,23 @@ export function useAnalyticsWorkspace() {
     })
 
   let inspection:
-    { id: string; search: string; offset: number; version?: string } | undefined
+    | {
+        id: string
+        search: string
+        offset: number
+        limit?: number
+        version?: string
+      }
+    | undefined
 
   if (inspectedNodeId !== null) {
-    inspection = { id: inspectedNodeId, search: nodeModalSearch, offset: 0 }
+    inspection = {
+      id: inspectedNodeId,
+      search: nodeModalSearch,
+      offset: 0,
+      limit: inspectionPage.limit,
+    }
+
     if (
       inspectionPage.id === inspectedNodeId &&
       inspectionPage.search === nodeModalSearch
@@ -1730,8 +1848,17 @@ export function useAnalyticsWorkspace() {
 
   const resolveRowsForWorkflowNode = useCallback(
     (node: SpaceWorkflowNodeConfig) => {
-      const data = nodePages[node.id]?.data
-      if (data !== undefined) return { columns: data.columns, rows: data.rows }
+      const page = nodePages[node.id]
+      const data = page?.data
+
+      if (data !== undefined)
+        return {
+          columns: data.columns,
+          rows: data.rows,
+          totalRows: data.totalRows,
+          stageTotalRows: page?.stageTotalRows,
+        }
+
       return { columns: [], rows: [] }
     },
     [nodePages],
@@ -1965,10 +2092,15 @@ export function useAnalyticsWorkspace() {
       setOutputReferenceLineMode(nextReferenceLineMode)
       setOutputReferenceLineTarget(nextReferenceLineTarget)
 
-      setInspectedNodeId(null)
+      handleSetInspectedNodeId(null)
       setIsAddNodeModalOpen(true)
     },
-    [activeSpace.widgets, activeSpace.workflowNodes, nodeSourceDatasets],
+    [
+      activeSpace.widgets,
+      activeSpace.workflowNodes,
+      handleSetInspectedNodeId,
+      nodeSourceDatasets,
+    ],
   )
 
   const handleOpenAddNode = useCallback(() => {
@@ -2002,8 +2134,12 @@ export function useAnalyticsWorkspace() {
   const initialPipelineNodes = useMemo<Array<Node<PipelineNodeData>>>(() => {
     return activeSpace.workflowNodes.map((nodeCfg) => {
       let rowCount = 0
-      const page = nodePages[nodeCfg.id]?.data
-      if (page !== undefined) rowCount = page.totalRows
+      const page = nodePages[nodeCfg.id]
+
+      if (page?.stageTotalRows !== undefined) rowCount = page.stageTotalRows
+      if (page?.stageTotalRows === undefined && page?.data !== undefined)
+        rowCount = page.data.totalRows
+
       return {
         id: nodeCfg.id,
         type: 'pipelineNode',
@@ -2880,6 +3016,8 @@ export function useAnalyticsWorkspace() {
   let inspectedNodeResolvedData: {
     columns: AnalyticsColumnSchema[]
     rows: AnalyticsDatasetRow[]
+    totalRows?: number
+    stageTotalRows?: number
   } = { columns: [], rows: [] }
   if (inspectedNodeConfig !== null)
     inspectedNodeResolvedData = resolveRowsForWorkflowNode(inspectedNodeConfig)
@@ -2942,6 +3080,61 @@ export function useAnalyticsWorkspace() {
     [],
   )
 
+  const handleSelectInspectionPage = useCallback(
+    async (nodeId: string, pageIndex: number) => {
+      const page = nodePages[nodeId]
+
+      if (page === undefined) {
+        await retrySourceNode(nodeId)
+        return
+      }
+
+      if (page.error !== undefined) {
+        setInspectionPage((previous) => ({
+          id: nodeId,
+          search: nodeModalSearch,
+          offset: 0,
+          limit: previous.limit,
+        }))
+        setNativeRevision((previous) => previous + 1)
+        return
+      }
+
+      const data = page.data
+      if (data === undefined || pageIndex < 0) return
+
+      const nextOffset = pageIndex * data.limit
+      if (nextOffset >= data.totalRows && nextOffset > 0) return
+
+      let pinnedVersion: string | undefined
+      if (nextOffset > 0) pinnedVersion = data.version
+
+      setInspectionPage({
+        id: nodeId,
+        search: nodeModalSearch,
+        offset: nextOffset,
+        limit: data.limit,
+        version: pinnedVersion,
+      })
+    },
+    [nodeModalSearch, nodePages, retrySourceNode],
+  )
+
+  const handleChangeInspectionPageSize = useCallback(
+    (nodeId: string, nextLimit: number) => {
+      if (!Number.isInteger(nextLimit) || nextLimit < 1 || nextLimit > 500)
+        return
+
+      setInspectionPage({
+        id: nodeId,
+        search: nodeModalSearch,
+        offset: 0,
+        limit: nextLimit,
+      })
+    },
+    [nodeModalSearch],
+  )
+
   const handleLoadNextSourceBatch = useCallback(
     async (nodeId: string) => {
       const page = nodePages[nodeId]
@@ -2951,26 +3144,34 @@ export function useAnalyticsWorkspace() {
         return
       }
 
-      if (page?.error !== undefined) {
-        setInspectionPage({ id: nodeId, search: nodeModalSearch, offset: 0 })
+      if (page.error !== undefined) {
+        setInspectionPage((previous) => ({
+          id: nodeId,
+          search: nodeModalSearch,
+          offset: 0,
+          limit: previous.limit,
+        }))
         setNativeRevision((previous) => previous + 1)
         return
       }
 
-      const data = page?.data
+      const data = page.data
       if (data === undefined || !data.hasMore) return
-      setInspectionPage({
-        id: nodeId,
-        search: nodeModalSearch,
-        offset: data.offset + data.limit,
-        version: data.version,
-      })
+
+      const nextPageIndex = Math.floor(data.offset / data.limit) + 1
+      await handleSelectInspectionPage(nodeId, nextPageIndex)
     },
-    [nodeModalSearch, nodePages, retrySourceNode],
+    [handleSelectInspectionPage, nodeModalSearch, nodePages, retrySourceNode],
   )
 
   let inspectedBatch:
-    | { index: number; offset: number; finished: boolean; totalRows?: number }
+    | {
+        index: number
+        offset: number
+        limit: number
+        finished: boolean
+        totalRows?: number
+      }
     | undefined
   let canLoadNextBatch = false
   let inspectedSourceLoading = false
@@ -2988,8 +3189,9 @@ export function useAnalyticsWorkspace() {
 
     if (page?.data !== undefined) {
       inspectedBatch = {
-        index: page.data.offset / page.data.limit,
+        index: Math.floor(page.data.offset / page.data.limit),
         offset: page.data.offset,
+        limit: page.data.limit,
         finished: !page.data.hasMore,
         totalRows: page.data.totalRows,
       }
@@ -3041,10 +3243,18 @@ export function useAnalyticsWorkspace() {
     setPollingIntervalMinutes: handleSetPollingIntervalMinutes,
     isHydrated,
     hydrateError,
+    hydrateErrorDetails,
+    retryHydration,
+    isResettingStorage,
+    resetError,
+    resetErrorDetails,
+    resetAnalyticsStorage,
     settingsError,
     settingsErrorDetails,
     retrySaveWorkspaceState,
     handleLoadNextSourceBatch,
+    handleSelectInspectionPage,
+    handleChangeInspectionPageSize,
     inspectedBatch,
     canLoadNextBatch,
     inspectedSourceLoading,
@@ -3083,7 +3293,7 @@ export function useAnalyticsWorkspace() {
     inspectedNodeResolvedData,
     nodeModalSearch,
     setNodeModalSearch,
-    setInspectedNodeId,
+    setInspectedNodeId: handleSetInspectedNodeId,
     drillDown,
     setDrillDown,
     isNewSpaceModalOpen,

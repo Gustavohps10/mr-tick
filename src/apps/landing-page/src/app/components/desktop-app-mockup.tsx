@@ -252,6 +252,8 @@ const mockBridgeClient: IHostBridge = {
         pollingIntervalMinutes: 5,
         updatedAt: '2026-11-10T00:00:00Z',
       }),
+    resetAnalyticsStorage: async () =>
+      mockSuccess({ workspaceId: 'mock-workspace', removed: false }),
     fetchAnalyticsDataset: async () => ({
       isSuccess: false,
       statusCode: 404,

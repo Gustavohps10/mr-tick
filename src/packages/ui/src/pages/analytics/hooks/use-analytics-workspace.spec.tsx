@@ -20,6 +20,7 @@ const calls = vi.hoisted(() => ({
   getAnalyticsFilterOptions: vi.fn(),
   hydrateAnalytics: vi.fn(),
   saveAnalyticsWorkspaceState: vi.fn(),
+  resetAnalyticsStorage: vi.fn(),
   eventsOn: vi.fn(),
   getMetadata: vi.fn(),
 }))
@@ -34,6 +35,7 @@ const bridge = {
     getAnalyticsFilterOptions: calls.getAnalyticsFilterOptions,
     hydrateAnalytics: calls.hydrateAnalytics,
     saveAnalyticsWorkspaceState: calls.saveAnalyticsWorkspaceState,
+    resetAnalyticsStorage: calls.resetAnalyticsStorage,
   },
   events: {
     on: calls.eventsOn,
@@ -868,6 +870,57 @@ describe('Phase 3 offline hydration, polling, deduplication and progress UI hook
     )
   })
 
+  it('keeps hydration failed with structured details and retries explicitly before enabling persistence', async () => {
+    calls.hydrateAnalytics.mockResolvedValueOnce({
+      isSuccess: false,
+      statusCode: 422,
+      error: 'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+      details: { storedFormatVersion: ['1'], supportedFormatVersion: ['2'] },
+    })
+    const { result } = renderHook(() => useAnalyticsWorkspace())
+    await waitFor(() =>
+      expect(result.current.hydrateError).toBe(
+        'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+      ),
+    )
+    expect(result.current.isHydrated).toBe(false)
+    expect(result.current.hydrateErrorDetails).toEqual({
+      storedFormatVersion: ['1'],
+      supportedFormatVersion: ['2'],
+    })
+    expect(calls.saveAnalyticsWorkspaceState).not.toHaveBeenCalled()
+    act(() => result.current.retryHydration())
+    await waitFor(() => expect(result.current.isHydrated).toBe(true))
+    expect(result.current.hydrateError).toBeUndefined()
+    expect(calls.hydrateAnalytics).toHaveBeenCalledTimes(2)
+  })
+
+  it('never overwrites invalid persisted spaces with default spaces after hydration fails', async () => {
+    calls.hydrateAnalytics.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        publications: [],
+        settings: {
+          workspaceId: 'workspace',
+          pollingIntervalMinutes: 0,
+          spacesJson: '{invalid-state',
+          updatedAt: '2026-11-10T00:00:00Z',
+        },
+      },
+    })
+    const { result } = renderHook(() => useAnalyticsWorkspace())
+    await waitFor(() =>
+      expect(result.current.hydrateError).toBe(
+        'ANALYTICS_SPACES_STATE_INVALID',
+      ),
+    )
+    act(() => result.current.setPollingIntervalMinutes(15))
+    await act(async () => {})
+    expect(calls.saveAnalyticsWorkspaceState).not.toHaveBeenCalled()
+    expect(result.current.isHydrated).toBe(false)
+  })
+
   it('surfaces failed settings writes and retries the unchanged snapshot explicitly', async () => {
     const { result } = renderHook(() => useAnalyticsWorkspace())
     await waitFor(() => expect(result.current.isHydrated).toBe(true))
@@ -1030,7 +1083,9 @@ describe('Phase 3 offline hydration, polling, deduplication and progress UI hook
       await vi.advanceTimersByTimeAsync(5 * 60_000)
     })
 
-    expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(1)
+    await waitFor(() =>
+      expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(1),
+    )
     expect(calls.loadAnalyticsDataset).toHaveBeenLastCalledWith({
       body: expect.objectContaining({
         connectionInstanceId: 'reader',
@@ -1347,5 +1402,155 @@ describe('Phase 3 offline hydration, polling, deduplication and progress UI hook
         rendered.result.current.syncStatusSummary.hasIncrementalChanges,
       ).toBe(true),
     )
+  })
+
+  it('resets blocked analytics storage cleanly, reports reset failures, and recovers on external reset event', async () => {
+    let resetListener:
+      ((payload: { workspaceId: string; removed: boolean }) => void) | undefined
+    calls.eventsOn.mockImplementation(
+      (channel: string, listener: (payload: never) => void) => {
+        if (channel === 'analytics:storage-reset')
+          resetListener = listener as unknown as (payload: {
+            workspaceId: string
+            removed: boolean
+          }) => void
+        return vi.fn()
+      },
+    )
+
+    calls.hydrateAnalytics.mockResolvedValueOnce({
+      isSuccess: false,
+      statusCode: 400,
+      error: 'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+      details: {
+        storedFormatVersion: ['1'],
+        supportedFormatVersion: ['2'],
+      },
+    })
+
+    const rendered = renderHook(() => useAnalyticsWorkspace())
+
+    await waitFor(() =>
+      expect(rendered.result.current.hydrateError).toBe(
+        'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+      ),
+    )
+
+    calls.resetAnalyticsStorage.mockResolvedValueOnce({
+      isSuccess: false,
+      statusCode: 409,
+      error: 'ANALYTICS_RESET_ACTIVE_LOAD',
+    })
+
+    await act(async () => {
+      await rendered.result.current.resetAnalyticsStorage()
+    })
+
+    expect(rendered.result.current.resetError).toBe(
+      'ANALYTICS_RESET_ACTIVE_LOAD',
+    )
+    expect(rendered.result.current.hydrateError).toBe(
+      'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+    )
+
+    calls.resetAnalyticsStorage.mockResolvedValueOnce({
+      isSuccess: true,
+      statusCode: 200,
+      data: { workspaceId: 'workspace', removed: true },
+    })
+    calls.hydrateAnalytics.mockResolvedValueOnce({
+      isSuccess: true,
+      statusCode: 200,
+      data: { publications: [] },
+    })
+
+    await act(async () => {
+      await rendered.result.current.resetAnalyticsStorage()
+    })
+
+    await waitFor(() => expect(rendered.result.current.isHydrated).toBe(true))
+    expect(rendered.result.current.hydrateError).toBeUndefined()
+    expect(rendered.result.current.resetError).toBeUndefined()
+    expect(calls.resetAnalyticsStorage).toHaveBeenCalledWith({
+      body: { workspaceId: 'workspace' },
+    })
+
+    // External reset event from Settings tab resets blocked or hydrated workspace and re-hydrates
+    calls.hydrateAnalytics.mockResolvedValueOnce({
+      isSuccess: true,
+      statusCode: 200,
+      data: { publications: [] },
+    })
+    act(() => {
+      resetListener?.({ workspaceId: 'workspace', removed: true })
+    })
+    await waitFor(() => expect(calls.hydrateAnalytics).toHaveBeenCalledTimes(3))
+  })
+
+  it('preserves stageTotalRows during modal search and navigates pages and page sizes', async () => {
+    calls.queryAnalytics.mockImplementation(
+      async ({
+        body,
+      }: {
+        body: { search?: string; offset: number; limit: number }
+      }) => {
+        const isFiltered = body.search !== undefined && body.search !== ''
+        let totalRows = 250
+        if (isFiltered) totalRows = 12
+
+        return {
+          isSuccess: true,
+          statusCode: 200,
+          data: {
+            columns: dataset.columns,
+            rows: [{ value: body.offset + 1 }],
+            offset: body.offset,
+            limit: body.limit,
+            totalRows,
+            hasMore: body.offset + body.limit < totalRows,
+            version: 'pinned-v1',
+            coverage: 'complete' as const,
+            loadedAt: '2026-11-10T00:00:00Z',
+            remoteAggregate: false,
+          },
+        }
+      },
+    )
+
+    const { result, node } = await createSource()
+    expect(node).toBeDefined()
+    if (node === undefined) return
+
+    await waitFor(() =>
+      expect(result.current.resolveRowsForWorkflowNode(node).totalRows).toBe(
+        250,
+      ),
+    )
+
+    act(() => result.current.setInspectedNodeId(node.id))
+    await waitFor(() => expect(result.current.inspectedBatch?.index).toBe(0))
+    expect(result.current.inspectedNodeResolvedData.stageTotalRows).toBe(250)
+
+    await act(async () => {
+      await result.current.handleSelectInspectionPage(node.id, 2)
+    })
+
+    await waitFor(() => expect(result.current.inspectedBatch?.offset).toBe(200))
+    expect(result.current.inspectedBatch?.index).toBe(2)
+
+    await act(async () => {
+      await result.current.handleSelectInspectionPage(node.id, 0)
+    })
+
+    await waitFor(() => expect(result.current.inspectedBatch?.offset).toBe(0))
+
+    act(() => result.current.handleChangeInspectionPageSize(node.id, 50))
+    await waitFor(() => expect(result.current.inspectedBatch?.limit).toBe(50))
+
+    act(() => result.current.setNodeModalSearch('needle'))
+    await waitFor(() =>
+      expect(result.current.inspectedNodeResolvedData.totalRows).toBe(12),
+    )
+    expect(result.current.inspectedNodeResolvedData.stageTotalRows).toBe(250)
   })
 })

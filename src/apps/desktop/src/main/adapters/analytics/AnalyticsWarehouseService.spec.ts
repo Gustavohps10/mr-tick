@@ -1,7 +1,10 @@
+import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { DuckDBInstance } from '@duckdb/node-api'
 import type {
   AnalyticsDatasetManifest,
   AnalyticsDatasetQueryInput,
@@ -14,6 +17,8 @@ import { AnalyticsWarehouseService } from '@mr-tick/application'
 import { AppError, Either } from '@mr-tick/shared/helpers'
 import type {
   AnalyticsLoadProgressEvent,
+  AnalyticsStorageErrorEvent,
+  AnalyticsStorageResetEvent,
   ISystemEventEmitter,
   ISystemEvents,
 } from '@mr-tick/shared/transport'
@@ -48,16 +53,21 @@ afterEach(async () => {
 })
 
 async function fixture(customManifest: AnalyticsDatasetManifest = manifest) {
-  const engine = new DuckDBAnalyticsEngine(
-    await mkdtemp(join(tmpdir(), 'metric-warehouse-service-')),
-  )
+  const directory = await mkdtemp(join(tmpdir(), 'metric-warehouse-service-'))
+  const engine = new DuckDBAnalyticsEngine(directory)
   engines.push(engine)
 
   const progressEvents: AnalyticsLoadProgressEvent[] = []
+  const storageErrors: AnalyticsStorageErrorEvent[] = []
+  const storageResets: AnalyticsStorageResetEvent[] = []
   const emitter: ISystemEventEmitter = {
     emit<K extends keyof ISystemEvents>(event: K, payload: ISystemEvents[K]) {
       if (event === 'analytics:load-progress')
         progressEvents.push(payload as AnalyticsLoadProgressEvent)
+      if (event === 'analytics:storage-error')
+        storageErrors.push(payload as AnalyticsStorageErrorEvent)
+      if (event === 'analytics:storage-reset')
+        storageResets.push(payload as AnalyticsStorageResetEvent)
     },
   }
 
@@ -139,6 +149,7 @@ async function fixture(customManifest: AnalyticsDatasetManifest = manifest) {
     })
 
   return {
+    directory,
     engine,
     provider,
     secondaryProvider,
@@ -146,6 +157,8 @@ async function fixture(customManifest: AnalyticsDatasetManifest = manifest) {
     fetch,
     emitter,
     progressEvents,
+    storageErrors,
+    storageResets,
     resolveSpy,
     resolver,
     service,
@@ -2200,5 +2213,86 @@ describe('Phase 3 Dual-Cadence Orchestrator, Hydration & Resilience [F4-01]', ()
       'personal-update',
       'personal-sync',
     ])
+  })
+
+  it('emits storage errors on hydrate failures and resets storage safely while guarding active loads', async () => {
+    const f = await fixture()
+
+    // Seed v1 database inside directory
+    const v1Path = join(
+      f.directory,
+      `${createHash('sha256').update('workspace-v1').digest('hex')}.duckdb`,
+    )
+    const v1Instance = await DuckDBInstance.create(v1Path)
+    const v1Conn = await v1Instance.connect()
+    await v1Conn.run('CREATE TABLE analytics_format(version INTEGER NOT NULL)')
+    await v1Conn.run('INSERT INTO analytics_format VALUES (1)')
+    v1Conn.closeSync()
+    v1Instance.closeSync()
+
+    const v1Hydrate = await f.service.hydrate({ workspaceId: 'workspace-v1' })
+    expect(v1Hydrate.isFailure()).toBe(true)
+    expect(v1Hydrate.failure.messageKey).toBe(
+      'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+    )
+    expect(f.storageErrors).toContainEqual(
+      expect.objectContaining({
+        workspaceId: 'workspace-v1',
+        operation: 'hydrate',
+        messageKey: 'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+      }),
+    )
+
+    // Invalid spacesJson emits storage error too
+    await f.service.saveWorkspaceState({
+      workspaceId: 'workspace-invalid',
+      pollingIntervalMinutes: 5,
+      spacesJson: '{bad-json',
+    })
+    await f.service.hydrate({ workspaceId: 'workspace-invalid' })
+    expect(f.storageErrors).toContainEqual(
+      expect.objectContaining({
+        workspaceId: 'workspace-invalid',
+        operation: 'hydrate',
+        messageKey: 'ANALYTICS_SPACES_STATE_INVALID',
+      }),
+    )
+
+    // Active load returns 409 on resetStorage, then reset succeeds and emits analytics:storage-reset
+    let releaseFetch:
+      ((value: Either<AppError, AnalyticsDatasetResult>) => void) | undefined
+    f.fetch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseFetch = resolve
+        }),
+    )
+    const inflightLoad = f.load()
+    await vi.waitFor(() => expect(releaseFetch).toBeDefined())
+
+    const busyReset = await f.service.resetStorage({ workspaceId: 'workspace' })
+    expect(busyReset.isFailure()).toBe(true)
+    expect(busyReset.failure.statusCode).toBe(409)
+    expect(busyReset.failure.messageKey).toBe('ANALYTICS_RESET_ACTIVE_LOAD')
+
+    releaseFetch?.(Either.success(page(0, [{ id: 1, team: 'A', hours: 2 }])))
+    await inflightLoad
+
+    const v1Reset = await f.service.resetStorage({
+      workspaceId: 'workspace-v1',
+    })
+    expect(v1Reset.isSuccess()).toBe(true)
+    expect(v1Reset.success).toEqual({
+      workspaceId: 'workspace-v1',
+      removed: true,
+    })
+    expect(existsSync(v1Path)).toBe(false)
+    expect(f.storageResets).toContainEqual({
+      workspaceId: 'workspace-v1',
+      removed: true,
+    })
+
+    const recovered = await f.service.hydrate({ workspaceId: 'workspace-v1' })
+    expect(recovered.isSuccess()).toBe(true)
   })
 })

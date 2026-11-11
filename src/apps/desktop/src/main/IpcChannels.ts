@@ -76,6 +76,7 @@ export const IpcChannels = {
   ANALYTICS_QUERY: 'analytics:query',
   ANALYTICS_HYDRATE: 'analytics:hydrate',
   ANALYTICS_SAVE_WORKSPACE_STATE: 'analytics:save-workspace-state',
+  ANALYTICS_RESET_STORAGE: 'analytics:reset-storage',
   ADDON_GET_ANALYTICS_FILTER_OPTIONS: 'addon:get-analytics-filter-options',
   ADDON_GET_SETTINGS: 'addon:get-settings',
   ADDON_SAVE_SETTINGS: 'addon:save-settings',

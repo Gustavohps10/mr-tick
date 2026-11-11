@@ -20,6 +20,20 @@ function computePageStructuralKey(input: AnalyticsQueryInput): string {
   })
 }
 
+function computeBaseNodeKey(
+  input: AnalyticsQueryInput,
+  publicationVersion: string,
+  revision: number,
+): string {
+  return JSON.stringify({
+    workspaceId: input.workspaceId,
+    targetNodeId: input.targetNodeId,
+    nodes: input.nodes,
+    publicationVersion,
+    revision,
+  })
+}
+
 export function useAnalyticsNodePages(
   revision: number,
   workspaceId: string | undefined,
@@ -27,7 +41,13 @@ export function useAnalyticsNodePages(
   publicationVersion: string,
   onUnauthorized: (connectionIds: string[], message: string) => void,
   inspection:
-    | { id: string; search: string; offset: number; version?: string }
+    | {
+        id: string
+        search: string
+        offset: number
+        limit?: number
+        version?: string
+      }
     | undefined,
 ) {
   const bridge = useHostBridge()
@@ -37,6 +57,8 @@ export function useAnalyticsNodePages(
       {
         signature: string
         structuralKey: string
+        baseKey: string
+        stageTotalRows?: number
         data?: AnalyticsQueryResult
         details?: Record<string, string[]>
         error?: string
@@ -56,12 +78,19 @@ export function useAnalyticsNodePages(
         offset: 0,
         limit: 100,
       }
-      if (inspection?.id === node.id)
+
+      if (inspection?.id === node.id) {
+        let inspectionLimit = input.limit
+        if (inspection.limit !== undefined) inspectionLimit = inspection.limit
+
         Object.assign(input, {
           search: inspection.search,
           offset: inspection.offset,
+          limit: inspectionLimit,
           version: inspection.version,
         })
+      }
+
       inputs[node.id] = input
     }
 
@@ -74,6 +103,7 @@ export function useAnalyticsNodePages(
     for (const [id, input] of Object.entries(inputs)) {
       const signature = JSON.stringify([input, publicationVersion, revision])
       const structuralKey = computePageStructuralKey(input)
+      const baseKey = computeBaseNodeKey(input, publicationVersion, revision)
       if (requests.current.get(id) === signature) continue
       requests.current.set(id, signature)
       tail.current = tail.current.then(async () => {
@@ -82,10 +112,28 @@ export function useAnalyticsNodePages(
         if (requests.current.get(id) !== signature) return
 
         if (response.isSuccess && response.data !== undefined) {
-          setPages((previous) => ({
-            ...previous,
-            [id]: { signature, structuralKey, data: response.data },
-          }))
+          const responseData = response.data
+          const hasSearch = input.search !== undefined && input.search !== ''
+
+          setPages((previous) => {
+            const prior = previous[id]
+            let stageTotalRows: number | undefined
+
+            if (!hasSearch) stageTotalRows = responseData.totalRows
+            if (hasSearch && prior?.baseKey === baseKey)
+              stageTotalRows = prior.stageTotalRows
+
+            return {
+              ...previous,
+              [id]: {
+                signature,
+                structuralKey,
+                baseKey,
+                stageTotalRows,
+                data: responseData,
+              },
+            }
+          })
           return
         }
 
@@ -100,6 +148,8 @@ export function useAnalyticsNodePages(
             [id]: {
               signature,
               structuralKey,
+              baseKey,
+              stageTotalRows: undefined,
               data: undefined,
               error,
               details: response.details,
@@ -114,11 +164,17 @@ export function useAnalyticsNodePages(
           if (prior !== undefined && prior.structuralKey === structuralKey)
             retainedData = prior.data
 
+          let retainedStageTotalRows: number | undefined
+          if (prior !== undefined && prior.baseKey === baseKey)
+            retainedStageTotalRows = prior.stageTotalRows
+
           return {
             ...previous,
             [id]: {
               signature,
               structuralKey,
+              baseKey,
+              stageTotalRows: retainedStageTotalRows,
               data: retainedData,
               error,
               details: response.details,

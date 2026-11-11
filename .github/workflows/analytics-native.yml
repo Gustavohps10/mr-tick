@@ -27,5 +27,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-workspace
-      - name: Persistence, operators, isolation and publication
-        run: yarn exec vitest run --project unit src/apps/desktop/src/main/adapters/analytics/DuckDBAnalyticsEngine.spec.ts src/apps/desktop/src/main/adapters/analytics/AnalyticsWarehouseService.spec.ts
+      - name: Persistence, operators, isolation, HTTP contract and publication
+        run: yarn exec vitest run --project unit src/apps/desktop/src/main/adapters/analytics/DuckDBAnalyticsEngine.spec.ts src/apps/desktop/src/main/adapters/analytics/AnalyticsWarehouseService.spec.ts src/apps/desktop/src/main/adapters/analytics/AnalyticsWarehouse.contract.spec.ts

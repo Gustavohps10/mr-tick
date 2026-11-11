@@ -238,6 +238,15 @@ export interface AnalyticsHydrateResult {
   publications: AnalyticsPublicationEntry[]
 }
 
+export interface AnalyticsResetStorageInput {
+  workspaceId: string
+}
+
+export interface AnalyticsResetStorageResult {
+  workspaceId: string
+  removed: boolean
+}
+
 export interface AnalyticsLoadInput {
   workspaceId: string
   connectionInstanceId: string
@@ -329,6 +338,9 @@ export interface IAnalyticsEngine {
   saveWorkspaceState(
     input: SaveAnalyticsWorkspaceStateInput,
   ): Promise<Either<AppError, AnalyticsWorkspaceState>>
+  resetStorage(
+    workspaceId: string,
+  ): Promise<Either<AppError, AnalyticsResetStorageResult>>
   remove(generation: AnalyticsGeneration): Promise<Either<AppError, void>>
   query(
     input: AnalyticsQueryInput,
@@ -350,4 +362,7 @@ export interface IAnalyticsWarehouseUseCase {
   saveWorkspaceState(
     input: SaveAnalyticsWorkspaceStateInput,
   ): Promise<Either<AppError, AnalyticsWorkspaceState>>
+  resetStorage(
+    input: AnalyticsResetStorageInput,
+  ): Promise<Either<AppError, AnalyticsResetStorageResult>>
 }

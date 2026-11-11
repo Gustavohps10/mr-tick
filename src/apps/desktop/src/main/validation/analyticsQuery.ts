@@ -86,3 +86,9 @@ export const analyticsSaveWorkspaceStateSchema = z
     endDate: isoDate.optional(),
   })
   .strict()
+
+export const analyticsResetStorageSchema = z
+  .object({
+    workspaceId: z.string().min(1),
+  })
+  .strict()

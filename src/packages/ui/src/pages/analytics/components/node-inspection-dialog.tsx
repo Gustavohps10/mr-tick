@@ -12,7 +12,9 @@ import {
   ShieldCheck,
   Table as TableIcon,
 } from 'lucide-react'
+import type * as React from 'react'
 
+import { PaginationBar } from '@/components/data-table/data-table-pagination'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,19 +31,53 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { SpaceWorkflowNodeConfig } from '../lib/analytics-types'
 import { VirtualizedNodeTable } from './virtualized-node-table'
 
+interface NodeRowMetrics {
+  rows: AnalyticsDatasetRow[]
+  totalRows?: number
+  stageTotalRows?: number
+}
+
+function resolveNodeStageTotal(
+  data: NodeRowMetrics,
+  batchTotalRows?: number,
+): number {
+  if (data.stageTotalRows !== undefined) return data.stageTotalRows
+  if (data.totalRows !== undefined) return data.totalRows
+  if (batchTotalRows !== undefined) return batchTotalRows
+  return data.rows.length
+}
+
+function resolveNodeQueryTotal(
+  data: NodeRowMetrics,
+  batchTotalRows?: number,
+): number {
+  if (batchTotalRows !== undefined) return batchTotalRows
+  if (data.totalRows !== undefined) return data.totalRows
+  return data.rows.length
+}
+
 export interface NodeInspectionDialogProps {
   batch:
-    | { index: number; offset: number; finished: boolean; totalRows?: number }
+    | {
+        index: number
+        offset: number
+        limit: number
+        finished: boolean
+        totalRows?: number
+      }
     | undefined
   canLoadNextBatch: boolean
   isLoadingBatch: boolean
   sourceError: string | undefined
-  onLoadNextBatch: (nodeId: string) => void
+  onSelectPage: (nodeId: string, pageIndex: number) => void
+  onChangePageSize: (nodeId: string, pageSize: number) => void
   inspectedNodeConfig: SpaceWorkflowNodeConfig | null
   inspectedNodeLineageChain: SpaceWorkflowNodeConfig[]
   inspectedNodeResolvedData: {
     columns: AnalyticsColumnSchema[]
     rows: AnalyticsDatasetRow[]
+    totalRows?: number
+    stageTotalRows?: number
     rawCsvSample?: string
   }
   startDate: string
@@ -53,6 +89,8 @@ export interface NodeInspectionDialogProps {
   resolveRowsForWorkflowNode: (node: SpaceWorkflowNodeConfig) => {
     columns: AnalyticsColumnSchema[]
     rows: AnalyticsDatasetRow[]
+    totalRows?: number
+    stageTotalRows?: number
     rawCsvSample?: string
   }
 }
@@ -62,7 +100,8 @@ export function NodeInspectionDialog({
   canLoadNextBatch,
   isLoadingBatch,
   sourceError,
-  onLoadNextBatch,
+  onSelectPage,
+  onChangePageSize,
   inspectedNodeConfig,
   inspectedNodeLineageChain,
   inspectedNodeResolvedData,
@@ -93,6 +132,65 @@ export function NodeInspectionDialog({
 
   if (inspectedNodeResolvedData.rawCsvSample)
     sampleCsv = inspectedNodeResolvedData.rawCsvSample
+
+  const stageTotalRows = resolveNodeStageTotal(
+    inspectedNodeResolvedData,
+    batch?.totalRows,
+  )
+  const queryTotalRows = resolveNodeQueryTotal(
+    inspectedNodeResolvedData,
+    batch?.totalRows,
+  )
+  const hasActiveSearch = nodeModalSearch.trim() !== ''
+
+  let dadosTabLabel = `Dados (${queryTotalRows})`
+  if (hasActiveSearch && queryTotalRows !== stageTotalRows)
+    dadosTabLabel = `Dados (${queryTotalRows} de ${stageTotalRows})`
+
+  let tableOffset = 0
+  if (batch !== undefined) tableOffset = batch.offset
+
+  let paginationContent: React.ReactNode = null
+
+  if (batch !== undefined && inspectedNodeConfig !== null) {
+    const pageCount = Math.max(1, Math.ceil(queryTotalRows / batch.limit))
+    const canPreviousPage = batch.index > 0 && !isLoadingBatch
+    const canNextPage =
+      (canLoadNextBatch || batch.index + 1 < pageCount) && !isLoadingBatch
+
+    let paginationSummary = 'Nenhum registro encontrado neste estágio.'
+
+    if (queryTotalRows > 0 && inspectedNodeResolvedData.rows.length > 0) {
+      const startRow = batch.offset + 1
+      const endRow = batch.offset + inspectedNodeResolvedData.rows.length
+      paginationSummary = `Mostrando ${startRow}–${endRow} de ${queryTotalRows} registros. Os gráficos consultam o conjunto publicado completo.`
+    }
+
+    if (queryTotalRows > 0 && inspectedNodeResolvedData.rows.length === 0)
+      paginationSummary = `Página ${batch.index + 1} de ${pageCount} (${queryTotalRows} registros). Os gráficos consultam o conjunto publicado completo.`
+
+    const currentNodeId = inspectedNodeConfig.id
+
+    paginationContent = (
+      <PaginationBar
+        pageIndex={batch.index}
+        pageCount={pageCount}
+        pageSize={batch.limit}
+        pageSizeOptions={[50, 100, 250, 500]}
+        canPreviousPage={canPreviousPage}
+        canNextPage={canNextPage}
+        disabled={isLoadingBatch}
+        className="bg-background border-border/70 sticky bottom-0 z-10 rounded-lg border px-3 py-2"
+        summary={<span role="status">{paginationSummary}</span>}
+        onPageIndexChange={(nextPageIndex) =>
+          onSelectPage(currentNodeId, nextPageIndex)
+        }
+        onPageSizeChange={(nextPageSize) =>
+          onChangePageSize(currentNodeId, nextPageSize)
+        }
+      />
+    )
+  }
 
   return (
     <Dialog
@@ -126,8 +224,8 @@ export function NodeInspectionDialog({
                 </Button>
               )}
               <Badge variant="secondary" className="font-mono text-[11px]">
-                {inspectedNodeResolvedData.rows.length} registros no estágio •
-                Janela [{startDate} .. {endDate}]
+                {stageTotalRows} registros no estágio • Janela [{startDate} ..{' '}
+                {endDate}]
               </Badge>
             </div>
           </div>
@@ -154,7 +252,18 @@ export function NodeInspectionDialog({
                   )
                     stepVariant = 'default'
 
-                  const stepRows = resolveRowsForWorkflowNode(stepNode).rows
+                  const stepData = resolveRowsForWorkflowNode(stepNode)
+                  let stepBatchTotal: number | undefined
+                  if (
+                    inspectedNodeConfig &&
+                    stepNode.id === inspectedNodeConfig.id
+                  )
+                    stepBatchTotal = batch?.totalRows
+
+                  const stepStageTotal = resolveNodeStageTotal(
+                    stepData,
+                    stepBatchTotal,
+                  )
 
                   return (
                     <div key={stepNode.id} className="flex items-center gap-2">
@@ -170,7 +279,7 @@ export function NodeInspectionDialog({
                           variant="secondary"
                           className="font-mono text-[10px]"
                         >
-                          {stepRows.length}
+                          {stepStageTotal}
                         </Badge>
                       </Button>
                       {idx < inspectedNodeLineageChain.length - 1 && (
@@ -182,12 +291,21 @@ export function NodeInspectionDialog({
               </div>
             </div>
 
+            {sourceError !== undefined && (
+              <div
+                role="alert"
+                className="border-destructive/40 bg-destructive/5 text-destructive rounded-lg border px-3 py-2 text-xs"
+              >
+                {sourceError}
+              </div>
+            )}
+
             <Tabs defaultValue="table" className="w-full">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <TabsList>
                   <TabsTrigger value="table" className="gap-1.5 text-xs">
                     <TableIcon className="size-3.5" />
-                    Dados ({inspectedNodeResolvedData.rows.length})
+                    {dadosTabLabel}
                   </TabsTrigger>
                   <TabsTrigger value="sql" className="gap-1.5 text-xs">
                     <ShieldCheck className="size-3.5" />
@@ -210,11 +328,13 @@ export function NodeInspectionDialog({
                 </div>
               </div>
 
-              <TabsContent value="table" className="mt-3">
+              <TabsContent value="table" className="mt-3 flex flex-col gap-3">
                 <VirtualizedNodeTable
                   columns={inspectedNodeResolvedData.columns}
                   rows={inspectedNodeResolvedData.rows}
+                  offset={tableOffset}
                 />
+                {paginationContent}
               </TabsContent>
 
               <TabsContent value="sql" className="mt-3">
@@ -292,27 +412,6 @@ export function NodeInspectionDialog({
         </div>
 
         <DialogFooter className="bg-muted/20 flex shrink-0 items-center justify-end gap-2 border-t px-6 py-3">
-          {batch !== undefined && (
-            <span
-              role="status"
-              className="text-muted-foreground mr-auto text-sm"
-            >
-              Página local {batch.index + 1}, a partir do registro{' '}
-              {batch.offset + 1}. Os gráficos consultam o conjunto publicado
-              completo.
-            </span>
-          )}
-          {sourceError !== undefined && <span role="alert">{sourceError}</span>}
-          {canLoadNextBatch && inspectedNodeConfig !== null && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isLoadingBatch}
-              onClick={() => onLoadNextBatch(inspectedNodeConfig.id)}
-            >
-              Próxima página
-            </Button>
-          )}
           <Button
             size="sm"
             variant="outline"

@@ -714,6 +714,16 @@ export class FakeAnalyticsProvider implements IAnalyticsProvider {
   public async fetchAnalyticsDataset(
     input: AnalyticsDatasetQueryInput,
   ): Promise<Either<AppError, AnalyticsDatasetResult>> {
+    const pageStatus = await this.store.waitForAnalyticsPage()
+    if (pageStatus === 499)
+      return Either.failure(
+        AppError.Http(499, 'FAKE_ANALYTICS_REQUEST_CANCELLED'),
+      )
+    if (pageStatus === 503)
+      return Either.failure(
+        AppError.Http(503, 'FAKE_ANALYTICS_UPSTREAM_UNAVAILABLE'),
+      )
+
     if (this.store.getSimulateAuthError())
       return Either.failure(AppError.Unauthorized('FAKE_UNAUTHORIZED'))
 

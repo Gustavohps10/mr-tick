@@ -6,6 +6,8 @@ import type {
   AnalyticsQueryInput,
   AnalyticsQueryResult,
   AnalyticsRefreshPolicy,
+  AnalyticsResetStorageInput,
+  AnalyticsResetStorageResult,
   AnalyticsWorkspaceState,
   IAnalyticsWarehouseUseCase,
   SaveAnalyticsWorkspaceStateInput,
@@ -22,6 +24,7 @@ import {
   analyticsDatasetQuerySchema,
   analyticsHydrateSchema,
   analyticsRefreshPolicySchema,
+  analyticsResetStorageSchema,
   analyticsSaveWorkspaceStateSchema,
 } from '../validation/analyticsQuery'
 import { analyticsLocalQuerySchema } from '../validation/analyticsWarehouse'
@@ -148,6 +151,30 @@ export class AnalyticsWarehouseHandler {
 
     return createResponseViewModel(
       await this.analyticsWarehouseService.saveWorkspaceState(validated.data),
+    )
+  }
+
+  public async resetStorage(
+    event: IpcMainInvokeEvent,
+    { body }: IRequest<AnalyticsResetStorageInput>,
+  ): Promise<ViewModel<AnalyticsResetStorageResult>> {
+    if (!event)
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'ANALYTICS_RESET_STORAGE_INVALID',
+      }
+
+    const validated = analyticsResetStorageSchema.safeParse(body)
+    if (!validated.success)
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'ANALYTICS_RESET_STORAGE_INVALID',
+      }
+
+    return createResponseViewModel(
+      await this.analyticsWarehouseService.resetStorage(validated.data),
     )
   }
 }

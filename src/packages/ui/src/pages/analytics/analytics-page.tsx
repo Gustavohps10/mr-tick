@@ -1,5 +1,25 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 
 import { AnalyticsError } from './components/analytics-error'
 import { AnalyticsTopBar } from './components/analytics-top-bar'
@@ -13,6 +33,98 @@ import { useAnalyticsWorkspace } from './hooks/use-analytics-workspace'
 
 export function Analytics() {
   const vm = useAnalyticsWorkspace()
+
+  if (vm.hydrateError !== undefined)
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <h1>Analytics indisponível</h1>
+          </CardTitle>
+          <CardDescription>
+            Os dados e as configurações deste workspace não puderam ser abertos.
+            Resolva o erro abaixo para editar os espaços.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 break-words">
+          <AnalyticsError
+            message={vm.hydrateError}
+            details={vm.hydrateErrorDetails}
+          />
+          {vm.resetError !== undefined && (
+            <AnalyticsError
+              message={vm.resetError}
+              details={vm.resetErrorDetails}
+            />
+          )}
+        </CardContent>
+        <CardFooter className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            disabled={vm.isResettingStorage}
+            onClick={vm.retryHydration}
+          >
+            Tentar abrir novamente
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="destructive"
+                data-testid="analytics-reset-storage-btn"
+                disabled={vm.isResettingStorage}
+              >
+                {vm.isResettingStorage && 'Resetando...'}
+                {!vm.isResettingStorage && 'Resetar dados do Analytics'}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent data-testid="analytics-reset-dialog">
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Resetar dados locais do Analytics?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação remove permanentemente o banco local do Analytics
+                  (.duckdb), os espaços salvos e os caches de consulta deste
+                  workspace neste dispositivo. Seus dados na fonte remota não
+                  serão alterados.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel
+                  data-testid="analytics-cancel-reset-storage-btn"
+                  disabled={vm.isResettingStorage}
+                >
+                  Cancelar
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  data-testid="analytics-confirm-reset-storage-btn"
+                  className={buttonVariants({ variant: 'destructive' })}
+                  disabled={vm.isResettingStorage}
+                  onClick={() => void vm.resetAnalyticsStorage()}
+                >
+                  Confirmar reset
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </CardFooter>
+      </Card>
+    )
+
+  if (!vm.isHydrated)
+    return (
+      <div
+        role="status"
+        aria-label="Carregando Analytics"
+        className="flex flex-col gap-4"
+      >
+        <Skeleton className="h-24 w-full" />
+        <div className="grid grid-cols-2 gap-4">
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </div>
+    )
 
   let coverageSuffix = ''
   if (vm.syncStatusSummary.coverageReasons.length > 0)
@@ -28,7 +140,6 @@ export function Analytics() {
         isFetchingLive={vm.isFetchingLive}
         pollingIntervalMinutes={vm.pollingIntervalMinutes}
         syncStatusSummary={vm.syncStatusSummary}
-        hydrateError={vm.hydrateError}
         onSelectSpace={vm.handleSelectSpace}
         onOpenNewSpaceModal={() => vm.setIsNewSpaceModalOpen(true)}
         onDateRangeChange={vm.handleDateRangeChange}
@@ -141,7 +252,8 @@ export function Analytics() {
         canLoadNextBatch={vm.canLoadNextBatch}
         isLoadingBatch={vm.inspectedSourceLoading}
         sourceError={vm.inspectedSourceError}
-        onLoadNextBatch={vm.handleLoadNextSourceBatch}
+        onSelectPage={vm.handleSelectInspectionPage}
+        onChangePageSize={vm.handleChangeInspectionPageSize}
         inspectedNodeConfig={vm.inspectedNodeConfig}
         inspectedNodeLineageChain={vm.inspectedNodeLineageChain}
         inspectedNodeResolvedData={vm.inspectedNodeResolvedData}

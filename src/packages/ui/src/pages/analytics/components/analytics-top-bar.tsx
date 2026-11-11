@@ -22,7 +22,6 @@ import type {
   AnalyticsSyncStatusSummary,
   CanvasLayerMode,
 } from '../lib/analytics-types'
-import { AnalyticsError } from './analytics-error'
 
 const PRESET_POLLING_MINUTES = [0, 1, 5, 15, 30, 60]
 
@@ -63,7 +62,6 @@ export interface AnalyticsTopBarProps {
   isFetchingLive: boolean
   pollingIntervalMinutes: number
   syncStatusSummary: AnalyticsSyncStatusSummary
-  hydrateError: string | undefined
   onSelectSpace: (spaceId: string) => void
   onOpenNewSpaceModal: () => void
   onDateRangeChange: (nextRange: DateRange | undefined) => void
@@ -80,7 +78,6 @@ export function AnalyticsTopBar({
   isFetchingLive,
   pollingIntervalMinutes,
   syncStatusSummary,
-  hydrateError,
   onSelectSpace,
   onOpenNewSpaceModal,
   onDateRangeChange,
@@ -321,10 +318,6 @@ export function AnalyticsTopBar({
           </div>
         )}
       </div>
-
-      {hydrateError !== undefined && (
-        <AnalyticsError message={hydrateError} details={undefined} />
-      )}
     </>
   )
 }

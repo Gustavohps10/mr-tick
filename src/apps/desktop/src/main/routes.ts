@@ -316,6 +316,9 @@ export function openIpcRoutes(
   IpcHandler.register('ANALYTICS_SAVE_WORKSPACE_STATE', (event, request) =>
     analyticsWarehouseHandler.saveWorkspaceState(event, request),
   )
+  IpcHandler.register('ANALYTICS_RESET_STORAGE', (event, request) =>
+    analyticsWarehouseHandler.resetStorage(event, request),
+  )
   IpcHandler.register('ADDON_GET_SETTINGS', (e, req) =>
     addonsHandler.getSettings(e, req),
   )

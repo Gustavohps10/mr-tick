@@ -7,10 +7,24 @@ import type {
 import { Database, HardDrive } from 'lucide-react'
 import React from 'react'
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
+import { Button, buttonVariants } from '@/components/ui/button'
 
 interface SystemStorageCardProps {
   storages: DiagnosticStorageItem[]
+  resettingWorkspaceId: string | null
+  onResetStorage: (workspaceId: string) => void
 }
 
 function formatBytes(bytes: number): string {
@@ -28,6 +42,8 @@ function formatRole(role: DiagnosticStorageRole): string {
       return 'Metadados Globais'
     case 'operational':
       return 'Dados Operacionais'
+    case 'analytics':
+      return 'Analytics'
     case 'browser':
       return 'Origem / Navegador'
     default:
@@ -88,6 +104,39 @@ function renderMeasurement(measurement: DiagnosticStorageAvailability) {
     )
   }
 
+  if (measurement.status === 'error') {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <Badge
+          data-testid="storage-error-badge"
+          variant="destructive"
+          className="text-[10px]"
+        >
+          Erro
+        </Badge>
+        <span
+          data-testid="storage-error-reason"
+          className="text-destructive text-right text-[10px] font-medium"
+        >
+          {measurement.reason}
+        </span>
+        {measurement.details !== undefined && (
+          <div
+            data-testid="storage-error-details"
+            className="text-muted-foreground max-w-xs space-y-0.5 text-right font-mono text-[10px] break-all"
+          >
+            {Object.entries(measurement.details).map(([field, messages]) => (
+              <div key={field}>
+                <span className="font-medium">{field}:</span>{' '}
+                <span>{messages.join(', ')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col items-end gap-1">
       <Badge
@@ -109,7 +158,68 @@ function renderMeasurement(measurement: DiagnosticStorageAvailability) {
   )
 }
 
-export function SystemStorageCard({ storages }: SystemStorageCardProps) {
+function StorageResetAction({
+  item,
+  workspaceId,
+  isResetting,
+  onConfirmReset,
+}: {
+  item: DiagnosticStorageItem
+  workspaceId: string
+  isResetting: boolean
+  onConfirmReset: (workspaceId: string) => void
+}) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          type="button"
+          size="sm"
+          variant="destructive"
+          data-testid={`reset-storage-${item.id}`}
+          disabled={isResetting}
+          className="h-7 px-2.5 text-[11px]"
+        >
+          {isResetting && 'Resetando...'}
+          {!isResetting && 'Resetar dados'}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent data-testid={`reset-storage-dialog-${item.id}`}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Resetar dados do Analytics?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Esta ação removerá permanentemente o arquivo local do Analytics (
+            {item.name}) neste dispositivo, incluindo espaços salvos e caches de
+            consulta deste workspace. Seus dados na fonte remota não serão
+            alterados.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            data-testid={`cancel-reset-storage-${item.id}`}
+            disabled={isResetting}
+          >
+            Cancelar
+          </AlertDialogCancel>
+          <AlertDialogAction
+            data-testid={`confirm-reset-storage-${item.id}`}
+            className={buttonVariants({ variant: 'destructive' })}
+            disabled={isResetting}
+            onClick={() => onConfirmReset(workspaceId)}
+          >
+            Confirmar reset
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+export function SystemStorageCard({
+  storages,
+  resettingWorkspaceId,
+  onResetStorage,
+}: SystemStorageCardProps) {
   return (
     <div
       data-testid="system-storage-card"
@@ -143,7 +253,7 @@ export function SystemStorageCard({ storages }: SystemStorageCardProps) {
             <div
               key={item.id}
               data-testid={`storage-item-${item.id}`}
-              className="flex flex-wrap items-center justify-between gap-3 p-3"
+              className="flex flex-wrap items-start justify-between gap-3 p-3"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -172,8 +282,16 @@ export function SystemStorageCard({ storages }: SystemStorageCardProps) {
                 </div>
               </div>
 
-              <div className="shrink-0">
+              <div className="flex shrink-0 flex-col items-end gap-2">
                 {renderMeasurement(item.measurement)}
+                {item.canReset === true && item.workspaceId !== undefined && (
+                  <StorageResetAction
+                    item={item}
+                    workspaceId={item.workspaceId}
+                    isResetting={resettingWorkspaceId === item.workspaceId}
+                    onConfirmReset={onResetStorage}
+                  />
+                )}
               </div>
             </div>
           ))

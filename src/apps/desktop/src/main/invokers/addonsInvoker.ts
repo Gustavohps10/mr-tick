@@ -58,6 +58,8 @@ export const addonsInvoker: IAddonsAPI = {
     IpcInvoker.invoke('ANALYTICS_HYDRATE', payload),
   saveAnalyticsWorkspaceState: (payload) =>
     IpcInvoker.invoke('ANALYTICS_SAVE_WORKSPACE_STATE', payload),
+  resetAnalyticsStorage: (payload) =>
+    IpcInvoker.invoke('ANALYTICS_RESET_STORAGE', payload),
   getSettings: (payload: Parameters<IAddonsAPI['getSettings']>[0]) =>
     IpcInvoker.invoke('ADDON_GET_SETTINGS', payload),
   saveSettings: (payload: Parameters<IAddonsAPI['saveSettings']>[0]) =>
