@@ -10,4 +10,7 @@ export interface IDiagnosticsAPI {
   runChecks(): Promise<ViewModel<DiagnosticSnapshot>>
   generateReport(): Promise<ViewModel<SanitizedDiagnosticReport>>
   openDataDirectory(): Promise<ViewModel<void>>
+  removeOrphanAnalyticsStorage(
+    hash: string,
+  ): Promise<ViewModel<{ hash: string; removed: boolean }>>
 }

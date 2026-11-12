@@ -1,4 +1,5 @@
 import type {
+  AnalyticsOrphanRemovalResult,
   DiagnosticSnapshot,
   SanitizedDiagnosticReport,
 } from '@mr-tick/application'
@@ -28,6 +29,14 @@ export class DiagnosticsHandler implements HandlerBase<DiagnosticsHandler> {
 
   async openDataDirectory(): Promise<ViewModel<void>> {
     const result = await this.diagnosticsService.openDataDirectory()
+    return createResponseViewModel(result)
+  }
+
+  async removeOrphanAnalyticsStorage(
+    hash: string,
+  ): Promise<ViewModel<AnalyticsOrphanRemovalResult>> {
+    const result =
+      await this.diagnosticsService.removeOrphanAnalyticsStorage(hash)
     return createResponseViewModel(result)
   }
 }

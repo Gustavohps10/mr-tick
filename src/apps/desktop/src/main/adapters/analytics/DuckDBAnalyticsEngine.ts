@@ -284,13 +284,12 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
 
   constructor(private readonly directory: string) {}
 
-  public storagePaths(workspaceId: string): {
+  private pathsFromHash(hash: string): {
     hash: string
     dbPath: string
     walPath: string
     tmpPath: string
   } {
-    const hash = createHash('sha256').update(workspaceId).digest('hex')
     const dbPath = join(this.directory, `${hash}.duckdb`)
 
     return {
@@ -299,6 +298,16 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
       walPath: `${dbPath}.wal`,
       tmpPath: `${dbPath}.tmp`,
     }
+  }
+
+  public storagePaths(workspaceId: string): {
+    hash: string
+    dbPath: string
+    walPath: string
+    tmpPath: string
+  } {
+    const hash = createHash('sha256').update(workspaceId).digest('hex')
+    return this.pathsFromHash(hash)
   }
 
   public async listStorageEntries(): Promise<
@@ -2369,6 +2378,39 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
     })
   }
 
+  private async removeStorageFilesByPaths(paths: {
+    dbPath: string
+    walPath: string
+    tmpPath: string
+  }): Promise<Either<AppError, boolean>> {
+    const [dbStat, walStat, tmpStat] = await Promise.all([
+      this.inspectFileStat(paths.dbPath),
+      this.inspectFileStat(paths.walPath),
+      this.inspectFileStat(paths.tmpPath),
+    ])
+    const removed = dbStat.exists || walStat.exists || tmpStat.exists
+
+    try {
+      await rm(paths.dbPath, { force: true })
+      await rm(paths.walPath, { force: true })
+      await rm(paths.tmpPath, { recursive: true, force: true })
+    } catch (error) {
+      const parsed = systemErrorSchema.safeParse(error)
+      let reason = 'ANALYTICS_STORAGE_RESET_FAILED'
+      if (parsed.success && parsed.data.message !== undefined)
+        reason = parsed.data.message
+
+      return Either.failure(
+        AppError.Internal('ANALYTICS_STORAGE_UNREADABLE', {
+          storagePath: [paths.dbPath],
+          reason: [reason],
+        }),
+      )
+    }
+
+    return Either.success(removed)
+  }
+
   public resetStorage(
     workspaceId: string,
   ): Promise<Either<AppError, AnalyticsResetStorageResult>> {
@@ -2392,32 +2434,27 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
       }
 
       const paths = this.storagePaths(workspaceId)
-      const [dbStat, walStat, tmpStat] = await Promise.all([
-        this.inspectFileStat(paths.dbPath),
-        this.inspectFileStat(paths.walPath),
-        this.inspectFileStat(paths.tmpPath),
-      ])
-      const removed = dbStat.exists || walStat.exists || tmpStat.exists
+      const removed = await this.removeStorageFilesByPaths(paths)
+      if (removed.isFailure()) return removed.forwardFailure()
 
-      try {
-        await rm(paths.dbPath, { force: true })
-        await rm(paths.walPath, { force: true })
-        await rm(paths.tmpPath, { recursive: true, force: true })
-      } catch (error) {
-        const parsed = systemErrorSchema.safeParse(error)
-        let reason = 'ANALYTICS_STORAGE_RESET_FAILED'
-        if (parsed.success && parsed.data.message !== undefined)
-          reason = parsed.data.message
+      return Either.success({ workspaceId, removed: removed.success })
+    })
+  }
 
-        return Either.failure(
-          AppError.Internal('ANALYTICS_STORAGE_UNREADABLE', {
-            storagePath: [paths.dbPath],
-            reason: [reason],
-          }),
-        )
-      }
+  public removeOrphanStorageFiles(
+    hash: string,
+  ): Promise<Either<AppError, { hash: string; removed: boolean }>> {
+    if (!/^[0-9a-f]{64}$/u.test(hash))
+      return Promise.resolve(
+        Either.failure(AppError.Http(400, 'ANALYTICS_ORPHAN_HASH_INVALID')),
+      )
 
-      return Either.success({ workspaceId, removed })
+    return this.runSerialized('cleanup', async () => {
+      const paths = this.pathsFromHash(hash)
+      const removed = await this.removeStorageFilesByPaths(paths)
+      if (removed.isFailure()) return removed.forwardFailure()
+
+      return Either.success({ hash, removed: removed.success })
     })
   }
 

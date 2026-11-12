@@ -1396,4 +1396,56 @@ describe('Phase 3 DuckDB v2 durable sync, merge & workspace settings', () => {
     expect(reopened.isSuccess()).toBe(true)
     expect(reopened.success).toBeUndefined()
   })
+
+  it('supports custom snake_case inputAliases and chained sql transform nodes', async () => {
+    const { value } = await engine()
+    const generation = await create(value)
+
+    await value.append(
+      generation,
+      batch([
+        { id: 1, team: 'A', hours: 2 },
+        { id: 2, team: 'A', hours: 3 },
+        { id: 3, team: 'B', hours: 4 },
+      ]),
+    )
+    await value.publish(
+      generation,
+      'complete',
+      '2026-11-09T00:00:00Z',
+      fullSyncMeta,
+    )
+
+    const nodes: AnalyticsQueryInput['nodes'] = [
+      ...query().nodes,
+      {
+        id: 'sql_1',
+        kind: 'sql',
+        upstreamNodeIds: ['source'],
+        sqlConfig: {
+          sqlQuery:
+            'SELECT team, sum(hours) AS total_hours FROM redmine_horas GROUP BY team',
+          inputAliases: ['redmine_horas'],
+        },
+      },
+      {
+        id: 'sql_2',
+        kind: 'sql',
+        upstreamNodeIds: ['sql_1'],
+        sqlConfig: {
+          sqlQuery:
+            'SELECT team, total_hours FROM resumo_equipe WHERE total_hours >= 5 ORDER BY team ASC',
+          inputAliases: ['resumo_equipe'],
+        },
+      },
+    ]
+
+    const result = await value.query(
+      query({ nodes, targetNodeId: 'sql_2' }),
+      authorizations,
+    )
+
+    expect(result.isSuccess(), JSON.stringify(result)).toBe(true)
+    expect(result.success.rows).toEqual([{ team: 'A', total_hours: 5 }])
+  })
 })

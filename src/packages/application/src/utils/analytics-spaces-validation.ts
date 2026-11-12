@@ -11,6 +11,7 @@ export type AnalyticsWidgetId =
   | 'bar_vertical'
   | 'bar_horizontal'
   | 'bar_stacked'
+  | 'bar_horizontal_stacked'
   | 'bar_grouped'
   | 'combo_multiaxis'
   | 'line'
@@ -36,6 +37,7 @@ export const ANALYTICS_WIDGET_IDS: [AnalyticsWidgetId, ...AnalyticsWidgetId[]] =
     'bar_vertical',
     'bar_horizontal',
     'bar_stacked',
+    'bar_horizontal_stacked',
     'bar_grouped',
     'combo_multiaxis',
     'line',
@@ -339,6 +341,27 @@ function isValidWidget(value: JsonValue): boolean {
   if (!isOptionalJsonString(value.metricColumn)) return false
   if (!isOptionalJsonString(value.secondaryMetricColumn)) return false
   if (!isOptionalJsonString(value.stackColumn)) return false
+  if (!isOptionalJsonString(value.categoryLabel)) return false
+  if (!isOptionalJsonString(value.metricLabel)) return false
+  if (!isOptionalJsonString(value.secondaryMetricLabel)) return false
+
+  if (
+    value.showAllRows !== undefined &&
+    typeof value.showAllRows !== 'boolean'
+  ) {
+    return false
+  }
+
+  if (value.maxRows !== undefined) {
+    if (
+      !isJsonFiniteNumber(value.maxRows) ||
+      !Number.isInteger(value.maxRows) ||
+      value.maxRows < 1
+    ) {
+      return false
+    }
+  }
+
   if (!isOptionalJsonEnum(value.referenceLineMode, REFERENCE_LINE_MODE_SET))
     return false
   if (

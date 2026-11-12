@@ -1,6 +1,7 @@
 import os from 'node:os'
 
 import type {
+  AnalyticsOrphanRemovalResult,
   DiagnosticCheckResult,
   DiagnosticEvent,
   DiagnosticOperationalWorkspaceStatus,
@@ -514,6 +515,16 @@ export class DiagnosticsService {
         error instanceof Error ? error.message : 'FAILED_TO_OPEN_DATA_DIRECTORY'
       return Either.failure(AppError.Internal(message))
     }
+  }
+
+  async removeOrphanAnalyticsStorage(
+    hash: string,
+  ): Promise<Either<AppError, AnalyticsOrphanRemovalResult>> {
+    const result = await this.analyticsAdapter.removeOrphanStorage(hash)
+    if (result.isFailure()) return result.forwardFailure()
+
+    await this.runChecks()
+    return Either.success(result.success)
   }
 
   private async executeRunChecks(): Promise<

@@ -39,6 +39,7 @@ export interface DiagnosticStorageItem {
   location?: string
   workspaceId?: string
   workspaceName?: string
+  orphanHash?: string
   canReset?: boolean
   measurement: DiagnosticStorageAvailability
 }

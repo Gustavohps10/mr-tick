@@ -14,6 +14,10 @@ const hostBridgeMocks = vi.hoisted(() => ({
   runChecks: vi.fn<() => Promise<ViewModel<DiagnosticSnapshot>>>(),
   generateReport: vi.fn<() => Promise<ViewModel<SanitizedDiagnosticReport>>>(),
   openDataDirectory: vi.fn<() => Promise<ViewModel<void>>>(),
+  removeOrphanAnalyticsStorage:
+    vi.fn<
+      (hash: string) => Promise<ViewModel<{ hash: string; removed: boolean }>>
+    >(),
   resetAnalyticsStorage: vi.fn(),
   eventsOn: vi.fn(),
 }))
@@ -34,6 +38,8 @@ function createMockBridge(overrides?: Partial<IHostBridge>): IHostBridge {
       runChecks: hostBridgeMocks.runChecks,
       generateReport: hostBridgeMocks.generateReport,
       openDataDirectory: hostBridgeMocks.openDataDirectory,
+      removeOrphanAnalyticsStorage:
+        hostBridgeMocks.removeOrphanAnalyticsStorage,
     },
     events: {
       on: hostBridgeMocks.eventsOn,
@@ -1579,6 +1585,80 @@ describe('SystemDataSettingsTab', () => {
       expect(hostBridgeMocks.resetAnalyticsStorage).toHaveBeenCalledWith({
         body: { workspaceId: 'ws-1' },
       })
+    })
+    await waitFor(() => {
+      expect(hostBridgeMocks.runChecks).toHaveBeenCalled()
+      expect(toast.success).toHaveBeenCalled()
+    })
+  })
+
+  it('permite limpar arquivo órfão do Analytics pelo diagnóstico com confirmação', async () => {
+    const orphanHash = 'a'.repeat(64)
+    const snapshotWithOrphan = createSampleSnapshot({
+      storages: [
+        {
+          id: `analytics-orphan-${orphanHash}`,
+          name: `Analytics (Arquivo órfão ${orphanHash.slice(0, 8)})`,
+          role: 'analytics',
+          technology: 'duckdb',
+          orphanHash,
+          canReset: true,
+          measurement: {
+            status: 'error',
+            reason: 'ANALYTICS_STORAGE_ORPHAN_FILE',
+            details: {
+              storagePath: [`/tmp/analytics/${orphanHash}.duckdb`],
+            },
+            collectedAt: new Date().toISOString(),
+          },
+        },
+      ],
+    })
+
+    hostBridgeMocks.getSnapshot.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: snapshotWithOrphan,
+    })
+    hostBridgeMocks.runChecks.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: createSampleSnapshot({ storages: [] }),
+    })
+    hostBridgeMocks.removeOrphanAnalyticsStorage.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: { hash: orphanHash, removed: true },
+    })
+
+    renderTab()
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(`reset-storage-analytics-orphan-${orphanHash}`),
+      ).toBeTruthy()
+    })
+
+    fireEvent.click(
+      screen.getByTestId(`reset-storage-analytics-orphan-${orphanHash}`),
+    )
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(
+          `confirm-reset-storage-analytics-orphan-${orphanHash}`,
+        ),
+      ).toBeTruthy()
+    })
+    fireEvent.click(
+      screen.getByTestId(
+        `confirm-reset-storage-analytics-orphan-${orphanHash}`,
+      ),
+    )
+
+    await waitFor(() => {
+      expect(hostBridgeMocks.removeOrphanAnalyticsStorage).toHaveBeenCalledWith(
+        orphanHash,
+      )
     })
     await waitFor(() => {
       expect(hostBridgeMocks.runChecks).toHaveBeenCalled()

@@ -125,6 +125,9 @@ describe('DiagnosticsService', () => {
       readProbes: vi.fn(async () =>
         Either.success<DiagnosticCheckResult[]>([]),
       ),
+      removeOrphanStorage: vi.fn(async (hash: string) =>
+        Either.success({ hash, removed: true }),
+      ),
     }
 
     eventsBuffer = new DiagnosticEventsBuffer(sessionId)

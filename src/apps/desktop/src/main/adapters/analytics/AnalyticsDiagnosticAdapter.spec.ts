@@ -143,7 +143,8 @@ describe('AnalyticsDiagnosticAdapter', () => {
     )
     expect(orphanStorage).toMatchObject({
       role: 'analytics',
-      canReset: false,
+      canReset: true,
+      orphanHash,
       measurement: {
         status: 'error',
         reason: 'ANALYTICS_STORAGE_ORPHAN_FILE',
@@ -175,5 +176,17 @@ describe('AnalyticsDiagnosticAdapter', () => {
       status: 'fail',
       reason: 'ANALYTICS_STORAGE_ORPHAN_FILE',
     })
+
+    const removal = await adapter.removeOrphanStorage(orphanHash)
+    expect(removal.isSuccess()).toBe(true)
+    expect(removal.success).toEqual({ hash: orphanHash, removed: true })
+
+    const probesAfter = await adapter.readProbes()
+    expect(probesAfter.isSuccess()).toBe(true)
+    expect(
+      probesAfter.success.find(
+        (c) => c.id === `probe-analytics-orphan-${orphanHash}`,
+      ),
+    ).toBeUndefined()
   })
 })

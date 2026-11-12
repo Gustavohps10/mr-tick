@@ -129,6 +129,10 @@ const node = z.discriminatedUnion('kind', [
       sqlConfig: z
         .object({
           sqlQuery: z.string().max(16000),
+          inputAliases: z
+            .array(z.string().regex(/^[a-z][a-z0-9_]*$/u))
+            .max(16)
+            .optional(),
           templateId: z.string().optional(),
           snippetId: z.string().optional(),
         })
@@ -188,7 +192,7 @@ export const analyticsLocalQuerySchema: z.ZodType<AnalyticsQueryInput> = z
       .strict()
       .optional(),
     offset: z.number().int().min(0).max(1000000),
-    limit: z.number().int().min(1).max(500),
+    limit: z.number().int().min(1).max(2000),
     version: z.string().optional(),
   })
   .strict()

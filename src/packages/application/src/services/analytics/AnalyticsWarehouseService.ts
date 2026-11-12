@@ -712,13 +712,13 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
     ): Promise<Either<AppError, AnalyticsLoadResult>> => {
       this.emitStorageError(input.workspaceId, 'load', error)
 
-      if (isUnauthorizedOrForbidden(error))
+      if (error.statusCode === 401)
         await this.analyticsEngine.revokeConnection(
           input.workspaceId,
           input.connectionInstanceId,
         )
 
-      if (!isUnauthorizedOrForbidden(error))
+      if (error.statusCode !== 401)
         await this.analyticsEngine.recordSyncFailure(
           owner,
           error.messageKey,

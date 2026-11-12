@@ -24,7 +24,9 @@ import { Button, buttonVariants } from '@/components/ui/button'
 interface SystemStorageCardProps {
   storages: DiagnosticStorageItem[]
   resettingWorkspaceId: string | null
+  removingOrphanHash?: string | null
   onResetStorage: (workspaceId: string) => void
+  onRemoveOrphanStorage?: (hash: string) => void
 }
 
 function formatBytes(bytes: number): string {
@@ -158,16 +160,24 @@ function renderMeasurement(measurement: DiagnosticStorageAvailability) {
   )
 }
 
-function StorageResetAction({
-  item,
-  workspaceId,
-  isResetting,
-  onConfirmReset,
+function ConfirmDestructiveStorageAction({
+  itemId,
+  triggerLabel,
+  busyLabel,
+  dialogTitle,
+  dialogDescription,
+  confirmLabel,
+  isBusy,
+  onConfirm,
 }: {
-  item: DiagnosticStorageItem
-  workspaceId: string
-  isResetting: boolean
-  onConfirmReset: (workspaceId: string) => void
+  itemId: string
+  triggerLabel: string
+  busyLabel: string
+  dialogTitle: string
+  dialogDescription: string
+  confirmLabel: string
+  isBusy: boolean
+  onConfirm: () => void
 }) {
   return (
     <AlertDialog>
@@ -176,38 +186,33 @@ function StorageResetAction({
           type="button"
           size="sm"
           variant="destructive"
-          data-testid={`reset-storage-${item.id}`}
-          disabled={isResetting}
+          data-testid={`reset-storage-${itemId}`}
+          disabled={isBusy}
           className="h-7 px-2.5 text-[11px]"
         >
-          {isResetting && 'Resetando...'}
-          {!isResetting && 'Resetar dados'}
+          {isBusy && busyLabel}
+          {!isBusy && triggerLabel}
         </Button>
       </AlertDialogTrigger>
-      <AlertDialogContent data-testid={`reset-storage-dialog-${item.id}`}>
+      <AlertDialogContent data-testid={`reset-storage-dialog-${itemId}`}>
         <AlertDialogHeader>
-          <AlertDialogTitle>Resetar dados do Analytics?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Esta ação removerá permanentemente o arquivo local do Analytics (
-            {item.name}) neste dispositivo, incluindo espaços salvos e caches de
-            consulta deste workspace. Seus dados na fonte remota não serão
-            alterados.
-          </AlertDialogDescription>
+          <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>
+          <AlertDialogDescription>{dialogDescription}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel
-            data-testid={`cancel-reset-storage-${item.id}`}
-            disabled={isResetting}
+            data-testid={`cancel-reset-storage-${itemId}`}
+            disabled={isBusy}
           >
             Cancelar
           </AlertDialogCancel>
           <AlertDialogAction
-            data-testid={`confirm-reset-storage-${item.id}`}
+            data-testid={`confirm-reset-storage-${itemId}`}
             className={buttonVariants({ variant: 'destructive' })}
-            disabled={isResetting}
-            onClick={() => onConfirmReset(workspaceId)}
+            disabled={isBusy}
+            onClick={onConfirm}
           >
-            Confirmar reset
+            {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -218,7 +223,9 @@ function StorageResetAction({
 export function SystemStorageCard({
   storages,
   resettingWorkspaceId,
+  removingOrphanHash = null,
   onResetStorage,
+  onRemoveOrphanStorage,
 }: SystemStorageCardProps) {
   return (
     <div
@@ -285,13 +292,37 @@ export function SystemStorageCard({
               <div className="flex shrink-0 flex-col items-end gap-2">
                 {renderMeasurement(item.measurement)}
                 {item.canReset === true && item.workspaceId !== undefined && (
-                  <StorageResetAction
-                    item={item}
-                    workspaceId={item.workspaceId}
-                    isResetting={resettingWorkspaceId === item.workspaceId}
-                    onConfirmReset={onResetStorage}
+                  <ConfirmDestructiveStorageAction
+                    itemId={item.id}
+                    triggerLabel="Resetar dados"
+                    busyLabel="Resetando..."
+                    dialogTitle="Resetar dados do Analytics?"
+                    dialogDescription={`Esta ação removerá permanentemente o arquivo local do Analytics (${item.name}) neste dispositivo, incluindo espaços salvos e caches de consulta deste workspace. Seus dados na fonte remota não serão alterados.`}
+                    confirmLabel="Confirmar reset"
+                    isBusy={resettingWorkspaceId === item.workspaceId}
+                    onConfirm={() => {
+                      if (item.workspaceId !== undefined)
+                        onResetStorage(item.workspaceId)
+                    }}
                   />
                 )}
+                {item.canReset === true &&
+                  item.orphanHash !== undefined &&
+                  onRemoveOrphanStorage !== undefined && (
+                    <ConfirmDestructiveStorageAction
+                      itemId={item.id}
+                      triggerLabel="Limpar órfão"
+                      busyLabel="Removendo..."
+                      dialogTitle="Remover arquivo órfão do Analytics?"
+                      dialogDescription={`O arquivo (${item.name}) não pertence a nenhum workspace ativo neste dispositivo. Removê-lo libera espaço em disco e elimina o erro local sem afetar seus workspaces ativos.`}
+                      confirmLabel="Remover arquivo"
+                      isBusy={removingOrphanHash === item.orphanHash}
+                      onConfirm={() => {
+                        if (item.orphanHash !== undefined)
+                          onRemoveOrphanStorage(item.orphanHash)
+                      }}
+                    />
+                  )}
               </div>
             </div>
           ))

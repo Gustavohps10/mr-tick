@@ -9,6 +9,7 @@ import type {
   AnalyticsLocalFilter,
   AnalyticsLocalMeasure,
   AnalyticsNodeJoinConfig,
+  AnalyticsNodeSqlConfig,
   AnalyticsNodeTransformConfig,
   AnalyticsPlanNode,
   AnalyticsQueryInput,
@@ -297,7 +298,7 @@ export class AnalyticsSqlCompiler {
       return this.join([left, right], node.joinConfig)
     }
 
-    if (node.kind === 'sql') return this.sql(inputs, node.sqlConfig.sqlQuery)
+    if (node.kind === 'sql') return this.sql(inputs, node.sqlConfig)
     if (inputs.length !== 1) return invalid('ANALYTICS_SINGLE_INPUT_REQUIRED')
     const sole = inputs.find(() => true)
     if (sole === undefined) return invalid('ANALYTICS_PLAN_INPUT_MISSING')
@@ -836,13 +837,31 @@ export class AnalyticsSqlCompiler {
 
   private async sql(
     inputs: SqlRelation[],
-    text: string,
+    config: AnalyticsNodeSqlConfig,
   ): Promise<Either<AppError, SqlRelation>> {
+    const text = config.sqlQuery
+
     if (inputs.length === 0 || text.trim() === '')
       return invalid('ANALYTICS_SQL_REQUIRED')
     if (inputs.some((input) => input.remoteAggregate))
       return invalid('ANALYTICS_REMOTE_AGGREGATE_PROJECTION_ONLY')
+
+    if (config.inputAliases !== undefined) {
+      const validAlias = /^[a-z][a-z0-9_]*$/u
+      const uniqueAliases = new Set(config.inputAliases)
+
+      if (
+        config.inputAliases.length !== inputs.length ||
+        uniqueAliases.size !== config.inputAliases.length ||
+        config.inputAliases.some((alias) => !validAlias.test(alias))
+      )
+        return invalid('ANALYTICS_SQL_INPUT_ALIAS_INVALID')
+    }
+
     const aliases = inputs.map((input, index) => {
+      const customAlias = config.inputAliases?.at(index)
+
+      if (customAlias !== undefined) return { alias: customAlias, input }
       if (inputs.length === 1) return { alias: 'input', input }
       return { alias: `input_${index + 1}`, input }
     })
@@ -864,7 +883,11 @@ export class AnalyticsSqlCompiler {
       .map((item) => `${identifier(item.alias)} AS (${item.input.sql})`)
       .join(', ')
     const values = inputs.flatMap((input) => input.values)
-    const initialSql = `WITH ${definitions} ${text.trim().replace(/;\s*$/u, '')}\n`
+    const trimmedSql = text.trim().replace(/;\s*$/u, '')
+    let initialSql = `WITH ${definitions} ${trimmedSql}\n`
+
+    if (/^with\s+/iu.test(trimmedSql))
+      initialSql = `WITH ${definitions}, ${trimmedSql.replace(/^with\s+/iu, '')}\n`
     const projection = await projectionForSql(
       this.connection,
       initialSql,
@@ -887,7 +910,11 @@ export class AnalyticsSqlCompiler {
     serialized.closeSync()
     if (typeof nativeSql !== 'string')
       return invalid('ANALYTICS_SQL_PARSE_FAILED')
-    const sql = `WITH ${definitions} ${nativeSql}`
+    const trimmedNative = nativeSql.trim()
+    let sql = `WITH ${definitions} ${trimmedNative}`
+
+    if (/^with\s+/iu.test(trimmedNative))
+      sql = `WITH ${definitions}, ${trimmedNative.replace(/^with\s+/iu, '')}`
     const reader = await this.connection.runAndReadAll(
       `SELECT ${projection} FROM (${sql}) AS result LIMIT 0`,
       values,
@@ -1032,8 +1059,17 @@ function validateSelectAst(
       'nullif',
       'concat',
       'trim',
+      'substr',
+      'substring',
+      'left',
+      'right',
+      'replace',
       'date_trunc',
       'date_part',
+      'date_diff',
+      'datediff',
+      'strftime',
+      'strptime',
       '+',
       '-',
       '*',
@@ -1064,6 +1100,7 @@ function validateSelectAst(
         'CAST',
         'OPERATOR',
         'SUBQUERY',
+        'TYPE',
       ].includes(value.class))
   )
     return invalid('ANALYTICS_SQL_EXPRESSION_NOT_SUPPORTED')

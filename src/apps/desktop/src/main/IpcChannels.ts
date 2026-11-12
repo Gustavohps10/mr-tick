@@ -116,6 +116,8 @@ export const IpcChannels = {
   DIAGNOSTICS_RUN_CHECKS: 'diagnostics:run-checks',
   DIAGNOSTICS_GENERATE_REPORT: 'diagnostics:generate-report',
   DIAGNOSTICS_OPEN_DATA_DIRECTORY: 'diagnostics:open-data-directory',
+  DIAGNOSTICS_REMOVE_ORPHAN_ANALYTICS_STORAGE:
+    'diagnostics:remove-orphan-analytics-storage',
 }
 
 export type IpcChannelType = keyof typeof IpcChannels

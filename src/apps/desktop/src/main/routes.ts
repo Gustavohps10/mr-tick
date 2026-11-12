@@ -12,6 +12,7 @@ import { isBoolean } from '@mr-tick/shared/helpers'
 import { IRequest } from '@mr-tick/shared/transport'
 import type { ViewModel } from '@mr-tick/shared/view-models'
 import { app, BrowserWindow, screen } from 'electron'
+import { z } from 'zod'
 
 import { NativeOverlay } from '@/main'
 import { IpcHandler } from '@/main/adapters/IpcHandler'
@@ -141,6 +142,39 @@ export function openIpcRoutes(
         })
       }
       return diagnosticsHandler.openDataDirectory()
+    },
+  )
+
+  const removeOrphanSchema = z.object({
+    body: z.object({ hash: z.string().min(1) }),
+  })
+
+  IpcHandler.register(
+    'DIAGNOSTICS_REMOVE_ORPHAN_ANALYTICS_STORAGE',
+    (
+      event,
+      payload,
+    ): Promise<ViewModel<{ hash: string; removed: boolean }>> => {
+      if (!isAuthorizedDiagnosticsClient(event)) {
+        return Promise.resolve({
+          isSuccess: false,
+          statusCode: 403,
+          error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
+        })
+      }
+
+      const parsed = removeOrphanSchema.safeParse(payload)
+      if (!parsed.success) {
+        return Promise.resolve({
+          isSuccess: false,
+          statusCode: 400,
+          error: 'ANALYTICS_ORPHAN_HASH_INVALID',
+        })
+      }
+
+      return diagnosticsHandler.removeOrphanAnalyticsStorage(
+        parsed.data.body.hash,
+      )
     },
   )
 

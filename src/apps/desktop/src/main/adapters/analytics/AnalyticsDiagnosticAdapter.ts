@@ -1,14 +1,11 @@
 import type {
+  AnalyticsOrphanRemovalResult,
   DiagnosticCheckResult,
   DiagnosticStorageItem,
   IAnalyticsDiagnosticAdapter,
   IWorkspacesRepository,
 } from '@mr-tick/application'
-import {
-  type AppError,
-  Either,
-  type FieldErrors,
-} from '@mr-tick/shared/helpers'
+import { AppError, Either, type FieldErrors } from '@mr-tick/shared/helpers'
 
 import type {
   AnalyticsStorageDirectoryEntry,
@@ -171,7 +168,8 @@ export class AnalyticsDiagnosticAdapter implements IAnalyticsDiagnosticAdapter {
         role: 'analytics',
         technology: 'duckdb',
         location: orphan.dbPath,
-        canReset: false,
+        orphanHash: orphan.hash,
+        canReset: true,
         measurement: {
           status: 'error',
           reason: 'ANALYTICS_STORAGE_ORPHAN_FILE',
@@ -271,5 +269,26 @@ export class AnalyticsDiagnosticAdapter implements IAnalyticsDiagnosticAdapter {
     }
 
     return Either.success(checks)
+  }
+
+  public async removeOrphanStorage(
+    hash: string,
+  ): Promise<Either<AppError, AnalyticsOrphanRemovalResult>> {
+    const normalized = hash.trim().toLowerCase()
+    if (!/^[0-9a-f]{64}$/u.test(normalized))
+      return Either.failure(AppError.Http(400, 'ANALYTICS_ORPHAN_HASH_INVALID'))
+
+    const scanned = await this.scanEntries()
+    if (scanned.isFailure()) return scanned.forwardFailure()
+
+    const orphan = scanned.success.orphans.find(
+      (entry) => entry.hash === normalized,
+    )
+    if (orphan === undefined)
+      return Either.failure(
+        AppError.NotFound('ANALYTICS_STORAGE_ORPHAN_NOT_FOUND'),
+      )
+
+    return this.analyticsEngine.removeOrphanStorageFiles(orphan.hash)
   }
 }

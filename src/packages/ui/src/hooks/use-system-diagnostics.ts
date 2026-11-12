@@ -56,6 +56,7 @@ export interface UseSystemDiagnosticsReturn {
   clearActionError: () => void
   isRuntimeUnavailable: boolean
   resettingWorkspaceId: string | null
+  removingOrphanHash: string | null
   selectedWorkspaceId: string | null
   setSelectedWorkspaceId: (workspaceId: string | null) => void
   runManualChecks: () => Promise<DiagnosticActionResult>
@@ -63,6 +64,9 @@ export interface UseSystemDiagnosticsReturn {
   openDataDirectory: () => Promise<DiagnosticActionResult>
   resetAnalyticsStorage: (
     workspaceId: string,
+  ) => Promise<DiagnosticActionResult>
+  removeOrphanAnalyticsStorage: (
+    hash: string,
   ) => Promise<DiagnosticActionResult>
 }
 
@@ -145,6 +149,9 @@ export function useSystemDiagnostics(): UseSystemDiagnosticsReturn {
   const [resettingWorkspaceId, setResettingWorkspaceId] = useState<
     string | null
   >(null)
+  const [removingOrphanHash, setRemovingOrphanHash] = useState<string | null>(
+    null,
+  )
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     null,
@@ -589,6 +596,57 @@ export function useSystemDiagnostics(): UseSystemDiagnosticsReturn {
     [bridge, bridgeState.epoch, runManualChecks],
   )
 
+  const removeOrphanAnalyticsStorage = useCallback(
+    async (hash: string): Promise<DiagnosticActionResult> => {
+      const operationEpoch = bridgeState.epoch
+      setRemovingOrphanHash(hash)
+      setActionError(null)
+
+      try {
+        const execResult = await executeSafely(
+          () => bridge.diagnostics.removeOrphanAnalyticsStorage(hash),
+          'Falha de transporte ao remover arquivo órfão do Analytics',
+        )
+
+        if (!execResult.ok) {
+          if (
+            isMountedRef.current &&
+            activeEpochRef.current === operationEpoch
+          ) {
+            setActionError(execResult.error)
+          }
+
+          return { success: false, error: execResult.error }
+        }
+
+        const response = execResult.value
+
+        if (!response.isSuccess) {
+          let errorMsg =
+            'Violação de protocolo: removeOrphanAnalyticsStorage falhou'
+          if (response.error) errorMsg = response.error
+
+          if (
+            isMountedRef.current &&
+            activeEpochRef.current === operationEpoch
+          ) {
+            setActionError(errorMsg)
+          }
+
+          return { success: false, error: errorMsg }
+        }
+
+        await runManualChecks()
+        return { success: true }
+      } finally {
+        if (isMountedRef.current && activeEpochRef.current === operationEpoch) {
+          setRemovingOrphanHash(null)
+        }
+      }
+    },
+    [bridge, bridgeState.epoch, runManualChecks],
+  )
+
   const queryData = query.data
   const snapshot =
     queryData && queryData.isSuccess && queryData.data ? queryData.data : null
@@ -622,11 +680,13 @@ export function useSystemDiagnostics(): UseSystemDiagnosticsReturn {
     clearActionError,
     isRuntimeUnavailable,
     resettingWorkspaceId,
+    removingOrphanHash,
     selectedWorkspaceId,
     setSelectedWorkspaceId,
     runManualChecks,
     copySanitizedReport,
     openDataDirectory,
     resetAnalyticsStorage,
+    removeOrphanAnalyticsStorage,
   }
 }

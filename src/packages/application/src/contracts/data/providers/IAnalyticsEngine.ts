@@ -69,6 +69,7 @@ export interface AnalyticsNodeJoinConfig {
 
 export interface AnalyticsNodeSqlConfig {
   sqlQuery: string
+  inputAliases?: string[]
   templateId?: string
   snippetId?: string
 }
