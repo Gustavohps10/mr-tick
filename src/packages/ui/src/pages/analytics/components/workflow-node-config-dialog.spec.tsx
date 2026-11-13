@@ -104,7 +104,6 @@ describe('WorkflowNodeConfigDialog - MultiSelect Filters', () => {
         onSetNodeCustomDateRange={vi.fn()}
         onSetNodeFilterValue={onSetNodeFilterValue}
         onOpenChange={vi.fn()}
-        onSelectAddNodeType={vi.fn()}
         onChangeNodeLabel={vi.fn()}
         onSelectConnectionId={vi.fn()}
         onSelectDatasetId={vi.fn()}
@@ -233,7 +232,6 @@ describe('WorkflowNodeConfigDialog - Remote Aggregate Constraints', () => {
         onSetNodeCustomDateRange={vi.fn()}
         onSetNodeFilterValue={vi.fn()}
         onOpenChange={vi.fn()}
-        onSelectAddNodeType={vi.fn()}
         onChangeNodeLabel={vi.fn()}
         onSelectConnectionId={vi.fn()}
         onSelectDatasetId={vi.fn()}
@@ -298,10 +296,11 @@ describe('WorkflowNodeConfigDialog - Remote Aggregate Constraints', () => {
     ).toHaveAttribute('aria-disabled', 'true')
     fireEvent.keyDown(document.body, { key: 'Escape' })
 
-    const stackTrigger = screen
-      .getByText('Sem empilhamento extra')
-      .closest('button')
-    expect(stackTrigger).toBeDisabled()
+    expect(
+      screen.queryByRole('combobox', {
+        name: 'Empilhar ou pivotar visualização',
+      }),
+    ).not.toBeInTheDocument()
 
     expect(
       screen.getByRole('button', { name: 'Adicionar ao Workflow' }),
@@ -337,6 +336,20 @@ describe('WorkflowNodeConfigDialog - Remote Aggregate Constraints', () => {
       override: { outputStackColumn: 'project' },
     },
   ]
+
+  it('shows the example and the missing numeric comparison required by a combo chart', () => {
+    renderDialog({ newNodeWidgetType: 'combo_multiaxis' })
+
+    expect(
+      screen.getByRole('region', { name: 'Prévia da visualização' }),
+    ).toHaveTextContent('Dados fictícios')
+    expect(
+      screen.getByRole('region', { name: 'Requisitos de dados' }),
+    ).toHaveTextContent('Segunda métrica: selecione uma coluna.')
+    expect(
+      screen.getByRole('button', { name: 'Adicionar ao Workflow' }),
+    ).toBeDisabled()
+  })
 
   it.each(unsupportedCases)(
     'explicitly refuses remote post-processing for $name and blocks submission',
@@ -451,7 +464,6 @@ describe('WorkflowNodeConfigDialog - Extraction Date vs Secondary Date Filter', 
         onSetNodeCustomDateRange={vi.fn()}
         onSetNodeFilterValue={vi.fn()}
         onOpenChange={vi.fn()}
-        onSelectAddNodeType={vi.fn()}
         onChangeNodeLabel={vi.fn()}
         onSelectConnectionId={vi.fn()}
         onSelectDatasetId={vi.fn()}

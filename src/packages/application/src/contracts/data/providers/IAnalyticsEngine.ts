@@ -188,8 +188,16 @@ export interface AnalyticsSyncState {
   coverageReason?: string
   lastWindowStart?: string
   lastWindowEnd?: string
+  lastRecentReconcileAt?: string
+  lastRecentStart?: string
+  lastRecentEnd?: string
   lastError?: string
   lastErrorAt?: string
+  lastRunRequests?: number
+  lastRunPages?: number
+  lastRunDurationMs?: number
+  lastRunRetries?: number
+  lastRunBytes?: number
 }
 
 export interface AnalyticsSyncMetadata {
@@ -198,7 +206,15 @@ export interface AnalyticsSyncMetadata {
   coverageReason?: string
   lastWindowStart?: string
   lastWindowEnd?: string
+  lastRecentReconcileAt?: string
+  lastRecentStart?: string
+  lastRecentEnd?: string
   lastFullReconcileAt?: string
+  lastRunRequests?: number
+  lastRunPages?: number
+  lastRunDurationMs?: number
+  lastRunRetries?: number
+  lastRunBytes?: number
 }
 
 export interface AnalyticsWindowBounds {

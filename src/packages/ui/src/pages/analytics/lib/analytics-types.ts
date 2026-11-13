@@ -331,7 +331,7 @@ export interface DrillDownSelection {
 
 export interface PipelineNodeData extends Record<
   string,
-  string | number | boolean | (() => void) | undefined
+  string | number | boolean | ((nodeId: string) => void) | undefined
 > {
   nodeId: string
   label: string
@@ -341,7 +341,9 @@ export interface PipelineNodeData extends Record<
   dataSourceName: string
   rowCount: number
   datasetId: string
-  onEditNode?: () => void
+  chartInputError?: string
+  disconnectedAlert?: string
+  onRequestRemove?: (nodeId: string) => void
 }
 
 export interface AvailableProjectOption {

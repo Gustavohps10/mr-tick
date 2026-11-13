@@ -622,7 +622,27 @@ describe('Native warehouse UI', () => {
     )
   })
 
-  it('resets stale output state when switching handleOpenEditNode across output nodes', async () => {
+  it('restores each output mapping and flags the affected node when its input schema changes', async () => {
+    const response = {
+      isSuccess: true,
+      data: {
+        columns: [
+          ...dataset.columns,
+          { name: 'project', label: 'Projeto', type: 'string' },
+          { name: 'team', label: 'Equipe', type: 'string' },
+        ],
+        rows: [{ project: 'A', team: 'B', value: 7 }],
+        totalRows: 1,
+        offset: 0,
+        limit: 100,
+        hasMore: false,
+        version: 'initial',
+        coverage: 'complete',
+        loadedAt: '2026-11-09T00:00:00Z',
+        remoteAggregate: false,
+      },
+    }
+    calls.queryAnalytics.mockResolvedValue(response)
     const { result, node } = await createSource()
     if (node === undefined) return
 
@@ -636,10 +656,13 @@ describe('Native warehouse UI', () => {
       result.current.setOutputMetricColumn('value')
       result.current.setOutputSecondaryMetricColumn('value')
       result.current.setOutputHierarchyColumns(['project'])
-      result.current.setOutputStackColumn('project')
+      result.current.setOutputStackColumn('team')
       result.current.setOutputReferenceLineMode('average')
       result.current.setOutputReferenceLineTarget(42)
     })
+    await waitFor(() =>
+      expect(result.current.upstreamAvailableColumns).toHaveLength(3),
+    )
     act(() => result.current.handleAddWorkflowNode())
 
     act(() => {
@@ -664,7 +687,7 @@ describe('Native warehouse UI', () => {
 
     act(() => result.current.handleOpenEditNode(firstOutput.id))
     expect(result.current.outputCategoryColumn).toBe('project')
-    expect(result.current.outputStackColumn).toBe('project')
+    expect(result.current.outputStackColumn).toBe('team')
     expect(result.current.outputReferenceLineMode).toBe('average')
 
     act(() => result.current.handleOpenEditNode(secondOutput.id))
@@ -675,9 +698,34 @@ describe('Native warehouse UI', () => {
     expect(result.current.outputStackColumn).toBe('')
     expect(result.current.outputReferenceLineMode).toBe('none')
     expect(result.current.outputReferenceLineTarget).toBe(24)
+
+    calls.queryAnalytics.mockResolvedValue({
+      ...response,
+      data: {
+        ...response.data,
+        columns: response.data.columns.filter(
+          (column) => column.name !== 'team',
+        ),
+        version: 'changed',
+      },
+    })
+    calls.loadAnalyticsDataset.mockResolvedValue(reply('schema-changed'))
+    await act(async () => {
+      await result.current.handleSyncAllSources()
+    })
+    await waitFor(() => {
+      expect(
+        result.current.pipelineNodes.find((item) => item.id === firstOutput.id)
+          ?.data.chartInputError,
+      ).toContain('“team” não existe')
+      expect(
+        result.current.pipelineNodes.find((item) => item.id === secondOutput.id)
+          ?.data.chartInputError,
+      ).toBeUndefined()
+    })
   })
 
-  it('refuses SQL transforms, unsupported outputs, and card visual switches on remote aggregate sources', async () => {
+  it('refuses incompatible outputs and edits in the Background for remote aggregate sources', async () => {
     const remote = {
       ...dataset,
       extraction: {
@@ -693,6 +741,24 @@ describe('Native warehouse UI', () => {
     calls.listAnalyticsDatasets.mockResolvedValue({
       isSuccess: true,
       data: [remote],
+    })
+    calls.queryAnalytics.mockResolvedValue({
+      isSuccess: true,
+      data: {
+        columns: [
+          { name: 'project', label: 'Projeto', type: 'string' },
+          { name: 'records', label: 'Registros', type: 'number' },
+        ],
+        rows: [{ project: 'A', records: 7 }],
+        totalRows: 1,
+        offset: 0,
+        limit: 100,
+        hasMore: false,
+        version: 'remote',
+        coverage: 'complete',
+        loadedAt: '2026-11-09T00:00:00Z',
+        remoteAggregate: true,
+      },
     })
     const { result } = renderHook(() => useAnalyticsWorkspace())
     await waitFor(() =>
@@ -742,6 +808,9 @@ describe('Native warehouse UI', () => {
       result.current.setOutputCategoryColumn('project')
       result.current.setOutputMetricColumn('records')
     })
+    await waitFor(() =>
+      expect(result.current.upstreamAvailableColumns).toHaveLength(2),
+    )
     act(() => result.current.handleAddWorkflowNode())
     expect(
       result.current.activeSpace.workflowNodes.some(
@@ -763,9 +832,12 @@ describe('Native warehouse UI', () => {
       (item) => item.title === 'Valid Bar',
     )
     expect(widget).toBeDefined()
-    if (widget === undefined) return
+    if (widget?.outputNodeId === undefined) return
 
-    act(() => result.current.updateWidgetVisualType(widget.id, 'pivot_matrix'))
+    const outputNodeId = widget.outputNodeId
+    act(() => result.current.handleOpenEditNode(outputNodeId))
+    act(() => result.current.setNewNodeWidgetType('pivot_matrix'))
+    act(() => result.current.handleSaveEditedNode())
     const unchanged = result.current.activeSpace.widgets.find(
       (item) => item.id === widget.id,
     )
@@ -1552,5 +1624,177 @@ describe('Phase 3 offline hydration, polling, deduplication and progress UI hook
       expect(result.current.inspectedNodeResolvedData.totalRows).toBe(12),
     )
     expect(result.current.inspectedNodeResolvedData.stageTotalRows).toBe(250)
+  })
+
+  it('exposes recent reconciliation intervals, overdue reconciliations and structured deferral details', async () => {
+    const nowSpy = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse('2026-11-12T18:00:00Z'))
+    try {
+      const baseLoaded = reply(
+        'gen-reconciled',
+        'reader',
+        'selection',
+        'window_rescan',
+        '2026-11-12T10:00:00Z',
+      )
+      calls.loadAnalyticsDataset.mockResolvedValueOnce({
+        ...baseLoaded,
+        data: {
+          ...baseLoaded.data,
+          syncState: {
+            ...baseLoaded.data.syncState,
+            lastFullReconcileAt: '2026-11-12T04:00:00Z',
+            lastRecentReconcileAt: '2026-11-12T11:00:00Z',
+            lastRecentStart: '2026-09-01',
+            lastRecentEnd: '2026-11-12',
+            lastRunRequests: 6,
+            lastRunPages: 2,
+            lastRunDurationMs: 320,
+            lastRunRetries: 1,
+            lastRunBytes: 2048,
+          },
+        },
+      })
+
+      const { result, node } = await createSource()
+      expect(node).toBeDefined()
+      if (node === undefined) return
+
+      await waitFor(() =>
+        expect(result.current.recentReconciliations).toEqual([
+          {
+            nodeId: node.id,
+            label: node.label,
+            at: '2026-11-12T11:00:00Z',
+            start: '2026-09-01',
+            end: '2026-11-12',
+          },
+        ]),
+      )
+      expect(result.current.overdueReconciliations).toEqual([
+        {
+          nodeId: node.id,
+          label: node.label,
+          lastReconcileAt: '2026-11-12T11:00:00Z',
+        },
+      ])
+      expect(result.current.executionDiagnostics).toEqual([
+        {
+          nodeId: node.id,
+          label: node.label,
+          requests: 6,
+          pages: 2,
+          durationMs: 320,
+          retries: 1,
+          bytes: 2048,
+        },
+      ])
+
+      calls.loadAnalyticsDataset.mockResolvedValueOnce({
+        isSuccess: false,
+        statusCode: 429,
+        error: 'HTTP_RATE_LIMIT_DEFERRED',
+        details: { retryAfter: ['15'] },
+      })
+
+      await act(async () => {
+        await result.current.handleSyncAllSources()
+      })
+
+      expect(result.current.sourceFailures).toEqual([
+        {
+          nodeId: node.id,
+          label: node.label,
+          message: 'HTTP_RATE_LIMIT_DEFERRED',
+          details: { retryAfter: ['15'] },
+        },
+      ])
+    } finally {
+      nowSpy.mockRestore()
+    }
+  })
+
+  it('spaces stacked column nodes without vertical overlap, opens tool-specific add modals, and disconnects dependents on removal', async () => {
+    const { result, node: firstSource } = await createSource()
+    expect(firstSource).toBeDefined()
+    if (firstSource === undefined) return
+
+    act(() => {
+      result.current.handleOpenAddNode('source')
+    })
+
+    expect(result.current.selectedAddNodeType).toBe('source')
+
+    await waitFor(() =>
+      expect(result.current.nodeSelectedColumns.length).toBeGreaterThan(0),
+    )
+
+    act(() => {
+      result.current.setNewNodeLabel('Fonte B')
+    })
+
+    act(() => {
+      result.current.handleAddWorkflowNode()
+    })
+
+    const sources = result.current.activeSpace.workflowNodes.filter(
+      (node) => node.kind === 'source',
+    )
+    expect(sources.length).toBe(2)
+    expect(sources[1].positionY - sources[0].positionY).toBeGreaterThanOrEqual(
+      176,
+    )
+
+    act(() => {
+      result.current.handleOpenAddNode('transform')
+    })
+
+    expect(result.current.selectedAddNodeType).toBe('transform')
+
+    act(() => {
+      result.current.setNewNodeLabel('Transform A')
+      result.current.setTxUpstreamNodeId(sources[0].id)
+      result.current.setSqlQueryText('SELECT project FROM input')
+    })
+
+    act(() => {
+      result.current.handleAddWorkflowNode()
+    })
+
+    const transformNode = result.current.activeSpace.workflowNodes.find(
+      (node) => node.label === 'Transform A',
+    )
+    expect(transformNode).toBeDefined()
+
+    act(() => {
+      result.current.handleRequestRemoveNode(sources[0].id)
+    })
+
+    expect(result.current.pendingRemoveNode?.id).toBe(sources[0].id)
+    expect(result.current.pendingRemoveDependents.map((d) => d.id)).toEqual([
+      transformNode?.id,
+    ])
+
+    act(() => {
+      result.current.handleConfirmRemoveNode()
+    })
+
+    expect(result.current.pendingRemoveNode).toBeUndefined()
+    expect(
+      result.current.activeSpace.workflowNodes.some(
+        (node) => node.id === sources[0].id,
+      ),
+    ).toBe(false)
+
+    const orphanedTransform = result.current.activeSpace.workflowNodes.find(
+      (node) => node.id === transformNode?.id,
+    )
+    expect(orphanedTransform?.upstreamNodeIds).toEqual([])
+
+    const orphanedCanvasNode = result.current.pipelineNodes.find(
+      (node) => node.id === transformNode?.id,
+    )
+    expect(orphanedCanvasNode?.data.disconnectedAlert).toBeDefined()
   })
 })

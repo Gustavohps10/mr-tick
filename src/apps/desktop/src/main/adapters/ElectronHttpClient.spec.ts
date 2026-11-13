@@ -45,6 +45,101 @@ function responseOptions<T extends JsonValue>(
   return { responseValidator }
 }
 
+it('paces bursts across clients of the same origin', async () => {
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true })))
+  const factory = new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, { fetch })
+  const analytics = factory.createClient({ baseURL: 'https://redmine.example' })
+  const personal = factory.createClient({ baseURL: 'https://redmine.example' })
+  const options = responseOptions(isOk)
+  const burst = Array.from({ length: 5 }, () =>
+    analytics.get('/analytics', options),
+  )
+  const queued = personal.get('/personal', options)
+
+  expect(fetch).toHaveBeenCalledTimes(5)
+  expect((await queued).isSuccess()).toBe(true)
+  expect(fetch).toHaveBeenCalledTimes(6)
+  expect((await Promise.all(burst)).every((result) => result.isSuccess())).toBe(
+    true,
+  )
+})
+
+it('shares a Retry-After deadline among clients targeting the same origin', async () => {
+  const now = Date.parse('2026-11-12T12:00:00Z')
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+  try {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 429,
+          headers: { 'Retry-After': 'Thu, 12 Nov 2026 12:00:02 GMT' },
+        }),
+      )
+      .mockImplementation(
+        async () => new Response(JSON.stringify({ ok: true })),
+      )
+    const factory = new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, { fetch })
+    const analytics = factory.createClient({
+      baseURL: 'https://redmine.example',
+    })
+    const personal = factory.createClient({
+      baseURL: 'https://redmine.example',
+    })
+    const other = factory.createClient({ baseURL: 'https://other.example' })
+    const options = responseOptions(isOk)
+
+    expect((await analytics.get('/analytics', options)).isFailure()).toBe(true)
+    expect(await personal.get('/personal', options)).toMatchObject({
+      failure: { statusCode: 429, messageKey: 'HTTP_RATE_LIMIT_DEFERRED' },
+    })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect((await other.get('/data', options)).isSuccess()).toBe(true)
+    clock.mockReturnValue(now + 2000)
+    expect((await personal.get('/personal', options)).isSuccess()).toBe(true)
+    expect(fetch).toHaveBeenCalledTimes(3)
+  } finally {
+    clock.mockRestore()
+  }
+})
+
+it('prioritizes manual requests ahead of queued background requests without starving background tasks', async () => {
+  const order: string[] = []
+  const fetch = vi.fn(async (input: string) => {
+    order.push(new URL(input).pathname)
+    return new Response(JSON.stringify({ ok: true }))
+  })
+  const factory = new ElectronHttpClientFactory(EMPTY_HTTP_CONFIG, { fetch })
+  const client = factory.createClient({ baseURL: 'https://redmine.example' })
+  const bgOptions = responseOptions(isOk)
+  const manualOptions: IHttpRequestOptions<{ ok: boolean }> = {
+    responseValidator: isOk,
+    priority: 'manual',
+  }
+
+  const burst = [0, 1, 2, 3, 4].map((idx) =>
+    client.get(`/burst-${idx}`, bgOptions),
+  )
+  const bg1 = client.get('/bg-1', bgOptions)
+  const bg2 = client.get('/bg-2', bgOptions)
+  const manual1 = client.get('/manual-1', manualOptions)
+  const manual2 = client.get('/manual-2', manualOptions)
+  const manual3 = client.get('/manual-3', manualOptions)
+  const manual4 = client.get('/manual-4', manualOptions)
+
+  await Promise.all([...burst, bg1, bg2, manual1, manual2, manual3, manual4])
+
+  const queuedOrder = order.slice(5)
+  expect(queuedOrder).toEqual([
+    '/manual-1',
+    '/manual-2',
+    '/manual-3',
+    '/bg-1',
+    '/manual-4',
+    '/bg-2',
+  ])
+})
+
 describe('T01 / T21 / Seção 8.1: Isolamento HTTP por Conexão, Origem Cruzada, Redirects 302 e Logs no Host Electron', () => {
   const testTransport = new NodeFetchTransport()
   let serverA: Server

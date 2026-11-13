@@ -21,28 +21,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
-import {
-  isRemoteAggregateUnsupportedVisual,
-  isRemoteAggregateUpstream,
-} from '../lib/analytics-plan'
 import type {
   AnalyticsUpstreamSourceStatus,
   CanvasLayerMode,
 } from '../lib/analytics-types'
 import {
   type AnalyticsSpaceConfig,
-  type ChartVisualType,
-  GENERIC_CHART_MODELS,
   type SpaceWorkflowNodeConfig,
   type WidgetSpan,
 } from '../lib/analytics-types'
@@ -50,6 +36,7 @@ import { GenericWidgetRenderer } from './generic-widget-renderer'
 
 export interface SmartGridViewProps {
   onUnauthorized: (connectionIds: string[], message: string) => void
+  widgetInputErrors: Record<string, string>
   warehousePlan: AnalyticsPlanNode[]
   publicationVersion: string
   activeSpace: AnalyticsSpaceConfig
@@ -67,10 +54,6 @@ export interface SmartGridViewProps {
   ) => void
   onSetLayerMode: (mode: CanvasLayerMode) => void
   onUpdateWidgetSpan: (widgetId: string, span: WidgetSpan) => void
-  onUpdateWidgetVisualType: (
-    widgetId: string,
-    nextType: ChartVisualType,
-  ) => void
   onMoveWidgetOrder: (widgetId: string, direction: -1 | 1) => void
   overloadTolerancePct: number
   onSetOverloadTolerancePct: (val: number) => void
@@ -83,6 +66,7 @@ export interface SmartGridViewProps {
 export function SmartGridView({
   onUnauthorized,
   warehousePlan,
+  widgetInputErrors,
   publicationVersion,
   activeSpace,
   upstreamStatusByNodeId,
@@ -91,7 +75,6 @@ export function SmartGridView({
   onGenericDrillDown,
   onSetLayerMode,
   onUpdateWidgetSpan,
-  onUpdateWidgetVisualType,
   onMoveWidgetOrder,
   overloadTolerancePct,
   onSetOverloadTolerancePct,
@@ -137,22 +120,14 @@ export function SmartGridView({
         if (widget.span === 2) spanClass = 'lg:col-span-2'
         if (widget.span === 3) spanClass = 'lg:col-span-3'
 
-        let selectVisualVal: string = widget.widgetType
-        if (widget.chartVisualType) selectVisualVal = widget.chartVisualType
-
-        const isRemoteAggregate = isRemoteAggregateUpstream(
-          activeSpace.workflowNodes,
-          widget.sourceNodeId,
-        )
-        const hasStackColumn =
-          widget.stackColumn !== undefined && widget.stackColumn !== ''
-
         let span1Variant: 'secondary' | 'ghost' = 'ghost'
         let span2Variant: 'secondary' | 'ghost' = 'ghost'
         let span3Variant: 'secondary' | 'ghost' = 'ghost'
         if (widget.span === 1) span1Variant = 'secondary'
         if (widget.span === 2) span2Variant = 'secondary'
         if (widget.span === 3) span3Variant = 'secondary'
+
+        const inputError = widgetInputErrors[widget.id]
 
         return (
           <Card
@@ -174,41 +149,6 @@ export function SmartGridView({
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1">
-                  <Select
-                    value={selectVisualVal}
-                    onValueChange={(val) => {
-                      const matched = GENERIC_CHART_MODELS.find(
-                        (m) => m.id === val,
-                      )
-                      if (matched)
-                        onUpdateWidgetVisualType(widget.id, matched.id)
-                    }}
-                  >
-                    <SelectTrigger className="border-border/70 bg-background h-6 max-w-[135px] px-2 py-0 text-[10px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {GENERIC_CHART_MODELS.map((m) => (
-                          <SelectItem
-                            key={m.id}
-                            value={m.id}
-                            disabled={
-                              isRemoteAggregate &&
-                              (isRemoteAggregateUnsupportedVisual(m.id) ||
-                                ((m.id === 'bar_stacked' ||
-                                  m.id === 'area_stacked') &&
-                                  hasStackColumn))
-                            }
-                            className="text-xs"
-                          >
-                            {m.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-
                   <Button
                     size="icon"
                     variant={span1Variant}
@@ -259,23 +199,30 @@ export function SmartGridView({
             </CardHeader>
 
             <CardContent>
-              <GenericWidgetRenderer
-                onUnauthorized={onUnauthorized}
-                warehousePlan={warehousePlan}
-                publicationVersion={publicationVersion}
-                widget={widget}
-                activeSpace={activeSpace}
-                upstreamStatus={upstreamStatusByNodeId[widget.sourceNodeId]}
-                onRetrySource={() => onRetrySourceNode(widget.sourceNodeId)}
-                resolveRowsForWorkflowNode={resolveRowsForWorkflowNode}
-                onGenericDrillDown={onGenericDrillDown}
-                overloadTolerancePct={overloadTolerancePct}
-                onSetOverloadTolerancePct={onSetOverloadTolerancePct}
-                idleTolerancePct={idleTolerancePct}
-                onSetIdleTolerancePct={onSetIdleTolerancePct}
-                estimationTolerancePct={estimationTolerancePct}
-                onSetEstimationTolerancePct={onSetEstimationTolerancePct}
-              />
+              {inputError !== undefined && (
+                <p role="alert" className="text-destructive text-sm">
+                  {inputError} Ajuste o gráfico no Background.
+                </p>
+              )}
+              {inputError === undefined && (
+                <GenericWidgetRenderer
+                  onUnauthorized={onUnauthorized}
+                  warehousePlan={warehousePlan}
+                  publicationVersion={publicationVersion}
+                  widget={widget}
+                  activeSpace={activeSpace}
+                  upstreamStatus={upstreamStatusByNodeId[widget.sourceNodeId]}
+                  onRetrySource={() => onRetrySourceNode(widget.sourceNodeId)}
+                  resolveRowsForWorkflowNode={resolveRowsForWorkflowNode}
+                  onGenericDrillDown={onGenericDrillDown}
+                  overloadTolerancePct={overloadTolerancePct}
+                  onSetOverloadTolerancePct={onSetOverloadTolerancePct}
+                  idleTolerancePct={idleTolerancePct}
+                  onSetIdleTolerancePct={onSetIdleTolerancePct}
+                  estimationTolerancePct={estimationTolerancePct}
+                  onSetEstimationTolerancePct={onSetEstimationTolerancePct}
+                />
+              )}
             </CardContent>
           </Card>
         )

@@ -131,6 +131,25 @@ function nullableString(value: string | undefined): string | null {
   return value
 }
 
+function nullableNumber(value: number | undefined): number | null {
+  if (value === undefined) return null
+
+  return Math.trunc(value)
+}
+
+function readOptionalInt(
+  value: DuckDBValue | undefined,
+): Either<AppError, number | undefined> {
+  if (value === undefined || value === null) return Either.success(undefined)
+
+  const decoded = scalar(value, DuckDBTypeId.BIGINT)
+  if (decoded.isFailure()) return decoded.forwardFailure()
+  if (typeof decoded.success !== 'number')
+    return failure('ANALYTICS_STORAGE_METADATA_INVALID')
+
+  return Either.success(decoded.success)
+}
+
 function readOptionalString(
   value: DuckDBValue | undefined,
 ): Either<AppError, string | undefined> {
@@ -513,6 +532,26 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
       await connection.run(
         'CREATE TABLE IF NOT EXISTS analytics_sync_states(connection_id VARCHAR NOT NULL, authorization_key VARCHAR NOT NULL, selection_key VARCHAR NOT NULL, dataset_id VARCHAR NOT NULL, strategy VARCHAR NOT NULL, checkpoint VARCHAR, last_fast_sync_at VARCHAR NOT NULL, last_full_reconcile_at VARCHAR NOT NULL, coverage VARCHAR NOT NULL, coverage_reason VARCHAR, last_window_start VARCHAR, last_window_end VARCHAR, last_error VARCHAR, last_error_at VARCHAR, PRIMARY KEY(connection_id,authorization_key,selection_key))',
       )
+      for (const column of [
+        'last_recent_reconcile_at',
+        'last_recent_start',
+        'last_recent_end',
+      ])
+        await connection.run(
+          `ALTER TABLE analytics_sync_states ADD COLUMN IF NOT EXISTS ${column} VARCHAR`,
+        )
+
+      for (const column of [
+        'last_run_requests',
+        'last_run_pages',
+        'last_run_duration_ms',
+        'last_run_retries',
+        'last_run_bytes',
+      ])
+        await connection.run(
+          `ALTER TABLE analytics_sync_states ADD COLUMN IF NOT EXISTS ${column} BIGINT`,
+        )
+
       await connection.run(
         'CREATE TABLE IF NOT EXISTS analytics_workspace_settings(workspace_id VARCHAR PRIMARY KEY, polling_interval_minutes INTEGER NOT NULL, spaces_json VARCHAR, date_from VARCHAR, date_to VARCHAR, updated_at VARCHAR NOT NULL)',
       )
@@ -679,6 +718,38 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
     if (lastErrorAt.success !== undefined)
       state.lastErrorAt = lastErrorAt.success
 
+    if (typeof row.last_recent_reconcile_at === 'string')
+      state.lastRecentReconcileAt = row.last_recent_reconcile_at
+    if (typeof row.last_recent_start === 'string')
+      state.lastRecentStart = row.last_recent_start
+    if (typeof row.last_recent_end === 'string')
+      state.lastRecentEnd = row.last_recent_end
+
+    const lastRunRequests = readOptionalInt(row.last_run_requests)
+    if (lastRunRequests.isFailure()) return lastRunRequests.forwardFailure()
+    if (lastRunRequests.success !== undefined)
+      state.lastRunRequests = lastRunRequests.success
+
+    const lastRunPages = readOptionalInt(row.last_run_pages)
+    if (lastRunPages.isFailure()) return lastRunPages.forwardFailure()
+    if (lastRunPages.success !== undefined)
+      state.lastRunPages = lastRunPages.success
+
+    const lastRunDurationMs = readOptionalInt(row.last_run_duration_ms)
+    if (lastRunDurationMs.isFailure()) return lastRunDurationMs.forwardFailure()
+    if (lastRunDurationMs.success !== undefined)
+      state.lastRunDurationMs = lastRunDurationMs.success
+
+    const lastRunRetries = readOptionalInt(row.last_run_retries)
+    if (lastRunRetries.isFailure()) return lastRunRetries.forwardFailure()
+    if (lastRunRetries.success !== undefined)
+      state.lastRunRetries = lastRunRetries.success
+
+    const lastRunBytes = readOptionalInt(row.last_run_bytes)
+    if (lastRunBytes.isFailure()) return lastRunBytes.forwardFailure()
+    if (lastRunBytes.success !== undefined)
+      state.lastRunBytes = lastRunBytes.success
+
     return Either.success(state)
   }
 
@@ -687,7 +758,7 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
     owner: AnalyticsGenerationOwner,
   ): Promise<Either<AppError, AnalyticsSyncState | undefined>> {
     const reader = await db.connection.runAndReadAll(
-      'SELECT connection_id, selection_key, dataset_id, strategy, checkpoint, last_fast_sync_at, last_full_reconcile_at, coverage, coverage_reason, last_window_start, last_window_end, last_error, last_error_at FROM analytics_sync_states WHERE connection_id=? AND authorization_key=? AND selection_key=?',
+      'SELECT connection_id, selection_key, dataset_id, strategy, checkpoint, last_fast_sync_at, last_full_reconcile_at, coverage, coverage_reason, last_window_start, last_window_end, last_error, last_error_at, last_recent_reconcile_at, last_recent_start, last_recent_end, last_run_requests, last_run_pages, last_run_duration_ms, last_run_retries, last_run_bytes FROM analytics_sync_states WHERE connection_id=? AND authorization_key=? AND selection_key=?',
       [owner.connectionInstanceId, owner.authorizationKey, owner.selectionKey],
     )
     const row = reader.getRowObjects().find(() => true)
@@ -710,7 +781,7 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
     if (coverage === 'unverified') reason = syncMeta.coverageReason
 
     await db.connection.run(
-      'INSERT INTO analytics_sync_states VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL) ON CONFLICT(connection_id,authorization_key,selection_key) DO UPDATE SET dataset_id=excluded.dataset_id, strategy=excluded.strategy, checkpoint=excluded.checkpoint, last_fast_sync_at=excluded.last_fast_sync_at, last_full_reconcile_at=excluded.last_full_reconcile_at, coverage=excluded.coverage, coverage_reason=excluded.coverage_reason, last_window_start=excluded.last_window_start, last_window_end=excluded.last_window_end, last_error=NULL, last_error_at=NULL',
+      'INSERT INTO analytics_sync_states VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(connection_id,authorization_key,selection_key) DO UPDATE SET dataset_id=excluded.dataset_id, strategy=excluded.strategy, checkpoint=excluded.checkpoint, last_fast_sync_at=excluded.last_fast_sync_at, last_full_reconcile_at=excluded.last_full_reconcile_at, coverage=excluded.coverage, coverage_reason=excluded.coverage_reason, last_window_start=excluded.last_window_start, last_window_end=excluded.last_window_end, last_error=NULL, last_error_at=NULL, last_recent_reconcile_at=COALESCE(excluded.last_recent_reconcile_at,analytics_sync_states.last_recent_reconcile_at), last_recent_start=COALESCE(excluded.last_recent_start,analytics_sync_states.last_recent_start), last_recent_end=COALESCE(excluded.last_recent_end,analytics_sync_states.last_recent_end), last_run_requests=COALESCE(excluded.last_run_requests,analytics_sync_states.last_run_requests), last_run_pages=COALESCE(excluded.last_run_pages,analytics_sync_states.last_run_pages), last_run_duration_ms=COALESCE(excluded.last_run_duration_ms,analytics_sync_states.last_run_duration_ms), last_run_retries=COALESCE(excluded.last_run_retries,analytics_sync_states.last_run_retries), last_run_bytes=COALESCE(excluded.last_run_bytes,analytics_sync_states.last_run_bytes)',
       [
         owner.connectionInstanceId,
         owner.authorizationKey,
@@ -724,6 +795,14 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
         nullableString(reason),
         nullableString(syncMeta.lastWindowStart),
         nullableString(syncMeta.lastWindowEnd),
+        nullableString(syncMeta.lastRecentReconcileAt),
+        nullableString(syncMeta.lastRecentStart),
+        nullableString(syncMeta.lastRecentEnd),
+        nullableNumber(syncMeta.lastRunRequests),
+        nullableNumber(syncMeta.lastRunPages),
+        nullableNumber(syncMeta.lastRunDurationMs),
+        nullableNumber(syncMeta.lastRunRetries),
+        nullableNumber(syncMeta.lastRunBytes),
       ],
     )
   }
@@ -1817,7 +1896,7 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
       }
 
       const reader = await db.connection.runAndReadAll(
-        `SELECT g.generation_id, g.connection_id, g.authorization_key, g.selection_key, g.manifest_json, g.query_json, g.row_count, g.coverage, g.fetched_at, g.loaded_at, s.dataset_id, s.strategy, s.checkpoint, s.last_fast_sync_at, s.last_full_reconcile_at, s.coverage AS s_coverage, s.coverage_reason, s.last_window_start, s.last_window_end, s.last_error, s.last_error_at FROM analytics_publications p JOIN analytics_generations g ON g.generation_id = p.generation_id LEFT JOIN analytics_sync_states s ON s.connection_id = p.connection_id AND s.authorization_key = p.authorization_key AND s.selection_key = p.selection_key WHERE ${predicates.join(' OR ')}`,
+        `SELECT g.generation_id, g.connection_id, g.authorization_key, g.selection_key, g.manifest_json, g.query_json, g.row_count, g.coverage, g.fetched_at, g.loaded_at, s.dataset_id, s.strategy, s.checkpoint, s.last_fast_sync_at, s.last_full_reconcile_at, s.coverage AS s_coverage, s.coverage_reason, s.last_window_start, s.last_window_end, s.last_error, s.last_error_at, s.last_recent_reconcile_at, s.last_recent_start, s.last_recent_end, s.last_run_requests, s.last_run_pages, s.last_run_duration_ms, s.last_run_retries, s.last_run_bytes FROM analytics_publications p JOIN analytics_generations g ON g.generation_id = p.generation_id LEFT JOIN analytics_sync_states s ON s.connection_id = p.connection_id AND s.authorization_key = p.authorization_key AND s.selection_key = p.selection_key WHERE ${predicates.join(' OR ')}`,
         values,
       )
       const rows = reader.getRowObjects()

@@ -28,7 +28,7 @@ export function AnalyticsHierarchyTable({
   data,
   hierarchy,
 }: {
-  data: AnalyticsQueryResult
+  data: Pick<AnalyticsQueryResult, 'columns' | 'rows' | 'groupingColumn'>
   hierarchy: string[]
 }) {
   const [collapsed, setCollapsed] = useState(new Set<string>())

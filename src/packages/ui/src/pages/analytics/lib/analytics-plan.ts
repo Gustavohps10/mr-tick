@@ -73,6 +73,50 @@ export function collectUpstreamSourceNodeIds(
   return sourceIds
 }
 
+export function collectWorkflowLineage(
+  nodes: SpaceWorkflowNodeConfig[],
+  nodeId: string,
+): SpaceWorkflowNodeConfig[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const downstreamById = new Map<string, string[]>()
+
+  for (const node of nodes) {
+    for (const upstreamId of node.upstreamNodeIds) {
+      const downstream = downstreamById.get(upstreamId)
+      if (downstream === undefined) downstreamById.set(upstreamId, [node.id])
+      if (downstream !== undefined) downstream.push(node.id)
+    }
+  }
+
+  const connected = new Set<string>()
+  const visitConnected = (id: string) => {
+    if (connected.has(id)) return
+    const node = byId.get(id)
+    if (node === undefined) return
+    connected.add(id)
+    node.upstreamNodeIds.forEach(visitConnected)
+    downstreamById.get(id)?.forEach(visitConnected)
+  }
+  visitConnected(nodeId)
+
+  const ordered: SpaceWorkflowNodeConfig[] = []
+  const visited = new Set<string>()
+  const append = (id: string) => {
+    if (visited.has(id)) return
+    const node = byId.get(id)
+    if (node === undefined) return
+    visited.add(id)
+    node.upstreamNodeIds.forEach(append)
+    ordered.push(node)
+  }
+
+  for (const node of nodes) {
+    if (connected.has(node.id)) append(node.id)
+  }
+
+  return ordered
+}
+
 export function buildAnalyticsPlan(
   nodes: SpaceWorkflowNodeConfig[],
   publications: Record<string, AnalyticsPublication>,

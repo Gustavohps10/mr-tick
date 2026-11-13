@@ -17,6 +17,7 @@ export type {
   AnalyticsDatasetRow,
   AnalyticsDatasetScope,
   AnalyticsExecutionKind,
+  AnalyticsExecutionMetrics,
   AnalyticsExecutionRequest,
   AnalyticsExtractionDescriptor,
   AnalyticsFilterDefinition,

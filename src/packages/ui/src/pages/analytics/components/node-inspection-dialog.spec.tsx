@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { collectWorkflowLineage } from '../lib/analytics-plan'
 import type { SpaceWorkflowNodeConfig } from '../lib/analytics-types'
 import { NodeInspectionDialog } from './node-inspection-dialog'
 
@@ -33,6 +34,31 @@ function buildNode(
 }
 
 describe('NodeInspectionDialog', () => {
+  it('preserves all connected stages when inspecting a source, transform or chart', () => {
+    const extract = buildNode({ id: 'extract' })
+    const secondExtract = buildNode({ id: 'second-extract' })
+    const transform = buildNode({
+      id: 'transform',
+      kind: 'join',
+      upstreamNodeIds: [extract.id, secondExtract.id],
+    })
+    const chart = buildNode({
+      id: 'chart',
+      kind: 'output',
+      upstreamNodeIds: [transform.id],
+    })
+    const unrelated = buildNode({ id: 'unrelated' })
+    const nodes = [chart, extract, unrelated, transform, secondExtract]
+
+    for (const selected of [extract, secondExtract, transform, chart])
+      expect(collectWorkflowLineage(nodes, selected.id)).toEqual([
+        extract,
+        secondExtract,
+        transform,
+        chart,
+      ])
+  })
+
   beforeAll(() => {
     global.ResizeObserver = class ResizeObserver {
       observe() {}
@@ -108,6 +134,10 @@ describe('NodeInspectionDialog', () => {
       onSearchChange,
       onSelectNodeId,
       onEditNode,
+      onLeaveEditor: vi.fn(),
+      isEditing: false,
+      editor: undefined,
+      chart: undefined,
       resolveRowsForWorkflowNode: (node) => {
         if (node.id === 'src-1')
           return {

@@ -1,11 +1,25 @@
-import { BarChart3, LayoutGrid, Plus, RefreshCw, Workflow } from 'lucide-react'
-import { useState } from 'react'
+import {
+  Activity,
+  BarChart3,
+  CircleAlert,
+  Info,
+  LayoutGrid,
+  Plus,
+  RefreshCw,
+  Workflow,
+} from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 import type { DateRange } from 'react-day-picker'
 
 import { DatePickerWithRange } from '@/components'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -62,6 +76,9 @@ export interface AnalyticsTopBarProps {
   isFetchingLive: boolean
   pollingIntervalMinutes: number
   syncStatusSummary: AnalyticsSyncStatusSummary
+  hasErrors: boolean
+  hasCoverageWarning: boolean
+  statusDetails: ReactNode
   onSelectSpace: (spaceId: string) => void
   onOpenNewSpaceModal: () => void
   onDateRangeChange: (nextRange: DateRange | undefined) => void
@@ -78,6 +95,9 @@ export function AnalyticsTopBar({
   isFetchingLive,
   pollingIntervalMinutes,
   syncStatusSummary,
+  hasErrors,
+  hasCoverageWarning,
+  statusDetails,
   onSelectSpace,
   onOpenNewSpaceModal,
   onDateRangeChange,
@@ -122,6 +142,11 @@ export function AnalyticsTopBar({
     lastFullLabel !== undefined ||
     syncStatusSummary.hasRollingWindow ||
     syncStatusSummary.hasIncrementalChanges
+
+  let statusLabel = 'Status do Analytics'
+  if (hasCoverageWarning)
+    statusLabel = 'Status do Analytics: cobertura não confirmada'
+  if (hasErrors) statusLabel = 'Status do Analytics: há falhas'
 
   return (
     <>
@@ -242,6 +267,78 @@ export function AnalyticsTopBar({
             Sincronizar
           </Button>
 
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                size="icon"
+                variant="outline"
+                className={cn(
+                  'size-8 shrink-0',
+                  hasErrors && 'text-destructive',
+                )}
+                aria-label={statusLabel}
+                title={statusLabel}
+              >
+                {hasErrors && <CircleAlert />}
+                {!hasErrors && hasCoverageWarning && <Info />}
+                {!hasErrors && !hasCoverageWarning && <Activity />}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              aria-label="Status do Analytics"
+              className="flex max-h-[min(60vh,28rem)] w-[min(28rem,calc(100vw-2rem))] flex-col gap-3 overflow-y-auto"
+            >
+              <h3 className="text-sm font-semibold">Status do Analytics</h3>
+              {(liveStatusText !== '' || showMetadataRow) && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {liveStatusText !== '' && (
+                    <span
+                      role="status"
+                      className="text-primary flex items-center gap-1.5 font-medium"
+                    >
+                      <RefreshCw className="size-3 animate-spin" />
+                      {liveStatusText}
+                    </span>
+                  )}
+
+                  {lastFastLabel !== undefined && (
+                    <span className="text-muted-foreground">
+                      Última atualização: {lastFastLabel}
+                    </span>
+                  )}
+
+                  {lastFullLabel !== undefined && (
+                    <span className="text-muted-foreground">
+                      Reconciliação completa: {lastFullLabel}
+                    </span>
+                  )}
+
+                  {syncStatusSummary.hasRollingWindow && (
+                    <Badge variant="outline" className="text-[10px]">
+                      Janela rolante (14 dias)
+                    </Badge>
+                  )}
+
+                  {syncStatusSummary.hasIncrementalChanges && (
+                    <Badge variant="outline" className="text-[10px]">
+                      Incremental (changes)
+                    </Badge>
+                  )}
+                </div>
+              )}
+              {!showMetadataRow &&
+                !hasErrors &&
+                !hasCoverageWarning &&
+                liveStatusText === '' && (
+                  <p className="text-muted-foreground text-sm">
+                    Nenhum aviso no momento.
+                  </p>
+                )}
+              {statusDetails}
+            </PopoverContent>
+          </Popover>
+
           <div className="bg-muted flex items-center rounded-lg p-0.5">
             <Button
               size="sm"
@@ -279,44 +376,6 @@ export function AnalyticsTopBar({
             {activeSpace.subtitle}
           </p>
         </div>
-
-        {(liveStatusText !== '' || showMetadataRow) && (
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {liveStatusText !== '' && (
-              <span
-                role="status"
-                className="text-primary flex items-center gap-1.5 font-medium"
-              >
-                <RefreshCw className="size-3 animate-spin" />
-                {liveStatusText}
-              </span>
-            )}
-
-            {lastFastLabel !== undefined && (
-              <span className="text-muted-foreground">
-                Última atualização: {lastFastLabel}
-              </span>
-            )}
-
-            {lastFullLabel !== undefined && (
-              <span className="text-muted-foreground">
-                Reconciliação completa: {lastFullLabel}
-              </span>
-            )}
-
-            {syncStatusSummary.hasRollingWindow && (
-              <Badge variant="outline" className="text-[10px]">
-                Janela rolante (14 dias)
-              </Badge>
-            )}
-
-            {syncStatusSummary.hasIncrementalChanges && (
-              <Badge variant="outline" className="text-[10px]">
-                Incremental (changes)
-              </Badge>
-            )}
-          </div>
-        )}
       </div>
     </>
   )

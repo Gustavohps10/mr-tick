@@ -4,15 +4,15 @@ import type {
 } from '@mr-tick/application'
 import {
   ArrowRight,
-  Database,
+  BarChart3,
+  Code2,
   FileSpreadsheet,
   GitMerge,
   Search,
   Settings2,
-  ShieldCheck,
   Table as TableIcon,
 } from 'lucide-react'
-import type * as React from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { PaginationBar } from '@/components/data-table/data-table-pagination'
 import { Badge } from '@/components/ui/badge'
@@ -29,6 +29,10 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import type { SpaceWorkflowNodeConfig } from '../lib/analytics-types'
+import {
+  pipelineNodeIcons,
+  pipelineNodeKindLabels,
+} from './pipeline-node-icons'
 import { VirtualizedNodeTable } from './virtualized-node-table'
 
 interface NodeRowMetrics {
@@ -71,7 +75,7 @@ export interface NodeInspectionDialogProps {
   sourceError: string | undefined
   onSelectPage: (nodeId: string, pageIndex: number) => void
   onChangePageSize: (nodeId: string, pageSize: number) => void
-  inspectedNodeConfig: SpaceWorkflowNodeConfig | null
+  inspectedNodeConfig: SpaceWorkflowNodeConfig | undefined
   inspectedNodeLineageChain: SpaceWorkflowNodeConfig[]
   inspectedNodeResolvedData: {
     columns: AnalyticsColumnSchema[]
@@ -86,6 +90,10 @@ export interface NodeInspectionDialogProps {
   onSearchChange: (val: string) => void
   onSelectNodeId: (nodeId: string | null) => void
   onEditNode: (nodeId: string) => void
+  onLeaveEditor: () => void
+  isEditing: boolean
+  editor: ReactNode
+  chart: ReactNode
   resolveRowsForWorkflowNode: (node: SpaceWorkflowNodeConfig) => {
     columns: AnalyticsColumnSchema[]
     rows: AnalyticsDatasetRow[]
@@ -111,8 +119,33 @@ export function NodeInspectionDialog({
   onSearchChange,
   onSelectNodeId,
   onEditNode,
+  onLeaveEditor,
+  isEditing,
+  editor,
+  chart,
   resolveRowsForWorkflowNode,
 }: NodeInspectionDialogProps) {
+  const [tabSelection, setTabSelection] = useState<{
+    nodeId: string
+    tab: string
+  }>()
+  const isOutput = inspectedNodeConfig?.kind === 'output'
+  let defaultTab = 'table'
+  if (isOutput) defaultTab = 'chart'
+  let activeTab = defaultTab
+  if (
+    tabSelection !== undefined &&
+    tabSelection.nodeId === inspectedNodeConfig?.id
+  )
+    activeTab = tabSelection.tab
+  if (activeTab === 'edit' && !isEditing) activeTab = defaultTab
+
+  function selectNode(nodeId: string | null) {
+    if (nodeId === inspectedNodeConfig?.id) return
+    setTabSelection(undefined)
+    onSelectNodeId(nodeId)
+  }
+
   let badgeLabel = 'NODE'
   let titleLabel = 'Inspeção de Fluxo'
   let descriptionLabel =
@@ -121,7 +154,7 @@ export function NodeInspectionDialog({
   let sqlPreview = ''
 
   if (inspectedNodeConfig) {
-    badgeLabel = inspectedNodeConfig.badge
+    badgeLabel = pipelineNodeKindLabels[inspectedNodeConfig.kind]
     titleLabel = inspectedNodeConfig.label
     descriptionLabel = inspectedNodeConfig.ruleSummary
     dsName = inspectedNodeConfig.dataSourceName
@@ -150,9 +183,9 @@ export function NodeInspectionDialog({
   let tableOffset = 0
   if (batch !== undefined) tableOffset = batch.offset
 
-  let paginationContent: React.ReactNode = null
+  let paginationContent: ReactNode = null
 
-  if (batch !== undefined && inspectedNodeConfig !== null) {
+  if (batch !== undefined && inspectedNodeConfig !== undefined) {
     const pageCount = Math.max(1, Math.ceil(queryTotalRows / batch.limit))
     const canPreviousPage = batch.index > 0 && !isLoadingBatch
     const canNextPage =
@@ -196,7 +229,7 @@ export function NodeInspectionDialog({
     <Dialog
       open={Boolean(inspectedNodeConfig)}
       onOpenChange={(isOpen) => {
-        if (!isOpen) onSelectNodeId(null)
+        if (!isOpen) selectNode(null)
       }}
     >
       <DialogContent className="flex max-h-[85vh] w-[95vw] max-w-6xl min-w-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
@@ -211,22 +244,12 @@ export function NodeInspectionDialog({
               </DialogTitle>
             </div>
             <div className="flex items-center gap-2">
-              {inspectedNodeConfig && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="border-border/80 h-7 gap-1.5 text-xs"
-                  onClick={() => onEditNode(inspectedNodeConfig.id)}
-                >
-                  <Settings2 className="size-3.5" />
-                  Editar Consulta
-                </Button>
+              {!isOutput && (
+                <Badge variant="secondary" className="font-mono text-[11px]">
+                  {stageTotalRows} registros no estágio • Janela [{startDate} ..{' '}
+                  {endDate}]
+                </Badge>
               )}
-              <Badge variant="secondary" className="font-mono text-[11px]">
-                {stageTotalRows} registros no estágio • Janela [{startDate} ..{' '}
-                {endDate}]
-              </Badge>
             </div>
           </div>
           <DialogDescription className="text-xs">
@@ -239,26 +262,23 @@ export function NodeInspectionDialog({
             <div className="bg-muted/30 border-border/70 flex flex-col gap-2 rounded-lg border p-3">
               <div className="text-muted-foreground flex items-center gap-1.5 text-[11px] font-semibold uppercase">
                 <GitMerge className="text-primary size-3.5" />
-                Linhagem Completa do Fluxo até este Node (Clique em qualquer
-                etapa para inspecionar):
+                Linhagem completa
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <nav
+                aria-label="Linhagem completa"
+                className="flex flex-wrap items-center gap-2"
+              >
                 {inspectedNodeLineageChain.map((stepNode, idx) => {
+                  const isSelected = stepNode.id === inspectedNodeConfig?.id
                   let stepVariant: 'default' | 'outline' = 'outline'
+                  if (isSelected) stepVariant = 'default'
 
-                  if (
-                    inspectedNodeConfig &&
-                    stepNode.id === inspectedNodeConfig.id
-                  )
-                    stepVariant = 'default'
-
+                  const StepIcon = pipelineNodeIcons[stepNode.kind]
+                  const stepKind = pipelineNodeKindLabels[stepNode.kind]
+                  const nextStep = inspectedNodeLineageChain[idx + 1]
                   const stepData = resolveRowsForWorkflowNode(stepNode)
                   let stepBatchTotal: number | undefined
-                  if (
-                    inspectedNodeConfig &&
-                    stepNode.id === inspectedNodeConfig.id
-                  )
-                    stepBatchTotal = batch?.totalRows
+                  if (isSelected) stepBatchTotal = batch?.totalRows
 
                   const stepStageTotal = resolveNodeStageTotal(
                     stepData,
@@ -271,24 +291,31 @@ export function NodeInspectionDialog({
                         size="sm"
                         variant={stepVariant}
                         className="h-8 gap-2 text-xs"
-                        onClick={() => onSelectNodeId(stepNode.id)}
+                        aria-current={isSelected ? 'step' : undefined}
+                        title={stepKind}
+                        onClick={() => selectNode(stepNode.id)}
                       >
-                        <Database className="size-3" />
+                        <StepIcon aria-hidden className="size-3" />
                         <span>{stepNode.label}</span>
-                        <Badge
-                          variant="secondary"
-                          className="font-mono text-[10px]"
-                        >
-                          {stepStageTotal}
-                        </Badge>
+                        {stepNode.kind !== 'output' && (
+                          <Badge
+                            variant="secondary"
+                            className="font-mono text-[10px]"
+                          >
+                            {stepStageTotal}
+                          </Badge>
+                        )}
                       </Button>
-                      {idx < inspectedNodeLineageChain.length - 1 && (
-                        <ArrowRight className="text-muted-foreground size-4" />
+                      {nextStep?.upstreamNodeIds.includes(stepNode.id) && (
+                        <ArrowRight
+                          aria-hidden
+                          className="text-muted-foreground size-4"
+                        />
                       )}
                     </div>
                   )
                 })}
-              </div>
+              </nav>
             </div>
 
             {sourceError !== undefined && (
@@ -300,34 +327,71 @@ export function NodeInspectionDialog({
               </div>
             )}
 
-            <Tabs defaultValue="table" className="w-full">
+            <Tabs
+              activationMode="manual"
+              value={activeTab}
+              onValueChange={(tab) => {
+                if (inspectedNodeConfig === undefined) return
+                if (tab === 'edit') onEditNode(inspectedNodeConfig.id)
+                if (tab !== 'edit' && isEditing) onLeaveEditor()
+                setTabSelection({ nodeId: inspectedNodeConfig.id, tab })
+              }}
+              className="w-full"
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <TabsList>
-                  <TabsTrigger value="table" className="gap-1.5 text-xs">
-                    <TableIcon className="size-3.5" />
-                    {dadosTabLabel}
-                  </TabsTrigger>
-                  <TabsTrigger value="sql" className="gap-1.5 text-xs">
-                    <ShieldCheck className="size-3.5" />
-                    SQL
-                  </TabsTrigger>
-                  <TabsTrigger value="schema" className="gap-1.5 text-xs">
-                    <FileSpreadsheet className="size-3.5" />
-                    Esquema
+                  {isOutput && (
+                    <TabsTrigger value="chart" className="gap-1.5 text-xs">
+                      <BarChart3 className="size-3.5" />
+                      Visualização
+                    </TabsTrigger>
+                  )}
+                  {!isOutput && (
+                    <>
+                      <TabsTrigger value="table" className="gap-1.5 text-xs">
+                        <TableIcon className="size-3.5" />
+                        {dadosTabLabel}
+                      </TabsTrigger>
+                      <TabsTrigger value="sql" className="gap-1.5 text-xs">
+                        <Code2 className="size-3.5" />
+                        SQL
+                      </TabsTrigger>
+                      <TabsTrigger value="schema" className="gap-1.5 text-xs">
+                        <FileSpreadsheet className="size-3.5" />
+                        Esquema
+                      </TabsTrigger>
+                    </>
+                  )}
+                  <TabsTrigger value="edit" className="gap-1.5 text-xs">
+                    <Settings2 className="size-3.5" />
+                    Edição
                   </TabsTrigger>
                 </TabsList>
 
-                <div className="relative w-64">
-                  <Search className="text-muted-foreground absolute top-2 left-2.5 size-3.5" />
-                  <Input
-                    value={nodeModalSearch}
-                    onChange={(e) => onSearchChange(e.target.value)}
-                    placeholder="Filtrar linhas neste estágio..."
-                    className="h-7 pl-8 text-xs"
-                  />
-                </div>
+                {activeTab === 'table' && (
+                  <div className="relative w-64">
+                    <Search className="text-muted-foreground absolute top-2 left-2.5 size-3.5" />
+                    <Input
+                      value={nodeModalSearch}
+                      onChange={(e) => onSearchChange(e.target.value)}
+                      placeholder="Filtrar linhas neste estágio..."
+                      className="h-7 pl-8 text-xs"
+                    />
+                  </div>
+                )}
               </div>
 
+              <TabsContent value="chart" className="mt-3">
+                {chart}
+                {chart === undefined && (
+                  <p className="text-muted-foreground text-sm">
+                    Nenhum gráfico vinculado a este nó.
+                  </p>
+                )}
+              </TabsContent>
+              <TabsContent value="edit" className="mt-3">
+                {editor}
+              </TabsContent>
               <TabsContent value="table" className="mt-3 flex flex-col gap-3">
                 <VirtualizedNodeTable
                   columns={inspectedNodeResolvedData.columns}
@@ -412,11 +476,7 @@ export function NodeInspectionDialog({
         </div>
 
         <DialogFooter className="bg-muted/20 flex shrink-0 items-center justify-end gap-2 border-t px-6 py-3">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onSelectNodeId(null)}
-          >
+          <Button size="sm" variant="outline" onClick={() => selectNode(null)}>
             Fechar Inspeção
           </Button>
         </DialogFooter>

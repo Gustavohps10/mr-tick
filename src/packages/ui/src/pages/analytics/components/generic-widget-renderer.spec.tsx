@@ -105,6 +105,54 @@ beforeEach(() => {
   })
 })
 
+const pagedVisuals: WidgetId[] = [
+  'bar_vertical',
+  'pivot_matrix',
+  'split_pane_chart',
+]
+it.each(pagedVisuals)(
+  'keeps the chart on its initial groups and only paginates tables for %s',
+  async (visual) => {
+    calls.query.mockImplementation(async ({ body }) => ({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        ...queryData(body),
+        rows: [
+          { category: body.offset === 0 ? 'Primeiro' : 'Segundo', hours: 2 },
+        ],
+        totalRows: 101,
+        hasMore: body.offset === 0,
+      },
+    }))
+    renderWidget(visual, 'hours', undefined)
+
+    if (visual === 'bar_vertical') {
+      expect(
+        await screen.findByText(/Gráfico exibe os primeiros 1 de 101 grupos/),
+      ).toBeVisible()
+      expect(
+        screen.queryByRole('button', { name: 'Próxima página' }),
+      ).not.toBeInTheDocument()
+      return
+    }
+
+    await screen.findByRole('cell', { name: 'Primeiro' })
+    const chartCalls = calls.charts.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima página' }))
+    expect(await screen.findByRole('cell', { name: 'Segundo' })).toBeVisible()
+    if (visual === 'split_pane_chart') {
+      expect(chartCalls).toBeGreaterThan(0)
+      expect(
+        screen.getByText(/Gráfico exibe os primeiros 1 de 101 grupos/),
+      ).toBeVisible()
+      expect(calls.charts.mock.lastCall?.[0]).toMatchObject({
+        props: { data: [{ category: 'Primeiro', hours: 2 }] },
+      })
+    }
+  },
+)
+
 function renderWidget(
   visual: WidgetId,
   metricColumn: string,
@@ -290,6 +338,9 @@ describe('Native widget query contract', () => {
     })
     renderWidget('line_reference', 'hours', undefined, 'average')
     await waitFor(() => expect(calls.charts).toHaveBeenCalled())
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ver avisos do gráfico' }),
+    )
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('ANALYTICS_ENGINE_QUEUE_LIMIT')
     expect(alert).toHaveTextContent('queue saturated')
@@ -345,6 +396,9 @@ describe('Native widget query contract', () => {
       })
       renderWidget('line_reference', 'remote_total', 'remote_capacity', mode)
       await waitFor(() => expect(calls.charts).toHaveBeenCalled())
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Ver avisos do gráfico' }),
+      )
       expect(await screen.findByRole('alert')).toHaveTextContent(
         'ANALYTICS_REMOTE_AGGREGATE_PROJECTION_ONLY',
       )
@@ -361,6 +415,9 @@ describe('Native widget query contract', () => {
       return { isSuccess: true, statusCode: 200, data: queryData(body) }
     })
     renderWidget('line_reference', '', undefined, 'average')
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ver avisos do gráfico' }),
+    )
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'ANALYTICS_MEASURE_COLUMN_REQUIRED',
     )
@@ -558,6 +615,9 @@ describe('Native widget query contract', () => {
 
     await waitFor(() => expect(calls.charts).toHaveBeenCalled())
     const initialChartCalls = calls.charts.mock.calls.length
+    const aggregation = screen.getByRole('combobox', {
+      name: 'Agregação da visualização',
+    })
 
     rendered.rerender(
       <GenericWidgetRenderer
@@ -601,6 +661,9 @@ describe('Native widget query contract', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'Atualizando em segundo plano...',
     )
+    expect(
+      screen.getByRole('combobox', { name: 'Agregação da visualização' }),
+    ).toBe(aggregation)
 
     rendered.rerender(
       <GenericWidgetRenderer
@@ -639,6 +702,13 @@ describe('Native widget query contract', () => {
       />,
     )
 
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('combobox', { name: 'Agregação da visualização' }),
+    ).toBe(aggregation)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Ver avisos do gráfico' }),
+    )
     expect(screen.getByRole('alert')).toHaveTextContent('REDMINE_TIMEOUT')
     expect(
       screen.getByText('Exibindo última versão disponível em cache.'),

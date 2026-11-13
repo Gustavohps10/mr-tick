@@ -27,6 +27,7 @@ export interface IHttpRequestOptions<T extends JsonValue> {
   readonly sensitiveHeaders?: readonly string[]
   readonly timeout?: number
   readonly responseType?: 'json' | 'text'
+  readonly priority?: 'manual' | 'background'
   readonly responseValidator: HttpResponseValidator<T>
 }
 

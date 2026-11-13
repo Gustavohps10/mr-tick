@@ -309,7 +309,7 @@ export const COLLECTION_CONFIGS: CollectionConfig[] = [
     hasPush: false,
     strategyFactory: (client, workspaceId, connId, dsId) =>
       new MetadataReplication(client, workspaceId, connId, dsId),
-    interval: 3600,
+    interval: 60 * 60, // 1 hora
     batch: 10,
   },
   {
@@ -317,7 +317,7 @@ export const COLLECTION_CONFIGS: CollectionConfig[] = [
     hasPush: false,
     strategyFactory: (client, workspaceId, connId, dsId) =>
       new TasksReplication(client, workspaceId, connId, dsId),
-    interval: 300,
+    interval: 60 * 15, // 15 minutos
     batch: 30,
   },
   {
@@ -325,7 +325,7 @@ export const COLLECTION_CONFIGS: CollectionConfig[] = [
     hasPush: true,
     strategyFactory: (client, workspaceId, connId, dsId, collection) =>
       new TimeEntriesReplication(client, workspaceId, connId, dsId, collection),
-    interval: 60,
+    interval: 60 * 5, // 5 minutos
     batch: 30,
   },
 ]

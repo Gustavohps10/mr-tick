@@ -5,34 +5,17 @@ import type {
   AnalyticsPlanNode,
   AnalyticsQueryInput,
 } from '@mr-tick/application'
-import { useState } from 'react'
+import { CircleAlert, LoaderCircle } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  Legend,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  PolarAngleAxis,
-  PolarGrid,
-  Radar,
-  RadarChart,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
 
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -42,14 +25,6 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Slider } from '@/components/ui/slider'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 
 import { useAnalyticsQuery } from '../hooks/use-analytics-query'
 import type {
@@ -59,9 +34,8 @@ import type {
   SpaceWidgetConfig,
   SpaceWorkflowNodeConfig,
 } from '../lib/analytics-types'
-import { getPaletteColor } from '../lib/analytics-utils'
+import { AnalyticsChartContent } from './analytics-chart-content'
 import { AnalyticsError } from './analytics-error'
-import { AnalyticsHierarchyTable } from './analytics-hierarchy-table'
 
 function formatBatchProgressLabel(
   progress: AnalyticsLoadProgressEvent | undefined,
@@ -75,6 +49,93 @@ function formatBatchProgressLabel(
     return `Carregando lote ${progress.batchIndex + 1} • ${progress.fetchedRows} de ${progress.totalRows} registros`
 
   return `Carregando lote ${progress.batchIndex + 1} • ${progress.fetchedRows} registros carregados`
+}
+
+function WidgetFeedback({
+  loadingLabel,
+  warnings,
+}: {
+  loadingLabel?: string
+  warnings?: ReactNode
+}) {
+  return (
+    <div className="relative flex h-8 min-w-0 items-center justify-between gap-2">
+      <div role="status" className="text-muted-foreground min-w-0 text-xs">
+        {loadingLabel !== undefined && (
+          <span className="flex items-center gap-1.5">
+            <LoaderCircle
+              aria-hidden
+              className="text-primary size-3.5 shrink-0 motion-safe:animate-spin"
+            />
+            <span className="truncate" title={loadingLabel}>
+              {loadingLabel}
+            </span>
+          </span>
+        )}
+      </div>
+      {loadingLabel !== undefined && (
+        <div
+          aria-hidden
+          className="bg-primary/60 pointer-events-none absolute inset-x-0 bottom-0 h-0.5 rounded-full motion-safe:animate-pulse"
+        />
+      )}
+      {warnings !== undefined && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-destructive size-7 shrink-0"
+              aria-label="Ver avisos do gráfico"
+              title="Ver avisos do gráfico"
+            >
+              <CircleAlert />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            aria-label="Avisos do gráfico"
+            className="flex max-h-[min(60vh,24rem)] w-[min(22rem,calc(100vw-2rem))] flex-col gap-3 overflow-y-auto"
+          >
+            {warnings}
+          </PopoverContent>
+        </Popover>
+      )}
+    </div>
+  )
+}
+
+function WidgetUnavailable({
+  message,
+  details,
+  retry,
+}: {
+  message: string
+  details: Record<string, string[]> | undefined
+  retry: () => void
+}) {
+  return (
+    <div>
+      <WidgetFeedback />
+      <div className="min-h-64 py-2">
+        <div className="border-destructive/40 bg-destructive/5 flex flex-col items-start gap-2 rounded-md border p-2.5 break-words">
+          <AnalyticsError message={message} details={details} />
+          <Button variant="outline" size="sm" onClick={retry}>
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function WidgetLoading({ label }: { label: string }) {
+  return (
+    <div>
+      <WidgetFeedback loadingLabel={label} />
+      <Skeleton aria-hidden className="h-64 w-full rounded-md" />
+    </div>
+  )
 }
 
 export interface GenericWidgetRendererProps {
@@ -182,7 +243,14 @@ export function GenericWidgetRenderer({
     measures.push({ name: primary, operator: 'count' })
   let input: AnalyticsQueryInput | undefined
   let summaryInput: AnalyticsQueryInput | undefined
-  const visual = widget.chartVisualType
+  let visual = widget.widgetType
+  if (widget.chartVisualType !== undefined) visual = widget.chartVisualType
+
+  const isTable =
+    visual === 'pivot_matrix' ||
+    visual === 'tree_grid' ||
+    visual === 'conditional_table'
+  const hasSideTable = visual === 'split_pane_chart'
 
   if (baseInput !== undefined && base.data !== undefined) {
     input = { ...baseInput, offset: 0, limit: 100 }
@@ -308,9 +376,19 @@ export function GenericWidgetRenderer({
   }
 
   const signature = JSON.stringify([input, publicationVersion])
-  if (input !== undefined && page.signature === signature)
-    input = { ...input, offset: page.offset, version: page.version }
+  let sideTableInput: AnalyticsQueryInput | undefined
+  if (input !== undefined && page.signature === signature && page.offset > 0) {
+    const pagedInput = { ...input, offset: page.offset, version: page.version }
+    if (isTable) input = pagedInput
+    if (hasSideTable) sideTableInput = pagedInput
+  }
+
   const result = useAnalyticsQuery(input, publicationVersion, onUnauthorized)
+  const sideTable = useAnalyticsQuery(
+    sideTableInput,
+    publicationVersion,
+    onUnauthorized,
+  )
   const summary = useAnalyticsQuery(
     summaryInput,
     publicationVersion,
@@ -321,53 +399,49 @@ export function GenericWidgetRenderer({
   if (onRetrySource !== undefined) retrySourceAction = onRetrySource
 
   if (upstreamStatus !== undefined && !upstreamStatus.hasPublication) {
-    if (upstreamStatus.error !== undefined) {
+    if (upstreamStatus.isInitialLoading)
       return (
-        <div className="space-y-2">
-          <AnalyticsError
-            message={upstreamStatus.error}
-            details={upstreamStatus.errorDetails}
-          />
-          <Button variant="outline" size="sm" onClick={retrySourceAction}>
-            Tentar novamente
-          </Button>
-        </div>
+        <WidgetLoading
+          label={formatBatchProgressLabel(upstreamStatus.progress)}
+        />
       )
-    }
 
-    if (upstreamStatus.isInitialLoading || !sourceReadyInPlan) {
+    if (upstreamStatus.error !== undefined)
       return (
-        <div role="status" className="space-y-2">
-          <Skeleton className="h-64 w-full rounded-md" />
-          <p className="text-muted-foreground text-xs">
-            {formatBatchProgressLabel(upstreamStatus.progress)}
-          </p>
-        </div>
+        <WidgetUnavailable
+          message={upstreamStatus.error}
+          details={upstreamStatus.errorDetails}
+          retry={retrySourceAction}
+        />
       )
-    }
+
+    if (!sourceReadyInPlan)
+      return (
+        <WidgetLoading
+          label={formatBatchProgressLabel(upstreamStatus.progress)}
+        />
+      )
   }
 
   if (base.loading || result.loading)
-    return <Skeleton className="h-64 w-full rounded-md" />
+    return <WidgetLoading label="Carregando gráfico…" />
 
   if (base.error !== undefined && base.data === undefined)
     return (
-      <div>
-        <AnalyticsError message={base.error} details={base.details} />
-        <Button variant="outline" onClick={base.retry}>
-          Tentar novamente
-        </Button>
-      </div>
+      <WidgetUnavailable
+        message={base.error}
+        details={base.details}
+        retry={base.retry}
+      />
     )
 
   if (result.error !== undefined && result.data === undefined)
     return (
-      <div>
-        <AnalyticsError message={result.error} details={result.details} />
-        <Button variant="outline" onClick={result.retry}>
-          Tentar novamente
-        </Button>
-      </div>
+      <WidgetUnavailable
+        message={result.error}
+        details={result.details}
+        retry={result.retry}
+      />
     )
 
   if (node === undefined || result.data === undefined)
@@ -397,29 +471,54 @@ export function GenericWidgetRenderer({
     refreshRetryAction = base.retry
   }
 
-  const isBackgroundRefreshing =
-    upstreamStatus?.isRefreshing === true ||
-    base.isRefreshing ||
-    result.isRefreshing
+  let loadingLabel: string | undefined
+  if (summaryInput !== undefined && (summary.loading || summary.isRefreshing))
+    loadingLabel = 'Calculando referência…'
+  if (upstreamStatus?.isRefreshing || base.isRefreshing || result.isRefreshing)
+    loadingLabel = 'Atualizando em segundo plano...'
+  if (upstreamStatus?.isRefreshing && upstreamStatus.progress !== undefined)
+    loadingLabel = formatBatchProgressLabel(upstreamStatus.progress)
 
-  if (data.rows.length === 0) {
-    return (
-      <div className="space-y-2">
+  let warnings: ReactNode = undefined
+  if (refreshErrorMessage !== undefined || summary.error !== undefined)
+    warnings = (
+      <>
         {refreshErrorMessage !== undefined && (
-          <div className="border-destructive/40 bg-destructive/5 space-y-2 rounded-md border p-2.5">
+          <div className="border-destructive/40 bg-destructive/5 flex flex-col items-start gap-2 rounded-md border p-2.5 break-words">
             <AnalyticsError
               message={refreshErrorMessage}
               details={refreshErrorDetails}
             />
+            <p className="text-muted-foreground text-xs">
+              Exibindo última versão disponível em cache.
+            </p>
             <Button variant="outline" size="sm" onClick={refreshRetryAction}>
               Tentar novamente
             </Button>
           </div>
         )}
-        <p>Nenhum registro para esta seleção.</p>
+        {summary.error !== undefined && (
+          <div className="border-destructive/40 bg-destructive/5 flex flex-col items-start gap-2 rounded-md border p-2.5 break-words">
+            <AnalyticsError message={summary.error} details={summary.details} />
+            <Button variant="outline" size="sm" onClick={summary.retry}>
+              Tentar referência novamente
+            </Button>
+          </div>
+        )}
+      </>
+    )
+
+  const feedback = (
+    <WidgetFeedback loadingLabel={loadingLabel} warnings={warnings} />
+  )
+
+  if (data.rows.length === 0)
+    return (
+      <div>
+        {feedback}
+        <p className="min-h-64 py-2">Nenhum registro para esta seleção.</p>
       </div>
     )
-  }
 
   let category = widget.categoryColumn
   if (category === undefined) category = ''
@@ -464,219 +563,67 @@ export function GenericWidgetRenderer({
       onGenericDrillDown(node, category, String(value))
   }
 
-  const rowStyle = (row: AnalyticsDatasetRow) => {
-    if (visual !== 'conditional_table') return undefined
-    const value = row[ratio]
-    if (typeof value !== 'number') return undefined
-    if (value > 100 + overloadTolerancePct)
-      return { backgroundColor: 'color-mix(in srgb, #ef4444 15%, transparent)' }
-    if (value < 100 - idleTolerancePct)
-      return { backgroundColor: 'color-mix(in srgb, #f59e0b 15%, transparent)' }
-    if (Math.abs(value - 100) <= estimationTolerancePct)
-      return { backgroundColor: 'color-mix(in srgb, #10b981 12%, transparent)' }
-    return undefined
-  }
+  let tablePage = data
+  if (sideTable.data !== undefined) tablePage = sideTable.data
 
-  const table = (
-    <div className="overflow-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {data.columns.map((column) => (
-              <TableHead key={column.name}>{column.label}</TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data.rows.map((row, index) => (
-            <TableRow
-              key={index}
-              style={rowStyle(row)}
-              onClick={() => clickRow(row)}
-            >
-              {data.columns.map((column) => (
-                <TableCell key={column.name}>
-                  {String(row[column.name])}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+  const pagination = (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={tablePage.offset === 0 && sideTableInput === undefined}
+        onClick={() => setPage({ signature, offset: 0 })}
+      >
+        Início
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={
+          !tablePage.hasMore ||
+          sideTable.loading ||
+          sideTable.error !== undefined
+        }
+        onClick={() =>
+          setPage({
+            signature,
+            offset: tablePage.offset + tablePage.limit,
+            version: tablePage.version,
+          })
+        }
+      >
+        Próxima página
+      </Button>
     </div>
   )
-  const axes = (
-    <>
-      <CartesianGrid strokeDasharray="3 3" />
-      <XAxis dataKey={category} />
-      <YAxis />
-      <Tooltip />
-      <Legend />
-      {reference !== undefined && (
-        <ReferenceLine y={reference} stroke="#ef4444" />
-      )}
-    </>
-  )
-  let chart = (
-    <BarChart data={data.rows}>
-      {axes}
-      {series.map((name, index) => (
-        <Bar
-          key={name}
-          dataKey={name}
-          fill={getPaletteColor(index)}
-          stackId={input?.pivot !== undefined ? 'stack' : undefined}
-        >
-          {data.rows.map((row, rowIndex) => (
-            <Cell key={rowIndex} onClick={() => clickRow(row)} />
-          ))}
-        </Bar>
-      ))}
-    </BarChart>
-  )
-  if (visual === 'bar_horizontal')
-    chart = (
-      <BarChart data={data.rows} layout="vertical">
-        <CartesianGrid />
-        <XAxis type="number" />
-        <YAxis type="category" dataKey={category} />
-        <Tooltip />
-        {series.map((name, index) => (
-          <Bar key={name} dataKey={name} fill={getPaletteColor(index)} />
-        ))}
-      </BarChart>
-    )
-  if (visual === 'line' || visual === 'line_reference')
-    chart = (
-      <LineChart data={data.rows}>
-        {axes}
-        {series.map((name, index) => (
-          <Line
-            key={name}
-            dataKey={name}
-            stroke={getPaletteColor(index)}
-            dot={false}
-          />
-        ))}
-      </LineChart>
-    )
-  if (visual === 'area' || visual === 'area_stacked')
-    chart = (
-      <AreaChart data={data.rows}>
-        {axes}
-        {series.map((name, index) => (
-          <Area
-            key={name}
-            dataKey={name}
-            stroke={getPaletteColor(index)}
-            fill={getPaletteColor(index)}
-            stackId={visual === 'area_stacked' ? 'stack' : undefined}
-          />
-        ))}
-      </AreaChart>
-    )
-  if (visual === 'combo_multiaxis')
-    chart = (
-      <ComposedChart data={data.rows}>
-        {axes}
-        <Bar dataKey={metric} fill={getPaletteColor(0)} />
-        <Line dataKey={secondaryMetric} stroke={getPaletteColor(1)} />
-      </ComposedChart>
-    )
-  if (visual === 'pie_donut')
-    chart = (
-      <PieChart>
-        <Tooltip />
-        <Legend />
-        <Pie
-          data={data.rows}
-          dataKey={metric}
-          nameKey={category}
-          innerRadius="45%"
-          outerRadius="80%"
-          fill={getPaletteColor(0)}
-        />
-      </PieChart>
-    )
-  if (visual === 'radar')
-    chart = (
-      <RadarChart data={data.rows}>
-        <PolarGrid />
-        <PolarAngleAxis dataKey={category} />
-        <Tooltip />
-        {series.map((name, index) => (
-          <Radar
-            key={name}
-            dataKey={name}
-            stroke={getPaletteColor(index)}
-            fill={getPaletteColor(index)}
-            fillOpacity={0.2}
-          />
-        ))}
-      </RadarChart>
-    )
-  const isTable =
-    visual === 'pivot_matrix' ||
-    visual === 'tree_grid' ||
-    visual === 'conditional_table'
-  let content = (
-    <div className="h-72 min-w-0">
-      <ResponsiveContainer width="100%" height="100%">
-        {chart}
-      </ResponsiveContainer>
-    </div>
-  )
-  if (isTable) content = table
-  if (
-    visual === 'tree_grid' &&
-    widget.hierarchyColumns !== undefined &&
-    data.groupingColumn !== undefined
-  )
-    content = (
-      <AnalyticsHierarchyTable
-        data={data}
-        hierarchy={widget.hierarchyColumns}
-      />
-    )
-  if (visual === 'split_pane_chart')
-    content = (
-      <div className="grid min-w-0 gap-3 lg:grid-cols-[7fr_3fr]">
-        {content}
-        {table}
-      </div>
-    )
-  if (visual === 'kpi_card')
-    content = (
-      <div className="p-6 text-3xl font-semibold">
-        {data.rows.map((row, index) => (
-          <div key={index}>{String(row[metric])}</div>
-        ))}
-        {reference !== undefined && (
-          <p className="text-muted-foreground text-sm">
-            Referência: {reference}
+
+  let sideTableFooter: ReactNode = undefined
+  if (hasSideTable)
+    sideTableFooter = (
+      <>
+        {sideTable.loading && (
+          <p role="status" className="text-xs">
+            Carregando página da tabela…
           </p>
         )}
-      </div>
+        {sideTable.error !== undefined && (
+          <div className="flex flex-col items-start gap-2">
+            <AnalyticsError
+              message={sideTable.error}
+              details={sideTable.details}
+            />
+            <Button variant="outline" size="sm" onClick={sideTable.retry}>
+              Tentar página novamente
+            </Button>
+          </div>
+        )}
+        {pagination}
+      </>
     )
 
   return (
     <div className="space-y-3">
-      {refreshErrorMessage !== undefined && (
-        <div className="border-destructive/40 bg-destructive/5 space-y-2 rounded-md border p-2.5">
-          <AnalyticsError
-            message={refreshErrorMessage}
-            details={refreshErrorDetails}
-          />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-muted-foreground text-xs">
-              Exibindo última versão disponível em cache.
-            </span>
-            <Button variant="outline" size="sm" onClick={refreshRetryAction}>
-              Tentar novamente
-            </Button>
-          </div>
-        </div>
-      )}
+      {feedback}
 
       {!data.remoteAggregate && widget.metricColumn !== '' && (
         <Select
@@ -739,54 +686,32 @@ export function GenericWidgetRenderer({
           </div>
         </div>
       )}
-      {content}
-      {summaryInput !== undefined && summary.loading && (
-        <p role="status" className="text-muted-foreground text-xs">
-          Calculando referência…
-        </p>
-      )}
-      {summary.error !== undefined && (
-        <div className="space-y-2">
-          <AnalyticsError message={summary.error} details={summary.details} />
-          <Button variant="outline" size="sm" onClick={summary.retry}>
-            Tentar referência novamente
-          </Button>
-        </div>
-      )}
+      <AnalyticsChartContent
+        data={data}
+        sideTableData={sideTable.data}
+        sideTableFooter={sideTableFooter}
+        visual={visual}
+        category={category}
+        metric={metric}
+        secondaryMetric={secondaryMetric}
+        series={series}
+        stacked={visual === 'bar_stacked' || input?.pivot !== undefined}
+        hierarchyColumns={widget.hierarchyColumns}
+        reference={reference}
+        ratio={ratio}
+        overloadTolerancePct={overloadTolerancePct}
+        idleTolerancePct={idleTolerancePct}
+        estimationTolerancePct={estimationTolerancePct}
+        clickRow={clickRow}
+      />
       <div className="text-muted-foreground flex items-center justify-between gap-2 text-xs">
         <span>
-          {data.totalRows} grupos · {data.coverage} · {data.loadedAt}
-          {isBackgroundRefreshing && (
-            <>
-              {' '}
-              · <span role="status">Atualizando em segundo plano...</span>
-            </>
+          {!isTable && data.hasMore && (
+            <>Gráfico exibe os primeiros {data.rows.length} de </>
           )}
+          {data.totalRows} grupos · {data.coverage} · {data.loadedAt}
         </span>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={data.offset === 0}
-            onClick={() => setPage({ signature, offset: 0 })}
-          >
-            Início
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!data.hasMore}
-            onClick={() =>
-              setPage({
-                signature,
-                offset: data.offset + data.limit,
-                version: data.version,
-              })
-            }
-          >
-            Próxima página
-          </Button>
-        </div>
+        {isTable && pagination}
       </div>
     </div>
   )

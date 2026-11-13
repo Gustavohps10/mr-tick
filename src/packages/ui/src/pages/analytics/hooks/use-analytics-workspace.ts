@@ -43,7 +43,7 @@ import { useHostBridge } from '@/hooks'
 import {
   buildAnalyticsPlan,
   collectUpstreamSourceNodeIds,
-  isRemoteAggregateUnsupportedVisual,
+  collectWorkflowLineage,
   isRemoteAggregateUpstream,
 } from '../lib/analytics-plan'
 import {
@@ -67,7 +67,6 @@ import {
   type AnalyticsUpstreamSourceStatus,
   type AvailableProjectOption,
   type CanvasLayerMode,
-  type ChartVisualType,
   type ConnectionDisplayOption,
   createDefaultBlankSpace,
   type DrillDownSelection,
@@ -80,6 +79,7 @@ import {
   type WidgetSpan,
   type WorkflowNodeKind,
 } from '../lib/analytics-types'
+import { chartInputIssues } from '../lib/chart-input'
 import { useAnalyticsNodePages } from './use-analytics-node-pages'
 
 const DEFAULT_POLLING_INTERVAL_MINUTES = 5
@@ -131,6 +131,30 @@ function maxIsoTimestamp(
   if (!Number.isFinite(currentMs) || candidateMs > currentMs) return candidate
 
   return current
+}
+
+const NODE_COLUMN_TOP_Y = 80
+const NODE_VERTICAL_STEP = 176
+
+function computeColumnNodeY(
+  nodes: SpaceWorkflowNodeConfig[],
+  columnGroup: AddNodeTypeOption,
+): number {
+  const columnNodes = nodes.filter((node) => {
+    if (columnGroup === 'source') return node.kind === 'source'
+    if (columnGroup === 'output') return node.kind === 'output'
+    return node.kind !== 'source' && node.kind !== 'output'
+  })
+
+  if (columnNodes.length === 0) return NODE_COLUMN_TOP_Y
+
+  let maxY = NODE_COLUMN_TOP_Y
+
+  for (const node of columnNodes) {
+    if (node.positionY > maxY) maxY = node.positionY
+  }
+
+  return maxY + NODE_VERTICAL_STEP
 }
 
 export function useAnalyticsWorkspace() {
@@ -223,6 +247,7 @@ export function useAnalyticsWorkspace() {
 
   const handleSetInspectedNodeId = useCallback((nodeId: string | null) => {
     setInspectedNodeId(nodeId)
+    setNodeModalSearch('')
     setInspectionPage((previous) => ({
       id: '',
       search: '',
@@ -242,6 +267,9 @@ export function useAnalyticsWorkspace() {
 
   const [isAddNodeModalOpen, setIsAddNodeModalOpen] = useState<boolean>(false)
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
+  const [pendingRemoveNodeId, setPendingRemoveNodeId] = useState<string | null>(
+    null,
+  )
   const [selectedAddNodeType, setSelectedAddNodeType] =
     useState<AddNodeTypeOption>('source')
   const [newNodeLabel, setNewNodeLabel] = useState<string>('')
@@ -1821,9 +1849,15 @@ export function useAnalyticsWorkspace() {
       }
     | undefined
 
-  if (inspectedNodeId !== null) {
+  const inspectedNodeConfig = activeSpace.workflowNodes.find(
+    (node) => node.id === inspectedNodeId,
+  )
+  if (
+    inspectedNodeConfig !== undefined &&
+    inspectedNodeConfig.kind !== 'output'
+  ) {
     inspection = {
-      id: inspectedNodeId,
+      id: inspectedNodeConfig.id,
       search: nodeModalSearch,
       offset: 0,
       limit: inspectionPage.limit,
@@ -1931,7 +1965,11 @@ export function useAnalyticsWorkspace() {
     )
       targetNode = dataNodes.find((n) => n.id === txUpstreamNodeId)
 
-    if (txUpstreamNodeId === '__all__' && dataNodes.length > 0) {
+    if (
+      selectedAddNodeType === 'transform' &&
+      txUpstreamNodeId === '__all__' &&
+      dataNodes.length > 0
+    ) {
       const merged: AnalyticsColumnSchema[] = []
       const seen = new Set<string>()
 
@@ -1959,6 +1997,22 @@ export function useAnalyticsWorkspace() {
     selectedAddNodeType,
     txUpstreamNodeId,
   ])
+
+  const outputIssues = chartInputIssues(
+    newNodeWidgetType,
+    {
+      categoryColumn: outputCategoryColumn,
+      metricColumn: outputMetricColumn,
+      secondaryMetricColumn: outputSecondaryMetricColumn,
+      stackColumn: outputStackColumn,
+      hierarchyColumns: outputHierarchyColumns,
+      referenceLineMode: outputReferenceLineMode,
+    },
+    upstreamAvailableColumns,
+    isRemoteAggregateUpstream(activeSpace.workflowNodes, outputSourceNodeId),
+  )
+  const outputIsInvalid =
+    outputIssues.length > 0 || upstreamAvailableColumns.length === 0
 
   const previewBeforeNode = activeSpace.workflowNodes.find(
     (node) => node.id === txUpstreamNodeId,
@@ -2092,44 +2146,151 @@ export function useAnalyticsWorkspace() {
       setOutputReferenceLineMode(nextReferenceLineMode)
       setOutputReferenceLineTarget(nextReferenceLineTarget)
 
-      handleSetInspectedNodeId(null)
       setIsAddNodeModalOpen(true)
     },
-    [
-      activeSpace.widgets,
-      activeSpace.workflowNodes,
-      handleSetInspectedNodeId,
-      nodeSourceDatasets,
-    ],
+    [activeSpace.widgets, activeSpace.workflowNodes, nodeSourceDatasets],
   )
 
-  const handleOpenAddNode = useCallback(() => {
-    setQueryExecution(undefined)
-    setEditingNodeId(null)
-    setNewNodeLabel('')
-    setSelectedAddNodeType('source')
-    setNewNodeFilterValues({})
-    setNewNodeCustomDateRange(undefined)
+  const handleOpenAddNode = useCallback(
+    (nodeType?: AddNodeTypeOption) => {
+      let targetType: AddNodeTypeOption = 'source'
 
-    const matchedDs = nodeSourceDatasets.find((d) => d.id === newNodeDatasetId)
-    if (matchedDs) setNodeSelectedColumns(matchedDs.columns.map((c) => c.name))
-    if (!matchedDs) setNodeSelectedColumns([])
+      if (nodeType !== undefined) targetType = nodeType
 
-    setNodeCustomFieldTypes({})
-    setTxUpstreamNodeId('')
-    setSqlQueryText('')
-    setOutputSourceNodeId('')
-    setNewNodeWidgetType('bar_vertical')
-    setNewNodeSpan(2)
-    setOutputCategoryColumn('')
-    setOutputMetricColumn('')
-    setOutputSecondaryMetricColumn('')
-    setOutputHierarchyColumns([])
-    setOutputStackColumn('')
-    setOutputReferenceLineMode('none')
-    setOutputReferenceLineTarget(24)
-    setIsAddNodeModalOpen(true)
-  }, [newNodeDatasetId, nodeSourceDatasets])
+      setQueryExecution(undefined)
+      setEditingNodeId(null)
+      setNewNodeLabel('')
+      setSelectedAddNodeType(targetType)
+      setNewNodeFilterValues({})
+      setNewNodeCustomDateRange(undefined)
+
+      const matchedDs = nodeSourceDatasets.find(
+        (d) => d.id === newNodeDatasetId,
+      )
+      if (matchedDs)
+        setNodeSelectedColumns(matchedDs.columns.map((c) => c.name))
+      if (!matchedDs) setNodeSelectedColumns([])
+
+      setNodeCustomFieldTypes({})
+      setTxUpstreamNodeId('')
+      setSqlQueryText('')
+      setOutputSourceNodeId('')
+      setNewNodeWidgetType('bar_vertical')
+      setNewNodeSpan(2)
+      setOutputCategoryColumn('')
+      setOutputMetricColumn('')
+      setOutputSecondaryMetricColumn('')
+      setOutputHierarchyColumns([])
+      setOutputStackColumn('')
+      setOutputReferenceLineMode('none')
+      setOutputReferenceLineTarget(24)
+      setIsAddNodeModalOpen(true)
+    },
+    [newNodeDatasetId, nodeSourceDatasets],
+  )
+
+  const widgetInputErrors = useMemo(() => {
+    const errors: Record<string, string> = {}
+
+    for (const widget of activeSpace.widgets) {
+      if (widget.outputNodeId === undefined) continue
+      const source = activeSpace.workflowNodes.find(
+        (node) => node.id === widget.sourceNodeId && node.kind !== 'output',
+      )
+      if (source === undefined) {
+        errors[widget.id] = 'Conecte uma entrada ao gráfico.'
+        continue
+      }
+
+      let visual = widget.widgetType
+      if (widget.chartVisualType !== undefined) visual = widget.chartVisualType
+      const issues = chartInputIssues(
+        visual,
+        widget,
+        nodePages[source.id]?.data?.columns,
+        isRemoteAggregateUpstream(activeSpace.workflowNodes, source.id),
+      )
+      if (issues.length > 0) errors[widget.id] = issues.join(' ')
+    }
+
+    return errors
+  }, [activeSpace.widgets, activeSpace.workflowNodes, nodePages])
+
+  const pendingRemoveNode = useMemo(() => {
+    if (pendingRemoveNodeId === null) return undefined
+
+    return activeSpace.workflowNodes.find(
+      (node) => node.id === pendingRemoveNodeId,
+    )
+  }, [activeSpace.workflowNodes, pendingRemoveNodeId])
+
+  const pendingRemoveDependents = useMemo(() => {
+    if (pendingRemoveNodeId === null) return []
+
+    return activeSpace.workflowNodes.filter((node) =>
+      node.upstreamNodeIds.includes(pendingRemoveNodeId),
+    )
+  }, [activeSpace.workflowNodes, pendingRemoveNodeId])
+
+  const handleRequestRemoveNode = useCallback((nodeId: string) => {
+    setPendingRemoveNodeId(nodeId)
+  }, [])
+
+  const handleCancelRemoveNode = useCallback(() => {
+    setPendingRemoveNodeId(null)
+  }, [])
+
+  const handleConfirmRemoveNode = useCallback(() => {
+    if (pendingRemoveNodeId === null) return
+
+    const targetId = pendingRemoveNodeId
+    userMutatedStateRef.current = true
+
+    setSpaces((prev) =>
+      prev.map((space) => {
+        if (space.id !== activeSpace.id) return space
+
+        const nextWorkflowNodes = space.workflowNodes
+          .filter((node) => node.id !== targetId)
+          .map((node) => {
+            if (!node.upstreamNodeIds.includes(targetId)) return node
+
+            return {
+              ...node,
+              upstreamNodeIds: node.upstreamNodeIds.filter(
+                (id) => id !== targetId,
+              ),
+            }
+          })
+
+        const nextWorkflowEdges = space.workflowEdges.filter(
+          (edge) => edge.source !== targetId && edge.target !== targetId,
+        )
+
+        const nextWidgets = space.widgets
+          .filter((widget) => widget.outputNodeId !== targetId)
+          .map((widget) => {
+            if (widget.sourceNodeId !== targetId) return widget
+
+            return {
+              ...widget,
+              sourceNodeId: '',
+            }
+          })
+
+        return {
+          ...space,
+          workflowNodes: nextWorkflowNodes,
+          workflowEdges: nextWorkflowEdges,
+          widgets: nextWidgets,
+        }
+      }),
+    )
+
+    if (inspectedNodeId === targetId) setInspectedNodeId(null)
+    if (editingNodeId === targetId) setEditingNodeId(null)
+    setPendingRemoveNodeId(null)
+  }, [activeSpace.id, editingNodeId, inspectedNodeId, pendingRemoveNodeId])
 
   const initialPipelineNodes = useMemo<Array<Node<PipelineNodeData>>>(() => {
     return activeSpace.workflowNodes.map((nodeCfg) => {
@@ -2139,6 +2300,16 @@ export function useAnalyticsWorkspace() {
       if (page?.stageTotalRows !== undefined) rowCount = page.stageTotalRows
       if (page?.stageTotalRows === undefined && page?.data !== undefined)
         rowCount = page.data.totalRows
+
+      const widget = activeSpace.widgets.find(
+        (item) => item.outputNodeId === nodeCfg.id,
+      )
+      let chartInputError: string | undefined
+      if (widget !== undefined) chartInputError = widgetInputErrors[widget.id]
+
+      let disconnectedAlert: string | undefined
+      if (nodeCfg.kind !== 'source' && nodeCfg.upstreamNodeIds.length === 0)
+        disconnectedAlert = 'Sem fonte conectada. Conecte ou edite uma entrada.'
 
       return {
         id: nodeCfg.id,
@@ -2153,11 +2324,19 @@ export function useAnalyticsWorkspace() {
           dataSourceName: nodeCfg.dataSourceName,
           rowCount,
           datasetId: nodeCfg.datasetId,
-          onEditNode: () => handleOpenEditNode(nodeCfg.id),
+          chartInputError,
+          disconnectedAlert,
+          onRequestRemove: handleRequestRemoveNode,
         },
       }
     })
-  }, [activeSpace.workflowNodes, handleOpenEditNode, nodePages])
+  }, [
+    activeSpace.widgets,
+    activeSpace.workflowNodes,
+    handleRequestRemoveNode,
+    nodePages,
+    widgetInputErrors,
+  ])
 
   const initialPipelineEdges = useMemo<Edge[]>(() => {
     return activeSpace.workflowEdges.map((edgeCfg) => ({
@@ -2174,6 +2353,13 @@ export function useAnalyticsWorkspace() {
     useNodesState(initialPipelineNodes)
   const [pipelineEdges, setPipelineEdges, onPipelineEdgesChange] =
     useEdgesState(initialPipelineEdges)
+
+  const selectedPipelineNodeId = useMemo(() => {
+    const selectedNode = pipelineNodes.find((node) => node.selected === true)
+    if (selectedNode === undefined) return null
+
+    return selectedNode.id
+  }, [pipelineNodes])
 
   useEffect(() => {
     setPipelineNodes(initialPipelineNodes)
@@ -2197,42 +2383,6 @@ export function useAnalyticsWorkspace() {
               if (w.id === widgetId) return { ...w, span: nextSpan }
 
               return w
-            }),
-          }
-        }),
-      )
-    },
-    [activeSpace.id],
-  )
-
-  const updateWidgetVisualType = useCallback(
-    (widgetId: string, nextType: ChartVisualType) => {
-      userMutatedStateRef.current = true
-      setSpaces((prev) =>
-        prev.map((space) => {
-          if (space.id !== activeSpace.id) return space
-          return {
-            ...space,
-            widgets: space.widgets.map((w) => {
-              if (w.id !== widgetId) return w
-
-              const hasStackColumn =
-                w.stackColumn !== undefined && w.stackColumn !== ''
-              const isRemoteAggregate = isRemoteAggregateUpstream(
-                space.workflowNodes,
-                w.sourceNodeId,
-              )
-
-              if (
-                isRemoteAggregate &&
-                (isRemoteAggregateUnsupportedVisual(nextType) ||
-                  ((nextType === 'bar_stacked' ||
-                    nextType === 'area_stacked') &&
-                    hasStackColumn))
-              )
-                return w
-
-              return { ...w, chartVisualType: nextType }
             }),
           }
         }),
@@ -2380,10 +2530,7 @@ export function useAnalyticsWorkspace() {
     if (selectedAddNodeType === 'source') {
       kindVal = 'source'
       posX = 80
-      posY =
-        80 +
-        activeSpace.workflowNodes.filter((n) => n.kind === 'source').length *
-          115
+      posY = computeColumnNodeY(activeSpace.workflowNodes, 'source')
       const matchedOpt = connectionDisplayOptions.find(
         (c) => c.id === newNodeSelectedConnectionId,
       )
@@ -2452,12 +2599,7 @@ export function useAnalyticsWorkspace() {
     if (selectedAddNodeType === 'transform') {
       kindVal = 'sql'
       posX = 410
-      posY =
-        80 +
-        activeSpace.workflowNodes.filter(
-          (n) => n.kind !== 'source' && n.kind !== 'output',
-        ).length *
-          115
+      posY = computeColumnNodeY(activeSpace.workflowNodes, 'transform')
       resolvedDsName = 'Transform (DuckDB)'
       badgeText = 'T • TRANSFORM'
       datasetLabel = 'SQL Transform'
@@ -2487,14 +2629,9 @@ export function useAnalyticsWorkspace() {
     }
 
     if (selectedAddNodeType === 'output') {
-      if (newNodeWidgetType !== 'kpi_card' && outputCategoryColumn === '')
-        return
       kindVal = 'output'
       posX = 760
-      posY =
-        80 +
-        activeSpace.workflowNodes.filter((n) => n.kind === 'output').length *
-          115
+      posY = computeColumnNodeY(activeSpace.workflowNodes, 'output')
       resolvedDsName = 'Grade Inteligente'
       badgeText = 'L • LOAD (GRÁFICO)'
       const dataNodes = activeSpace.workflowNodes.filter(
@@ -2509,23 +2646,7 @@ export function useAnalyticsWorkspace() {
 
       if (upstreamIds.length === 0) return
 
-      const [outputUpstreamId] = upstreamIds
-
-      if (
-        outputUpstreamId !== undefined &&
-        isRemoteAggregateUpstream(activeSpace.workflowNodes, outputUpstreamId)
-      ) {
-        const hasStackColumn = outputStackColumn !== ''
-        const unsupportedVisual =
-          isRemoteAggregateUnsupportedVisual(newNodeWidgetType) ||
-          ((newNodeWidgetType === 'bar_stacked' ||
-            newNodeWidgetType === 'area_stacked') &&
-            hasStackColumn)
-        const unsupportedReference =
-          outputReferenceLineMode === 'average' ||
-          outputReferenceLineMode === 'weighted_ratio'
-        if (unsupportedVisual || unsupportedReference || hasStackColumn) return
-      }
+      if (outputIsInvalid) return
 
       ruleSummaryText = `Load (L): Publicação visual (${newNodeWidgetType}) na Grade Inteligente consumindo o fluxo upstream.`
       sqlPreviewText = `-- Widget publicado na Grade Inteligente: ${cleanLabel} (${newNodeWidgetType})`
@@ -2674,6 +2795,7 @@ export function useAnalyticsWorkspace() {
     nodeSourceDatasets,
     outputCategoryColumn,
     outputHierarchyColumns,
+    outputIsInvalid,
     outputMetricColumn,
     outputReferenceLineMode,
     outputReferenceLineTarget,
@@ -2810,9 +2932,6 @@ export function useAnalyticsWorkspace() {
     }
 
     if (matchedNode.kind === 'output') {
-      if (newNodeWidgetType !== 'kpi_card' && outputCategoryColumn === '')
-        return
-
       const validOutputUpstream = activeSpace.workflowNodes.find(
         (n) =>
           n.kind !== 'output' &&
@@ -2822,23 +2941,7 @@ export function useAnalyticsWorkspace() {
       if (validOutputUpstream !== undefined)
         updatedUpstreamIds = [validOutputUpstream.id]
 
-      const [outputUpstreamId] = updatedUpstreamIds
-
-      if (
-        outputUpstreamId !== undefined &&
-        isRemoteAggregateUpstream(activeSpace.workflowNodes, outputUpstreamId)
-      ) {
-        const hasStackColumn = outputStackColumn !== ''
-        const unsupportedVisual =
-          isRemoteAggregateUnsupportedVisual(newNodeWidgetType) ||
-          ((newNodeWidgetType === 'bar_stacked' ||
-            newNodeWidgetType === 'area_stacked') &&
-            hasStackColumn)
-        const unsupportedReference =
-          outputReferenceLineMode === 'average' ||
-          outputReferenceLineMode === 'weighted_ratio'
-        if (unsupportedVisual || unsupportedReference || hasStackColumn) return
-      }
+      if (updatedUpstreamIds.length === 0 || outputIsInvalid) return
     }
 
     const updatedNode: SpaceWorkflowNodeConfig = {
@@ -2971,6 +3074,7 @@ export function useAnalyticsWorkspace() {
     nodeSourceDatasets,
     outputCategoryColumn,
     outputHierarchyColumns,
+    outputIsInvalid,
     outputMetricColumn,
     outputReferenceLineMode,
     outputReferenceLineTarget,
@@ -2985,33 +3089,10 @@ export function useAnalyticsWorkspace() {
     workspaceId,
   ])
 
-  const inspectedNodeConfig = useMemo<SpaceWorkflowNodeConfig | null>(() => {
-    if (!inspectedNodeId) return null
-    const found = activeSpace.workflowNodes.find(
-      (n) => n.id === inspectedNodeId,
-    )
-    if (found) return found
-    return null
+  const inspectedNodeLineageChain = useMemo(() => {
+    if (inspectedNodeId === null) return []
+    return collectWorkflowLineage(activeSpace.workflowNodes, inspectedNodeId)
   }, [activeSpace.workflowNodes, inspectedNodeId])
-
-  const inspectedNodeLineageChain = useMemo<SpaceWorkflowNodeConfig[]>(() => {
-    if (!inspectedNodeConfig) return []
-    const chain: SpaceWorkflowNodeConfig[] = []
-    const visited = new Set<string>()
-
-    for (const upId of inspectedNodeConfig.upstreamNodeIds) {
-      const upNode = activeSpace.workflowNodes.find((n) => n.id === upId)
-
-      if (upNode && !visited.has(upNode.id)) {
-        visited.add(upNode.id)
-        chain.push(upNode)
-      }
-    }
-
-    if (!visited.has(inspectedNodeConfig.id)) chain.push(inspectedNodeConfig)
-
-    return chain
-  }, [activeSpace.workflowNodes, inspectedNodeConfig])
 
   let inspectedNodeResolvedData: {
     columns: AnalyticsColumnSchema[]
@@ -3019,7 +3100,10 @@ export function useAnalyticsWorkspace() {
     totalRows?: number
     stageTotalRows?: number
   } = { columns: [], rows: [] }
-  if (inspectedNodeConfig !== null)
+  if (
+    inspectedNodeConfig !== undefined &&
+    inspectedNodeConfig.kind !== 'output'
+  )
     inspectedNodeResolvedData = resolveRowsForWorkflowNode(inspectedNodeConfig)
 
   const handleSetPollingIntervalMinutes = useCallback((minutes: number) => {
@@ -3177,7 +3261,10 @@ export function useAnalyticsWorkspace() {
   let inspectedSourceLoading = false
   let inspectedSourceError: string | undefined
 
-  if (inspectedNodeConfig !== null) {
+  if (
+    inspectedNodeConfig !== undefined &&
+    inspectedNodeConfig.kind !== 'output'
+  ) {
     const page = nodePages[inspectedNodeConfig.id]
     const plan = nodeSelectionPlans[inspectedNodeConfig.id]
     const isSourceSyncing =
@@ -3202,6 +3289,82 @@ export function useAnalyticsWorkspace() {
   const hasUnverifiedCoverage = Object.values(publications).some(
     (publication) => publication.coverage !== 'complete',
   )
+
+  const recentReconciliations = activeSpace.workflowNodes.flatMap((node) => {
+    if (node.kind !== 'source') return []
+    const plan = nodeSelectionPlans[node.id]
+    if (plan === undefined) return []
+    const state = selectionEntries[plan.selKey]?.syncState
+    if (
+      state?.lastRecentReconcileAt === undefined ||
+      state.lastRecentStart === undefined ||
+      state.lastRecentEnd === undefined ||
+      state.lastRecentReconcileAt <= state.lastFullReconcileAt
+    )
+      return []
+    return [
+      {
+        nodeId: node.id,
+        label: node.label,
+        at: state.lastRecentReconcileAt,
+        start: state.lastRecentStart,
+        end: state.lastRecentEnd,
+      },
+    ]
+  })
+
+  const overdueReconciliations = activeSpace.workflowNodes.flatMap((node) => {
+    if (node.kind !== 'source') return []
+    const plan = nodeSelectionPlans[node.id]
+    if (plan === undefined) return []
+    const entry = selectionEntries[plan.selKey]
+    if (entry === undefined || entry.publication.remoteAggregate) return []
+    const state = entry.syncState
+    let lastReconcileAt = state.lastFullReconcileAt
+    if (
+      state.lastRecentReconcileAt !== undefined &&
+      state.lastRecentReconcileAt > lastReconcileAt
+    )
+      lastReconcileAt = state.lastRecentReconcileAt
+    const reconcileMs = Date.parse(lastReconcileAt)
+    if (
+      !Number.isFinite(reconcileMs) ||
+      Date.now() - reconcileMs < 6 * 3_600_000
+    )
+      return []
+    return [
+      {
+        nodeId: node.id,
+        label: node.label,
+        lastReconcileAt,
+      },
+    ]
+  })
+
+  const executionDiagnostics = activeSpace.workflowNodes.flatMap((node) => {
+    if (node.kind !== 'source') return []
+    const plan = nodeSelectionPlans[node.id]
+    if (plan === undefined) return []
+    const state = selectionEntries[plan.selKey]?.syncState
+    if (
+      state === undefined ||
+      (state.lastRunRequests === undefined &&
+        state.lastRunPages === undefined &&
+        state.lastRunDurationMs === undefined)
+    )
+      return []
+    return [
+      {
+        nodeId: node.id,
+        label: node.label,
+        requests: state.lastRunRequests,
+        pages: state.lastRunPages,
+        durationMs: state.lastRunDurationMs,
+        retries: state.lastRunRetries,
+        bytes: state.lastRunBytes,
+      },
+    ]
+  })
 
   const sourceFailures: AnalyticsSourceFailureItem[] =
     activeSpace.workflowNodes.flatMap((node) => {
@@ -3229,6 +3392,7 @@ export function useAnalyticsWorkspace() {
     queryExecution,
     setQueryExecution,
     warehousePlan,
+    widgetInputErrors,
     publicationVersion,
     previewError: previewPage?.error,
     previewDetails: previewPage?.details,
@@ -3236,6 +3400,9 @@ export function useAnalyticsWorkspace() {
       ([source, message]) => ({ source, message }),
     ),
     sourceFailures,
+    recentReconciliations,
+    overdueReconciliations,
+    executionDiagnostics,
     retrySourceNode,
     upstreamStatusByNodeId,
     syncStatusSummary,
@@ -3274,7 +3441,6 @@ export function useAnalyticsWorkspace() {
     resolveRowsForWorkflowNode,
     handleGenericChartDrillDown,
     updateWidgetSpan,
-    updateWidgetVisualType,
     moveWidgetOrder,
     overloadTolerancePct,
     setOverloadTolerancePct,
@@ -3284,10 +3450,16 @@ export function useAnalyticsWorkspace() {
     setEstimationTolerancePct,
     pipelineNodes,
     pipelineEdges,
+    selectedPipelineNodeId,
     onPipelineNodesChange,
     onPipelineEdgesChange,
     handleOpenAddNode,
     handleOpenEditNode,
+    pendingRemoveNode,
+    pendingRemoveDependents,
+    handleRequestRemoveNode,
+    handleCancelRemoveNode,
+    handleConfirmRemoveNode,
     inspectedNodeConfig,
     inspectedNodeLineageChain,
     inspectedNodeResolvedData,

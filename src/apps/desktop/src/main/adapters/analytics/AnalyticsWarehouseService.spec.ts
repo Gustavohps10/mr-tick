@@ -1106,6 +1106,192 @@ describe('Phase 3 Dual-Cadence Orchestrator, Hydration & Resilience [F4-01]', ()
     ).toEqual([{ id: 1, date: '2026-10-10', hours: 4, note: 'Reconciled' }])
   })
 
+  it('reconciles recent history without replacing older rows or advancing the full clock', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-10T12:00:00Z'))
+    const f = await fixture(windowManifest)
+    const older = { id: 1, date: '2026-08-20', hours: 3, note: 'Older' }
+    const recent = { id: 2, date: '2026-09-26', hours: 4, note: 'Recent' }
+    const movedMonth = { id: 3, date: '2026-09-15', hours: 2, note: 'Move' }
+    const deletedRecent = { id: 4, date: '2026-10-05', hours: 1, note: 'Gone' }
+    const endDate = '2026-11-10'
+    const respond = (
+      startDate: string,
+      targetEndDate: string,
+      rows: (typeof recent)[],
+    ) =>
+      f.fetch.mockResolvedValueOnce(
+        Either.success({
+          dataset: windowManifest,
+          rows,
+          fetchedAt: new Date().toISOString(),
+          execution: {
+            kind: 'snapshot',
+            scope: { datasetId: 'entries', startDate, endDate: targetEndDate },
+            coverage: 'complete',
+          },
+        }),
+      )
+
+    const selection = { startDate: '2026-08-01', endDate }
+    respond(selection.startDate, endDate, [
+      older,
+      recent,
+      movedMonth,
+      deletedRecent,
+    ])
+    const initial = await f.load(selection)
+    expect(initial.isSuccess()).toBe(true)
+
+    // Simulate app closed for > 6 hours and reopened
+    vi.setSystemTime(new Date('2026-11-10T19:00:00Z'))
+    const reopened = new AnalyticsWarehouseService(
+      f.resolver,
+      f.engine,
+      f.emitter,
+    )
+    const hydrated = await reopened.hydrate({ workspaceId: 'workspace' })
+    expect(hydrated.isSuccess()).toBe(true)
+    expect(hydrated.success.publications).toHaveLength(1)
+    expect(hydrated.success.publications.at(0)?.syncState).toMatchObject({
+      lastFullReconcileAt: '2026-11-10T12:00:00.000Z',
+    })
+
+    respond('2026-09-01', endDate, [
+      { ...recent, hours: 7 },
+      { ...movedMonth, date: '2026-10-20', hours: 5 },
+    ])
+
+    const reconciled = await reopened.load({
+      workspaceId: 'workspace',
+      connectionInstanceId: 'connection',
+      query: { datasetId: 'entries', ...selection },
+    })
+    expect(reconciled.isSuccess()).toBe(true)
+    expect(reconciled.success.syncState).toMatchObject({
+      lastFullReconcileAt: initial.success.syncState.lastFullReconcileAt,
+      lastRecentReconcileAt: '2026-11-10T19:00:00.000Z',
+      lastRecentStart: '2026-09-01',
+      lastRecentEnd: endDate,
+    })
+    expect(
+      (await f.query(reconciled.success.publication.selectionKey)).success.rows,
+    ).toEqual([
+      older,
+      { ...recent, hours: 7 },
+      { ...movedMonth, date: '2026-10-20', hours: 5 },
+    ])
+
+    // Subsequent fast 14-day rescan preserves the recent reconciliation watermark
+    vi.setSystemTime(new Date('2026-11-10T19:05:00Z'))
+    respond('2026-10-28', endDate, [
+      { id: 5, date: '2026-11-09', hours: 6, note: 'Fast' },
+    ])
+    const fastAfterRecent = await reopened.load({
+      workspaceId: 'workspace',
+      connectionInstanceId: 'connection',
+      query: { datasetId: 'entries', ...selection },
+    })
+    expect(fastAfterRecent.isSuccess()).toBe(true)
+    expect(fastAfterRecent.success.syncState).toMatchObject({
+      lastFullReconcileAt: initial.success.syncState.lastFullReconcileAt,
+      lastRecentReconcileAt: '2026-11-10T19:00:00.000Z',
+      lastRecentStart: '2026-09-01',
+      lastRecentEnd: endDate,
+      lastWindowStart: '2026-10-28',
+      lastWindowEnd: endDate,
+    })
+  })
+
+  it('completes one final reconciliation when a month exits the recent range and allows manual historical refresh', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-30T20:00:00Z'))
+    const f = await fixture(windowManifest)
+    const selection = { startDate: '2026-09-01', endDate: '2026-09-30' }
+
+    f.fetch.mockResolvedValueOnce(
+      Either.success({
+        dataset: windowManifest,
+        rows: [{ id: 10, date: '2026-09-12', hours: 4, note: 'Sep initial' }],
+        fetchedAt: '2026-11-30T20:00:00Z',
+        execution: {
+          kind: 'snapshot',
+          scope: { datasetId: 'entries', ...selection },
+          coverage: 'complete',
+        },
+      }),
+    )
+    const initial = await f.load(selection)
+    expect(initial.isSuccess()).toBe(true)
+
+    // Turn of the month into December (recent horizon is now Oct-Dec, Sep just exited)
+    vi.setSystemTime(new Date('2026-12-01T03:00:00Z'))
+    f.fetch.mockResolvedValueOnce(
+      Either.failure(AppError.Http(503, 'TEMPORARY_EXIT_FAILURE')),
+    )
+    const failedExit = await f.load(selection)
+    expect(failedExit.isFailure()).toBe(true)
+
+    // Pending exit reconciliation remains eligible on retry in December
+    vi.setSystemTime(new Date('2026-12-01T03:10:00Z'))
+    f.fetch.mockResolvedValueOnce(
+      Either.success({
+        dataset: windowManifest,
+        rows: [
+          { id: 10, date: '2026-09-12', hours: 8, note: 'Sep final exit' },
+        ],
+        fetchedAt: '2026-12-01T03:10:00Z',
+        execution: {
+          kind: 'snapshot',
+          scope: { datasetId: 'entries', ...selection },
+          coverage: 'complete',
+        },
+      }),
+    )
+    const completedExit = await f.load(selection)
+    expect(completedExit.isSuccess()).toBe(true)
+    expect(completedExit.success.reused).toBeUndefined()
+    expect(completedExit.success.syncState).toMatchObject({
+      lastRecentReconcileAt: '2026-12-01T03:10:00.000Z',
+      lastRecentStart: '2026-09-01',
+      lastRecentEnd: '2026-09-30',
+    })
+
+    // Next 6h automatic cycle in December performs 0-HTTP no-op for exited historical month
+    vi.setSystemTime(new Date('2026-12-01T10:00:00Z'))
+    const callsBeforeNoOp = f.fetch.mock.calls.length
+    const postExitAuto = await f.load(selection)
+    expect(postExitAuto.isSuccess()).toBe(true)
+    expect(postExitAuto.success.reused).toBe(true)
+    expect(f.fetch).toHaveBeenCalledTimes(callsBeforeNoOp)
+
+    // Manual full refresh still reconciles historical period on demand
+    f.fetch.mockResolvedValueOnce(
+      Either.success({
+        dataset: windowManifest,
+        rows: [{ id: 10, date: '2026-09-12', hours: 9, note: 'Sep manual' }],
+        fetchedAt: '2026-12-01T10:05:00Z',
+        execution: {
+          kind: 'snapshot',
+          scope: { datasetId: 'entries', ...selection },
+          coverage: 'complete',
+        },
+      }),
+    )
+    const manualHistorical = await f.service.load({
+      workspaceId: 'workspace',
+      connectionInstanceId: 'connection',
+      query: { datasetId: 'entries', ...selection },
+      policy: { mode: 'full' },
+    })
+    expect(manualHistorical.isSuccess()).toBe(true)
+    expect(manualHistorical.success.strategy).toBe('full_replace')
+    expect(
+      (await f.query(manualHistorical.success.publication.selectionKey)).success
+        .rows,
+    ).toEqual([{ id: 10, date: '2026-09-12', hours: 9, note: 'Sep manual' }])
+  })
+
   it('queues manual full load strictly behind an in-flight fast load without losing manual reconcile', async () => {
     const f = await fixture(changesManifest)
     f.fetch.mockResolvedValueOnce(
@@ -2294,5 +2480,47 @@ describe('Phase 3 Dual-Cadence Orchestrator, Hydration & Resilience [F4-01]', ()
 
     const recovered = await f.service.hydrate({ workspaceId: 'workspace-v1' })
     expect(recovered.isSuccess()).toBe(true)
+  })
+
+  it('persists execution consumption metrics (requests, pages, durationMs, retries, bytes) in syncState across reopen', async () => {
+    const f = await fixture()
+    const batch0 = page(
+      0,
+      [
+        { id: 1, team: 'A', hours: 2 },
+        { id: 2, team: 'B', hours: 3 },
+      ],
+      'next',
+    )
+    if (batch0.execution.kind === 'snapshot')
+      batch0.execution.metrics = { requests: 4, retries: 1 }
+
+    const batch1 = page(1, [
+      { id: 3, team: 'A', hours: 4 },
+      { id: 4, team: 'B', hours: 5 },
+    ])
+    if (batch1.execution.kind === 'snapshot')
+      batch1.execution.metrics = { requests: 1, retries: 0 }
+
+    f.fetch
+      .mockResolvedValueOnce(Either.success(batch0))
+      .mockResolvedValueOnce(Either.success(batch1))
+
+    const loaded = await f.load()
+    expect(loaded.isSuccess()).toBe(true)
+    expect(loaded.success.syncState.lastRunRequests).toBe(5)
+    expect(loaded.success.syncState.lastRunPages).toBe(2)
+    expect(loaded.success.syncState.lastRunRetries).toBe(1)
+    expect(loaded.success.syncState.lastRunDurationMs).toBeGreaterThanOrEqual(0)
+    expect(loaded.success.syncState.lastRunBytes).toBeGreaterThan(0)
+
+    const hydrated = await f.service.hydrate({ workspaceId: 'workspace' })
+    expect(hydrated.isSuccess()).toBe(true)
+    expect(hydrated.success.publications[0]?.syncState).toMatchObject({
+      lastRunRequests: 5,
+      lastRunPages: 2,
+      lastRunRetries: 1,
+      lastRunBytes: loaded.success.syncState.lastRunBytes,
+    })
   })
 })

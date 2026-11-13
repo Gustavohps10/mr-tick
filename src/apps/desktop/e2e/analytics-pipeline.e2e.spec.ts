@@ -63,11 +63,22 @@ test('analytics extracts a selected dataset, edits its source and publishes a ch
     page.getByRole('heading', { name: 'Meu Espaço Analítico' }),
   ).toBeVisible()
   await page.getByRole('button', { name: /^Background/ }).click()
-  const add = page.getByRole('button', { name: 'Adicionar', exact: true })
-  await add.click()
+  const addSource = page.getByRole('button', {
+    name: 'Adicionar Fonte (Extract)',
+    exact: true,
+  })
+  const addTransform = page.getByRole('button', {
+    name: 'Adicionar Transformação (SQL)',
+    exact: true,
+  })
+  const addOutput = page.getByRole('button', {
+    name: 'Adicionar Visualização (Load)',
+    exact: true,
+  })
+  await addSource.click()
   const dialog = page.getByRole('dialog')
   await expect(
-    dialog.getByRole('heading', { name: /Adicionar Elemento ao Workflow/ }),
+    dialog.getByRole('heading', { name: /Adicionar Fonte \(Extract\)/ }),
   ).toBeVisible()
   const sourceTitle = dialog.getByPlaceholder(
     'Ex: Apontamentos Redmine Docker, Tarefas Jira',
@@ -87,9 +98,15 @@ test('analytics extracts a selected dataset, edits its source and publishes a ch
   await expect(
     page.getByText('Horas da conexão selecionada', { exact: true }),
   ).toBeVisible()
+  await page
+    .getByRole('button', {
+      name: 'Status do Analytics: cobertura não confirmada',
+    })
+    .click()
   await expect(
-    page.getByRole('status').filter({ hasText: 'cobertura' }),
-  ).toContainText('cobertura')
+    page.getByRole('dialog', { name: 'Status do Analytics' }),
+  ).toContainText('A cobertura desta consulta ainda não foi confirmada')
+  await page.keyboard.press('Escape')
 
   await page.getByText('Horas da conexão selecionada', { exact: true }).click()
   await expect(
@@ -111,21 +128,45 @@ test('analytics extracts a selected dataset, edits its source and publishes a ch
     .getByRole('button', { name: 'Fechar Inspeção', exact: true })
     .click()
 
-  await page.getByRole('button', { name: 'Editar', exact: true }).click()
+  await page.getByText('Horas da conexão selecionada', { exact: true }).click()
+  await dialog.getByRole('tab', { name: 'Edição' }).click()
   await expect(
-    dialog.getByRole('heading', { name: /Editar Consulta/ }),
+    dialog.getByRole('tab', { name: 'Edição', selected: true }),
   ).toBeVisible()
   await sourceTitle.fill('Horas consultadas')
   await dialog
     .getByRole('button', { name: 'Salvar Alterações', exact: true })
     .click()
-  await expect(dialog).not.toBeVisible()
   await expect(
-    page.getByText('Horas consultadas', { exact: true }),
+    dialog.getByRole('heading', { name: 'Horas consultadas' }),
   ).toBeVisible()
+  await expect(
+    dialog.getByRole('tab', { name: /^Dados/, selected: true }),
+  ).toBeVisible()
+  await dialog.getByRole('button', { name: 'Fechar Inspeção' }).click()
 
-  await add.click()
-  await dialog.getByRole('button', { name: /Publicar Visualização/ }).click()
+  await addTransform.click()
+  await dialog
+    .getByPlaceholder('Ex: SQL Pivot Colaborador × Atividade')
+    .fill('Projetos transformados')
+  await dialog.getByRole('combobox').click()
+  await page.getByRole('option', { name: /Horas consultadas/ }).click()
+  const transformSql = 'SELECT project FROM input'
+  const transformQuery = dialog.getByPlaceholder(/^SELECT coluna/)
+  await transformQuery.fill(transformSql)
+  await dialog.getByRole('button', { name: 'Adicionar ao Workflow' }).click()
+  await expect(dialog).not.toBeVisible()
+  await page.getByText('Projetos transformados', { exact: true }).click()
+  await expect(
+    dialog.getByText('Transformação SQL', { exact: true }),
+  ).toBeVisible()
+  await dialog.getByRole('tab', { name: 'SQL', exact: true }).click()
+  await expect(dialog.getByText(transformSql, { exact: true })).toBeVisible()
+  await dialog.getByRole('tab', { name: 'Edição' }).click()
+  await expect(transformQuery).toHaveValue(transformSql)
+  await dialog.getByRole('button', { name: 'Fechar Inspeção' }).click()
+
+  await addOutput.click()
   await dialog
     .getByPlaceholder('Ex: Gráfico de Entregas por Colaborador')
     .fill('Horas consolidadas')
@@ -138,13 +179,52 @@ test('analytics extracts a selected dataset, edits its source and publishes a ch
     .click()
   await page.getByRole('option', { name: /Projeto/ }).click()
   await dialog
-    .getByRole('combobox', { name: 'Métrica da visualização' })
+    .getByRole('combobox', { name: 'Métrica da visualização', exact: true })
     .click()
   await page.getByRole('option', { name: /Horas/ }).click()
+  const chartType = dialog.getByRole('combobox', {
+    name: 'Modelo visual da visualização',
+  })
+  await chartType.click()
+  await page.getByRole('option', { name: /Combo Multi-Eixo/ }).click()
+  await expect(
+    dialog.getByRole('region', { name: 'Prévia da visualização' }),
+  ).toContainText('Dados fictícios')
+  await expect(
+    dialog.getByText('Segunda métrica: selecione uma coluna.', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    dialog.getByRole('button', { name: 'Adicionar ao Workflow', exact: true }),
+  ).toBeDisabled()
+  await chartType.click()
+  await page.getByRole('option', { name: /Barras Verticais/ }).click()
   await dialog
     .getByRole('button', { name: 'Adicionar ao Workflow', exact: true })
     .click()
   await expect(dialog).not.toBeVisible()
+  await page.getByText('Horas consolidadas', { exact: true }).click()
+  await expect(
+    dialog.getByRole('tab', { name: 'Visualização', selected: true }),
+  ).toBeVisible()
+  await expect(dialog.getByText(/\d+ grupos · unverified/)).toBeVisible()
+  const lineage = dialog.getByRole('navigation', { name: 'Linhagem completa' })
+  await lineage.getByRole('button', { name: /Horas consultadas/ }).click()
+  await expect(
+    dialog.getByRole('tab', { name: /^Dados/, selected: true }),
+  ).toBeVisible()
+  await lineage.getByRole('button', { name: /Projetos transformados/ }).click()
+  await expect(
+    dialog.getByRole('heading', { name: 'Projetos transformados' }),
+  ).toBeVisible()
+  await lineage.getByRole('button', { name: 'Horas consolidadas' }).click()
+  await expect(
+    dialog.getByRole('tab', { name: 'Visualização', selected: true }),
+  ).toBeVisible()
+  await dialog.getByRole('tab', { name: 'Edição' }).click()
+  await expect(
+    dialog.getByRole('combobox', { name: 'Modelo visual da visualização' }),
+  ).toBeVisible()
+  await dialog.getByRole('button', { name: 'Fechar Inspeção' }).click()
   await page
     .getByRole('button', {
       name: 'View Final (Grade Inteligente)',
@@ -155,6 +235,10 @@ test('analytics extracts a selected dataset, edits its source and publishes a ch
     page.getByText('Horas consolidadas', { exact: true }),
   ).toBeVisible()
   await expect(page.getByText(/\d+ grupos · unverified/)).toBeVisible()
+  await expect(
+    page.getByRole('combobox', { name: 'Modelo visual da visualização' }),
+  ).toHaveCount(0)
+  await expect(page.getByTitle('Largura Total (3/3)')).toBeVisible()
 })
 
 test('analytics publishes a declared remote aggregate without selecting raw columns', async ({
@@ -168,7 +252,9 @@ test('analytics publishes a declared remote aggregate without selecting raw colu
   await page.locator(`nav a[href="#/workspaces/${workspace.id}"]`).click()
   await page.getByRole('link', { name: 'Analytics', exact: true }).click()
   await page.getByRole('button', { name: /^Background/ }).click()
-  await page.getByRole('button', { name: 'Adicionar', exact: true }).click()
+  await page
+    .getByRole('button', { name: 'Adicionar Fonte (Extract)', exact: true })
+    .click()
   const dialog = page.getByRole('dialog')
   await dialog
     .getByPlaceholder('Ex: Apontamentos Redmine Docker, Tarefas Jira')
@@ -209,8 +295,9 @@ test('analytics publishes a declared remote aggregate without selecting raw colu
   await dialog
     .getByRole('button', { name: 'Fechar Inspeção', exact: true })
     .click()
-  await page.getByRole('button', { name: 'Adicionar', exact: true }).click()
-  await dialog.getByRole('button', { name: /Publicar Visualização/ }).click()
+  await page
+    .getByRole('button', { name: 'Adicionar Visualização (Load)', exact: true })
+    .click()
   await dialog
     .getByPlaceholder('Ex: Gráfico de Entregas por Colaborador')
     .fill('Remote chart')
@@ -222,7 +309,7 @@ test('analytics publishes a declared remote aggregate without selecting raw colu
     dialog.getByRole('combobox', {
       name: 'Empilhar ou pivotar visualização',
     }),
-  ).toBeDisabled()
+  ).toHaveCount(0)
   await dialog
     .getByRole('combobox', { name: 'Linha de referência da visualização' })
     .click()
@@ -235,7 +322,7 @@ test('analytics publishes a declared remote aggregate without selecting raw colu
     .click()
   await page.getByRole('option', { name: /Projeto/ }).click()
   await dialog
-    .getByRole('combobox', { name: 'Métrica da visualização' })
+    .getByRole('combobox', { name: 'Métrica da visualização', exact: true })
     .click()
   await page.getByRole('option', { name: /hours_from_source/ }).click()
   await dialog
@@ -317,7 +404,9 @@ test('hydrates offline analytics state, runs incremental changes upsert/delete a
       page.getByRole('heading', { name: 'Meu Espaço Analítico' }),
     ).toBeVisible()
     await page.getByRole('button', { name: /^Background/ }).click()
-    await page.getByRole('button', { name: 'Adicionar', exact: true }).click()
+    await page
+      .getByRole('button', { name: 'Adicionar Fonte (Extract)', exact: true })
+      .click()
 
     const dialog = page.getByRole('dialog')
     await dialog
@@ -355,9 +444,13 @@ test('hydrates offline analytics state, runs incremental changes upsert/delete a
       .filter({ hasText: 'Tarefas E2E' })
     await expect(tarefasNode).toBeVisible()
     await expect(tarefasNode.getByText('2 reg.', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: /^Status do Analytics/ }).click()
     await expect(
-      page.getByText('Incremental (changes)', { exact: true }),
+      page
+        .getByRole('dialog', { name: 'Status do Analytics' })
+        .getByText('Incremental (changes)', { exact: true }),
     ).toBeVisible()
+    await page.keyboard.press('Escape')
 
     const pollingCombobox = page.getByRole('combobox', {
       name: 'Frequência de atualização',
@@ -653,10 +746,12 @@ test('deduplicates identical source scopes across multiple workflow nodes', asyn
   await page.getByRole('button', { name: /^Background/ }).click()
 
   const addSourceNode = async (label: string) => {
-    await page.getByRole('button', { name: 'Adicionar', exact: true }).click()
+    await page
+      .getByRole('button', { name: 'Adicionar Fonte (Extract)', exact: true })
+      .click()
     const dialog = page.getByRole('dialog')
     await expect(
-      dialog.getByRole('heading', { name: /Adicionar Elemento ao Workflow/ }),
+      dialog.getByRole('heading', { name: /Adicionar Fonte \(Extract\)/ }),
     ).toBeVisible()
     await dialog
       .getByPlaceholder('Ex: Apontamentos Redmine Docker, Tarefas Jira')

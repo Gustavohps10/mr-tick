@@ -9,7 +9,7 @@ import {
   type OnNodesChange,
   ReactFlow,
 } from '@xyflow/react'
-import { LayoutGrid, Plus } from 'lucide-react'
+import { BarChart3, Code2, Database, LayoutGrid, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/card'
 
 import type {
+  AddNodeTypeOption,
   AnalyticsSpaceConfig,
   CanvasLayerMode,
   PipelineNodeData,
@@ -31,9 +32,11 @@ export interface WorkflowBackgroundViewProps {
   activeSpace: AnalyticsSpaceConfig
   pipelineNodes: Array<Node<PipelineNodeData>>
   pipelineEdges: Edge[]
+  selectedNodeId: string | null
   onPipelineNodesChange: OnNodesChange<Node<PipelineNodeData>>
   onPipelineEdgesChange: OnEdgesChange<Edge>
-  onOpenAddNode: () => void
+  onOpenAddNode: (nodeType?: AddNodeTypeOption) => void
+  onRequestRemoveNode: (nodeId: string) => void
   onSetLayerMode: (mode: CanvasLayerMode) => void
   onInspectNode: (nodeId: string) => void
 }
@@ -42,9 +45,11 @@ export function WorkflowBackgroundView({
   activeSpace,
   pipelineNodes,
   pipelineEdges,
+  selectedNodeId,
   onPipelineNodesChange,
   onPipelineEdgesChange,
   onOpenAddNode,
+  onRequestRemoveNode,
   onSetLayerMode,
   onInspectNode,
 }: WorkflowBackgroundViewProps) {
@@ -74,21 +79,68 @@ export function WorkflowBackgroundView({
               <LayoutGrid className="size-3.5" />
               Grade Inteligente
             </Button>
-            <Button
-              size="sm"
-              variant="default"
-              className="h-8 gap-1.5 text-xs"
-              onClick={onOpenAddNode}
-            >
-              <Plus className="size-3.5" />
-              Adicionar
-            </Button>
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="p-0">
-        <div className="h-[520px] w-full">
+        <div className="relative h-[520px] w-full">
+          <aside
+            aria-label="Ferramentas do workflow"
+            className="border-border/80 bg-card/90 absolute top-3 left-3 z-10 flex flex-col items-center gap-1 rounded-lg border p-1.5 shadow-md backdrop-blur-md"
+          >
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-8 rounded-md text-blue-500 hover:bg-blue-500/10 hover:text-blue-400"
+              aria-label="Adicionar Fonte (Extract)"
+              title="Adicionar Fonte (Extract)"
+              onClick={() => onOpenAddNode('source')}
+            >
+              <Database className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-8 rounded-md text-indigo-500 hover:bg-indigo-500/10 hover:text-indigo-400"
+              aria-label="Adicionar Transformação (SQL)"
+              title="Adicionar Transformação (SQL)"
+              onClick={() => onOpenAddNode('transform')}
+            >
+              <Code2 className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-8 rounded-md text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400"
+              aria-label="Adicionar Visualização (Load)"
+              title="Adicionar Visualização (Load)"
+              onClick={() => onOpenAddNode('output')}
+            >
+              <BarChart3 className="size-4" />
+            </Button>
+
+            <div className="bg-border/60 my-0.5 h-px w-5" />
+
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive size-8 rounded-md"
+              aria-label="Remover node selecionado"
+              title="Remover node selecionado"
+              disabled={selectedNodeId === null}
+              onClick={() => {
+                if (selectedNodeId !== null) onRequestRemoveNode(selectedNodeId)
+              }}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </aside>
+
           <ReactFlow
             nodes={pipelineNodes}
             edges={pipelineEdges}

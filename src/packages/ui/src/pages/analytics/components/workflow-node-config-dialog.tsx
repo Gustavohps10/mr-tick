@@ -9,14 +9,11 @@ import type {
 } from '@mr-tick/application'
 import {
   ArrowRight,
-  BarChart3,
-  Check,
   Code2,
   Columns,
   Database,
   Filter,
   Loader2,
-  SlidersHorizontal,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -49,6 +46,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
 import {
@@ -64,16 +63,23 @@ import {
   type AnalyticsSpaceConfig,
   GENERIC_CHART_MODELS,
   type ReferenceLineMode,
+  type SpaceWorkflowNodeConfig,
   type WidgetId,
   type WidgetSpan,
 } from '../lib/analytics-types'
+import { chartInputIssues, chartInputRequirements } from '../lib/chart-input'
 import { AnalyticsError } from './analytics-error'
+import {
+  ChartModelExample,
+  type ChartRealPreviewInput,
+} from './chart-model-example'
 import { SourceExecutionControl } from './source-execution-control'
 
 export interface WorkflowNodeConfigDialogProps {
   queryExecution: AnalyticsExecutionRequest | undefined
   onQueryExecutionChange: (value: AnalyticsExecutionRequest | undefined) => void
   open: boolean
+  embedded?: boolean
   editingNodeId: string | null
   activeSpace: AnalyticsSpaceConfig
   selectedAddNodeType: AddNodeTypeOption
@@ -113,7 +119,6 @@ export interface WorkflowNodeConfigDialogProps {
   ) => void
   onSetNodeFilterValue: (filterId: string, val: AnalyticsFilterValue) => void
   onOpenChange: (open: boolean) => void
-  onSelectAddNodeType: (type: AddNodeTypeOption) => void
   onChangeNodeLabel: (val: string) => void
   onSelectConnectionId: (val: string) => void
   onSelectDatasetId: (val: string) => void
@@ -133,40 +138,140 @@ export interface WorkflowNodeConfigDialogProps {
   onSetSqlQueryText: (val: string) => void
   onSaveEditedNode: () => void
   onAddWorkflowNode: () => void
+  resolveRowsForWorkflowNode?: (
+    node: SpaceWorkflowNodeConfig,
+  ) => EtlTablePayload
 }
 
-const ETL_PRIMARY_CARDS: Array<{
-  id: AddNodeTypeOption
-  title: string
-  description: string
-  badge: string
-  Icon: typeof Database
-}> = [
-  {
-    id: 'source',
-    title: 'Extrair dados',
-    description:
-      'Conecta a uma fonte de dados (Redmine, Jira, Linear) para consulta direta e extração.',
-    badge: 'EXTRACT',
-    Icon: Database,
-  },
-  {
-    id: 'transform',
-    title: 'Transformar dados (DuckDB SQL)',
-    description:
-      'Escreva SQL livremente sobre o nó anterior com comparação ao vivo: Antes (Entrada) vs Depois (Resultado).',
-    badge: 'TRANSFORM',
-    Icon: SlidersHorizontal,
-  },
-  {
-    id: 'output',
-    title: 'Publicar Visualização (Gráfico ou Tabela)',
-    description:
-      'Renderiza 1-para-1 gráfico ou tabela na Grade mapeando Eixo X, Métrica e Linha de Meta.',
-    badge: 'LOAD',
-    Icon: BarChart3,
-  },
-]
+function buildRealChartPreview(params: {
+  payload: EtlTablePayload
+  visual: WidgetId
+  categoryColumn: string
+  metricColumn: string
+  secondaryMetricColumn: string
+  stackColumn: string
+  hierarchyColumns: string[]
+}): ChartRealPreviewInput | undefined {
+  const { payload, visual } = params
+  if (payload.rows.length === 0) return undefined
+
+  const metricKey = params.metricColumn
+  let resolvedMetric = metricKey
+  if (resolvedMetric === '') resolvedMetric = '__count'
+
+  const series: string[] = [resolvedMetric]
+  if (params.secondaryMetricColumn !== '')
+    series.push(params.secondaryMetricColumn)
+
+  const columns: AnalyticsColumnSchema[] = [...payload.columns]
+  if (
+    resolvedMetric === '__count' &&
+    !columns.some((col) => col.name === '__count')
+  )
+    columns.push({ name: '__count', label: 'Registros', type: 'number' })
+
+  if (params.categoryColumn === '') {
+    return {
+      data: {
+        columns,
+        rows: payload.rows.slice(0, 12),
+      },
+      category: '',
+      metric: resolvedMetric,
+      secondaryMetric: params.secondaryMetricColumn,
+      series,
+      stacked: params.stackColumn !== '',
+      hierarchyColumns: params.hierarchyColumns,
+      rowCount: payload.rows.length,
+    }
+  }
+
+  const grouped = new Map<
+    string,
+    { categoryValue: string; primarySum: number; secondarySum: number }
+  >()
+
+  for (const row of payload.rows) {
+    const rawCat = row[params.categoryColumn]
+    let catLabel = 'Sem valor'
+
+    if (rawCat !== null && rawCat !== undefined && String(rawCat).trim() !== '')
+      catLabel = String(rawCat)
+
+    let entry = grouped.get(catLabel)
+
+    if (entry === undefined) {
+      entry = { categoryValue: catLabel, primarySum: 0, secondarySum: 0 }
+      grouped.set(catLabel, entry)
+    }
+
+    if (metricKey === '') {
+      entry.primarySum += 1
+    }
+
+    if (metricKey !== '') {
+      const val = Number(row[metricKey])
+      if (Number.isFinite(val)) entry.primarySum += val
+    }
+
+    if (params.secondaryMetricColumn !== '') {
+      const secVal = Number(row[params.secondaryMetricColumn])
+      if (Number.isFinite(secVal)) entry.secondarySum += secVal
+    }
+  }
+
+  const aggregatedRows: AnalyticsDatasetRow[] = []
+
+  for (const entry of grouped.values()) {
+    if (aggregatedRows.length >= 12) break
+
+    const nextRow: AnalyticsDatasetRow = {
+      [params.categoryColumn]: entry.categoryValue,
+      [resolvedMetric]: entry.primarySum,
+    }
+
+    if (params.secondaryMetricColumn !== '')
+      nextRow[params.secondaryMetricColumn] = entry.secondarySum
+
+    aggregatedRows.push(nextRow)
+  }
+
+  if (visual === 'kpi_card') {
+    let totalPrimary = 0
+
+    for (const entry of grouped.values()) {
+      totalPrimary += entry.primarySum
+    }
+
+    return {
+      data: {
+        columns,
+        rows: [{ [resolvedMetric]: totalPrimary }],
+      },
+      category: params.categoryColumn,
+      metric: resolvedMetric,
+      secondaryMetric: params.secondaryMetricColumn,
+      series,
+      stacked: false,
+      hierarchyColumns: params.hierarchyColumns,
+      rowCount: payload.rows.length,
+    }
+  }
+
+  return {
+    data: {
+      columns,
+      rows: aggregatedRows,
+    },
+    category: params.categoryColumn,
+    metric: resolvedMetric,
+    secondaryMetric: params.secondaryMetricColumn,
+    series,
+    stacked: params.stackColumn !== '',
+    hierarchyColumns: params.hierarchyColumns,
+    rowCount: payload.rows.length,
+  }
+}
 
 function resolveFilterOptions(
   filterDef: AnalyticsFilterDefinition,
@@ -451,6 +556,7 @@ export function WorkflowNodeConfigDialog({
   queryExecution,
   onQueryExecutionChange,
   open,
+  embedded = false,
   editingNodeId,
   activeSpace,
   selectedAddNodeType,
@@ -488,7 +594,6 @@ export function WorkflowNodeConfigDialog({
   onSetNodeCustomDateRange,
   onSetNodeFilterValue,
   onOpenChange,
-  onSelectAddNodeType,
   onChangeNodeLabel,
   onSelectConnectionId,
   onSelectDatasetId,
@@ -508,10 +613,23 @@ export function WorkflowNodeConfigDialog({
   onSetSqlQueryText,
   onSaveEditedNode,
   onAddWorkflowNode,
+  resolveRowsForWorkflowNode,
 }: WorkflowNodeConfigDialogProps) {
-  let dialogTitle = `Adicionar Elemento ao Workflow de “${activeSpace.title}”`
+  let dialogTitle = `Adicionar Fonte (Extract) — “${activeSpace.title}”`
   let dialogDescription =
-    'Escolha a etapa do pipeline: Extrair, Transformar ou Publicar Visualização.'
+    'Configure a conexão, o dataset, as colunas e os filtros de extração.'
+
+  if (selectedAddNodeType === 'transform') {
+    dialogTitle = `Adicionar Transformação (SQL) — “${activeSpace.title}”`
+    dialogDescription =
+      'Selecione o node de entrada e escreva a consulta SQL no motor local (DuckDB).'
+  }
+
+  if (selectedAddNodeType === 'output') {
+    dialogTitle = `Adicionar Visualização (Load) — “${activeSpace.title}”`
+    dialogDescription =
+      'Escolha a fonte de dados e configure o gráfico ou tabela na Grade Inteligente.'
+  }
 
   if (editingNodeId) {
     let labelDisplay = 'Node ETL'
@@ -590,6 +708,36 @@ export function WorkflowNodeConfigDialog({
       outputReferenceLineMode === 'weighted_ratio' ||
       outputStackColumn !== '')
 
+  const chartRequirements = chartInputRequirements(newNodeWidgetType)
+  const requiresNumericMetric =
+    isRemoteAggregateOutput || outputReferenceLineMode === 'average'
+  const requiresSecondaryMetric =
+    chartRequirements.secondary ||
+    (chartRequirements.series && isRemoteAggregateOutput) ||
+    outputReferenceLineMode === 'weighted_ratio'
+  let inputSchema: AnalyticsColumnSchema[] | undefined
+  if (upstreamAvailableColumns.length > 0)
+    inputSchema = upstreamAvailableColumns
+  const chartIssues = chartInputIssues(
+    newNodeWidgetType,
+    {
+      categoryColumn: outputCategoryColumn,
+      metricColumn: outputMetricColumn,
+      secondaryMetricColumn: outputSecondaryMetricColumn,
+      stackColumn: outputStackColumn,
+      hierarchyColumns: outputHierarchyColumns,
+      referenceLineMode: outputReferenceLineMode,
+    },
+    inputSchema,
+    isRemoteAggregateOutput,
+  )
+  const numericColumns = upstreamAvailableColumns.filter(
+    (column) => column.type === 'number',
+  )
+  let dialogSize = 'max-h-[88vh] max-w-4xl sm:max-w-4xl'
+  if (selectedAddNodeType === 'output')
+    dialogSize = 'max-h-[94vh] max-w-7xl sm:max-w-7xl'
+
   const selectedModelMeta = GENERIC_CHART_MODELS.find(
     (m) => m.id === newNodeWidgetType,
   )
@@ -614,10 +762,13 @@ export function WorkflowNodeConfigDialog({
         isTransformRemoteAggregate)) ||
     (selectedAddNodeType === 'output' &&
       (outputSourceNodeId === '' ||
-        (newNodeWidgetType !== 'kpi_card' && outputCategoryColumn === '') ||
+        upstreamAvailableColumns.length === 0 ||
+        chartIssues.length > 0 ||
         isOutputRemotePostProcessingUnsupported))
 
   const handlePrimaryAction = () => {
+    if (isSubmitDisabled) return
+
     if (editingNodeId) {
       onSaveEditedNode()
       return
@@ -688,789 +839,715 @@ export function WorkflowNodeConfigDialog({
     afterRows = transformPreviewAfterPayload.rows.slice(0, 5)
   }
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[88vh] w-[96vw] max-w-4xl min-w-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
-        <DialogHeader className="shrink-0 border-b px-6 py-4 pr-8">
-          <DialogTitle className="text-base font-bold">
-            {dialogTitle}
-          </DialogTitle>
-          <DialogDescription className="text-xs">
-            {dialogDescription}
-          </DialogDescription>
-        </DialogHeader>
+  const form = (
+    <div
+      className={cn(!embedded && 'min-h-0 flex-1 overflow-y-auto px-6 py-4')}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs font-semibold">
+            Título do Node / Gráfico
+          </Label>
+          <Input
+            value={newNodeLabel}
+            onChange={(e) => onChangeNodeLabel(e.target.value)}
+            placeholder={inputPlaceholder}
+            className="text-xs"
+          />
+        </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
-          <div className="flex flex-col gap-4">
-            {!editingNodeId && (
-              <div className="flex flex-col gap-2">
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                  {ETL_PRIMARY_CARDS.map((card) => {
-                    const isSelected = selectedAddNodeType === card.id
-                    const CardIcon = card.Icon
+        {selectedAddNodeType === 'source' && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label className="text-xs font-semibold">Conexão analítica</Label>
+              <Select
+                value={newNodeSelectedConnectionId}
+                onValueChange={(val) => {
+                  onSelectConnectionId(val)
+                  onSelectDatasetId('')
+                }}
+                disabled={connectionDisplayOptions.length === 0}
+              >
+                <SelectTrigger
+                  aria-label="Conexão analítica"
+                  className="w-full text-xs"
+                >
+                  <SelectValue placeholder={connPlaceholder} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {connectionDisplayOptions.map((opt) => (
+                      <SelectItem
+                        key={opt.id}
+                        value={opt.id}
+                        className="py-1.5 text-xs"
+                      >
+                        <div className="flex items-center gap-2">
+                          {Boolean(opt.logoUrl) && (
+                            <img
+                              src={opt.logoUrl}
+                              alt=""
+                              className="size-4 shrink-0 rounded-xs object-contain"
+                            />
+                          )}
+                          {!opt.logoUrl && (
+                            <Database className="text-muted-foreground size-4 shrink-0" />
+                          )}
+                          <span className="text-foreground font-semibold">
+                            {opt.addonName}
+                          </span>
+                          {Boolean(opt.identityName) && (
+                            <span className="text-muted-foreground font-normal">
+                              {opt.identityName}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
 
-                    let cardBorderClass =
-                      'border-border/60 hover:border-border hover:bg-muted/30'
-                    let iconBgClass = 'bg-muted text-muted-foreground'
-                    let checkCircleClass = 'border-border/80'
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label className="text-xs font-semibold">Dataset</Label>
+              <Select
+                value={newNodeDatasetId}
+                onValueChange={onSelectDatasetId}
+                disabled={
+                  connectionDisplayOptions.length === 0 ||
+                  !newNodeSelectedConnectionId ||
+                  isLoadingNodeDatasets ||
+                  nodeSourceDatasets.length === 0
+                }
+              >
+                <SelectTrigger
+                  aria-label="Dataset analítico"
+                  className="h-auto min-h-[44px] w-full py-1.5 text-xs"
+                >
+                  {isLoadingNodeDatasets && (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="text-muted-foreground size-3.5 animate-spin" />
+                      <span className="text-muted-foreground">
+                        Descobrindo datasets da fonte...
+                      </span>
+                    </div>
+                  )}
+                  {!isLoadingNodeDatasets && (
+                    <SelectValue placeholder={dsPlaceholder} />
+                  )}
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {nodeSourceDatasets.map((ds) => (
+                      <SelectItem
+                        key={ds.id}
+                        value={ds.id}
+                        className="py-1.5 text-xs"
+                      >
+                        <div className="flex flex-col gap-0.5 text-left">
+                          <span className="text-foreground leading-tight font-semibold">
+                            {ds.name}
+                          </span>
+                          <span className="text-muted-foreground font-mono text-[11px] leading-tight">
+                            {ds.endpoint}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
 
-                    if (isSelected) {
-                      cardBorderClass =
-                        'border-primary bg-primary/5 ring-primary shadow-xs ring-1'
-                      iconBgClass = 'bg-primary text-primary-foreground'
-                      checkCircleClass =
-                        'border-primary bg-primary text-primary-foreground'
-                    }
+            <SourceExecutionControl
+              manifest={selectedDatasetManifest}
+              value={queryExecution}
+              onChange={onQueryExecutionChange}
+            />
+
+            {(supportsExtractionDateRange ||
+              supportedFiltersList.length > 0) && (
+              <div className="border-border/60 bg-muted/20 flex flex-col gap-3 rounded-lg border p-3 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Filter className="text-muted-foreground size-4" />
+                    <Label className="text-foreground text-xs font-semibold">
+                      Filtros
+                    </Label>
+                  </div>
+                  <Badge variant="outline" className="font-mono text-[10px]">
+                    {filterItemCount} {filterSuffix}
+                  </Badge>
+                </div>
+                {filterOptionsFailures.map((failure) => (
+                  <div key={failure.source} role="alert">
+                    {failure.source}: {failure.message}
+                  </div>
+                ))}
+                <span className="text-muted-foreground text-[11px]">
+                  Defina os parâmetros para filtrar os registros diretamente na
+                  consulta.
+                </span>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {supportsExtractionDateRange && (
+                    <div className="flex flex-col gap-1.5 sm:col-span-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold">
+                          Período da extração
+                        </Label>
+                        <span className="text-muted-foreground font-mono text-[11px]">
+                          {isCustomExtractionDate && 'Período personalizado'}
+                          {!isCustomExtractionDate &&
+                            `Painel: ${globalFromLabel} a ${globalToLabel}`}
+                        </span>
+                      </div>
+
+                      <Select
+                        value={extractionDateModeValue}
+                        onValueChange={(nextMode) => {
+                          if (nextMode === 'global') {
+                            onSetNodeCustomDateRange(undefined)
+                            return
+                          }
+
+                          let initFrom = ''
+                          if (globalStartDate !== undefined)
+                            initFrom = globalStartDate
+
+                          let initTo = ''
+                          if (globalEndDate !== undefined)
+                            initTo = globalEndDate
+
+                          onSetNodeCustomDateRange({
+                            from: initFrom,
+                            to: initTo,
+                          })
+                        }}
+                      >
+                        <SelectTrigger
+                          aria-label="Período da extração"
+                          className="w-full text-xs"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem
+                              value="global"
+                              className="py-1.5 text-xs"
+                            >
+                              Usar período do painel ({globalFromLabel} a{' '}
+                              {globalToLabel})
+                            </SelectItem>
+                            <SelectItem
+                              value="custom"
+                              className="py-1.5 text-xs"
+                            >
+                              Personalizado (Definir datas específicas neste nó)
+                            </SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+
+                      {isCustomExtractionDate && (
+                        <div className="mt-1 grid grid-cols-2 gap-2">
+                          <div className="flex flex-col gap-1">
+                            <Label className="text-muted-foreground text-[10px]">
+                              Data inicial do nó
+                            </Label>
+                            <Input
+                              type="date"
+                              aria-label="Data inicial do nó"
+                              value={customDateFromVal}
+                              onChange={(e) =>
+                                onSetNodeCustomDateRange({
+                                  from: e.target.value,
+                                  to: customDateToVal,
+                                })
+                              }
+                              className="h-8 font-mono text-xs"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <Label className="text-muted-foreground text-[10px]">
+                              Data final do nó
+                            </Label>
+                            <Input
+                              type="date"
+                              aria-label="Data final do nó"
+                              value={customDateToVal}
+                              onChange={(e) =>
+                                onSetNodeCustomDateRange({
+                                  from: customDateFromVal,
+                                  to: e.target.value,
+                                })
+                              }
+                              className="h-8 font-mono text-xs"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {supportedFiltersList.map((filterDef) => (
+                    <DynamicFilterField
+                      key={filterDef.id}
+                      filterDef={filterDef}
+                      nodeFilterValues={nodeFilterValues}
+                      onSetNodeFilterValue={onSetNodeFilterValue}
+                      dynamicFilterOptions={dynamicFilterOptions}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {queryExecution?.kind !== 'aggregate' && (
+              <div className="flex flex-col gap-2.5 sm:col-span-2">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Columns className="text-muted-foreground size-4" />
+                    <Label className="text-foreground text-xs font-semibold">
+                      Colunas da Tabela
+                    </Label>
+                    <Badge variant="outline" className="font-mono text-[10px]">
+                      {nodeSelectedColumns.length} de{' '}
+                      {discoveredSchemaColumns.length} colunas
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onSelectAllColumns(
+                          discoveredSchemaColumns.map((c) => c.name),
+                        )
+                      }
+                      className="text-primary text-[11px] font-medium hover:underline"
+                    >
+                      Selecionar todas
+                    </button>
+                    <span className="text-border text-xs">•</span>
+                    <button
+                      type="button"
+                      onClick={onClearAllColumns}
+                      className="text-muted-foreground hover:text-foreground text-[11px]"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+
+                <span className="text-muted-foreground text-[11px]">
+                  Selecione quais colunas deseja incluir neste nó. Os dados são
+                  carregados conforme o formato original da fonte.
+                </span>
+
+                <div className="border-border/70 bg-card/40 grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded-lg border p-2.5 sm:grid-cols-2">
+                  {discoveredSchemaColumns.map((col) => {
+                    const isColChecked = nodeSelectedColumns.includes(col.name)
 
                     return (
                       <div
-                        key={card.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => onSelectAddNodeType(card.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ')
-                            onSelectAddNodeType(card.id)
-                        }}
-                        className={cn(
-                          'relative flex cursor-pointer flex-col justify-between rounded-lg border-2 p-3 text-left transition-all',
-                          cardBorderClass,
-                        )}
+                        key={col.name}
+                        className="border-border/50 bg-background/60 hover:bg-muted/30 flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 transition-colors"
                       >
-                        <div>
-                          <div className="mb-2 flex items-center justify-between">
-                            <div className={cn('rounded-md p-2', iconBgClass)}>
-                              <CardIcon className="size-4" />
-                            </div>
-                            <div
-                              className={cn(
-                                'flex size-5 items-center justify-center rounded-full border transition-colors',
-                                checkCircleClass,
-                              )}
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Checkbox
+                            id={`schema-col-${col.name}`}
+                            checked={isColChecked}
+                            onCheckedChange={(checked) =>
+                              onToggleSelectedColumn(col.name, Boolean(checked))
+                            }
+                          />
+                          <div className="min-w-0">
+                            <Label
+                              htmlFor={`schema-col-${col.name}`}
+                              className="block cursor-pointer truncate text-xs font-medium"
                             >
-                              {isSelected && <Check className="size-3" />}
-                            </div>
-                          </div>
-                          <div className="text-foreground text-xs font-semibold">
-                            {card.title}
-                          </div>
-                          <div className="text-muted-foreground mt-1 text-[11px] leading-snug">
-                            {card.description}
+                              {col.label}
+                            </Label>
+                            <span className="text-muted-foreground font-mono text-[10px]">
+                              {col.name}
+                            </span>
                           </div>
                         </div>
-                        <Badge
-                          variant="outline"
-                          className="mt-3 w-fit font-mono text-[10px] font-medium"
-                        >
-                          {card.badge}
-                        </Badge>
+
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {col.origin === 'custom' && (
+                            <Badge
+                              variant="secondary"
+                              className="h-4 px-1.5 text-[9px] font-normal"
+                            >
+                              Personalizado
+                            </Badge>
+                          )}
+                          <Badge
+                            variant="outline"
+                            className="text-muted-foreground h-4 px-1.5 font-mono text-[9px] font-normal"
+                          >
+                            {formatColumnTypeLabel(col.type)}
+                          </Badge>
+                        </div>
                       </div>
                     )
                   })}
                 </div>
               </div>
             )}
+          </div>
+        )}
 
+        {selectedAddNodeType === 'transform' && (
+          <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs font-semibold">
-                Título do Node / Gráfico
+                Nó Anterior (Entrada Bruta / Upstream)
               </Label>
-              <Input
-                value={newNodeLabel}
-                onChange={(e) => onChangeNodeLabel(e.target.value)}
-                placeholder={inputPlaceholder}
-                className="text-xs"
-              />
+              <Select
+                value={txUpstreamNodeId}
+                onValueChange={onSetTxUpstreamNodeId}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Selecione o nó anterior..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {upstreamDataNodes.map((n) => (
+                      <SelectItem key={n.id} value={n.id} className="text-xs">
+                        {n.label} ({n.badge})
+                      </SelectItem>
+                    ))}
+                    {upstreamDataNodes.length > 1 && (
+                      <SelectItem value="__all__" className="text-xs">
+                        Todos os nós anteriores ({upstreamDataNodes.length}{' '}
+                        fontes p/ JOIN ou UNION)
+                      </SelectItem>
+                    )}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
 
-            {selectedAddNodeType === 'source' && (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <Label className="text-xs font-semibold">
-                    Conexão analítica
-                  </Label>
-                  <Select
-                    value={newNodeSelectedConnectionId}
-                    onValueChange={(val) => {
-                      onSelectConnectionId(val)
-                      onSelectDatasetId('')
-                    }}
-                    disabled={connectionDisplayOptions.length === 0}
-                  >
-                    <SelectTrigger
-                      aria-label="Conexão analítica"
-                      className="w-full text-xs"
+            {upstreamAvailableColumns.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground text-xs">
+                  Colunas disponíveis no nó anterior (clique para inserir no
+                  SQL):
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {upstreamAvailableColumns.map((col) => (
+                    <Badge
+                      key={col.name}
+                      variant="secondary"
+                      className="hover:bg-primary/15 cursor-pointer font-mono text-[11px]"
+                      onClick={() =>
+                        onSetSqlQueryText(`${sqlQueryText} ${col.name}`)
+                      }
                     >
-                      <SelectValue placeholder={connPlaceholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {connectionDisplayOptions.map((opt) => (
-                          <SelectItem
-                            key={opt.id}
-                            value={opt.id}
-                            className="py-1.5 text-xs"
-                          >
-                            <div className="flex items-center gap-2">
-                              {Boolean(opt.logoUrl) && (
-                                <img
-                                  src={opt.logoUrl}
-                                  alt=""
-                                  className="size-4 shrink-0 rounded-xs object-contain"
-                                />
-                              )}
-                              {!opt.logoUrl && (
-                                <Database className="text-muted-foreground size-4 shrink-0" />
-                              )}
-                              <span className="text-foreground font-semibold">
-                                {opt.addonName}
-                              </span>
-                              {Boolean(opt.identityName) && (
-                                <span className="text-muted-foreground font-normal">
-                                  {opt.identityName}
-                                </span>
-                              )}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                      {col.name}{' '}
+                      <span className="text-muted-foreground ml-0.5">
+                        ({col.type})
+                      </span>
+                    </Badge>
+                  ))}
                 </div>
+              </div>
+            )}
 
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <Label className="text-xs font-semibold">Dataset</Label>
-                  <Select
-                    value={newNodeDatasetId}
-                    onValueChange={onSelectDatasetId}
-                    disabled={
-                      connectionDisplayOptions.length === 0 ||
-                      !newNodeSelectedConnectionId ||
-                      isLoadingNodeDatasets ||
-                      nodeSourceDatasets.length === 0
-                    }
-                  >
-                    <SelectTrigger
-                      aria-label="Dataset analítico"
-                      className="h-auto min-h-[44px] w-full py-1.5 text-xs"
-                    >
-                      {isLoadingNodeDatasets && (
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="text-muted-foreground size-3.5 animate-spin" />
-                          <span className="text-muted-foreground">
-                            Descobrindo datasets da fonte...
-                          </span>
-                        </div>
-                      )}
-                      {!isLoadingNodeDatasets && (
-                        <SelectValue placeholder={dsPlaceholder} />
-                      )}
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {nodeSourceDatasets.map((ds) => (
-                          <SelectItem
-                            key={ds.id}
-                            value={ds.id}
-                            className="py-1.5 text-xs"
-                          >
-                            <div className="flex flex-col gap-0.5 text-left">
-                              <span className="text-foreground leading-tight font-semibold">
-                                {ds.name}
-                              </span>
-                              <span className="text-muted-foreground font-mono text-[11px] leading-tight">
-                                {ds.endpoint}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label className="flex items-center gap-1.5 text-xs font-semibold">
+                  <Code2 data-icon="inline-start" className="text-primary" />
+                  Consulta SQL de Transformação
+                </Label>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-muted-foreground text-[11px]">
+                    Tabelas:
+                  </span>
+                  <Badge variant="outline" className="font-mono text-[10px]">
+                    input
+                  </Badge>
+                  <Badge variant="outline" className="font-mono text-[10px]">
+                    input_1, input_2
+                  </Badge>
                 </div>
+              </div>
+              <Textarea
+                value={sqlQueryText}
+                onChange={(e) => onSetSqlQueryText(e.target.value)}
+                rows={5}
+                placeholder="SELECT coluna, SUM(metrica) AS total FROM input GROUP BY coluna"
+                className="min-h-24 resize-y font-mono text-xs leading-relaxed"
+              />
+              <p className="text-muted-foreground text-[11px]">
+                Suporta <code>SELECT</code> com projeção explícita,{' '}
+                <code>WHERE</code>, <code>CASE WHEN</code>,{' '}
+                <code>GROUP BY</code>, <code>JOIN</code>, <code>FORMULA</code> e{' '}
+                <code>ORDER BY</code>.
+              </p>
+            </div>
 
-                <SourceExecutionControl
-                  manifest={selectedDatasetManifest}
-                  value={queryExecution}
-                  onChange={onQueryExecutionChange}
+            {isTransformRemoteAggregate && (
+              <AnalyticsError
+                message="ANALYTICS_REMOTE_AGGREGATE_PROJECTION_ONLY"
+                details={transformPreviewDetails}
+              />
+            )}
+
+            {!isTransformRemoteAggregate &&
+              transformPreviewError !== undefined && (
+                <AnalyticsError
+                  message={transformPreviewError}
+                  details={transformPreviewDetails}
                 />
+              )}
 
-                {(supportsExtractionDateRange ||
-                  supportedFiltersList.length > 0) && (
-                  <div className="border-border/60 bg-muted/20 flex flex-col gap-3 rounded-lg border p-3 sm:col-span-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <Filter className="text-muted-foreground size-4" />
-                        <Label className="text-foreground text-xs font-semibold">
-                          Filtros
-                        </Label>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className="font-mono text-[10px]"
-                      >
-                        {filterItemCount} {filterSuffix}
-                      </Badge>
-                    </div>
-                    {filterOptionsFailures.map((failure) => (
-                      <div key={failure.source} role="alert">
-                        {failure.source}: {failure.message}
-                      </div>
-                    ))}
-                    <span className="text-muted-foreground text-[11px]">
-                      Defina os parâmetros para filtrar os registros diretamente
-                      na consulta.
-                    </span>
-
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {supportsExtractionDateRange && (
-                        <div className="flex flex-col gap-1.5 sm:col-span-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs font-semibold">
-                              Período da extração
-                            </Label>
-                            <span className="text-muted-foreground font-mono text-[11px]">
-                              {isCustomExtractionDate &&
-                                'Período personalizado'}
-                              {!isCustomExtractionDate &&
-                                `Painel: ${globalFromLabel} a ${globalToLabel}`}
-                            </span>
-                          </div>
-
-                          <Select
-                            value={extractionDateModeValue}
-                            onValueChange={(nextMode) => {
-                              if (nextMode === 'global') {
-                                onSetNodeCustomDateRange(undefined)
-                                return
-                              }
-
-                              let initFrom = ''
-                              if (globalStartDate !== undefined)
-                                initFrom = globalStartDate
-
-                              let initTo = ''
-                              if (globalEndDate !== undefined)
-                                initTo = globalEndDate
-
-                              onSetNodeCustomDateRange({
-                                from: initFrom,
-                                to: initTo,
-                              })
-                            }}
-                          >
-                            <SelectTrigger
-                              aria-label="Período da extração"
-                              className="w-full text-xs"
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectGroup>
-                                <SelectItem
-                                  value="global"
-                                  className="py-1.5 text-xs"
-                                >
-                                  Usar período do painel ({globalFromLabel} a{' '}
-                                  {globalToLabel})
-                                </SelectItem>
-                                <SelectItem
-                                  value="custom"
-                                  className="py-1.5 text-xs"
-                                >
-                                  Personalizado (Definir datas específicas neste
-                                  nó)
-                                </SelectItem>
-                              </SelectGroup>
-                            </SelectContent>
-                          </Select>
-
-                          {isCustomExtractionDate && (
-                            <div className="mt-1 grid grid-cols-2 gap-2">
-                              <div className="flex flex-col gap-1">
-                                <Label className="text-muted-foreground text-[10px]">
-                                  Data inicial do nó
-                                </Label>
-                                <Input
-                                  type="date"
-                                  aria-label="Data inicial do nó"
-                                  value={customDateFromVal}
-                                  onChange={(e) =>
-                                    onSetNodeCustomDateRange({
-                                      from: e.target.value,
-                                      to: customDateToVal,
-                                    })
-                                  }
-                                  className="h-8 font-mono text-xs"
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <Label className="text-muted-foreground text-[10px]">
-                                  Data final do nó
-                                </Label>
-                                <Input
-                                  type="date"
-                                  aria-label="Data final do nó"
-                                  value={customDateToVal}
-                                  onChange={(e) =>
-                                    onSetNodeCustomDateRange({
-                                      from: customDateFromVal,
-                                      to: e.target.value,
-                                    })
-                                  }
-                                  className="h-8 font-mono text-xs"
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {supportedFiltersList.map((filterDef) => (
-                        <DynamicFilterField
-                          key={filterDef.id}
-                          filterDef={filterDef}
-                          nodeFilterValues={nodeFilterValues}
-                          onSetNodeFilterValue={onSetNodeFilterValue}
-                          dynamicFilterOptions={dynamicFilterOptions}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {queryExecution?.kind !== 'aggregate' && (
-                  <div className="flex flex-col gap-2.5 sm:col-span-2">
-                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <Columns className="text-muted-foreground size-4" />
-                        <Label className="text-foreground text-xs font-semibold">
-                          Colunas da Tabela
-                        </Label>
-                        <Badge
-                          variant="outline"
-                          className="font-mono text-[10px]"
-                        >
-                          {nodeSelectedColumns.length} de{' '}
-                          {discoveredSchemaColumns.length} colunas
-                        </Badge>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onSelectAllColumns(
-                              discoveredSchemaColumns.map((c) => c.name),
-                            )
-                          }
-                          className="text-primary text-[11px] font-medium hover:underline"
-                        >
-                          Selecionar todas
-                        </button>
-                        <span className="text-border text-xs">•</span>
-                        <button
-                          type="button"
-                          onClick={onClearAllColumns}
-                          className="text-muted-foreground hover:text-foreground text-[11px]"
-                        >
-                          Limpar
-                        </button>
-                      </div>
-                    </div>
-
-                    <span className="text-muted-foreground text-[11px]">
-                      Selecione quais colunas deseja incluir neste nó. Os dados
-                      são carregados conforme o formato original da fonte.
-                    </span>
-
-                    <div className="border-border/70 bg-card/40 grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded-lg border p-2.5 sm:grid-cols-2">
-                      {discoveredSchemaColumns.map((col) => {
-                        const isColChecked = nodeSelectedColumns.includes(
-                          col.name,
-                        )
-
-                        return (
-                          <div
-                            key={col.name}
-                            className="border-border/50 bg-background/60 hover:bg-muted/30 flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 transition-colors"
-                          >
-                            <div className="flex min-w-0 items-center gap-2.5">
-                              <Checkbox
-                                id={`schema-col-${col.name}`}
-                                checked={isColChecked}
-                                onCheckedChange={(checked) =>
-                                  onToggleSelectedColumn(
-                                    col.name,
-                                    Boolean(checked),
-                                  )
-                                }
-                              />
-                              <div className="min-w-0">
-                                <Label
-                                  htmlFor={`schema-col-${col.name}`}
-                                  className="block cursor-pointer truncate text-xs font-medium"
-                                >
-                                  {col.label}
-                                </Label>
-                                <span className="text-muted-foreground font-mono text-[10px]">
-                                  {col.name}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex shrink-0 items-center gap-1.5">
-                              {col.origin === 'custom' && (
-                                <Badge
-                                  variant="secondary"
-                                  className="h-4 px-1.5 text-[9px] font-normal"
-                                >
-                                  Personalizado
-                                </Badge>
-                              )}
-                              <Badge
-                                variant="outline"
-                                className="text-muted-foreground h-4 px-1.5 font-mono text-[9px] font-normal"
-                              >
-                                {formatColumnTypeLabel(col.type)}
-                              </Badge>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
+            <Tabs defaultValue="after" className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <TabsList className="h-8">
+                  <TabsTrigger value="before" className="gap-1.5 text-xs">
+                    Antes (Entrada)
+                    <Badge
+                      variant="outline"
+                      className="ml-1 font-mono text-[10px]"
+                    >
+                      {transformPreviewBeforePayload.rows.length}×
+                      {transformPreviewBeforePayload.columns.length}
+                    </Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="after" className="gap-1.5 text-xs">
+                    <ArrowRight data-icon="inline-start" />
+                    Depois (Resultado)
+                    <Badge
+                      variant="secondary"
+                      className="ml-1 font-mono text-[10px]"
+                    >
+                      {transformPreviewAfterPayload.rows.length}×
+                      {transformPreviewAfterPayload.columns.length}
+                    </Badge>
+                  </TabsTrigger>
+                </TabsList>
               </div>
-            )}
 
-            {selectedAddNodeType === 'transform' && (
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <Label className="text-xs font-semibold">
-                    Nó Anterior (Entrada Bruta / Upstream)
-                  </Label>
-                  <Select
-                    value={txUpstreamNodeId}
-                    onValueChange={onSetTxUpstreamNodeId}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Selecione o nó anterior..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {upstreamDataNodes.map((n) => (
-                        <SelectItem key={n.id} value={n.id} className="text-xs">
-                          {n.label} ({n.badge})
-                        </SelectItem>
-                      ))}
-                      {upstreamDataNodes.length > 1 && (
-                        <SelectItem value="__all__" className="text-xs">
-                          Todos os nós anteriores ({upstreamDataNodes.length}{' '}
-                          fontes p/ JOIN ou UNION)
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {upstreamAvailableColumns.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-muted-foreground text-[11px]">
-                      Colunas disponíveis no nó anterior (clique para inserir no
-                      SQL):
-                    </span>
-                    <div className="flex flex-wrap gap-1">
-                      {upstreamAvailableColumns.map((col) => (
-                        <Badge
-                          key={col.name}
-                          variant="secondary"
-                          className="hover:bg-primary/15 cursor-pointer font-mono text-[10px]"
-                          onClick={() =>
-                            onSetSqlQueryText(`${sqlQueryText} ${col.name}`)
-                          }
-                        >
-                          {col.name}{' '}
-                          <span className="text-muted-foreground ml-0.5">
-                            ({col.type})
-                          </span>
-                        </Badge>
-                      ))}
+              <TabsContent
+                value="after"
+                className="border-border/80 bg-card mt-0 overflow-hidden rounded-lg border"
+              >
+                <div className="max-h-52 overflow-auto">
+                  {afterCols.length === 0 && (
+                    <div className="text-muted-foreground p-6 text-center text-xs">
+                      Sem colunas resultantes.
                     </div>
-                  </div>
-                )}
-
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label className="flex items-center gap-1.5 text-xs font-semibold">
-                      <Code2 className="text-primary size-3.5" />
-                      Consulta SQL de Transformação (Livre sobre{' '}
-                      <code>
-                        {'input; input_1, input_2 para múltiplas entradas'}
-                      </code>
-                      )
-                    </Label>
-                    <span className="text-muted-foreground font-mono text-[10px]">
-                      SELECT com projeção explícita, WHERE, CASE WHEN, GROUP BY
-                      e JOIN. FORMULA e ORDER BY
-                    </span>
-                  </div>
-                  <textarea
-                    value={sqlQueryText}
-                    onChange={(e) => onSetSqlQueryText(e.target.value)}
-                    rows={4}
-                    placeholder="SELECT coluna, SUM(metrica) AS total FROM input GROUP BY coluna"
-                    className="border-input bg-background focus:ring-primary w-full rounded-md border p-2.5 font-mono text-xs focus:ring-1 focus:outline-none"
-                  />
-                </div>
-
-                {isTransformRemoteAggregate && (
-                  <AnalyticsError
-                    message="ANALYTICS_REMOTE_AGGREGATE_PROJECTION_ONLY"
-                    details={transformPreviewDetails}
-                  />
-                )}
-
-                {!isTransformRemoteAggregate &&
-                  transformPreviewError !== undefined && (
-                    <AnalyticsError
-                      message={transformPreviewError}
-                      details={transformPreviewDetails}
-                    />
                   )}
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                  <div className="border-border/70 bg-muted/10 flex flex-col overflow-hidden rounded-lg border">
-                    <div className="bg-muted/40 flex items-center justify-between border-b px-3 py-1.5">
-                      <span className="text-xs font-semibold">
-                        Antes (Entrada Bruta / Nó Anterior)
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className="font-mono text-[10px]"
-                      >
-                        {transformPreviewBeforePayload.rows.length} linhas •{' '}
-                        {transformPreviewBeforePayload.columns.length} cols
-                      </Badge>
-                    </div>
-                    <div className="max-h-44 overflow-auto">
-                      {beforeCols.length === 0 && (
-                        <div className="text-muted-foreground p-4 text-center text-xs">
-                          Nenhum dado no nó anterior ainda.
-                        </div>
-                      )}
-                      {beforeCols.length > 0 && (
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              {beforeCols.map((c) => (
-                                <TableHead
-                                  key={c.name}
-                                  className="h-7 px-2 font-mono text-[10px]"
-                                >
-                                  {c.name}
-                                </TableHead>
-                              ))}
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {beforeRows.map((r, rIdx) => (
-                              <TableRow key={`bef-${rIdx}`}>
-                                {beforeCols.map((c) => (
-                                  <TableCell
-                                    key={c.name}
-                                    className="max-w-[110px] truncate px-2 py-1 font-mono text-[10px]"
-                                  >
-                                    {readCellAsString(r, c.name, '-')}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
+                  {afterCols.length > 0 && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {afterCols.map((c) => (
+                            <TableHead
+                              key={c.name}
+                              className="h-8 px-3 font-mono text-[11px] font-semibold"
+                            >
+                              {c.name}
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {afterRows.map((r, rIdx) => (
+                          <TableRow key={`aft-${rIdx}`}>
+                            {afterCols.map((c) => (
+                              <TableCell
+                                key={c.name}
+                                className="max-w-[180px] truncate px-3 py-1.5 font-mono text-[11px]"
+                              >
+                                {readCellAsString(r, c.name, '-')}
+                              </TableCell>
                             ))}
-                          </TableBody>
-                        </Table>
-                      )}
-                    </div>
-                  </div>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              </TabsContent>
 
-                  <div className="border-primary/40 bg-primary/5 flex flex-col overflow-hidden rounded-lg border">
-                    <div className="bg-primary/10 flex items-center justify-between border-b px-3 py-1.5">
-                      <span className="text-primary flex items-center gap-1 text-xs font-semibold">
-                        <ArrowRight className="size-3.5" />
-                        Depois (Resultado Transformado pelo SQL)
-                      </span>
-                      <Badge
-                        variant="default"
-                        className="font-mono text-[10px]"
-                      >
-                        {transformPreviewAfterPayload.rows.length} linhas •{' '}
-                        {transformPreviewAfterPayload.columns.length} cols
-                      </Badge>
+              <TabsContent
+                value="before"
+                className="border-border/80 bg-card mt-0 overflow-hidden rounded-lg border"
+              >
+                <div className="max-h-52 overflow-auto">
+                  {beforeCols.length === 0 && (
+                    <div className="text-muted-foreground p-6 text-center text-xs">
+                      Nenhum dado no nó anterior ainda.
                     </div>
-                    <div className="max-h-44 overflow-auto">
-                      {afterCols.length === 0 && (
-                        <div className="text-muted-foreground p-4 text-center text-xs">
-                          Sem colunas resultantes.
-                        </div>
-                      )}
-                      {afterCols.length > 0 && (
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              {afterCols.map((c) => (
-                                <TableHead
-                                  key={c.name}
-                                  className="h-7 px-2 font-mono text-[10px] font-bold"
-                                >
-                                  {c.name}
-                                </TableHead>
-                              ))}
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {afterRows.map((r, rIdx) => (
-                              <TableRow key={`aft-${rIdx}`}>
-                                {afterCols.map((c) => (
-                                  <TableCell
-                                    key={c.name}
-                                    className="max-w-[110px] truncate px-2 py-1 font-mono text-[10px]"
-                                  >
-                                    {readCellAsString(r, c.name, '-')}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
+                  )}
+                  {beforeCols.length > 0 && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {beforeCols.map((c) => (
+                            <TableHead
+                              key={c.name}
+                              className="h-8 px-3 font-mono text-[11px]"
+                            >
+                              {c.name}
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {beforeRows.map((r, rIdx) => (
+                          <TableRow key={`bef-${rIdx}`}>
+                            {beforeCols.map((c) => (
+                              <TableCell
+                                key={c.name}
+                                className="max-w-[180px] truncate px-3 py-1.5 font-mono text-[11px]"
+                              >
+                                {readCellAsString(r, c.name, '-')}
+                              </TableCell>
                             ))}
-                          </TableBody>
-                        </Table>
-                      )}
-                    </div>
-                  </div>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
+
+        {selectedAddNodeType === 'output' && (
+          <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label className="text-xs font-semibold">Tipo de gráfico</Label>
+                <Select
+                  value={newNodeWidgetType}
+                  onValueChange={(val) => {
+                    const matched = GENERIC_CHART_MODELS.find(
+                      (m) => m.id === val,
+                    )
+                    if (matched) onSelectWidgetType(matched.id)
+                  }}
+                >
+                  <SelectTrigger
+                    aria-label="Modelo visual da visualização"
+                    className="w-full text-xs"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {GENERIC_CHART_MODELS.map((model) => (
+                        <SelectItem
+                          key={model.id}
+                          value={model.id}
+                          disabled={
+                            isRemoteAggregateOutput &&
+                            (isRemoteAggregateUnsupportedVisual(model.id) ||
+                              ((model.id === 'bar_stacked' ||
+                                model.id === 'area_stacked') &&
+                                outputStackColumn !== ''))
+                          }
+                        >
+                          {model.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <div className="text-muted-foreground text-[11px]">
+                  {selectedModelDesc}
                 </div>
               </div>
-            )}
 
-            {selectedAddNodeType === 'output' && (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <Label className="text-xs font-semibold">
-                    Modelo Visual do Gráfico (Canônico Shadcn Charts)
-                  </Label>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label className="text-xs font-semibold">
+                  Largura na Grade Inteligente
+                </Label>
+                <Select
+                  value={String(newNodeSpan)}
+                  onValueChange={(val) => {
+                    if (val === '1') onSelectSpan(1)
+                    if (val === '2') onSelectSpan(2)
+                    if (val === '3') onSelectSpan(3)
+                  }}
+                >
+                  <SelectTrigger className="w-full text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="1">1 Coluna (1/3)</SelectItem>
+                      <SelectItem value="2">2 Colunas (2/3)</SelectItem>
+                      <SelectItem value="3">Largura Total (3/3)</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+                <Label className="text-xs font-semibold">
+                  Entrada do pipeline
+                </Label>
+                {upstreamDataNodes.length > 0 && (
                   <Select
-                    value={newNodeWidgetType}
-                    onValueChange={(val) => {
-                      const matched = GENERIC_CHART_MODELS.find(
-                        (m) => m.id === val,
-                      )
-                      if (matched) onSelectWidgetType(matched.id)
-                    }}
+                    value={outputSourceNodeId}
+                    onValueChange={onSetOutputSourceNodeId}
                   >
                     <SelectTrigger
-                      aria-label="Modelo visual da visualização"
+                      aria-label="Entrada da visualização"
                       className="w-full text-xs"
                     >
-                      <SelectValue />
+                      <SelectValue placeholder="Selecione o nó que alimenta este gráfico..." />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {GENERIC_CHART_MODELS.map((model) => (
-                          <SelectItem
-                            key={model.id}
-                            value={model.id}
-                            disabled={
-                              isRemoteAggregateOutput &&
-                              (isRemoteAggregateUnsupportedVisual(model.id) ||
-                                ((model.id === 'bar_stacked' ||
-                                  model.id === 'area_stacked') &&
-                                  outputStackColumn !== ''))
-                            }
-                          >
-                            {model.label}
+                        {upstreamDataNodes.map((n) => (
+                          <SelectItem key={n.id} value={n.id}>
+                            {n.label} ({n.badge})
                           </SelectItem>
                         ))}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
-                  <div className="text-muted-foreground text-[11px]">
-                    {selectedModelDesc}
-                  </div>
-                </div>
-
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <Label className="text-xs font-semibold">
-                    Largura na Grade Inteligente
-                  </Label>
-                  <Select
-                    value={String(newNodeSpan)}
-                    onValueChange={(val) => {
-                      if (val === '1') onSelectSpan(1)
-                      if (val === '2') onSelectSpan(2)
-                      if (val === '3') onSelectSpan(3)
-                    }}
-                  >
-                    <SelectTrigger className="w-full text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="1">1 Coluna (1/3)</SelectItem>
-                        <SelectItem value="2">2 Colunas (2/3)</SelectItem>
-                        <SelectItem value="3">Largura Total (3/3)</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
-                  <Label className="text-xs font-semibold">
-                    Nó de Dados Upstream (Origem do Gráfico)
-                  </Label>
-                  {upstreamDataNodes.length > 0 && (
-                    <Select
-                      value={outputSourceNodeId}
-                      onValueChange={onSetOutputSourceNodeId}
-                    >
-                      <SelectTrigger
-                        aria-label="Entrada da visualização"
-                        className="w-full text-xs"
-                      >
-                        <SelectValue placeholder="Selecione o nó que alimenta este gráfico..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {upstreamDataNodes.map((n) => (
-                            <SelectItem key={n.id} value={n.id}>
-                              {n.label} ({n.badge})
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  )}
-                  {upstreamDataNodes.length === 0 && (
-                    <div className="text-muted-foreground bg-muted/20 flex min-h-9 items-center rounded-md border p-2 text-[11px]">
-                      Nenhum nó de dados upstream adicionado ainda
-                    </div>
-                  )}
-                </div>
-
-                {newNodeWidgetType === 'tree_grid' && (
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label>Hierarquia (na ordem selecionada)</Label>
-                    <MultiSelectCombobox
-                      options={upstreamAvailableColumns.map((column) => ({
-                        value: column.name,
-                        label: column.label,
-                      }))}
-                      selectedValues={outputHierarchyColumns}
-                      onSelectedValuesChange={onSetOutputHierarchyColumns}
-                    />
+                )}
+                {upstreamDataNodes.length === 0 && (
+                  <div className="text-muted-foreground bg-muted/20 flex min-h-9 items-center rounded-md border p-2 text-[11px]">
+                    Nenhum nó de dados upstream adicionado ainda
                   </div>
                 )}
-                <div className="border-border/70 bg-muted/15 grid grid-cols-1 gap-3 rounded-lg border p-3 sm:col-span-2 sm:grid-cols-3">
-                  <div className="sm:col-span-3">
-                    <Label className="text-xs font-semibold">
-                      Mapeamento Explícito de Colunas &amp; Linha de Referência
-                    </Label>
-                  </div>
+              </div>
 
-                  <div className="flex flex-col gap-1">
+              {newNodeWidgetType === 'tree_grid' && (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Hierarquia (na ordem selecionada)</Label>
+                  <MultiSelectCombobox
+                    options={upstreamAvailableColumns.map((column) => ({
+                      value: column.name,
+                      label: column.label,
+                    }))}
+                    selectedValues={outputHierarchyColumns}
+                    onSelectedValuesChange={onSetOutputHierarchyColumns}
+                  />
+                </div>
+              )}
+              <div className="border-border/70 bg-muted/15 grid grid-cols-1 gap-3 rounded-lg border p-3 sm:col-span-2 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Label className="text-xs font-semibold">
+                    Mapeamento das colunas
+                  </Label>
+                </div>
+
+                {chartRequirements.category && (
+                  <div className="flex min-w-0 flex-col gap-1.5">
                     <Label className="text-[11px]">
                       Eixo X / Categoria Principal
                     </Label>
@@ -1487,87 +1564,98 @@ export function WorkflowNodeConfigDialog({
                     >
                       <SelectTrigger
                         aria-label="Dimensão da visualização"
-                        className="h-8 text-xs"
+                        className="h-8 w-full text-xs"
                       >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__auto__">
-                          Selecione a dimensão
-                        </SelectItem>
-                        {upstreamAvailableColumns.map((col) => (
-                          <SelectItem key={col.name} value={col.name}>
-                            {col.label} ({col.name})
+                        <SelectGroup>
+                          <SelectItem value="__auto__">
+                            Selecione a dimensão
                           </SelectItem>
-                        ))}
+                          {upstreamAvailableColumns.map((col) => (
+                            <SelectItem key={col.name} value={col.name}>
+                              {col.label} ({col.name})
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
                       </SelectContent>
                     </Select>
                   </div>
+                )}
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <Label className="text-[11px]">
+                    Eixo Y / Métrica Principal
+                  </Label>
+                  <Select
+                    value={metricSelectValue}
+                    onValueChange={(v) => {
+                      if (v === '__auto__') {
+                        onSetOutputMetricColumn('')
+                        return
+                      }
 
-                  <div className="flex flex-col gap-1">
-                    <Label className="text-[11px]">
-                      Eixo Y / Métrica Principal
-                    </Label>
-                    <Select
-                      value={metricSelectValue}
-                      onValueChange={(v) => {
-                        if (v === '__auto__') {
-                          onSetOutputMetricColumn('')
-                          return
-                        }
-
-                        onSetOutputMetricColumn(v)
-                      }}
+                      onSetOutputMetricColumn(v)
+                    }}
+                  >
+                    <SelectTrigger
+                      aria-label="Métrica da visualização"
+                      className="h-8 w-full text-xs"
                     >
-                      <SelectTrigger
-                        aria-label="Métrica da visualização"
-                        className="h-8 text-xs"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__auto__">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem
+                          value="__auto__"
+                          disabled={requiresNumericMetric}
+                        >
                           Contar registros
                         </SelectItem>
-                        {upstreamAvailableColumns.map((col) => (
+                        {numericColumns.map((col) => (
                           <SelectItem key={col.name} value={col.name}>
                             {col.label} ({col.name})
                           </SelectItem>
                         ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                  <div className="flex flex-col gap-1">
-                    <Label className="text-[11px]">
-                      Métrica Secundária / Alternador
-                    </Label>
-                    <Select
-                      value={secMetricSelectValue}
-                      onValueChange={(v) => {
-                        if (v === '__none__') {
-                          onSetOutputSecondaryMetricColumn('')
-                          return
-                        }
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <Label className="text-[11px]">Segunda métrica</Label>
+                  <Select
+                    value={secMetricSelectValue}
+                    onValueChange={(v) => {
+                      if (v === '__none__') {
+                        onSetOutputSecondaryMetricColumn('')
+                        return
+                      }
 
-                        onSetOutputSecondaryMetricColumn(v)
-                      }}
+                      onSetOutputSecondaryMetricColumn(v)
+                    }}
+                  >
+                    <SelectTrigger
+                      aria-label="Segunda métrica da visualização"
+                      className="h-8 w-full text-xs"
                     >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
                         <SelectItem value="__none__">Nenhuma</SelectItem>
-                        {upstreamAvailableColumns.map((col) => (
+                        {numericColumns.map((col) => (
                           <SelectItem key={col.name} value={col.name}>
                             {col.label} ({col.name})
                           </SelectItem>
                         ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                  <div className="flex flex-col gap-1">
+                {(chartRequirements.series || outputStackColumn !== '') && (
+                  <div className="flex min-w-0 flex-col gap-1.5">
                     <Label className="text-[11px]">
                       Empilhar / Pivotar por (Série)
                     </Label>
@@ -1585,46 +1673,49 @@ export function WorkflowNodeConfigDialog({
                     >
                       <SelectTrigger
                         aria-label="Empilhar ou pivotar visualização"
-                        className="h-8 text-xs"
+                        className="h-8 w-full text-xs"
                       >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">
-                          Sem empilhamento extra
-                        </SelectItem>
-                        {upstreamAvailableColumns.map((col) => (
-                          <SelectItem key={col.name} value={col.name}>
-                            {col.label} ({col.name})
+                        <SelectGroup>
+                          <SelectItem value="__none__">
+                            Sem empilhamento extra
                           </SelectItem>
-                        ))}
+                          {upstreamAvailableColumns.map((col) => (
+                            <SelectItem key={col.name} value={col.name}>
+                              {col.label} ({col.name})
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
                       </SelectContent>
                     </Select>
                   </div>
-
-                  <div className="flex flex-col gap-1">
-                    <Label className="text-[11px]">
-                      Linha de Referência / Meta
-                    </Label>
-                    <Select
-                      value={outputReferenceLineMode}
-                      onValueChange={(v) => {
-                        if (
-                          v === 'none' ||
-                          v === 'average' ||
-                          v === 'weighted_ratio' ||
-                          v === 'fixed_target'
-                        )
-                          onSetOutputReferenceLineMode(v)
-                      }}
+                )}
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <Label className="text-[11px]">
+                    Linha de Referência / Meta
+                  </Label>
+                  <Select
+                    value={outputReferenceLineMode}
+                    onValueChange={(v) => {
+                      if (
+                        v === 'none' ||
+                        v === 'average' ||
+                        v === 'weighted_ratio' ||
+                        v === 'fixed_target'
+                      )
+                        onSetOutputReferenceLineMode(v)
+                    }}
+                  >
+                    <SelectTrigger
+                      aria-label="Linha de referência da visualização"
+                      className="h-8 w-full text-xs"
                     >
-                      <SelectTrigger
-                        aria-label="Linha de referência da visualização"
-                        className="h-8 text-xs"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
                         <SelectItem value="none">Sem linha</SelectItem>
                         <SelectItem
                           value="average"
@@ -1641,68 +1732,244 @@ export function WorkflowNodeConfigDialog({
                         <SelectItem value="fixed_target">
                           Meta Fixa (SLA / Valor)
                         </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {outputReferenceLineMode === 'fixed_target' && (
-                    <div className="flex flex-col gap-1">
-                      <Label className="text-[11px]">Valor da Meta Fixa</Label>
-                      <Input
-                        type="number"
-                        value={String(outputReferenceLineTarget)}
-                        onChange={(e) => {
-                          const parsed = Number.parseFloat(e.target.value)
-                          if (!Number.isNaN(parsed))
-                            onSetOutputReferenceLineTarget(parsed)
-                        }}
-                        className="h-8 font-mono text-xs"
-                      />
-                    </div>
-                  )}
-
-                  {isOutputRemotePostProcessingUnsupported && (
-                    <div className="sm:col-span-3">
-                      <AnalyticsError
-                        message="ANALYTICS_REMOTE_AGGREGATE_PROJECTION_ONLY"
-                        details={{
-                          execution: [
-                            'Fontes remotas agregadas aceitam apenas projeção visual simples, filtros e meta fixa.',
-                          ],
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  {isRemoteAggregateOutput &&
-                    !isOutputRemotePostProcessingUnsupported && (
-                      <p className="text-muted-foreground text-[11px] sm:col-span-3">
-                        Fonte remota agregada: pós-processamentos locais (pivô,
-                        rollup hierárquico, fórmula condicional, empilhamento e
-                        média local) ficam desabilitados.
-                      </p>
-                    )}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
 
+                {outputReferenceLineMode === 'fixed_target' && (
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <Label className="text-[11px]">Valor da Meta Fixa</Label>
+                    <Input
+                      type="number"
+                      value={String(outputReferenceLineTarget)}
+                      onChange={(e) => {
+                        const parsed = Number.parseFloat(e.target.value)
+                        if (!Number.isNaN(parsed))
+                          onSetOutputReferenceLineTarget(parsed)
+                      }}
+                      className="h-8 font-mono text-xs"
+                    />
+                  </div>
+                )}
+
+                {isOutputRemotePostProcessingUnsupported && (
+                  <div className="sm:col-span-3">
+                    <AnalyticsError
+                      message="ANALYTICS_REMOTE_AGGREGATE_PROJECTION_ONLY"
+                      details={{
+                        execution: [
+                          'Fontes remotas agregadas aceitam apenas projeção visual simples, filtros e meta fixa.',
+                        ],
+                      }}
+                    />
+                  </div>
+                )}
+
+                {isRemoteAggregateOutput &&
+                  !isOutputRemotePostProcessingUnsupported && (
+                    <p className="text-muted-foreground text-[11px] sm:col-span-3">
+                      Fonte remota agregada: pós-processamentos locais (pivô,
+                      rollup hierárquico, fórmula condicional, empilhamento e
+                      média local) ficam desabilitados.
+                    </p>
+                  )}
+              </div>
+            </div>
+            <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-0">
+              <section
+                aria-label="Requisitos de dados"
+                className="bg-card flex min-w-0 flex-col gap-3 rounded-lg border p-4"
+              >
+                <h3 className="text-sm font-semibold">
+                  O que este gráfico precisa
+                </h3>
+                <dl className="grid gap-1.5 text-xs">
+                  {chartRequirements.category && (
+                    <div>
+                      <dt className="inline font-medium">Dimensão</dt>
+                      <dd className="text-muted-foreground ml-2 inline">
+                        Coluna que define os grupos, como projeto ou período.
+                      </dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt className="inline font-medium">Métrica</dt>
+                    <dd className="text-muted-foreground ml-2 inline">
+                      Coluna numérica
+                      {!requiresNumericMetric && ' ou contagem de registros'}.
+                    </dd>
+                  </div>
+                  {requiresSecondaryMetric && (
+                    <div>
+                      <dt className="inline font-medium">Segunda métrica</dt>
+                      <dd className="text-muted-foreground ml-2 inline">
+                        Coluna numérica para comparação.
+                      </dd>
+                    </div>
+                  )}
+                  {chartRequirements.series && !isRemoteAggregateOutput && (
+                    <div>
+                      <dt className="inline font-medium">Série</dt>
+                      <dd className="text-muted-foreground ml-2 inline">
+                        Coluna que divide os grupos em séries.
+                      </dd>
+                    </div>
+                  )}
+                  {chartRequirements.hierarchy && (
+                    <div>
+                      <dt className="inline font-medium">Hierarquia</dt>
+                      <dd className="text-muted-foreground ml-2 inline">
+                        Uma ou mais colunas, do nível mais amplo ao mais
+                        detalhado.
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+                {outputSourceNodeId === '' && (
+                  <p className="text-muted-foreground text-xs">
+                    Escolha uma entrada do pipeline para mapear as colunas.
+                  </p>
+                )}
+                {outputSourceNodeId !== '' &&
+                  upstreamAvailableColumns.length === 0 && (
+                    <p className="text-muted-foreground text-xs">
+                      A entrada precisa retornar um esquema de colunas antes da
+                      publicação.
+                    </p>
+                  )}
+                {outputSourceNodeId !== '' &&
+                  upstreamAvailableColumns.length > 0 && (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer font-medium">
+                        Colunas da entrada ({upstreamAvailableColumns.length})
+                      </summary>
+                      <dl className="mt-2 grid max-h-36 gap-1 overflow-auto">
+                        {upstreamAvailableColumns.map((column) => (
+                          <div
+                            key={column.name}
+                            className="flex justify-between gap-3"
+                          >
+                            <dt className="break-all">
+                              {column.label} ({column.name})
+                            </dt>
+                            <dd className="text-muted-foreground shrink-0">
+                              {column.type}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </details>
+                  )}
+                {outputSourceNodeId !== '' && chartIssues.length > 0 && (
+                  <ul
+                    aria-live="polite"
+                    className="text-destructive grid list-disc gap-1 pl-4 text-xs"
+                  >
+                    {chartIssues.map((issue) => (
+                      <li key={issue}>{issue}</li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              {(() => {
+                let realPreviewData: ChartRealPreviewInput | undefined
+                let realEmptyMessage: string | undefined
+
+                if (outputSourceNodeId === '')
+                  realEmptyMessage =
+                    'Escolha uma entrada do pipeline para visualizar os dados reais.'
+
+                if (outputSourceNodeId !== '' && chartIssues.length > 0)
+                  realEmptyMessage = chartIssues.join(' ')
+
+                if (
+                  outputSourceNodeId !== '' &&
+                  chartIssues.length === 0 &&
+                  resolveRowsForWorkflowNode !== undefined
+                ) {
+                  const sourceNode = activeSpace.workflowNodes.find(
+                    (n) => n.id === outputSourceNodeId,
+                  )
+
+                  if (sourceNode !== undefined) {
+                    const resolved = resolveRowsForWorkflowNode(sourceNode)
+                    realPreviewData = buildRealChartPreview({
+                      payload: resolved,
+                      visual: newNodeWidgetType,
+                      categoryColumn: outputCategoryColumn,
+                      metricColumn: outputMetricColumn,
+                      secondaryMetricColumn: outputSecondaryMetricColumn,
+                      stackColumn: outputStackColumn,
+                      hierarchyColumns: outputHierarchyColumns,
+                    })
+
+                    if (realPreviewData === undefined)
+                      realEmptyMessage =
+                        'A entrada selecionada ainda não possui linhas carregadas.'
+                  }
+                }
+
+                return (
+                  <ChartModelExample
+                    visual={newNodeWidgetType}
+                    referenceMode={outputReferenceLineMode}
+                    target={outputReferenceLineTarget}
+                    realData={realPreviewData}
+                    realEmptyMessage={realEmptyMessage}
+                  />
+                )
+              })()}
+            </aside>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  const actions = (
+    <>
+      <Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>
+        Cancelar
+      </Button>
+      <Button
+        size="sm"
+        onClick={handlePrimaryAction}
+        disabled={isSubmitDisabled}
+      >
+        {submitLabel}
+      </Button>
+    </>
+  )
+
+  if (embedded)
+    return (
+      <>
+        {form}
+        <div className="flex justify-end gap-2 border-t py-3">{actions}</div>
+      </>
+    )
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={cn(
+          'flex w-[96vw] min-w-0 flex-col gap-0 overflow-hidden p-0',
+          dialogSize,
+        )}
+      >
+        <DialogHeader className="shrink-0 border-b px-6 py-4 pr-8">
+          <DialogTitle className="text-base font-bold">
+            {dialogTitle}
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            {dialogDescription}
+          </DialogDescription>
+        </DialogHeader>
+
+        {form}
         <DialogFooter className="bg-muted/20 flex shrink-0 items-center justify-end gap-2 border-t px-6 py-3">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-          >
-            Cancelar
-          </Button>
-          <Button
-            size="sm"
-            onClick={handlePrimaryAction}
-            disabled={isSubmitDisabled}
-          >
-            {submitLabel}
-          </Button>
+          {actions}
         </DialogFooter>
       </DialogContent>
     </Dialog>

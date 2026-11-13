@@ -155,6 +155,12 @@ export interface AnalyticsBatchInfo {
   totalRows?: number
 }
 
+export interface AnalyticsExecutionMetrics {
+  requests?: number
+  retries?: number
+  bytes?: number
+}
+
 /** Complete refers only to the declared scope, never to the whole provider. */
 export type AnalyticsDatasetExecution =
   | {
@@ -165,6 +171,7 @@ export type AnalyticsDatasetExecution =
       checkpoint?: string
       batch?: AnalyticsBatchInfo
       continuation?: AnalyticsContinuation
+      metrics?: AnalyticsExecutionMetrics
     }
   | {
       kind: 'changes'
@@ -175,12 +182,14 @@ export type AnalyticsDatasetExecution =
       coverageReason?: string
       batch?: AnalyticsBatchInfo
       continuation?: AnalyticsContinuation
+      metrics?: AnalyticsExecutionMetrics
     }
   | {
       kind: 'aggregate'
       scope: AnalyticsDatasetScope
       coverage: 'complete' | 'partial'
       continuation?: AnalyticsContinuation
+      metrics?: AnalyticsExecutionMetrics
     }
 
 export interface AnalyticsDatasetResult extends AnalyticsDatasetPayload {

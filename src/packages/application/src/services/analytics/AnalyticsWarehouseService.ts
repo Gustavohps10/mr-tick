@@ -821,6 +821,12 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
 
     const nowMs = Date.now()
     let strategy: AnalyticsSyncStrategy = 'full_replace'
+    let reconcileRecent = false
+    const todayUtc = new Date(nowMs).toISOString().slice(0, 10)
+    const calendar = new Date(nowMs)
+    calendar.setUTCDate(1)
+    calendar.setUTCMonth(calendar.getUTCMonth() - 2)
+    const recentHorizonStart = calendar.toISOString().slice(0, 10)
 
     if (
       allowSchemaPromotion &&
@@ -828,10 +834,34 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
       policy.mode !== 'full' &&
       existingEntry !== undefined
     ) {
-      const lastFullMs = Date.parse(existingEntry.syncState.lastFullReconcileAt)
+      let lastFullMs = Date.parse(existingEntry.syncState.lastFullReconcileAt)
+      const lastRecent = existingEntry.syncState.lastRecentReconcileAt
+
+      if (canUseWindowRescan(manifest) && lastRecent !== undefined) {
+        const recentMs = Date.parse(lastRecent)
+        if (Number.isFinite(recentMs) && recentMs > lastFullMs)
+          lastFullMs = recentMs
+      }
+
       const reconcileDue =
         !Number.isFinite(lastFullMs) ||
         nowMs - lastFullMs >= policy.fullReconcileIntervalMinutes * 60_000
+
+      const fullyRecent =
+        request.startDate !== undefined &&
+        request.endDate !== undefined &&
+        request.startDate.slice(0, 10) >= recentHorizonStart &&
+        request.endDate.slice(0, 10) <= todayUtc
+
+      if (
+        reconcileDue &&
+        policy.mode === 'auto' &&
+        canUseWindowRescan(manifest) &&
+        !fullyRecent
+      ) {
+        strategy = 'window_rescan'
+        reconcileRecent = true
+      }
 
       if (policy.mode === 'fast' || !reconcileDue) {
         if (canUseChanges(manifest, existingEntry.syncState))
@@ -865,12 +895,29 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
         strategy === 'window_rescan' &&
         manifest.extraction.windowRescan !== undefined
       ) {
-        const todayUtc = new Date(nowMs).toISOString().slice(0, 10)
         const cutoffStart = shiftIsoDaysUtc(
           todayUtc,
           -(policy.rollingWindowDays - 1),
         )
         let windowStart = cutoffStart
+
+        if (reconcileRecent) {
+          windowStart = recentHorizonStart
+          let previousRun = existingEntry.syncState.lastFullReconcileAt
+          if (
+            existingEntry.syncState.lastRecentReconcileAt !== undefined &&
+            existingEntry.syncState.lastRecentReconcileAt > previousRun
+          )
+            previousRun = existingEntry.syncState.lastRecentReconcileAt
+
+          const previousCalendar = new Date(previousRun)
+          if (Number.isFinite(previousCalendar.getTime())) {
+            previousCalendar.setUTCDate(1)
+            previousCalendar.setUTCMonth(previousCalendar.getUTCMonth() - 2)
+            const previousStart = previousCalendar.toISOString().slice(0, 10)
+            if (previousStart < windowStart) windowStart = previousStart
+          }
+        }
 
         if (
           request.startDate !== undefined &&
@@ -923,6 +970,11 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
     const deletedIds: string[] = []
     const cursors = new Set<string>()
     let lastBatchIndex = 0
+    const loadStartedAtMs = Date.now()
+    let totalRequests = 0
+    let totalPages = 0
+    let totalRetries = 0
+    let totalBytes = 0
 
     try {
       for (let index = 0; index < 1000; index += 1) {
@@ -1242,6 +1294,21 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
         }
 
         count += batch.rows.length
+        totalPages += 1
+        let batchRequests = 1
+        if (progress.metrics?.requests !== undefined)
+          batchRequests = progress.metrics.requests
+        totalRequests += batchRequests
+
+        let batchRetries = 0
+        if (progress.metrics?.retries !== undefined)
+          batchRetries = progress.metrics.retries
+        totalRetries += batchRetries
+
+        let batchBytes = Buffer.byteLength(JSON.stringify(batch.rows), 'utf8')
+        if (progress.metrics?.bytes !== undefined)
+          batchBytes = progress.metrics.bytes
+        totalBytes += batchBytes
 
         this.emitProgress(
           input,
@@ -1334,6 +1401,14 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
           undefined,
         )
 
+        const runMetrics = {
+          lastRunRequests: totalRequests,
+          lastRunPages: totalPages,
+          lastRunDurationMs: Math.max(0, Date.now() - loadStartedAtMs),
+          lastRunRetries: totalRetries,
+          lastRunBytes: totalBytes,
+        }
+
         let publicationResult:
           Either<AppError, AnalyticsLoadResult['publication']> | undefined
 
@@ -1343,6 +1418,7 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
           windowBounds !== undefined
         ) {
           const syncMeta: AnalyticsSyncMetadata = {
+            ...runMetrics,
             strategy: 'window_rescan',
             lastWindowStart: windowBounds.startDate,
             lastWindowEnd: windowBounds.endDate,
@@ -1352,6 +1428,12 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
             lastCoverageReason !== undefined
           )
             syncMeta.coverageReason = lastCoverageReason
+
+          if (reconcileRecent) {
+            syncMeta.lastRecentReconcileAt = new Date(nowMs).toISOString()
+            syncMeta.lastRecentStart = windowBounds.startDate
+            syncMeta.lastRecentEnd = windowBounds.endDate
+          }
 
           publicationResult = await this.analyticsEngine.publishWindowMerge(
             owner,
@@ -1370,6 +1452,7 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
           existingEntry !== undefined
         ) {
           const syncMeta: AnalyticsSyncMetadata = {
+            ...runMetrics,
             strategy: 'incremental_changes',
             checkpoint: changesCheckpoint,
           }
@@ -1407,6 +1490,7 @@ export class AnalyticsWarehouseService implements IAnalyticsWarehouseUseCase {
             )
 
           const syncMeta: AnalyticsSyncMetadata = {
+            ...runMetrics,
             strategy: 'full_replace',
           }
           if (snapshotCheckpoint !== undefined)
