@@ -369,7 +369,22 @@ export function AnalyticsTopBar({
               {activeSpace.title}
             </h2>
             <Badge variant="secondary" className="text-[10px]">
-              {activeSpace.badge}
+              {(() => {
+                const widgetCount = activeSpace.widgets.length
+                const nodeCount = activeSpace.workflowNodes.length
+
+                if (widgetCount === 0 && nodeCount === 0) {
+                  return '0 Gráficos • Em Branco'
+                }
+
+                let widgetLabel = 'Gráficos'
+                if (widgetCount === 1) widgetLabel = 'Gráfico'
+
+                let nodeLabel = 'Nodes'
+                if (nodeCount === 1) nodeLabel = 'Node'
+
+                return `${widgetCount} ${widgetLabel} • ${nodeCount} ${nodeLabel}`
+              })()}
             </Badge>
           </div>
           <p className="text-muted-foreground text-xs">

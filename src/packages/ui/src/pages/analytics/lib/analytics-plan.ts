@@ -160,13 +160,27 @@ export function buildAnalyticsPlan(
     }
 
     if (node.kind === 'sql') {
-      if (node.sqlConfig !== undefined)
+      if (node.sqlConfig !== undefined) {
+        const hasTransformInputs =
+          node.transformInputs !== undefined && node.transformInputs.length > 0
+        let upstreamNodeIds = node.upstreamNodeIds
+        let inputAliases = node.sqlConfig.inputAliases
+
+        if (hasTransformInputs && node.transformInputs !== undefined) {
+          upstreamNodeIds = node.transformInputs.map((item) => item.nodeId)
+          inputAliases = node.transformInputs.map((item) => item.alias)
+        }
+
         result.push({
           id: node.id,
           kind: 'sql',
-          upstreamNodeIds: node.upstreamNodeIds,
-          sqlConfig: node.sqlConfig,
+          upstreamNodeIds,
+          sqlConfig: {
+            ...node.sqlConfig,
+            inputAliases,
+          },
         })
+      }
       continue
     }
 

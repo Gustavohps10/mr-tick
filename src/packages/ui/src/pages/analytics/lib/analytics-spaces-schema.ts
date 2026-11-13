@@ -120,8 +120,21 @@ const joinConfigSchema = z.object({
 
 const sqlConfigSchema = z.object({
   sqlQuery: z.string(),
+  inputAliases: z.array(z.string().regex(/^[a-z][a-z0-9_]*$/u)).optional(),
   templateId: z.string().optional(),
   snippetId: z.string().optional(),
+})
+
+const sourceFilterBindingSchema = z.object({
+  targetFilterId: z.string().min(1),
+  upstreamNodeId: z.string().min(1),
+  sourceColumn: z.string().min(1),
+  onEmptyUpstream: z.enum(['skip_empty', 'fail']),
+})
+
+const transformInputBindingSchema = z.object({
+  nodeId: z.string().min(1),
+  alias: z.string().regex(/^[a-z][a-z0-9_]*$/u),
 })
 
 const spaceWidgetSchema = z.object({
@@ -139,6 +152,25 @@ const spaceWidgetSchema = z.object({
   metricColumn: z.string().optional(),
   secondaryMetricColumn: z.string().optional(),
   stackColumn: z.string().optional(),
+  categoryLabel: z.string().optional(),
+  metricLabel: z.string().optional(),
+  secondaryMetricLabel: z.string().optional(),
+  showAllRows: z.boolean().optional(),
+  maxRows: z.number().int().min(1).optional(),
+  valueDisplayMode: z.enum(['absolute', 'percentage']).optional(),
+  tooltipEnabled: z.boolean().optional(),
+  tooltipFields: z
+    .array(
+      z.enum([
+        'category',
+        'primary',
+        'secondary',
+        'series',
+        'percentage',
+        'total',
+      ]),
+    )
+    .optional(),
   referenceLineMode: referenceLineModeSchema.optional(),
   referenceLineTarget: z.number().optional(),
   hierarchyColumns: z.array(z.string()).optional(),
@@ -163,6 +195,8 @@ const spaceWorkflowNodeSchema = z.object({
   customDateRange: dateRangeFilterSchema.optional(),
   queryExecution: queryExecutionSchema.optional(),
   filterValues: z.record(z.string(), analyticsFilterValueSchema).optional(),
+  filterBindings: z.array(sourceFilterBindingSchema).optional(),
+  transformInputs: z.array(transformInputBindingSchema).optional(),
   transformConfig: transformConfigSchema.optional(),
   joinConfig: joinConfigSchema.optional(),
   sqlConfig: sqlConfigSchema.optional(),

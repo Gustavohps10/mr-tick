@@ -12,7 +12,7 @@ import {
   Settings2,
   Table as TableIcon,
 } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { PaginationBar } from '@/components/data-table/data-table-pagination'
 import { Badge } from '@/components/ui/badge'
@@ -21,7 +21,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -130,15 +129,36 @@ export function NodeInspectionDialog({
     tab: string
   }>()
   const isOutput = inspectedNodeConfig?.kind === 'output'
-  let defaultTab = 'table'
-  if (isOutput) defaultTab = 'chart'
-  let activeTab = defaultTab
+  const lastAutoEditedNodeIdRef = useRef<string | null>(null)
+  let fallbackViewTab = 'table'
+  if (isOutput) fallbackViewTab = 'chart'
+  let activeTab = 'edit'
   if (
     tabSelection !== undefined &&
     tabSelection.nodeId === inspectedNodeConfig?.id
   )
     activeTab = tabSelection.tab
-  if (activeTab === 'edit' && !isEditing) activeTab = defaultTab
+
+  if (
+    activeTab === 'edit' &&
+    !isEditing &&
+    inspectedNodeConfig !== undefined &&
+    lastAutoEditedNodeIdRef.current === inspectedNodeConfig.id
+  )
+    activeTab = fallbackViewTab
+
+  useEffect(() => {
+    if (inspectedNodeConfig === undefined) {
+      lastAutoEditedNodeIdRef.current = null
+      return
+    }
+
+    if (lastAutoEditedNodeIdRef.current !== inspectedNodeConfig.id) {
+      lastAutoEditedNodeIdRef.current = inspectedNodeConfig.id
+
+      if (!isEditing) onEditNode(inspectedNodeConfig.id)
+    }
+  }, [inspectedNodeConfig, isEditing, onEditNode])
 
   function selectNode(nodeId: string | null) {
     if (nodeId === inspectedNodeConfig?.id) return
@@ -233,7 +253,7 @@ export function NodeInspectionDialog({
       }}
     >
       <DialogContent className="flex max-h-[85vh] w-[95vw] max-w-6xl min-w-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
-        <DialogHeader className="shrink-0 border-b px-6 py-4 pr-8">
+        <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="font-mono text-[10px]">
@@ -243,7 +263,7 @@ export function NodeInspectionDialog({
                 {titleLabel}
               </DialogTitle>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="mr-4 flex items-center gap-2">
               {!isOutput && (
                 <Badge variant="secondary" className="font-mono text-[11px]">
                   {stageTotalRows} registros no estágio • Janela [{startDate} ..{' '}
@@ -340,6 +360,10 @@ export function NodeInspectionDialog({
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <TabsList>
+                  <TabsTrigger value="edit" className="gap-1.5 text-xs">
+                    <Settings2 className="size-3.5" />
+                    Edição
+                  </TabsTrigger>
                   {isOutput && (
                     <TabsTrigger value="chart" className="gap-1.5 text-xs">
                       <BarChart3 className="size-3.5" />
@@ -354,7 +378,7 @@ export function NodeInspectionDialog({
                       </TabsTrigger>
                       <TabsTrigger value="sql" className="gap-1.5 text-xs">
                         <Code2 className="size-3.5" />
-                        SQL
+                        Local SQL
                       </TabsTrigger>
                       <TabsTrigger value="schema" className="gap-1.5 text-xs">
                         <FileSpreadsheet className="size-3.5" />
@@ -362,10 +386,6 @@ export function NodeInspectionDialog({
                       </TabsTrigger>
                     </>
                   )}
-                  <TabsTrigger value="edit" className="gap-1.5 text-xs">
-                    <Settings2 className="size-3.5" />
-                    Edição
-                  </TabsTrigger>
                 </TabsList>
 
                 {activeTab === 'table' && (
@@ -474,12 +494,6 @@ export function NodeInspectionDialog({
             </Tabs>
           </div>
         </div>
-
-        <DialogFooter className="bg-muted/20 flex shrink-0 items-center justify-end gap-2 border-t px-6 py-3">
-          <Button size="sm" variant="outline" onClick={() => selectNode(null)}>
-            Fechar Inspeção
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

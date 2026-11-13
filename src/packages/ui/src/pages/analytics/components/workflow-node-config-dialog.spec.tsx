@@ -275,23 +275,30 @@ describe('WorkflowNodeConfigDialog - Remote Aggregate Constraints', () => {
     fireEvent.keyDown(document.body, { key: 'Escape' })
 
     const visualTrigger = screen
-      .getByText('Barras Verticais (Colunas)')
+      .getByText('Barras Verticais (Em pé)')
       .closest('button')
     expect(visualTrigger).not.toBeNull()
     if (visualTrigger !== null)
-      fireEvent.keyDown(visualTrigger, { key: 'ArrowDown' })
+      fireEvent.keyDown(visualTrigger, { key: 'Enter' })
+
+    const tablesSubTrigger = screen.getByRole('menuitem', {
+      name: /Tabelas & KPI/u,
+    })
+    fireEvent.keyDown(tablesSubTrigger, { key: 'ArrowRight' })
 
     expect(
-      screen.getByRole('option', { name: 'Tabela Matriz Dinâmica (Pivô 2D)' }),
-    ).toHaveAttribute('aria-disabled', 'true')
-    expect(
-      screen.getByRole('option', {
-        name: 'TreeGrid Hierárquico (3 Níveis + Rollup)',
+      screen.getByRole('menuitem', {
+        name: /Tabela Matriz Dinâmica \(Pivô 2D\)/u,
       }),
     ).toHaveAttribute('aria-disabled', 'true')
     expect(
-      screen.getByRole('option', {
-        name: 'DataTable Condicional (Sliders & Gradiente)',
+      screen.getByRole('menuitem', {
+        name: /TreeGrid Hierárquico \(Níveis \+ Rollup\)/u,
+      }),
+    ).toHaveAttribute('aria-disabled', 'true')
+    expect(
+      screen.getByRole('menuitem', {
+        name: /DataTable Condicional \(Sliders & Gradiente\)/u,
       }),
     ).toHaveAttribute('aria-disabled', 'true')
     fireEvent.keyDown(document.body, { key: 'Escape' })
@@ -557,5 +564,54 @@ describe('WorkflowNodeConfigDialog - Extraction Date vs Secondary Date Filter', 
       from: '',
       to: '',
     })
+  })
+
+  it('renders percentage display mode, hover popover switch, and configurable tooltip fields in Rótulos & Limites', () => {
+    const onSetOutputTooltipEnabled = vi.fn()
+    const onSetOutputTooltipFields = vi.fn()
+    const onSetOutputValueDisplayMode = vi.fn()
+
+    renderSourceDialog({
+      selectedAddNodeType: 'output',
+      newNodeWidgetType: 'bar_horizontal',
+      outputSourceNodeId: 'src-1',
+      outputCategoryColumn: 'user',
+      outputMetricColumn: 'hours',
+      outputSecondaryMetricColumn: 'estimated_hours',
+      upstreamAvailableColumns: [
+        { name: 'user', label: 'Membro', type: 'string' },
+        { name: 'hours', label: 'Horas', type: 'number' },
+        { name: 'estimated_hours', label: 'Estimativa', type: 'number' },
+      ],
+      outputValueDisplayMode: 'absolute',
+      outputTooltipEnabled: true,
+      outputTooltipFields: ['category', 'primary'],
+      onSetOutputValueDisplayMode,
+      onSetOutputTooltipEnabled,
+      onSetOutputTooltipFields,
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Personalizar exibição & limite/i }),
+    )
+
+    expect(screen.getByText('Exibição de Valores')).toBeInTheDocument()
+    expect(screen.getByText('Popover ao passar o mouse')).toBeInTheDocument()
+    expect(screen.getByText('Campos do Popover (Hover)')).toBeInTheDocument()
+    expect(screen.getByText('2ª Métrica')).toBeInTheDocument()
+
+    const hoverSwitch = screen.getByRole('switch', {
+      name: 'Ativar popover de hover no gráfico',
+    })
+    fireEvent.click(hoverSwitch)
+    expect(onSetOutputTooltipEnabled).toHaveBeenCalledWith(false)
+
+    const secondaryCheckbox = screen.getByText('2ª Métrica')
+    fireEvent.click(secondaryCheckbox)
+    expect(onSetOutputTooltipFields).toHaveBeenCalledWith([
+      'category',
+      'primary',
+      'secondary',
+    ])
   })
 })

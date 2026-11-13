@@ -35,6 +35,7 @@ export interface WorkflowBackgroundViewProps {
   selectedNodeId: string | null
   onPipelineNodesChange: OnNodesChange<Node<PipelineNodeData>>
   onPipelineEdgesChange: OnEdgesChange<Edge>
+  onPersistNodePosition?: (nodeId: string, x: number, y: number) => void
   onOpenAddNode: (nodeType?: AddNodeTypeOption) => void
   onRequestRemoveNode: (nodeId: string) => void
   onSetLayerMode: (mode: CanvasLayerMode) => void
@@ -48,6 +49,7 @@ export function WorkflowBackgroundView({
   selectedNodeId,
   onPipelineNodesChange,
   onPipelineEdgesChange,
+  onPersistNodePosition,
   onOpenAddNode,
   onRequestRemoveNode,
   onSetLayerMode,
@@ -146,6 +148,11 @@ export function WorkflowBackgroundView({
             edges={pipelineEdges}
             onNodesChange={onPipelineNodesChange}
             onEdgesChange={onPipelineEdgesChange}
+            onNodeDragStop={(_event, node) => {
+              if (onPersistNodePosition !== undefined) {
+                onPersistNodePosition(node.id, node.position.x, node.position.y)
+              }
+            }}
             nodeTypes={PIPELINE_NODE_TYPES}
             onNodeClick={(event, node) => {
               if (event && node.data && typeof node.data.nodeId === 'string')

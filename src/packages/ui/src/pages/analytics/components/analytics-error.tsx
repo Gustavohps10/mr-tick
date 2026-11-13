@@ -6,7 +6,10 @@ export function AnalyticsError({
   details: Record<string, string[]> | undefined
 }) {
   return (
-    <div role="alert" className="space-y-1 text-sm">
+    <div
+      role="alert"
+      className="w-full max-w-full min-w-0 space-y-1 text-sm [overflow-wrap:anywhere] break-words"
+    >
       <p>{message}</p>
       {details !== undefined &&
         Object.entries(details).map(([field, messages]) => (

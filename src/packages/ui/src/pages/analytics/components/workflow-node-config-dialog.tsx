@@ -9,12 +9,20 @@ import type {
 } from '@mr-tick/application'
 import {
   ArrowRight,
+  BarChart3,
+  ChevronDown,
   Code2,
   Columns,
   Database,
   Filter,
+  LineChart,
+  Link2,
   Loader2,
+  PieChart,
+  SlidersHorizontal,
+  Table2,
 } from 'lucide-react'
+import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,9 +35,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MultiSelectCombobox } from '@/components/ui/multi-select-combobox'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -38,6 +63,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -48,8 +74,17 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 
+import {
+  getSupportedTooltipFields,
+  resolveDefaultTooltipFields,
+} from '../lib/analytics-chart-options'
+import {
+  getBindingCacheKey,
+  sanitizeSqlAlias,
+} from '../lib/analytics-cross-source'
 import {
   isRemoteAggregateUnsupportedVisual,
   isRemoteAggregateUpstream,
@@ -57,13 +92,17 @@ import {
 import { type EtlTablePayload, readCellAsString } from '../lib/analytics-table'
 import type {
   AddNodeTypeOption,
+  AnalyticsTooltipField,
+  AnalyticsValueDisplayMode,
   ConnectionDisplayOption,
 } from '../lib/analytics-types'
 import {
   type AnalyticsSpaceConfig,
   GENERIC_CHART_MODELS,
   type ReferenceLineMode,
+  type SourceFilterBinding,
   type SpaceWorkflowNodeConfig,
+  type TransformInputBinding,
   type WidgetId,
   type WidgetSpan,
 } from '../lib/analytics-types'
@@ -101,15 +140,34 @@ export interface WorkflowNodeConfigDialogProps {
   outputStackColumn: string
   outputReferenceLineMode: ReferenceLineMode
   outputReferenceLineTarget: number
+  outputSubtitle?: string
+  outputCategoryLabel?: string
+  outputMetricLabel?: string
+  outputSecondaryMetricLabel?: string
+  outputShowAllRows?: boolean
+  outputMaxRows?: number
+  outputValueDisplayMode?: AnalyticsValueDisplayMode
+  outputTooltipEnabled?: boolean
+  outputTooltipFields?: AnalyticsTooltipField[]
   connectionDisplayOptions: ConnectionDisplayOption[]
   upstreamAvailableColumns: AnalyticsColumnSchema[]
   transformPreviewError: string | undefined
   transformPreviewDetails: Record<string, string[]> | undefined
   transformPreviewBeforePayload: EtlTablePayload
   transformPreviewAfterPayload: EtlTablePayload
+  transformInputSources?: Array<{
+    nodeId: string
+    alias: string
+    label: string
+    columns: AnalyticsColumnSchema[]
+    rows: AnalyticsDatasetRow[]
+  }>
   txUpstreamNodeId: string
+  txTransformInputs?: TransformInputBinding[]
   sqlQueryText: string
   nodeFilterValues: Record<string, AnalyticsFilterValue>
+  nodeFilterBindings?: SourceFilterBinding[]
+  resolvedCrossSourceValues?: Record<string, string[]>
   dynamicFilterOptions: Record<string, AnalyticsFilterOption[]>
   globalStartDate?: string
   globalEndDate?: string
@@ -118,6 +176,7 @@ export interface WorkflowNodeConfigDialogProps {
     range: { from?: string; to?: string } | undefined,
   ) => void
   onSetNodeFilterValue: (filterId: string, val: AnalyticsFilterValue) => void
+  onSetNodeFilterBindings?: (bindings: SourceFilterBinding[]) => void
   onOpenChange: (open: boolean) => void
   onChangeNodeLabel: (val: string) => void
   onSelectConnectionId: (val: string) => void
@@ -134,7 +193,17 @@ export interface WorkflowNodeConfigDialogProps {
   onSetOutputStackColumn: (val: string) => void
   onSetOutputReferenceLineMode: (val: ReferenceLineMode) => void
   onSetOutputReferenceLineTarget: (val: number) => void
+  onSetOutputSubtitle?: (val: string) => void
+  onSetOutputCategoryLabel?: (val: string) => void
+  onSetOutputMetricLabel?: (val: string) => void
+  onSetOutputSecondaryMetricLabel?: (val: string) => void
+  onSetOutputShowAllRows?: (val: boolean) => void
+  onSetOutputMaxRows?: (val: number) => void
+  onSetOutputValueDisplayMode?: (val: AnalyticsValueDisplayMode) => void
+  onSetOutputTooltipEnabled?: (val: boolean) => void
+  onSetOutputTooltipFields?: (val: AnalyticsTooltipField[]) => void
   onSetTxUpstreamNodeId: (val: string) => void
+  onSetTxTransformInputs?: (inputs: TransformInputBinding[]) => void
   onSetSqlQueryText: (val: string) => void
   onSaveEditedNode: () => void
   onAddWorkflowNode: () => void
@@ -578,21 +647,35 @@ export function WorkflowNodeConfigDialog({
   outputStackColumn,
   outputReferenceLineMode,
   outputReferenceLineTarget,
+  outputSubtitle = '',
+  outputCategoryLabel = '',
+  outputMetricLabel = '',
+  outputSecondaryMetricLabel = '',
+  outputShowAllRows = false,
+  outputMaxRows = 100,
+  outputValueDisplayMode = 'absolute',
+  outputTooltipEnabled = true,
+  outputTooltipFields,
   connectionDisplayOptions,
   upstreamAvailableColumns,
   transformPreviewError,
   transformPreviewDetails,
   transformPreviewBeforePayload,
   transformPreviewAfterPayload,
+  transformInputSources = [],
   txUpstreamNodeId,
+  txTransformInputs = [],
   sqlQueryText,
   nodeFilterValues,
+  nodeFilterBindings = [],
+  resolvedCrossSourceValues = {},
   dynamicFilterOptions,
   globalStartDate,
   globalEndDate,
   nodeCustomDateRange,
   onSetNodeCustomDateRange,
   onSetNodeFilterValue,
+  onSetNodeFilterBindings,
   onOpenChange,
   onChangeNodeLabel,
   onSelectConnectionId,
@@ -609,7 +692,17 @@ export function WorkflowNodeConfigDialog({
   onSetOutputStackColumn,
   onSetOutputReferenceLineMode,
   onSetOutputReferenceLineTarget,
+  onSetOutputSubtitle,
+  onSetOutputCategoryLabel,
+  onSetOutputMetricLabel,
+  onSetOutputSecondaryMetricLabel,
+  onSetOutputShowAllRows,
+  onSetOutputMaxRows,
+  onSetOutputValueDisplayMode,
+  onSetOutputTooltipEnabled,
+  onSetOutputTooltipFields,
   onSetTxUpstreamNodeId,
+  onSetTxTransformInputs,
   onSetSqlQueryText,
   onSaveEditedNode,
   onAddWorkflowNode,
@@ -678,8 +771,28 @@ export function WorkflowNodeConfigDialog({
   )
 
   let isTransformRemoteAggregate = false
+  const validAliasPattern = /^[a-z][a-z0-9_]*$/u
+  const transformAliasSet = new Set(txTransformInputs.map((i) => i.alias))
+  const hasLegacyTransformUpstream =
+    txTransformInputs.length === 0 && txUpstreamNodeId !== ''
+  const hasInvalidTransformInputs =
+    selectedAddNodeType === 'transform' &&
+    !hasLegacyTransformUpstream &&
+    (txTransformInputs.length === 0 ||
+      transformAliasSet.size !== txTransformInputs.length ||
+      txTransformInputs.some((i) => !validAliasPattern.test(i.alias)))
 
-  if (selectedAddNodeType === 'transform' && txUpstreamNodeId === '__all__') {
+  if (selectedAddNodeType === 'transform' && txTransformInputs.length > 0) {
+    isTransformRemoteAggregate = txTransformInputs.some((input) =>
+      isRemoteAggregateUpstream(activeSpace.workflowNodes, input.nodeId),
+    )
+  }
+
+  if (
+    selectedAddNodeType === 'transform' &&
+    txTransformInputs.length === 0 &&
+    txUpstreamNodeId === '__all__'
+  ) {
     isTransformRemoteAggregate = upstreamDataNodes.some((node) =>
       isRemoteAggregateUpstream(activeSpace.workflowNodes, node.id),
     )
@@ -687,6 +800,7 @@ export function WorkflowNodeConfigDialog({
 
   if (
     selectedAddNodeType === 'transform' &&
+    txTransformInputs.length === 0 &&
     txUpstreamNodeId !== '' &&
     txUpstreamNodeId !== '__all__'
   ) {
@@ -695,6 +809,9 @@ export function WorkflowNodeConfigDialog({
       txUpstreamNodeId,
     )
   }
+
+  const [selectedBeforeInputNodeId, setSelectedBeforeInputNodeId] =
+    useState<string>('')
 
   const isRemoteAggregateOutput =
     selectedAddNodeType === 'output' &&
@@ -757,7 +874,7 @@ export function WorkflowNodeConfigDialog({
         (queryExecution?.kind === 'aggregate' &&
           queryExecution.measures.length === 0))) ||
     (selectedAddNodeType === 'transform' &&
-      (txUpstreamNodeId === '' ||
+      (hasInvalidTransformInputs ||
         sqlQueryText.trim() === '' ||
         isTransformRemoteAggregate)) ||
     (selectedAddNodeType === 'output' &&
@@ -870,7 +987,7 @@ export function WorkflowNodeConfigDialog({
               >
                 <SelectTrigger
                   aria-label="Conexão analítica"
-                  className="w-full text-xs"
+                  className="h-12 w-full py-1.5 text-xs"
                 >
                   <SelectValue placeholder={connPlaceholder} />
                 </SelectTrigger>
@@ -923,7 +1040,7 @@ export function WorkflowNodeConfigDialog({
               >
                 <SelectTrigger
                   aria-label="Dataset analítico"
-                  className="h-auto min-h-[44px] w-full py-1.5 text-xs"
+                  className="h-12 w-full py-1.5 text-xs"
                 >
                   {isLoadingNodeDatasets && (
                     <div className="flex items-center gap-2">
@@ -1092,15 +1209,353 @@ export function WorkflowNodeConfigDialog({
                     </div>
                   )}
 
-                  {supportedFiltersList.map((filterDef) => (
-                    <DynamicFilterField
-                      key={filterDef.id}
-                      filterDef={filterDef}
-                      nodeFilterValues={nodeFilterValues}
-                      onSetNodeFilterValue={onSetNodeFilterValue}
-                      dynamicFilterOptions={dynamicFilterOptions}
-                    />
-                  ))}
+                  {supportedFiltersList.map((filterDef) => {
+                    const activeBinding = nodeFilterBindings.find(
+                      (b) => b.targetFilterId === filterDef.id,
+                    )
+                    const hasUpstreamChoices =
+                      upstreamDataNodes.length > 0 &&
+                      onSetNodeFilterBindings !== undefined
+                    const selectedUpstreamNode = activeBinding
+                      ? upstreamDataNodes.find(
+                          (n) => n.id === activeBinding.upstreamNodeId,
+                        )
+                      : undefined
+                    let upstreamCols =
+                      selectedUpstreamNode !== undefined &&
+                      resolveRowsForWorkflowNode !== undefined
+                        ? resolveRowsForWorkflowNode(selectedUpstreamNode)
+                            .columns
+                        : []
+
+                    if (
+                      upstreamCols.length === 0 &&
+                      selectedUpstreamNode !== undefined &&
+                      selectedUpstreamNode.datasetId !== undefined
+                    ) {
+                      const fallbackManifest = nodeSourceDatasets.find(
+                        (ds) => ds.id === selectedUpstreamNode.datasetId,
+                      )
+
+                      if (fallbackManifest !== undefined) {
+                        upstreamCols = fallbackManifest.columns
+                      }
+                    }
+                    const resolvedValues = activeBinding
+                      ? resolvedCrossSourceValues[
+                          getBindingCacheKey(
+                            activeBinding.upstreamNodeId,
+                            activeBinding.sourceColumn,
+                          )
+                        ]
+                      : undefined
+
+                    return (
+                      <div key={filterDef.id} className="flex flex-col gap-2">
+                        {hasUpstreamChoices && (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground flex items-center gap-1 text-[11px] font-medium">
+                              <Link2 className="size-3" />
+                              Origem do filtro: {filterDef.label}
+                            </span>
+                            <div className="bg-muted inline-flex rounded-md p-0.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (onSetNodeFilterBindings === undefined)
+                                    return
+                                  onSetNodeFilterBindings(
+                                    nodeFilterBindings.filter(
+                                      (b) => b.targetFilterId !== filterDef.id,
+                                    ),
+                                  )
+                                }}
+                                className={cn(
+                                  'rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
+                                  activeBinding === undefined &&
+                                    'bg-background text-foreground shadow-xs',
+                                  activeBinding !== undefined &&
+                                    'text-muted-foreground hover:text-foreground',
+                                )}
+                              >
+                                Fixo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (onSetNodeFilterBindings === undefined)
+                                    return
+                                  if (activeBinding !== undefined) return
+                                  const firstUp = upstreamDataNodes.find(
+                                    () => true,
+                                  )
+                                  if (firstUp === undefined) return
+                                  const firstCol =
+                                    resolveRowsForWorkflowNode !== undefined
+                                      ? resolveRowsForWorkflowNode(
+                                          firstUp,
+                                        ).columns.find(() => true)?.name
+                                      : undefined
+                                  let defaultCol = ''
+                                  if (firstCol !== undefined)
+                                    defaultCol = firstCol
+
+                                  onSetNodeFilterBindings([
+                                    ...nodeFilterBindings,
+                                    {
+                                      targetFilterId: filterDef.id,
+                                      upstreamNodeId: firstUp.id,
+                                      sourceColumn: defaultCol,
+                                      onEmptyUpstream: 'skip_empty',
+                                    },
+                                  ])
+                                }}
+                                className={cn(
+                                  'rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
+                                  activeBinding !== undefined &&
+                                    'bg-background text-foreground shadow-xs',
+                                  activeBinding === undefined &&
+                                    'text-muted-foreground hover:text-foreground',
+                                )}
+                              >
+                                De outra fonte
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {activeBinding === undefined && (
+                          <DynamicFilterField
+                            filterDef={filterDef}
+                            nodeFilterValues={nodeFilterValues}
+                            onSetNodeFilterValue={onSetNodeFilterValue}
+                            dynamicFilterOptions={dynamicFilterOptions}
+                          />
+                        )}
+
+                        {activeBinding !== undefined &&
+                          onSetNodeFilterBindings !== undefined && (
+                            <div className="border-border/70 bg-muted/20 flex flex-col gap-2 rounded-md border p-2.5">
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                <div className="flex flex-col gap-1">
+                                  <Label className="text-[11px]">
+                                    Fonte anterior
+                                  </Label>
+                                  <Select
+                                    value={activeBinding.upstreamNodeId}
+                                    onValueChange={(nextUpId) => {
+                                      const nextNode = upstreamDataNodes.find(
+                                        (n) => n.id === nextUpId,
+                                      )
+                                      let nextCol = activeBinding.sourceColumn
+                                      if (nextNode !== undefined) {
+                                        let cols =
+                                          resolveRowsForWorkflowNode !==
+                                          undefined
+                                            ? resolveRowsForWorkflowNode(
+                                                nextNode,
+                                              ).columns
+                                            : []
+
+                                        if (
+                                          cols.length === 0 &&
+                                          nextNode.datasetId !== undefined
+                                        ) {
+                                          const fallbackManifest =
+                                            nodeSourceDatasets.find(
+                                              (ds) =>
+                                                ds.id === nextNode.datasetId,
+                                            )
+
+                                          if (fallbackManifest !== undefined) {
+                                            cols = fallbackManifest.columns
+                                          }
+                                        }
+
+                                        if (
+                                          !cols.some((c) => c.name === nextCol)
+                                        ) {
+                                          const firstC = cols.find(() => true)
+                                          nextCol =
+                                            firstC !== undefined
+                                              ? firstC.name
+                                              : ''
+                                        }
+                                      }
+                                      onSetNodeFilterBindings(
+                                        nodeFilterBindings.map((b) =>
+                                          b.targetFilterId === filterDef.id
+                                            ? {
+                                                ...b,
+                                                upstreamNodeId: nextUpId,
+                                                sourceColumn: nextCol,
+                                              }
+                                            : b,
+                                        ),
+                                      )
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 w-full text-xs">
+                                      <SelectValue placeholder="Escolha a fonte..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectGroup>
+                                        {upstreamDataNodes.map((n) => (
+                                          <SelectItem
+                                            key={n.id}
+                                            value={n.id}
+                                            className="text-xs"
+                                          >
+                                            {n.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectGroup>
+                                    </SelectContent>
+                                  </Select>
+                                  {upstreamCols.length === 0 && (
+                                    <span className="text-muted-foreground text-[10px]">
+                                      Execute a fonte anterior para listar
+                                      colunas.
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-col gap-1">
+                                  <Label className="text-[11px]">
+                                    Coluna de origem
+                                  </Label>
+                                  <Select
+                                    value={activeBinding.sourceColumn}
+                                    onValueChange={(nextCol) => {
+                                      onSetNodeFilterBindings(
+                                        nodeFilterBindings.map((b) =>
+                                          b.targetFilterId === filterDef.id
+                                            ? { ...b, sourceColumn: nextCol }
+                                            : b,
+                                        ),
+                                      )
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 w-full text-xs">
+                                      <SelectValue placeholder="Coluna..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectGroup>
+                                        {upstreamCols.map((col) => (
+                                          <SelectItem
+                                            key={col.name}
+                                            value={col.name}
+                                            className="font-mono text-xs"
+                                          >
+                                            {col.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectGroup>
+                                    </SelectContent>
+                                  </Select>
+                                  {upstreamCols.length === 0 && (
+                                    <span className="text-muted-foreground text-[10px]">
+                                      Execute a fonte anterior para listar
+                                      colunas.
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-col gap-1">
+                                  <Label className="text-[11px]">
+                                    Se retornar vazio
+                                  </Label>
+                                  <Select
+                                    value={activeBinding.onEmptyUpstream}
+                                    onValueChange={(nextBehavior) => {
+                                      const onEmpty: 'skip_empty' | 'fail' =
+                                        nextBehavior === 'fail'
+                                          ? 'fail'
+                                          : 'skip_empty'
+                                      onSetNodeFilterBindings(
+                                        nodeFilterBindings.map((b) =>
+                                          b.targetFilterId === filterDef.id
+                                            ? { ...b, onEmptyUpstream: onEmpty }
+                                            : b,
+                                        ),
+                                      )
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 w-full text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectGroup>
+                                        <SelectItem
+                                          value="skip_empty"
+                                          className="text-xs"
+                                        >
+                                          Ignorar (0 regs)
+                                        </SelectItem>
+                                        <SelectItem
+                                          value="fail"
+                                          className="text-xs"
+                                        >
+                                          Falhar nó
+                                        </SelectItem>
+                                      </SelectGroup>
+                                    </SelectContent>
+                                  </Select>
+                                  {upstreamCols.length === 0 && (
+                                    <span className="text-muted-foreground text-[10px]">
+                                      Execute a fonte anterior para listar
+                                      colunas.
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-muted-foreground text-[11px]">
+                                  Valores resolvidos:
+                                </span>
+                                {resolvedValues === undefined && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px]"
+                                  >
+                                    Aguardando execução da fonte anterior
+                                  </Badge>
+                                )}
+                                {resolvedValues !== undefined &&
+                                  resolvedValues.length === 0 && (
+                                    <Badge
+                                      variant="destructive"
+                                      className="font-mono text-[10px]"
+                                    >
+                                      0 valores (verifique coluna ou filtros)
+                                    </Badge>
+                                  )}
+                                {resolvedValues !== undefined &&
+                                  resolvedValues.length > 0 && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="font-mono text-[10px]"
+                                    >
+                                      {resolvedValues.length} valores
+                                    </Badge>
+                                  )}
+                                {resolvedValues !== undefined &&
+                                  resolvedValues.slice(0, 4).map((val) => (
+                                    <Badge
+                                      key={val}
+                                      variant="outline"
+                                      className="font-mono text-[10px]"
+                                    >
+                                      {val}
+                                    </Badge>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -1204,56 +1659,135 @@ export function WorkflowNodeConfigDialog({
 
         {selectedAddNodeType === 'transform' && (
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs font-semibold">
-                Nó Anterior (Entrada Bruta / Upstream)
-              </Label>
-              <Select
-                value={txUpstreamNodeId}
-                onValueChange={onSetTxUpstreamNodeId}
-              >
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue placeholder="Selecione o nó anterior..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {upstreamDataNodes.map((n) => (
-                      <SelectItem key={n.id} value={n.id} className="text-xs">
-                        {n.label} ({n.badge})
-                      </SelectItem>
-                    ))}
-                    {upstreamDataNodes.length > 1 && (
-                      <SelectItem value="__all__" className="text-xs">
-                        Todos os nós anteriores ({upstreamDataNodes.length}{' '}
-                        fontes p/ JOIN ou UNION)
-                      </SelectItem>
-                    )}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs font-semibold">
+                  Fontes de Entrada e Aliases SQL
+                </Label>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  {txTransformInputs.length} selecionada(s)
+                </Badge>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {upstreamDataNodes.map((n, idx) => {
+                  const matchedInput = txTransformInputs.find(
+                    (i) => i.nodeId === n.id,
+                  )
+                  const isSelected = matchedInput !== undefined
+                  const aliasInvalid =
+                    isSelected && !validAliasPattern.test(matchedInput.alias)
+
+                  return (
+                    <div
+                      key={n.id}
+                      className={cn(
+                        'border-border/80 flex items-center justify-between gap-2 rounded-md border p-2',
+                        isSelected && 'border-primary/50 bg-primary/5',
+                      )}
+                    >
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => {
+                            if (onSetTxTransformInputs === undefined) return
+                            if (checked === true) {
+                              const nextAlias = sanitizeSqlAlias(
+                                n.label,
+                                idx + 1,
+                              )
+                              onSetTxTransformInputs([
+                                ...txTransformInputs,
+                                { nodeId: n.id, alias: nextAlias },
+                              ])
+                              return
+                            }
+                            onSetTxTransformInputs(
+                              txTransformInputs.filter(
+                                (i) => i.nodeId !== n.id,
+                              ),
+                            )
+                          }}
+                        />
+                        <div className="flex min-w-0 flex-col">
+                          <span className="truncate text-xs font-medium">
+                            {n.label}
+                          </span>
+                          <span className="text-muted-foreground truncate text-[10px]">
+                            {n.badge}
+                          </span>
+                        </div>
+                      </label>
+
+                      {isSelected && (
+                        <Input
+                          value={matchedInput.alias}
+                          onChange={(e) => {
+                            if (onSetTxTransformInputs === undefined) return
+                            const nextAlias = e.target.value
+                              .toLowerCase()
+                              .replace(/[^a-z0-9_]/gu, '')
+                            onSetTxTransformInputs(
+                              txTransformInputs.map((item) =>
+                                item.nodeId === n.id
+                                  ? { ...item, alias: nextAlias }
+                                  : item,
+                              ),
+                            )
+                          }}
+                          aria-label={`Alias SQL para ${n.label}`}
+                          className={cn(
+                            'h-7 w-52 shrink-0 font-mono text-xs',
+                            aliasInvalid && 'border-destructive',
+                          )}
+                        />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              {hasInvalidTransformInputs && txTransformInputs.length > 0 && (
+                <p className="text-destructive text-[11px]">
+                  Cada fonte selecionada deve ter um alias único em snake_case
+                  (ex: redmine_horas).
+                </p>
+              )}
             </div>
 
-            {upstreamAvailableColumns.length > 0 && (
-              <div className="flex flex-col gap-1.5">
+            {transformInputSources.length > 0 && (
+              <div className="flex flex-col gap-2">
                 <span className="text-muted-foreground text-xs">
-                  Colunas disponíveis no nó anterior (clique para inserir no
-                  SQL):
+                  Colunas disponíveis por fonte (clique para inserir no SQL):
                 </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {upstreamAvailableColumns.map((col) => (
-                    <Badge
-                      key={col.name}
-                      variant="secondary"
-                      className="hover:bg-primary/15 cursor-pointer font-mono text-[11px]"
-                      onClick={() =>
-                        onSetSqlQueryText(`${sqlQueryText} ${col.name}`)
-                      }
+                <div className="flex flex-col gap-1.5">
+                  {transformInputSources.map((src) => (
+                    <div
+                      key={src.nodeId}
+                      className="flex flex-wrap items-center gap-1.5"
                     >
-                      {col.name}{' '}
-                      <span className="text-muted-foreground ml-0.5">
-                        ({col.type})
-                      </span>
-                    </Badge>
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-[10px]"
+                      >
+                        {src.alias}
+                      </Badge>
+                      {src.columns.map((col) => (
+                        <Badge
+                          key={`${src.alias}.${col.name}`}
+                          variant="secondary"
+                          className="hover:bg-primary/15 cursor-pointer font-mono text-[11px]"
+                          onClick={() =>
+                            onSetSqlQueryText(
+                              `${sqlQueryText} ${src.alias}.${col.name}`,
+                            )
+                          }
+                        >
+                          {src.alias}.{col.name}{' '}
+                          <span className="text-muted-foreground ml-0.5">
+                            ({col.type})
+                          </span>
+                        </Badge>
+                      ))}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -1266,22 +1800,98 @@ export function WorkflowNodeConfigDialog({
                   Consulta SQL de Transformação
                 </Label>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-muted-foreground text-[11px]">
-                    Tabelas:
-                  </span>
-                  <Badge variant="outline" className="font-mono text-[10px]">
-                    input
-                  </Badge>
-                  <Badge variant="outline" className="font-mono text-[10px]">
-                    input_1, input_2
-                  </Badge>
+                  {transformInputSources.length >= 1 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-[10px]"
+                      onClick={() => {
+                        const firstSrc = transformInputSources.find(() => true)
+                        if (firstSrc === undefined) return
+                        const firstCols = firstSrc.columns
+                          .slice(0, 3)
+                          .map((c) => `${firstSrc.alias}.${c.name}`)
+                          .join(', ')
+                        onSetSqlQueryText(
+                          `SELECT ${firstCols} FROM ${firstSrc.alias}`,
+                        )
+                      }}
+                    >
+                      SELECT básico
+                    </Button>
+                  )}
+                  {transformInputSources.length >= 2 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-[10px]"
+                      onClick={() => {
+                        const [firstSrc, secondSrc] = transformInputSources
+                        if (firstSrc === undefined || secondSrc === undefined)
+                          return
+                        const colA =
+                          firstSrc.columns.find(() => true)?.name ?? 'id'
+                        const colB =
+                          secondSrc.columns.find(() => true)?.name ?? 'id'
+                        onSetSqlQueryText(
+                          `SELECT ${firstSrc.alias}.${colA}, ${secondSrc.alias}.${colB}\nFROM ${firstSrc.alias}\nJOIN ${secondSrc.alias} ON ${firstSrc.alias}.${colA} = ${secondSrc.alias}.${colB}`,
+                        )
+                      }}
+                    >
+                      JOIN
+                    </Button>
+                  )}
+                  {transformInputSources.length >= 1 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-[10px]"
+                      onClick={() => {
+                        const firstSrc = transformInputSources.find(() => true)
+                        if (firstSrc === undefined) return
+                        const dimCol =
+                          firstSrc.columns.find((c) => c.type === 'string')
+                            ?.name ?? 'id'
+                        onSetSqlQueryText(
+                          `SELECT ${dimCol}, COUNT(*) AS total\nFROM ${firstSrc.alias}\nGROUP BY ${dimCol}`,
+                        )
+                      }}
+                    >
+                      GROUP BY
+                    </Button>
+                  )}
+                  {transformInputSources.length >= 2 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-[10px]"
+                      onClick={() => {
+                        const [firstSrc, secondSrc] = transformInputSources
+                        if (firstSrc === undefined || secondSrc === undefined)
+                          return
+                        const colA =
+                          firstSrc.columns.find(() => true)?.name ?? 'id'
+                        const colB =
+                          secondSrc.columns.find(() => true)?.name ?? 'id'
+                        onSetSqlQueryText(
+                          `SELECT ${colA} AS chave FROM ${firstSrc.alias}\nUNION ALL\nSELECT ${colB} AS chave FROM ${secondSrc.alias}`,
+                        )
+                      }}
+                    >
+                      UNION ALL
+                    </Button>
+                  )}
                 </div>
               </div>
               <Textarea
                 value={sqlQueryText}
                 onChange={(e) => onSetSqlQueryText(e.target.value)}
                 rows={5}
-                placeholder="SELECT coluna, SUM(metrica) AS total FROM input GROUP BY coluna"
+                placeholder="SELECT alias.coluna, COUNT(*) AS total FROM alias GROUP BY alias.coluna"
                 className="min-h-24 resize-y font-mono text-xs leading-relaxed"
               />
               <p className="text-muted-foreground text-[11px]">
@@ -1381,43 +1991,90 @@ export function WorkflowNodeConfigDialog({
                 value="before"
                 className="border-border/80 bg-card mt-0 overflow-hidden rounded-lg border"
               >
-                <div className="max-h-52 overflow-auto">
-                  {beforeCols.length === 0 && (
-                    <div className="text-muted-foreground p-6 text-center text-xs">
-                      Nenhum dado no nó anterior ainda.
-                    </div>
-                  )}
-                  {beforeCols.length > 0 && (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          {beforeCols.map((c) => (
-                            <TableHead
-                              key={c.name}
-                              className="h-8 px-3 font-mono text-[11px]"
-                            >
-                              {c.name}
-                            </TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {beforeRows.map((r, rIdx) => (
-                          <TableRow key={`bef-${rIdx}`}>
-                            {beforeCols.map((c) => (
-                              <TableCell
-                                key={c.name}
-                                className="max-w-[180px] truncate px-3 py-1.5 font-mono text-[11px]"
-                              >
-                                {readCellAsString(r, c.name, '-')}
-                              </TableCell>
+                {transformInputSources.length > 1 && (
+                  <div className="border-border/60 bg-muted/20 flex flex-wrap items-center gap-1.5 border-b px-3 py-1.5">
+                    <span className="text-muted-foreground text-[11px]">
+                      Entrada:
+                    </span>
+                    {transformInputSources.map((src, idx) => {
+                      const isActive =
+                        selectedBeforeInputNodeId !== ''
+                          ? selectedBeforeInputNodeId === src.nodeId
+                          : idx === 0
+
+                      return (
+                        <button
+                          key={src.nodeId}
+                          type="button"
+                          onClick={() =>
+                            setSelectedBeforeInputNodeId(src.nodeId)
+                          }
+                          className={cn(
+                            'rounded px-2 py-0.5 font-mono text-[11px] transition-colors',
+                            isActive && 'bg-primary text-primary-foreground',
+                            !isActive &&
+                              'bg-muted text-muted-foreground hover:text-foreground',
+                          )}
+                        >
+                          {src.alias} ({src.rows.length}×{src.columns.length})
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                {(() => {
+                  const matchedInput = transformInputSources.find(
+                    (src) => src.nodeId === selectedBeforeInputNodeId,
+                  )
+                  const fallbackInput = transformInputSources.find(() => true)
+                  const activeSource = matchedInput ?? fallbackInput
+                  const activeCols =
+                    activeSource !== undefined
+                      ? activeSource.columns
+                      : beforeCols
+                  const activeRows =
+                    activeSource !== undefined ? activeSource.rows : beforeRows
+
+                  return (
+                    <div className="max-h-52 overflow-auto">
+                      {activeCols.length === 0 && (
+                        <div className="text-muted-foreground p-6 text-center text-xs">
+                          Nenhum dado no nó anterior ainda.
+                        </div>
+                      )}
+                      {activeCols.length > 0 && (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              {activeCols.map((c) => (
+                                <TableHead
+                                  key={c.name}
+                                  className="h-8 px-3 font-mono text-[11px]"
+                                >
+                                  {c.name}
+                                </TableHead>
+                              ))}
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {activeRows.map((r, rIdx) => (
+                              <TableRow key={`bef-${rIdx}`}>
+                                {activeCols.map((c) => (
+                                  <TableCell
+                                    key={c.name}
+                                    className="max-w-[180px] truncate px-3 py-1.5 font-mono text-[11px]"
+                                  >
+                                    {readCellAsString(r, c.name, '-')}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
                             ))}
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </div>
+                          </TableBody>
+                        </Table>
+                      )}
+                    </div>
+                  )
+                })()}
               </TabsContent>
             </Tabs>
           </div>
@@ -1428,44 +2085,305 @@ export function WorkflowNodeConfigDialog({
             <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="flex min-w-0 flex-col gap-1.5">
                 <Label className="text-xs font-semibold">Tipo de gráfico</Label>
-                <Select
-                  value={newNodeWidgetType}
-                  onValueChange={(val) => {
-                    const matched = GENERIC_CHART_MODELS.find(
-                      (m) => m.id === val,
-                    )
-                    if (matched) onSelectWidgetType(matched.id)
-                  }}
-                >
-                  <SelectTrigger
-                    aria-label="Modelo visual da visualização"
-                    className="w-full text-xs"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {GENERIC_CHART_MODELS.map((model) => (
-                        <SelectItem
-                          key={model.id}
-                          value={model.id}
-                          disabled={
-                            isRemoteAggregateOutput &&
-                            (isRemoteAggregateUnsupportedVisual(model.id) ||
-                              ((model.id === 'bar_stacked' ||
-                                model.id === 'area_stacked') &&
-                                outputStackColumn !== ''))
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      aria-label="Modelo visual da visualização"
+                      className="h-9 w-full justify-between px-3 text-xs font-normal"
+                    >
+                      <span className="truncate">
+                        {(() => {
+                          const activeModel = GENERIC_CHART_MODELS.find(
+                            (m) => m.id === newNodeWidgetType,
+                          )
+
+                          if (activeModel !== undefined) {
+                            return activeModel.label
                           }
-                        >
-                          {model.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+
+                          return newNodeWidgetType
+                        })()}
+                      </span>
+                      <ChevronDown
+                        data-icon="inline-end"
+                        className="opacity-60"
+                      />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-64" align="start">
+                    <DropdownMenuLabel className="text-xs">
+                      Escolha a visualização
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger className="text-xs">
+                          <BarChart3 data-icon="inline-start" />
+                          <span>Barras</span>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-64">
+                          {[
+                            'bar_vertical',
+                            'bar_horizontal',
+                            'bar_stacked',
+                            'bar_horizontal_stacked',
+                            'bar_grouped',
+                            'split_pane_chart',
+                          ].map((id) => {
+                            const model = GENERIC_CHART_MODELS.find(
+                              (m) => m.id === id,
+                            )
+
+                            if (model === undefined) return null
+
+                            const isDisabled =
+                              isRemoteAggregateOutput &&
+                              (isRemoteAggregateUnsupportedVisual(model.id) ||
+                                ((model.id === 'bar_stacked' ||
+                                  model.id === 'bar_horizontal_stacked') &&
+                                  outputStackColumn !== ''))
+
+                            return (
+                              <DropdownMenuItem
+                                key={model.id}
+                                disabled={isDisabled}
+                                onSelect={() => onSelectWidgetType(model.id)}
+                                className="flex flex-col items-start gap-0.5 text-xs"
+                              >
+                                <span className="font-medium">
+                                  {model.label}
+                                </span>
+                                <span className="text-muted-foreground text-[10px]">
+                                  {model.description}
+                                </span>
+                              </DropdownMenuItem>
+                            )
+                          })}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger className="text-xs">
+                          <LineChart data-icon="inline-start" />
+                          <span>Linhas & Áreas</span>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-64">
+                          {[
+                            'line',
+                            'line_reference',
+                            'area',
+                            'area_stacked',
+                            'combo_multiaxis',
+                          ].map((id) => {
+                            const model = GENERIC_CHART_MODELS.find(
+                              (m) => m.id === id,
+                            )
+
+                            if (model === undefined) return null
+
+                            const isDisabled =
+                              isRemoteAggregateOutput &&
+                              (isRemoteAggregateUnsupportedVisual(model.id) ||
+                                (model.id === 'area_stacked' &&
+                                  outputStackColumn !== ''))
+
+                            return (
+                              <DropdownMenuItem
+                                key={model.id}
+                                disabled={isDisabled}
+                                onSelect={() => onSelectWidgetType(model.id)}
+                                className="flex flex-col items-start gap-0.5 text-xs"
+                              >
+                                <span className="font-medium">
+                                  {model.label}
+                                </span>
+                                <span className="text-muted-foreground text-[10px]">
+                                  {model.description}
+                                </span>
+                              </DropdownMenuItem>
+                            )
+                          })}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger className="text-xs">
+                          <PieChart data-icon="inline-start" />
+                          <span>Proporção & Radar</span>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-60">
+                          {['pie_donut', 'radar'].map((id) => {
+                            const model = GENERIC_CHART_MODELS.find(
+                              (m) => m.id === id,
+                            )
+
+                            if (model === undefined) return null
+
+                            const isDisabled =
+                              isRemoteAggregateOutput &&
+                              isRemoteAggregateUnsupportedVisual(model.id)
+
+                            return (
+                              <DropdownMenuItem
+                                key={model.id}
+                                disabled={isDisabled}
+                                onSelect={() => onSelectWidgetType(model.id)}
+                                className="flex flex-col items-start gap-0.5 text-xs"
+                              >
+                                <span className="font-medium">
+                                  {model.label}
+                                </span>
+                                <span className="text-muted-foreground text-[10px]">
+                                  {model.description}
+                                </span>
+                              </DropdownMenuItem>
+                            )
+                          })}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger className="text-xs">
+                          <Table2 data-icon="inline-start" />
+                          <span>Tabelas & KPI</span>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-64">
+                          {[
+                            'pivot_matrix',
+                            'tree_grid',
+                            'conditional_table',
+                            'kpi_card',
+                          ].map((id) => {
+                            const model = GENERIC_CHART_MODELS.find(
+                              (m) => m.id === id,
+                            )
+
+                            if (model === undefined) return null
+
+                            const isDisabled =
+                              isRemoteAggregateOutput &&
+                              isRemoteAggregateUnsupportedVisual(model.id)
+
+                            return (
+                              <DropdownMenuItem
+                                key={model.id}
+                                disabled={isDisabled}
+                                onSelect={() => onSelectWidgetType(model.id)}
+                                className="flex flex-col items-start gap-0.5 text-xs"
+                              >
+                                <span className="font-medium">
+                                  {model.label}
+                                </span>
+                                <span className="text-muted-foreground text-[10px]">
+                                  {model.description}
+                                </span>
+                              </DropdownMenuItem>
+                            )
+                          })}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <div className="text-muted-foreground text-[11px]">
                   {selectedModelDesc}
                 </div>
+
+                {(newNodeWidgetType === 'bar_vertical' ||
+                  newNodeWidgetType === 'bar_horizontal' ||
+                  newNodeWidgetType === 'bar_stacked' ||
+                  newNodeWidgetType === 'bar_horizontal_stacked') && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <ToggleGroup
+                      type="single"
+                      size="sm"
+                      variant="outline"
+                      value={
+                        newNodeWidgetType === 'bar_horizontal' ||
+                        newNodeWidgetType === 'bar_horizontal_stacked'
+                          ? 'horizontal'
+                          : 'vertical'
+                      }
+                      onValueChange={(nextOrientation) => {
+                        if (nextOrientation === '') return
+                        const isStacked =
+                          newNodeWidgetType === 'bar_stacked' ||
+                          newNodeWidgetType === 'bar_horizontal_stacked'
+
+                        if (nextOrientation === 'horizontal') {
+                          if (isStacked) {
+                            onSelectWidgetType('bar_horizontal_stacked')
+                            return
+                          }
+
+                          onSelectWidgetType('bar_horizontal')
+                          return
+                        }
+
+                        if (isStacked) {
+                          onSelectWidgetType('bar_stacked')
+                          return
+                        }
+
+                        onSelectWidgetType('bar_vertical')
+                      }}
+                    >
+                      <ToggleGroupItem value="vertical" className="text-[11px]">
+                        Em pé
+                      </ToggleGroupItem>
+                      <ToggleGroupItem
+                        value="horizontal"
+                        className="text-[11px]"
+                      >
+                        Deitado
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+
+                    <ToggleGroup
+                      type="single"
+                      size="sm"
+                      variant="outline"
+                      value={
+                        newNodeWidgetType === 'bar_stacked' ||
+                        newNodeWidgetType === 'bar_horizontal_stacked'
+                          ? 'stacked'
+                          : 'normal'
+                      }
+                      onValueChange={(nextStack) => {
+                        if (nextStack === '') return
+                        const isHorizontal =
+                          newNodeWidgetType === 'bar_horizontal' ||
+                          newNodeWidgetType === 'bar_horizontal_stacked'
+
+                        if (nextStack === 'stacked') {
+                          if (isHorizontal) {
+                            onSelectWidgetType('bar_horizontal_stacked')
+                            return
+                          }
+
+                          onSelectWidgetType('bar_stacked')
+                          return
+                        }
+
+                        if (isHorizontal) {
+                          onSelectWidgetType('bar_horizontal')
+                          return
+                        }
+
+                        onSelectWidgetType('bar_vertical')
+                      }}
+                    >
+                      <ToggleGroupItem value="normal" className="text-[11px]">
+                        Normal
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="stacked" className="text-[11px]">
+                        Empilhado
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </div>
+                )}
               </div>
 
               <div className="flex min-w-0 flex-col gap-1.5">
@@ -1540,16 +2458,282 @@ export function WorkflowNodeConfigDialog({
                 </div>
               )}
               <div className="border-border/70 bg-muted/15 grid grid-cols-1 gap-3 rounded-lg border p-3 sm:col-span-2 sm:grid-cols-2">
-                <div className="sm:col-span-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2">
                   <Label className="text-xs font-semibold">
                     Mapeamento das colunas
                   </Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1.5 text-[11px]"
+                      >
+                        <SlidersHorizontal data-icon="inline-start" />
+                        Personalizar exibição &amp; limite
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80" align="end">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold">
+                            Rótulos, descrição e densidade
+                          </span>
+                          <span className="text-muted-foreground text-[11px]">
+                            Ajuste textos exibidos e escolha entre Top-N ou
+                            listar todos os registros com scroll.
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <Label className="text-[11px]">
+                            Descrição / Subtítulo do gráfico
+                          </Label>
+                          <Input
+                            value={outputSubtitle}
+                            onChange={(e) =>
+                              onSetOutputSubtitle?.(e.target.value)
+                            }
+                            placeholder={selectedModelDesc}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="flex flex-col gap-1">
+                            <Label className="text-[11px]">
+                              Rótulo da Categoria
+                            </Label>
+                            <Input
+                              value={outputCategoryLabel}
+                              onChange={(e) =>
+                                onSetOutputCategoryLabel?.(e.target.value)
+                              }
+                              placeholder="Ex: Membro"
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <Label className="text-[11px]">
+                              Rótulo da Métrica
+                            </Label>
+                            <Input
+                              value={outputMetricLabel}
+                              onChange={(e) =>
+                                onSetOutputMetricLabel?.(e.target.value)
+                              }
+                              placeholder="Ex: Total"
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <Label className="text-[11px]">
+                            Rótulo da 2ª Métrica (opcional)
+                          </Label>
+                          <Input
+                            value={outputSecondaryMetricLabel}
+                            onChange={(e) =>
+                              onSetOutputSecondaryMetricLabel?.(e.target.value)
+                            }
+                            placeholder="Ex: Meta / Previsto"
+                            className="h-8 text-xs"
+                          />
+                        </div>
+
+                        <div className="border-border/60 flex items-center justify-between gap-3 rounded-md border p-2.5">
+                          <div className="flex flex-col gap-0.5">
+                            <Label className="text-xs font-medium">
+                              Mostrar todos (com scroll)
+                            </Label>
+                            <span className="text-muted-foreground text-[10px]">
+                              Evita cortar listas grandes (ex.: 150 membros)
+                            </span>
+                          </div>
+                          <Switch
+                            checked={outputShowAllRows}
+                            onCheckedChange={(checked) =>
+                              onSetOutputShowAllRows?.(checked)
+                            }
+                            aria-label="Mostrar todos os registros com scroll"
+                          />
+                        </div>
+
+                        {!outputShowAllRows && (
+                          <div className="flex flex-col gap-1">
+                            <Label className="text-[11px]">
+                              Limite máximo de grupos exibidos
+                            </Label>
+                            <Select
+                              value={String(outputMaxRows)}
+                              onValueChange={(v) => {
+                                const parsed = Number.parseInt(v, 10)
+                                if (!Number.isNaN(parsed) && parsed > 0) {
+                                  onSetOutputMaxRows?.(parsed)
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-8 w-full text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  <SelectItem value="25">25 grupos</SelectItem>
+                                  <SelectItem value="50">50 grupos</SelectItem>
+                                  <SelectItem value="100">
+                                    100 grupos (padrão)
+                                  </SelectItem>
+                                  <SelectItem value="250">
+                                    250 grupos
+                                  </SelectItem>
+                                  <SelectItem value="500">
+                                    500 grupos
+                                  </SelectItem>
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+
+                        <div className="flex flex-col gap-1">
+                          <Label className="text-[11px]">
+                            Exibição de Valores
+                          </Label>
+                          <Select
+                            value={outputValueDisplayMode}
+                            onValueChange={(v) => {
+                              if (v === 'absolute' || v === 'percentage') {
+                                onSetOutputValueDisplayMode?.(v)
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-8 w-full text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                <SelectItem value="absolute">
+                                  Valores absolutos
+                                </SelectItem>
+                                <SelectItem value="percentage">
+                                  Percentual (%)
+                                </SelectItem>
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="border-border/60 flex items-center justify-between gap-3 rounded-md border p-2.5">
+                          <div className="flex flex-col gap-0.5">
+                            <Label className="text-xs font-medium">
+                              Popover ao passar o mouse
+                            </Label>
+                            <span className="text-muted-foreground text-[10px]">
+                              Exibe tooltip interativo sobre barras/pontos
+                            </span>
+                          </div>
+                          <Switch
+                            checked={outputTooltipEnabled}
+                            onCheckedChange={(checked) =>
+                              onSetOutputTooltipEnabled?.(checked)
+                            }
+                            aria-label="Ativar popover de hover no gráfico"
+                          />
+                        </div>
+
+                        {outputTooltipEnabled &&
+                          (() => {
+                            const hasSec =
+                              outputSecondaryMetricColumn.trim() !== ''
+                            const hasStk = outputStackColumn.trim() !== ''
+                            const supportedFields = getSupportedTooltipFields(
+                              newNodeWidgetType,
+                              hasSec,
+                              hasStk,
+                            )
+                            let activeFields = resolveDefaultTooltipFields(
+                              newNodeWidgetType,
+                              hasSec,
+                              hasStk,
+                            )
+                            if (outputTooltipFields !== undefined) {
+                              activeFields = outputTooltipFields
+                            }
+
+                            return (
+                              <div className="border-border/60 flex flex-col gap-2 rounded-md border p-2.5">
+                                <span className="text-foreground text-[11px] font-semibold">
+                                  Campos do Popover (Hover)
+                                </span>
+                                <div className="space-y-1.5">
+                                  {supportedFields.map((fieldOpt) => {
+                                    const isChecked = activeFields.includes(
+                                      fieldOpt.id,
+                                    )
+                                    return (
+                                      <label
+                                        key={fieldOpt.id}
+                                        className="flex cursor-pointer items-start gap-2 text-xs"
+                                      >
+                                        <Checkbox
+                                          checked={isChecked}
+                                          onCheckedChange={(checked) => {
+                                            let next = activeFields.filter(
+                                              (id) => id !== fieldOpt.id,
+                                            )
+                                            if (checked === true) {
+                                              next = Array.from(
+                                                new Set([
+                                                  ...activeFields,
+                                                  fieldOpt.id,
+                                                ]),
+                                              )
+                                            }
+                                            onSetOutputTooltipFields?.(next)
+                                          }}
+                                        />
+                                        <div className="flex flex-col">
+                                          <span className="text-[11px] leading-tight font-medium">
+                                            {fieldOpt.label}
+                                          </span>
+                                          <span className="text-muted-foreground text-[10px] leading-tight">
+                                            {fieldOpt.description}
+                                          </span>
+                                        </div>
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })()}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 {chartRequirements.category && (
                   <div className="flex min-w-0 flex-col gap-1.5">
                     <Label className="text-[11px]">
-                      Eixo X / Categoria Principal
+                      {(() => {
+                        if (
+                          newNodeWidgetType === 'bar_horizontal' ||
+                          newNodeWidgetType === 'bar_horizontal_stacked'
+                        ) {
+                          return 'Eixo Y (Categoria / Rótulo)'
+                        }
+
+                        if (
+                          newNodeWidgetType === 'pie_donut' ||
+                          newNodeWidgetType === 'radar'
+                        ) {
+                          return 'Fatia / Categoria'
+                        }
+
+                        return 'Eixo X / Categoria Principal'
+                      })()}
                     </Label>
                     <Select
                       value={catSelectValue}
@@ -1585,7 +2769,27 @@ export function WorkflowNodeConfigDialog({
                 )}
                 <div className="flex min-w-0 flex-col gap-1.5">
                   <Label className="text-[11px]">
-                    Eixo Y / Métrica Principal
+                    {(() => {
+                      if (
+                        newNodeWidgetType === 'bar_horizontal' ||
+                        newNodeWidgetType === 'bar_horizontal_stacked'
+                      ) {
+                        return 'Eixo X (Valor / Métrica)'
+                      }
+
+                      if (
+                        newNodeWidgetType === 'pie_donut' ||
+                        newNodeWidgetType === 'radar'
+                      ) {
+                        return 'Valor / Medida'
+                      }
+
+                      if (newNodeWidgetType === 'kpi_card') {
+                        return 'Valor Principal (KPI)'
+                      }
+
+                      return 'Eixo Y / Métrica Principal'
+                    })()}
                   </Label>
                   <Select
                     value={metricSelectValue}

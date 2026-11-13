@@ -55,13 +55,14 @@ export const PipelineCanvasNode = memo(function PipelineCanvasNode({
 
   if (
     data.disconnectedAlert !== undefined &&
-    data.chartInputError === undefined
+    data.chartInputError === undefined &&
+    data.nodeError === undefined
   ) {
     borderClass = 'border-amber-500/70 bg-amber-500/[0.06]'
     badgeClass = 'border-amber-500/40 bg-amber-500/15 text-amber-500'
   }
 
-  if (data.chartInputError !== undefined) {
+  if (data.chartInputError !== undefined || data.nodeError !== undefined) {
     borderClass = 'border-destructive bg-destructive/5'
     badgeClass = 'border-destructive/40 text-destructive'
   }
@@ -117,15 +118,21 @@ export const PipelineCanvasNode = memo(function PipelineCanvasNode({
         {data.subtitle}
       </div>
       {data.disconnectedAlert !== undefined &&
-        data.chartInputError === undefined && (
+        data.chartInputError === undefined &&
+        data.nodeError === undefined && (
           <p className="mt-2 flex max-w-64 items-start gap-1.5 text-xs text-amber-500">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <span>{data.disconnectedAlert}</span>
           </p>
         )}
       {data.chartInputError !== undefined && (
-        <p className="text-destructive mt-2 max-w-64 text-xs">
+        <p className="text-destructive mt-2 max-w-64 text-xs [overflow-wrap:anywhere] break-words">
           Entrada incompatível. {data.chartInputError}
+        </p>
+      )}
+      {data.nodeError !== undefined && (
+        <p className="text-destructive mt-2 max-w-64 text-xs [overflow-wrap:anywhere] break-words">
+          {data.nodeError}
         </p>
       )}
       <div className="border-border/60 mt-2.5 flex items-center justify-between border-t pt-2 text-[10px]">

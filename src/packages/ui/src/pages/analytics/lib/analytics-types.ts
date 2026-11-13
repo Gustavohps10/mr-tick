@@ -28,6 +28,7 @@ export type WidgetId =
   | 'bar_vertical'
   | 'bar_horizontal'
   | 'bar_stacked'
+  | 'bar_horizontal_stacked'
   | 'bar_grouped'
   | 'combo_multiaxis'
   | 'line'
@@ -52,20 +53,27 @@ export interface GenericChartModelOption {
 export const GENERIC_CHART_MODELS: GenericChartModelOption[] = [
   {
     id: 'bar_vertical',
-    label: 'Barras Verticais (Colunas)',
-    description: 'Comparação de valores por categoria no eixo vertical',
+    label: 'Barras Verticais (Em pé)',
+    description: 'Compara valores por categoria em colunas verticais',
     category: 'bar',
   },
   {
     id: 'bar_horizontal',
-    label: 'Barras Horizontais (Ranking & %)',
-    description: 'Ranking ordenado com total de horas e participação % no eixo',
+    label: 'Barras Horizontais (Deitado)',
+    description:
+      'Ranking em barras horizontais, ideal para rótulos longos ou extensos',
     category: 'bar',
   },
   {
     id: 'bar_stacked',
-    label: 'Barras Empilhadas (Toggles 8-em-1)',
-    description: 'Composição por série com alternadores nativos (Horas/Qtd/%)',
+    label: 'Barras Verticais Empilhadas (Em pé)',
+    description: 'Composição de séries empilhadas sobre cada categoria',
+    category: 'bar',
+  },
+  {
+    id: 'bar_horizontal_stacked',
+    label: 'Barras Horizontais Empilhadas (Deitado)',
+    description: 'Composição de séries empilhadas em barras horizontais',
     category: 'bar',
   },
   {
@@ -76,28 +84,28 @@ export const GENERIC_CHART_MODELS: GenericChartModelOption[] = [
   },
   {
     id: 'combo_multiaxis',
-    label: 'Combo Multi-Eixo (Barra + Linhas + Índices)',
+    label: 'Combo Multi-Eixo (Barra + Linha)',
     description:
-      'Sobrepõe barras de capacidade, linhas de realizado/estimado e índices',
+      'Sobrepõe barras na métrica principal com linha na métrica secundária',
     category: 'bar',
   },
   {
     id: 'line',
-    label: 'Linhas Contínuas (Série Temporal)',
-    description: 'Evolução temporal comparativa (ex: Criadas × Concluídas)',
+    label: 'Linhas Contínuas',
+    description: 'Evolução contínua de séries ao longo de categorias ou datas',
     category: 'line',
   },
   {
     id: 'line_reference',
-    label: 'Gráfico com Linha de Referência / Ponderada',
-    description: 'Exibe meta fixa (SLA) ou média ponderada dinâmica Σ(A)/Σ(B)',
+    label: 'Linha com Meta / Referência',
+    description: 'Série contínua com linha horizontal de meta ou média',
     category: 'line',
   },
   {
     id: 'split_pane_chart',
     label: 'Split-Pane 70/30 (Gráfico + Tabela Lateral)',
     description:
-      'Gráfico de barras (70%) acoplado à tabela atômica de motivos/tarefas (30%)',
+      'Gráfico de barras (70%) acoplado à tabela detalhada de registros (30%)',
     category: 'bar',
   },
   {
@@ -109,47 +117,47 @@ export const GENERIC_CHART_MODELS: GenericChartModelOption[] = [
   },
   {
     id: 'tree_grid',
-    label: 'TreeGrid Hierárquico (3 Níveis + Rollup)',
+    label: 'TreeGrid Hierárquico (Níveis + Rollup)',
     description:
-      'Árvore expansível (ex: Projeto ▸ Versão ▸ Tarefa) com soma recursiva',
+      'Árvore expansível em múltiplos níveis com soma recursiva dos grupos',
     category: 'table',
   },
   {
     id: 'conditional_table',
     label: 'DataTable Condicional (Sliders & Gradiente)',
     description:
-      'Tabela auditável com 3 sliders de tolerância e destaque em gradiente CSS',
+      'Tabela auditável com faixas de tolerância e destaque em gradiente',
     category: 'table',
   },
   {
     id: 'kpi_card',
-    label: 'Cartão Indicador / KPI & SLA',
+    label: 'Cartão Indicador / KPI & Meta',
     description:
-      'Totalizador de impacto com média ponderada, meta de SLA e variação',
+      'Totalizador numérico em destaque com referência ou meta opcional',
     category: 'other',
   },
   {
     id: 'area',
-    label: 'Área Preenchida (Gradiente)',
-    description: 'Volume e magnitude acumulada ao longo do eixo X',
+    label: 'Área Preenchida',
+    description: 'Volume e tendência acumulada ao longo do eixo principal',
     category: 'area',
   },
   {
     id: 'area_stacked',
     label: 'Área Empilhada (Composição)',
-    description: 'Evolução de múltiplas camadas de volume somadas',
+    description: 'Evolução de múltiplas séries empilhadas em camadas',
     category: 'area',
   },
   {
     id: 'pie_donut',
-    label: 'Pizza / Rosca (Proporção & Alertas)',
-    description: 'Visualização circular com percentuais e contagem central',
+    label: 'Pizza / Rosca (Proporção)',
+    description: 'Visualização circular com distribuição proporcional',
     category: 'pie',
   },
   {
     id: 'radar',
     label: 'Radar / Teia (Multidimensional)',
-    description: 'Gráfico polar de teia comparando múltiplos atributos',
+    description: 'Gráfico polar comparando múltiplos atributos',
     category: 'other',
   },
 ]
@@ -158,6 +166,11 @@ export type ChartVisualType = WidgetId
 
 export type ReferenceLineMode =
   'none' | 'average' | 'weighted_ratio' | 'fixed_target'
+
+export type AnalyticsValueDisplayMode = 'absolute' | 'percentage'
+
+export type AnalyticsTooltipField =
+  'category' | 'primary' | 'secondary' | 'series' | 'percentage' | 'total'
 
 export interface SpaceWidgetConfig {
   id: string
@@ -174,6 +187,14 @@ export interface SpaceWidgetConfig {
   metricColumn?: string
   secondaryMetricColumn?: string
   stackColumn?: string
+  categoryLabel?: string
+  metricLabel?: string
+  secondaryMetricLabel?: string
+  showAllRows?: boolean
+  maxRows?: number
+  valueDisplayMode?: AnalyticsValueDisplayMode
+  tooltipEnabled?: boolean
+  tooltipFields?: AnalyticsTooltipField[]
   referenceLineMode?: ReferenceLineMode
   referenceLineTarget?: number
   hierarchyColumns?: string[]
@@ -244,8 +265,21 @@ export interface NodeJoinConfig {
 
 export interface NodeSqlConfig {
   sqlQuery: string
+  inputAliases?: string[]
   templateId?: string
   snippetId?: string
+}
+
+export interface SourceFilterBinding {
+  targetFilterId: string
+  upstreamNodeId: string
+  sourceColumn: string
+  onEmptyUpstream: 'skip_empty' | 'fail'
+}
+
+export interface TransformInputBinding {
+  nodeId: string
+  alias: string
 }
 
 export type EtlTransformSubMode = 'visual' | 'join' | 'sql'
@@ -267,6 +301,8 @@ export interface SpaceWorkflowNodeConfig {
   customDateRange?: { from?: string; to?: string }
   queryExecution?: AnalyticsExecutionRequest
   filterValues?: Record<string, AnalyticsFilterValue>
+  filterBindings?: SourceFilterBinding[]
+  transformInputs?: TransformInputBinding[]
   transformConfig?: NodeTransformConfig
   joinConfig?: NodeJoinConfig
   sqlConfig?: NodeSqlConfig
@@ -342,6 +378,7 @@ export interface PipelineNodeData extends Record<
   rowCount: number
   datasetId: string
   chartInputError?: string
+  nodeError?: string
   disconnectedAlert?: string
   onRequestRemove?: (nodeId: string) => void
 }

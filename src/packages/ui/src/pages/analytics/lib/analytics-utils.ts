@@ -1,31 +1,27 @@
 import type { AnalyticsDatasetRow } from '@mr-tick/application'
 
 export const SHADCN_PALETTE = [
-  '#3B82F6',
-  '#10B981',
-  '#8B5CF6',
-  '#F59E0B',
-  '#EC4899',
-  '#06B6D4',
-  '#6366F1',
-  '#F43F5E',
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
 ]
 
 const ACTIVITY_COLORS: Record<string, string> = {
-  Desenvolvimento: '#3B82F6',
-  'Code Review': '#8B5CF6',
-  Bugfix: '#EF4444',
-  'Testes / QA': '#10B981',
-  Documentação: '#F59E0B',
+  Desenvolvimento: 'var(--chart-1)',
+  'Code Review': 'var(--chart-2)',
+  Bugfix: 'var(--chart-5)',
+  'Testes / QA': 'var(--chart-3)',
+  Documentação: 'var(--chart-4)',
 }
 
 const FALLBACK_ACTIVITY_PALETTE = [
-  '#3B82F6',
-  '#8B5CF6',
-  '#10B981',
-  '#F59E0B',
-  '#EC4899',
-  '#06B6D4',
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
 ]
 
 export function getActivityColor(activity: string, index: number): string {
@@ -34,14 +30,14 @@ export function getActivityColor(activity: string, index: number): string {
   const colorIdx = index % FALLBACK_ACTIVITY_PALETTE.length
   const paletteColor = FALLBACK_ACTIVITY_PALETTE[colorIdx]
   if (paletteColor) return paletteColor
-  return '#3B82F6'
+  return 'var(--chart-1)'
 }
 
 export function getPaletteColor(index: number): string {
   const colorIdx = index % SHADCN_PALETTE.length
   const color = SHADCN_PALETTE[colorIdx]
   if (color) return color
-  return '#3B82F6'
+  return 'var(--chart-1)'
 }
 
 export function readStringCell(

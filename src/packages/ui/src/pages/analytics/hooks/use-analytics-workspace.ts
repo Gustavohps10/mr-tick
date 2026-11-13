@@ -41,6 +41,13 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useHostBridge } from '@/hooks'
 
 import {
+  applyResolvedFilterBindings,
+  extractDistinctFilterValuesFromRows,
+  getBindingCacheKey,
+  resolveWorkflowFilterDependencies,
+  syncEdgesForNode,
+} from '../lib/analytics-cross-source'
+import {
   buildAnalyticsPlan,
   collectUpstreamSourceNodeIds,
   collectWorkflowLineage,
@@ -64,7 +71,9 @@ import {
   type AnalyticsSourceFailureItem,
   type AnalyticsSpaceConfig,
   type AnalyticsSyncStatusSummary,
+  type AnalyticsTooltipField,
   type AnalyticsUpstreamSourceStatus,
+  type AnalyticsValueDisplayMode,
   type AvailableProjectOption,
   type CanvasLayerMode,
   type ConnectionDisplayOption,
@@ -73,8 +82,10 @@ import {
   GENERIC_CHART_MODELS,
   type PipelineNodeData,
   type ReferenceLineMode,
+  type SourceFilterBinding,
   type SpaceWidgetConfig,
   type SpaceWorkflowNodeConfig,
+  type TransformInputBinding,
   type WidgetId,
   type WidgetSpan,
   type WorkflowNodeKind,
@@ -293,6 +304,18 @@ export function useAnalyticsWorkspace() {
   const [newNodeFilterValues, setNewNodeFilterValues] = useState<
     Record<string, AnalyticsFilterValue>
   >({})
+  const [newNodeFilterBindings, setNewNodeFilterBindings] = useState<
+    SourceFilterBinding[]
+  >([])
+  const [resolvedCrossSourceValues, setResolvedCrossSourceValues] = useState<
+    Record<string, string[]>
+  >({})
+  const [resolvedUpstreamReadyByNodeId, setResolvedUpstreamReadyByNodeId] =
+    useState<Record<string, boolean>>({})
+  const [crossSourceErrorsByKey, setCrossSourceErrorsByKey] = useState<
+    Record<string, string>
+  >({})
+  const fetchedBindingVersionRef = useRef<Map<string, string>>(new Map())
   const [connectionMetadataOptions, setConnectionMetadataOptions] = useState<
     Record<AnalyticsFilterDynamicSource, AnalyticsFilterOption[]>
   >({
@@ -321,8 +344,25 @@ export function useAnalyticsWorkspace() {
     useState<ReferenceLineMode>('none')
   const [outputReferenceLineTarget, setOutputReferenceLineTarget] =
     useState<number>(24)
+  const [outputSubtitle, setOutputSubtitle] = useState<string>('')
+  const [outputCategoryLabel, setOutputCategoryLabel] = useState<string>('')
+  const [outputMetricLabel, setOutputMetricLabel] = useState<string>('')
+  const [outputSecondaryMetricLabel, setOutputSecondaryMetricLabel] =
+    useState<string>('')
+  const [outputShowAllRows, setOutputShowAllRows] = useState<boolean>(false)
+  const [outputMaxRows, setOutputMaxRows] = useState<number>(100)
+  const [outputValueDisplayMode, setOutputValueDisplayMode] =
+    useState<AnalyticsValueDisplayMode>('absolute')
+  const [outputTooltipEnabled, setOutputTooltipEnabled] =
+    useState<boolean>(true)
+  const [outputTooltipFields, setOutputTooltipFields] = useState<
+    AnalyticsTooltipField[] | undefined
+  >(undefined)
 
   const [txUpstreamNodeId, setTxUpstreamNodeId] = useState<string>('')
+  const [txTransformInputs, setTxTransformInputs] = useState<
+    TransformInputBinding[]
+  >([])
   const [sqlQueryText, setSqlQueryText] = useState<string>('')
 
   const analyticsCatalogs = useRef(
@@ -411,6 +451,49 @@ export function useAnalyticsWorkspace() {
     [workspaceId],
   )
 
+  const dependencyOrderResult = useMemo(
+    () => resolveWorkflowFilterDependencies(activeSpace.workflowNodes),
+    [activeSpace.workflowNodes],
+  )
+
+  const crossSourceStatusByNodeId = useMemo(() => {
+    const map: Record<
+      string,
+      ReturnType<typeof applyResolvedFilterBindings>
+    > = {}
+
+    if (dependencyOrderResult.isFailure()) {
+      for (const node of activeSpace.workflowNodes) {
+        if (node.filterBindings !== undefined && node.filterBindings.length > 0)
+          map[node.id] = {
+            filterValues: undefined,
+            status: 'failed',
+            reason:
+              'Ciclo detectado entre filtros de fontes (ANALYTICS_DEPENDENCY_CYCLE).',
+          }
+      }
+
+      return map
+    }
+
+    for (const node of activeSpace.workflowNodes) {
+      if (node.kind !== 'source') continue
+
+      map[node.id] = applyResolvedFilterBindings(
+        node,
+        resolvedCrossSourceValues,
+        resolvedUpstreamReadyByNodeId,
+      )
+    }
+
+    return map
+  }, [
+    activeSpace.workflowNodes,
+    dependencyOrderResult,
+    resolvedCrossSourceValues,
+    resolvedUpstreamReadyByNodeId,
+  ])
+
   const nodeSelectionPlans = useMemo<
     Record<string, SourceSelectionDescriptor>
   >(() => {
@@ -420,19 +503,28 @@ export function useAnalyticsWorkspace() {
       if (node.kind !== 'source' || !node.connectionId || !node.datasetId)
         continue
 
+      const bindingStatus = crossSourceStatusByNodeId[node.id]
+      let effectiveFilterValues = node.filterValues
+
+      if (node.filterBindings !== undefined && node.filterBindings.length > 0) {
+        if (bindingStatus === undefined || bindingStatus.status !== 'ready')
+          continue
+        effectiveFilterValues = bindingStatus.filterValues
+      }
+
       const effDates = resolveEffectiveNodeDates(
         node.customDateRange,
         startDate,
         endDate,
       )
-      const effProject = resolveEffectiveNodeProject(node.filterValues)
+      const effProject = resolveEffectiveNodeProject(effectiveFilterValues)
       const rawQuery: AnalyticsDatasetQueryInput = {
         datasetId: node.datasetId,
         projectId: effProject,
         startDate: effDates.from,
         endDate: effDates.to,
         execution: node.queryExecution,
-        filters: normalizeSourceFilters(node.filterValues),
+        filters: normalizeSourceFilters(effectiveFilterValues),
       }
       const manifest = findCachedManifest(node.connectionId, node.datasetId)
       const selectedQuery = queryWithDatasetSelection(rawQuery, manifest)
@@ -1314,8 +1406,17 @@ export function useAnalyticsWorkspace() {
           let message = 'ANALYTICS_REQUEST_FAILED'
           if (response.error !== undefined) message = response.error
 
-          if (response.statusCode === 401 || response.statusCode === 403)
+          if (response.statusCode === 401)
             clearConnectionPublications([connectionId], message)
+
+          if (
+            response.statusCode === 403 &&
+            response.details?.connectionInstanceIds !== undefined
+          )
+            clearConnectionPublications(
+              response.details.connectionInstanceIds,
+              message,
+            )
 
           setSelectionErrors((previous) => ({
             ...previous,
@@ -1447,19 +1548,33 @@ export function useAnalyticsWorkspace() {
       if (node.kind !== 'source' || !node.connectionId || !node.datasetId)
         continue
 
+      let effectiveFilterValues = node.filterValues
+
+      if (node.filterBindings !== undefined && node.filterBindings.length > 0) {
+        const applied = applyResolvedFilterBindings(
+          node,
+          resolvedCrossSourceValues,
+          resolvedUpstreamReadyByNodeId,
+        )
+
+        if (applied.status !== 'ready') continue
+
+        effectiveFilterValues = applied.filterValues
+      }
+
       const effDates = resolveEffectiveNodeDates(
         node.customDateRange,
         startDateRef.current,
         endDateRef.current,
       )
-      const effProject = resolveEffectiveNodeProject(node.filterValues)
+      const effProject = resolveEffectiveNodeProject(effectiveFilterValues)
       const rawQuery: AnalyticsDatasetQueryInput = {
         datasetId: node.datasetId,
         projectId: effProject,
         startDate: effDates.from,
         endDate: effDates.to,
         execution: node.queryExecution,
-        filters: normalizeSourceFilters(node.filterValues),
+        filters: normalizeSourceFilters(effectiveFilterValues),
       }
       const manifest = findCachedManifest(node.connectionId, node.datasetId)
       const normalized = queryWithDatasetSelection(rawQuery, manifest)
@@ -1815,28 +1930,25 @@ export function useAnalyticsWorkspace() {
   const isFetchingLive =
     syncStatusSummary.isBackgroundSyncing || syncStatusSummary.isManualSyncing
 
-  const previewInputs = activeSpace.workflowNodes
-    .filter(
-      (node) =>
-        node.kind !== 'output' &&
-        node.id !== editingNodeId &&
-        (txUpstreamNodeId === '__all__' || node.id === txUpstreamNodeId),
-    )
-    .map((node) => node.id)
+  const previewInputIds = txTransformInputs.map((item) => item.nodeId)
+  const previewInputAliases = txTransformInputs.map((item) => item.alias)
 
   const queryNodes: AnalyticsPlanNode[] = [...warehousePlan]
 
   if (
     isAddNodeModalOpen &&
     selectedAddNodeType === 'transform' &&
-    previewInputs.length > 0 &&
+    previewInputIds.length > 0 &&
     sqlQueryText.trim() !== ''
   )
     queryNodes.push({
       id: 'analytics_sql_preview',
       kind: 'sql',
-      upstreamNodeIds: previewInputs,
-      sqlConfig: { sqlQuery: sqlQueryText },
+      upstreamNodeIds: previewInputIds,
+      sqlConfig: {
+        sqlQuery: sqlQueryText,
+        inputAliases: previewInputAliases,
+      },
     })
 
   let inspection:
@@ -1879,6 +1991,134 @@ export function useAnalyticsWorkspace() {
     clearConnectionPublications,
     inspection,
   )
+
+  useEffect(() => {
+    const bindings: Array<{ upstreamNodeId: string; sourceColumn: string }> = []
+    const seen = new Set<string>()
+
+    for (const node of activeSpace.workflowNodes) {
+      if (node.filterBindings === undefined) continue
+
+      for (const binding of node.filterBindings) {
+        const key = getBindingCacheKey(
+          binding.upstreamNodeId,
+          binding.sourceColumn,
+        )
+        if (seen.has(key)) continue
+        seen.add(key)
+        bindings.push({
+          upstreamNodeId: binding.upstreamNodeId,
+          sourceColumn: binding.sourceColumn,
+        })
+      }
+    }
+
+    const nextReady: Record<string, boolean> = {}
+
+    for (const binding of bindings) {
+      const page = nodePages[binding.upstreamNodeId]
+      nextReady[binding.upstreamNodeId] = page?.data !== undefined
+    }
+
+    setResolvedUpstreamReadyByNodeId((prev) => {
+      const prevKeys = Object.keys(prev)
+      const nextKeys = Object.keys(nextReady)
+
+      if (
+        prevKeys.length === nextKeys.length &&
+        nextKeys.every((k) => prev[k] === nextReady[k])
+      )
+        return prev
+
+      return nextReady
+    })
+
+    for (const binding of bindings) {
+      const key = getBindingCacheKey(
+        binding.upstreamNodeId,
+        binding.sourceColumn,
+      )
+      const page = nodePages[binding.upstreamNodeId]
+      const data = page?.data
+
+      if (data === undefined) continue
+
+      const snapshotVersion = `${data.version}:${data.loadedAt}:${data.totalRows}`
+
+      if (fetchedBindingVersionRef.current.get(key) === snapshotVersion)
+        continue
+
+      if (data.totalRows <= data.rows.length) {
+        fetchedBindingVersionRef.current.set(key, snapshotVersion)
+        const extracted = extractDistinctFilterValuesFromRows(
+          data.rows,
+          binding.sourceColumn,
+        )
+
+        if (extracted.isSuccess()) {
+          setResolvedCrossSourceValues((prev) => ({
+            ...prev,
+            [key]: extracted.success,
+          }))
+          setCrossSourceErrorsByKey((prev) => {
+            if (prev[key] === undefined) return prev
+            const next = { ...prev }
+            delete next[key]
+            return next
+          })
+          continue
+        }
+
+        setCrossSourceErrorsByKey((prev) => ({
+          ...prev,
+          [key]: extracted.failure.messageKey,
+        }))
+        continue
+      }
+
+      if (workspaceId === undefined) continue
+
+      fetchedBindingVersionRef.current.set(key, snapshotVersion)
+      void bridge.addons
+        .queryAnalytics({
+          body: {
+            workspaceId,
+            nodes: warehousePlan,
+            targetNodeId: binding.upstreamNodeId,
+            projection: [binding.sourceColumn],
+            offset: 0,
+            limit: 501,
+          },
+        })
+        .then((response) => {
+          if (!response.isSuccess || response.data === undefined) return
+
+          const extracted = extractDistinctFilterValuesFromRows(
+            response.data.rows,
+            binding.sourceColumn,
+          )
+
+          if (extracted.isSuccess()) {
+            setResolvedCrossSourceValues((prev) => ({
+              ...prev,
+              [key]: extracted.success,
+            }))
+            return
+          }
+
+          setCrossSourceErrorsByKey((prev) => ({
+            ...prev,
+            [key]: extracted.failure.messageKey,
+          }))
+        })
+    }
+  }, [
+    activeSpace.workflowNodes,
+    bridge.addons,
+    nodePages,
+    warehousePlan,
+    workspaceId,
+  ])
 
   const resolveRowsForWorkflowNode = useCallback(
     (node: SpaceWorkflowNodeConfig) => {
@@ -1958,23 +2198,14 @@ export function useAnalyticsWorkspace() {
     if (selectedAddNodeType === 'output' && outputSourceNodeId)
       targetNode = dataNodes.find((n) => n.id === outputSourceNodeId)
 
-    if (
-      selectedAddNodeType === 'transform' &&
-      txUpstreamNodeId &&
-      txUpstreamNodeId !== '__all__'
-    )
-      targetNode = dataNodes.find((n) => n.id === txUpstreamNodeId)
-
-    if (
-      selectedAddNodeType === 'transform' &&
-      txUpstreamNodeId === '__all__' &&
-      dataNodes.length > 0
-    ) {
+    if (selectedAddNodeType === 'transform' && txTransformInputs.length > 0) {
       const merged: AnalyticsColumnSchema[] = []
       const seen = new Set<string>()
 
-      for (const dn of dataNodes) {
-        const res = resolveRowsForWorkflowNode(dn)
+      for (const input of txTransformInputs) {
+        const matched = dataNodes.find((n) => n.id === input.nodeId)
+        if (!matched) continue
+        const res = resolveRowsForWorkflowNode(matched)
 
         for (const col of res.columns) {
           if (!seen.has(col.name)) {
@@ -1995,7 +2226,34 @@ export function useAnalyticsWorkspace() {
     outputSourceNodeId,
     resolveRowsForWorkflowNode,
     selectedAddNodeType,
-    txUpstreamNodeId,
+    txTransformInputs,
+  ])
+
+  const transformInputSources = useMemo(() => {
+    const dataNodes = activeSpace.workflowNodes.filter(
+      (n) => n.kind !== 'output' && n.id !== editingNodeId,
+    )
+
+    return txTransformInputs
+      .map((binding) => {
+        const matched = dataNodes.find((n) => n.id === binding.nodeId)
+        if (!matched) return undefined
+        const resolved = resolveRowsForWorkflowNode(matched)
+
+        return {
+          nodeId: binding.nodeId,
+          alias: binding.alias,
+          label: matched.label,
+          columns: resolved.columns,
+          rows: resolved.rows,
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== undefined)
+  }, [
+    activeSpace.workflowNodes,
+    editingNodeId,
+    resolveRowsForWorkflowNode,
+    txTransformInputs,
   ])
 
   const outputIssues = chartInputIssues(
@@ -2014,16 +2272,16 @@ export function useAnalyticsWorkspace() {
   const outputIsInvalid =
     outputIssues.length > 0 || upstreamAvailableColumns.length === 0
 
-  const previewBeforeNode = activeSpace.workflowNodes.find(
-    (node) => node.id === txUpstreamNodeId,
-  )
+  const firstTransformInput = transformInputSources.find(() => true)
   let transformPreviewBeforePayload: {
     columns: AnalyticsColumnSchema[]
     rows: AnalyticsDatasetRow[]
   } = { columns: [], rows: [] }
-  if (previewBeforeNode !== undefined)
-    transformPreviewBeforePayload =
-      resolveRowsForWorkflowNode(previewBeforeNode)
+  if (firstTransformInput !== undefined)
+    transformPreviewBeforePayload = {
+      columns: firstTransformInput.columns,
+      rows: firstTransformInput.rows,
+    }
   let transformPreviewAfterPayload: {
     columns: AnalyticsColumnSchema[]
     rows: AnalyticsDatasetRow[]
@@ -2077,6 +2335,11 @@ export function useAnalyticsWorkspace() {
         setNewNodeFilterValues(initFilters)
       }
 
+      let nextFilterBindings: SourceFilterBinding[] = []
+      if (node.filterBindings !== undefined)
+        nextFilterBindings = [...node.filterBindings]
+      setNewNodeFilterBindings(nextFilterBindings)
+
       let nextTxUpstream = ''
       let nextOutputSource = ''
       const [firstUpstream] = node.upstreamNodeIds
@@ -2087,6 +2350,32 @@ export function useAnalyticsWorkspace() {
       }
 
       if (node.upstreamNodeIds.length > 1) nextTxUpstream = '__all__'
+
+      let nextTransformInputs: TransformInputBinding[] = []
+
+      if (
+        node.transformInputs !== undefined &&
+        node.transformInputs.length > 0
+      ) {
+        nextTransformInputs = [...node.transformInputs]
+      }
+
+      if (nextTransformInputs.length === 0 && node.kind === 'sql') {
+        nextTransformInputs = node.upstreamNodeIds.map((upId, idx) => {
+          const rawAlias = node.sqlConfig?.inputAliases?.find(
+            (_, aliasIdx) => aliasIdx === idx,
+          )
+          let alias = `input_${idx + 1}`
+
+          if (node.upstreamNodeIds.length === 1) alias = 'input'
+
+          if (rawAlias !== undefined) alias = rawAlias
+
+          return { nodeId: upId, alias }
+        })
+      }
+
+      setTxTransformInputs(nextTransformInputs)
 
       let nextSqlQueryText = ''
       if (node.sqlConfig && node.sqlConfig.sqlQuery)
@@ -2104,6 +2393,15 @@ export function useAnalyticsWorkspace() {
       let nextStackColumn = ''
       let nextReferenceLineMode: ReferenceLineMode = 'none'
       let nextReferenceLineTarget = 24
+      let nextSubtitle = ''
+      let nextCategoryLabel = ''
+      let nextMetricLabel = ''
+      let nextSecondaryMetricLabel = ''
+      let nextShowAllRows = false
+      let nextMaxRows = 100
+      let nextValueDisplayMode: AnalyticsValueDisplayMode = 'absolute'
+      let nextTooltipEnabled = true
+      let nextTooltipFields: AnalyticsTooltipField[] | undefined = undefined
 
       if (node.kind === 'output') {
         const linkedWidget = activeSpace.widgets.find(
@@ -2115,6 +2413,7 @@ export function useAnalyticsWorkspace() {
           if (linkedWidget.chartVisualType)
             nextWidgetType = linkedWidget.chartVisualType
           nextSpan = linkedWidget.span
+          nextSubtitle = linkedWidget.subtitle
           if (!nextOutputSource && linkedWidget.sourceNodeId)
             nextOutputSource = linkedWidget.sourceNodeId
           if (linkedWidget.categoryColumn)
@@ -2131,6 +2430,22 @@ export function useAnalyticsWorkspace() {
             nextReferenceLineMode = linkedWidget.referenceLineMode
           if (linkedWidget.referenceLineTarget !== undefined)
             nextReferenceLineTarget = linkedWidget.referenceLineTarget
+          if (linkedWidget.categoryLabel !== undefined)
+            nextCategoryLabel = linkedWidget.categoryLabel
+          if (linkedWidget.metricLabel !== undefined)
+            nextMetricLabel = linkedWidget.metricLabel
+          if (linkedWidget.secondaryMetricLabel !== undefined)
+            nextSecondaryMetricLabel = linkedWidget.secondaryMetricLabel
+          if (linkedWidget.showAllRows !== undefined)
+            nextShowAllRows = linkedWidget.showAllRows
+          if (linkedWidget.maxRows !== undefined)
+            nextMaxRows = linkedWidget.maxRows
+          if (linkedWidget.valueDisplayMode !== undefined)
+            nextValueDisplayMode = linkedWidget.valueDisplayMode
+          if (linkedWidget.tooltipEnabled !== undefined)
+            nextTooltipEnabled = linkedWidget.tooltipEnabled
+          if (linkedWidget.tooltipFields !== undefined)
+            nextTooltipFields = linkedWidget.tooltipFields
         }
       }
 
@@ -2145,6 +2460,15 @@ export function useAnalyticsWorkspace() {
       setOutputStackColumn(nextStackColumn)
       setOutputReferenceLineMode(nextReferenceLineMode)
       setOutputReferenceLineTarget(nextReferenceLineTarget)
+      setOutputSubtitle(nextSubtitle)
+      setOutputCategoryLabel(nextCategoryLabel)
+      setOutputMetricLabel(nextMetricLabel)
+      setOutputSecondaryMetricLabel(nextSecondaryMetricLabel)
+      setOutputShowAllRows(nextShowAllRows)
+      setOutputMaxRows(nextMaxRows)
+      setOutputValueDisplayMode(nextValueDisplayMode)
+      setOutputTooltipEnabled(nextTooltipEnabled)
+      setOutputTooltipFields(nextTooltipFields)
 
       setIsAddNodeModalOpen(true)
     },
@@ -2162,6 +2486,8 @@ export function useAnalyticsWorkspace() {
       setNewNodeLabel('')
       setSelectedAddNodeType(targetType)
       setNewNodeFilterValues({})
+      setNewNodeFilterBindings([])
+      setTxTransformInputs([])
       setNewNodeCustomDateRange(undefined)
 
       const matchedDs = nodeSourceDatasets.find(
@@ -2184,6 +2510,12 @@ export function useAnalyticsWorkspace() {
       setOutputStackColumn('')
       setOutputReferenceLineMode('none')
       setOutputReferenceLineTarget(24)
+      setOutputSubtitle('')
+      setOutputCategoryLabel('')
+      setOutputMetricLabel('')
+      setOutputSecondaryMetricLabel('')
+      setOutputShowAllRows(false)
+      setOutputMaxRows(100)
       setIsAddNodeModalOpen(true)
     },
     [newNodeDatasetId, nodeSourceDatasets],
@@ -2311,6 +2643,18 @@ export function useAnalyticsWorkspace() {
       if (nodeCfg.kind !== 'source' && nodeCfg.upstreamNodeIds.length === 0)
         disconnectedAlert = 'Sem fonte conectada. Conecte ou edite uma entrada.'
 
+      let nodeError: string | undefined
+      if (page?.error !== undefined && page.error !== '') nodeError = page.error
+      const plan = nodeSelectionPlans[nodeCfg.id]
+      if (
+        nodeError === undefined &&
+        plan !== undefined &&
+        selectionErrors[plan.selKey] !== undefined &&
+        selectionErrors[plan.selKey] !== ''
+      ) {
+        nodeError = selectionErrors[plan.selKey]
+      }
+
       return {
         id: nodeCfg.id,
         type: 'pipelineNode',
@@ -2325,6 +2669,7 @@ export function useAnalyticsWorkspace() {
           rowCount,
           datasetId: nodeCfg.datasetId,
           chartInputError,
+          nodeError,
           disconnectedAlert,
           onRequestRemove: handleRequestRemoveNode,
         },
@@ -2335,6 +2680,8 @@ export function useAnalyticsWorkspace() {
     activeSpace.workflowNodes,
     handleRequestRemoveNode,
     nodePages,
+    nodeSelectionPlans,
+    selectionErrors,
     widgetInputErrors,
   ])
 
@@ -2370,6 +2717,35 @@ export function useAnalyticsWorkspace() {
     setPipelineEdges,
     setPipelineNodes,
   ])
+
+  const handlePersistNodePosition = useCallback(
+    (nodeId: string, x: number, y: number) => {
+      const nextX = Math.round(x)
+      const nextY = Math.round(y)
+      userMutatedStateRef.current = true
+      setSpaces((prev) =>
+        prev.map((space) => {
+          if (space.id !== activeSpace.id) return space
+
+          return {
+            ...space,
+            workflowNodes: space.workflowNodes.map((node) => {
+              if (node.id === nodeId) {
+                return {
+                  ...node,
+                  positionX: nextX,
+                  positionY: nextY,
+                }
+              }
+
+              return node
+            }),
+          }
+        }),
+      )
+    },
+    [activeSpace.id],
+  )
 
   const updateWidgetSpan = useCallback(
     (widgetId: string, nextSpan: WidgetSpan) => {
@@ -2607,15 +2983,20 @@ export function useAnalyticsWorkspace() {
         (n) => n.kind !== 'output',
       )
 
-      if (txUpstreamNodeId === '__all__')
-        upstreamIds = dataNodes.map((n) => n.id)
-
-      if (
-        txUpstreamNodeId &&
-        txUpstreamNodeId !== '__all__' &&
-        dataNodes.some((n) => n.id === txUpstreamNodeId)
+      const validInputs = txTransformInputs.filter((input) =>
+        dataNodes.some((n) => n.id === input.nodeId),
       )
-        upstreamIds = [txUpstreamNodeId]
+      upstreamIds = validInputs.map((input) => input.nodeId)
+
+      if (upstreamIds.length === 0 && txUpstreamNodeId !== '') {
+        if (txUpstreamNodeId === '__all__')
+          upstreamIds = dataNodes.map((n) => n.id)
+        if (
+          txUpstreamNodeId !== '__all__' &&
+          dataNodes.some((n) => n.id === txUpstreamNodeId)
+        )
+          upstreamIds = [txUpstreamNodeId]
+      }
 
       if (upstreamIds.length === 0) return
       if (
@@ -2652,6 +3033,17 @@ export function useAnalyticsWorkspace() {
       sqlPreviewText = `-- Widget publicado na Grade Inteligente: ${cleanLabel} (${newNodeWidgetType})`
     }
 
+    let savedFilterBindings: SourceFilterBinding[] | undefined = undefined
+    if (kindVal === 'source' && newNodeFilterBindings.length > 0)
+      savedFilterBindings = newNodeFilterBindings
+
+    let savedTransformInputs: TransformInputBinding[] | undefined = undefined
+    let savedInputAliases: string[] | undefined = undefined
+    if (kindVal === 'sql' && txTransformInputs.length > 0) {
+      savedTransformInputs = txTransformInputs
+      savedInputAliases = txTransformInputs.map((input) => input.alias)
+    }
+
     const newNode: SpaceWorkflowNodeConfig = {
       id: generatedId,
       positionX: posX,
@@ -2669,20 +3061,24 @@ export function useAnalyticsWorkspace() {
       customDateRange: normalizedCustomDates,
       queryExecution,
       filterValues: normalizedFilters,
+      filterBindings: savedFilterBindings,
+      transformInputs: savedTransformInputs,
       sqlConfig: {
         sqlQuery: sqlQueryText,
+        inputAliases: savedInputAliases,
       },
       ruleSummary: ruleSummaryText,
       sqlPreview: sqlPreviewText,
       upstreamNodeIds: upstreamIds,
     }
 
-    const newEdges = upstreamIds.map((upId, idx) => ({
-      id: `edge_${generatedId}_${idx}`,
-      source: upId,
-      target: generatedId,
-      label: 'Fluxo',
-    }))
+    const cycleCheck = resolveWorkflowFilterDependencies([
+      ...activeSpace.workflowNodes,
+      newNode,
+    ])
+    if (cycleCheck.isFailure()) return
+
+    const nextEdges = syncEdgesForNode(activeSpace.workflowEdges, newNode)
 
     userMutatedStateRef.current = true
     setSpaces((prev) =>
@@ -2718,11 +3114,27 @@ export function useAnalyticsWorkspace() {
           let stkCol: string | undefined = undefined
           if (outputStackColumn) stkCol = outputStackColumn
 
+          let resolvedSubtitle = desc
+          if (outputSubtitle.trim() !== '')
+            resolvedSubtitle = outputSubtitle.trim()
+
+          let catLabel: string | undefined = undefined
+          if (outputCategoryLabel.trim() !== '')
+            catLabel = outputCategoryLabel.trim()
+
+          let metLabel: string | undefined = undefined
+          if (outputMetricLabel.trim() !== '')
+            metLabel = outputMetricLabel.trim()
+
+          let secMetLabel: string | undefined = undefined
+          if (outputSecondaryMetricLabel.trim() !== '')
+            secMetLabel = outputSecondaryMetricLabel.trim()
+
           nextWidgets.push({
             id: `w_custom_${space.widgets.length + 1}`,
             widgetType: newNodeWidgetType,
             title: cleanLabel,
-            subtitle: desc,
+            subtitle: resolvedSubtitle,
             datasetBadge: resolvedDataset,
             sourceNodeId: sourceId,
             outputNodeId: generatedId,
@@ -2733,6 +3145,14 @@ export function useAnalyticsWorkspace() {
             metricColumn: metCol,
             secondaryMetricColumn: secMetCol,
             stackColumn: stkCol,
+            categoryLabel: catLabel,
+            metricLabel: metLabel,
+            secondaryMetricLabel: secMetLabel,
+            showAllRows: outputShowAllRows,
+            maxRows: outputMaxRows,
+            valueDisplayMode: outputValueDisplayMode,
+            tooltipEnabled: outputTooltipEnabled,
+            tooltipFields: outputTooltipFields,
             hierarchyColumns: outputHierarchyColumns,
             referenceLineMode: outputReferenceLineMode,
             referenceLineTarget: outputReferenceLineTarget,
@@ -2743,7 +3163,7 @@ export function useAnalyticsWorkspace() {
           ...space,
           widgets: nextWidgets,
           workflowNodes: [...space.workflowNodes, newNode],
-          workflowEdges: [...space.workflowEdges, ...newEdges],
+          workflowEdges: nextEdges,
         }
       }),
     )
@@ -2785,6 +3205,7 @@ export function useAnalyticsWorkspace() {
     findCachedManifest,
     newNodeCustomDateRange,
     newNodeDatasetId,
+    newNodeFilterBindings,
     newNodeFilterValues,
     newNodeLabel,
     newNodeSelectedConnectionId,
@@ -2800,13 +3221,23 @@ export function useAnalyticsWorkspace() {
     outputReferenceLineMode,
     outputReferenceLineTarget,
     outputSecondaryMetricColumn,
+    outputSecondaryMetricLabel,
+    outputShowAllRows,
     outputSourceNodeId,
     outputStackColumn,
+    outputSubtitle,
+    outputTooltipEnabled,
+    outputTooltipFields,
+    outputValueDisplayMode,
+    outputCategoryLabel,
+    outputMaxRows,
+    outputMetricLabel,
     queryExecution,
     selectedAddNodeType,
     sqlQueryText,
     startDate,
     syncUniqueSelection,
+    txTransformInputs,
     txUpstreamNodeId,
     workspaceId,
   ])
@@ -2907,20 +3338,26 @@ export function useAnalyticsWorkspace() {
         (n) => n.kind !== 'output' && n.id !== editingNodeId,
       )
 
-      if (txUpstreamNodeId === '__all__')
-        updatedUpstreamIds = dataNodes.map((n) => n.id)
-
-      if (
-        txUpstreamNodeId &&
-        txUpstreamNodeId !== '__all__' &&
-        dataNodes.some((n) => n.id === txUpstreamNodeId)
+      const validInputs = txTransformInputs.filter((input) =>
+        dataNodes.some((n) => n.id === input.nodeId),
       )
-        updatedUpstreamIds = [txUpstreamNodeId]
+      updatedUpstreamIds = validInputs.map((input) => input.nodeId)
+
+      if (updatedUpstreamIds.length === 0 && txUpstreamNodeId !== '') {
+        if (txUpstreamNodeId === '__all__')
+          updatedUpstreamIds = dataNodes.map((n) => n.id)
+        if (
+          txUpstreamNodeId !== '__all__' &&
+          dataNodes.some((n) => n.id === txUpstreamNodeId)
+        )
+          updatedUpstreamIds = [txUpstreamNodeId]
+      }
 
       const transformCandidates = activeSpace.workflowNodes.filter(
         (n) => n.id !== editingNodeId,
       )
       if (
+        updatedUpstreamIds.length === 0 ||
         updatedUpstreamIds.some((id) =>
           isRemoteAggregateUpstream(transformCandidates, id),
         )
@@ -2944,6 +3381,17 @@ export function useAnalyticsWorkspace() {
       if (updatedUpstreamIds.length === 0 || outputIsInvalid) return
     }
 
+    let savedFilterBindings: SourceFilterBinding[] | undefined = undefined
+    if (updatedKind === 'source' && newNodeFilterBindings.length > 0)
+      savedFilterBindings = newNodeFilterBindings
+
+    let savedTransformInputs: TransformInputBinding[] | undefined = undefined
+    let savedInputAliases: string[] | undefined = undefined
+    if (updatedKind === 'sql' && txTransformInputs.length > 0) {
+      savedTransformInputs = txTransformInputs
+      savedInputAliases = txTransformInputs.map((input) => input.alias)
+    }
+
     const updatedNode: SpaceWorkflowNodeConfig = {
       ...matchedNode,
       kind: updatedKind,
@@ -2958,13 +3406,23 @@ export function useAnalyticsWorkspace() {
       customDateRange: normalizedCustomDates,
       queryExecution,
       filterValues: normalizedFilters,
+      filterBindings: savedFilterBindings,
+      transformInputs: savedTransformInputs,
       sqlConfig: {
         sqlQuery: sqlQueryText,
+        inputAliases: savedInputAliases,
       },
       ruleSummary: updatedRuleSummary,
       sqlPreview: updatedSqlPreview,
       upstreamNodeIds: updatedUpstreamIds,
     }
+
+    const candidateNodes = activeSpace.workflowNodes.map((n) => {
+      if (n.id === editingNodeId) return updatedNode
+      return n
+    })
+    const cycleCheck = resolveWorkflowFilterDependencies(candidateNodes)
+    if (cycleCheck.isFailure()) return
 
     userMutatedStateRef.current = true
     setSpaces((prev) =>
@@ -2993,9 +3451,30 @@ export function useAnalyticsWorkspace() {
               w.outputNodeId === editingNodeId ||
               w.title === matchedNode.label
             ) {
+              let resolvedSubtitle = w.subtitle
+              if (outputSubtitle.trim() !== '') {
+                resolvedSubtitle = outputSubtitle.trim()
+              }
+
+              let catLabel: string | undefined = undefined
+              if (outputCategoryLabel.trim() !== '') {
+                catLabel = outputCategoryLabel.trim()
+              }
+
+              let metLabel: string | undefined = undefined
+              if (outputMetricLabel.trim() !== '') {
+                metLabel = outputMetricLabel.trim()
+              }
+
+              let secMetLabel: string | undefined = undefined
+              if (outputSecondaryMetricLabel.trim() !== '') {
+                secMetLabel = outputSecondaryMetricLabel.trim()
+              }
+
               return {
                 ...w,
                 title: cleanLabel,
+                subtitle: resolvedSubtitle,
                 widgetType: newNodeWidgetType,
                 chartVisualType: newNodeWidgetType,
                 span: newNodeSpan,
@@ -3005,6 +3484,14 @@ export function useAnalyticsWorkspace() {
                 metricColumn: metCol,
                 secondaryMetricColumn: secMetCol,
                 stackColumn: stkCol,
+                categoryLabel: catLabel,
+                metricLabel: metLabel,
+                secondaryMetricLabel: secMetLabel,
+                showAllRows: outputShowAllRows,
+                maxRows: outputMaxRows,
+                valueDisplayMode: outputValueDisplayMode,
+                tooltipEnabled: outputTooltipEnabled,
+                tooltipFields: outputTooltipFields,
                 hierarchyColumns: outputHierarchyColumns,
                 referenceLineMode: outputReferenceLineMode,
                 referenceLineTarget: outputReferenceLineTarget,
@@ -3022,6 +3509,7 @@ export function useAnalyticsWorkspace() {
             if (n.id === editingNodeId) return updatedNode
             return n
           }),
+          workflowEdges: syncEdgesForNode(s.workflowEdges, updatedNode),
         }
       }),
     )
@@ -3064,6 +3552,7 @@ export function useAnalyticsWorkspace() {
     findCachedManifest,
     newNodeCustomDateRange,
     newNodeDatasetId,
+    newNodeFilterBindings,
     newNodeFilterValues,
     newNodeLabel,
     newNodeSelectedConnectionId,
@@ -3079,12 +3568,22 @@ export function useAnalyticsWorkspace() {
     outputReferenceLineMode,
     outputReferenceLineTarget,
     outputSecondaryMetricColumn,
+    outputSecondaryMetricLabel,
+    outputShowAllRows,
     outputSourceNodeId,
     outputStackColumn,
+    outputSubtitle,
+    outputTooltipEnabled,
+    outputTooltipFields,
+    outputValueDisplayMode,
+    outputCategoryLabel,
+    outputMaxRows,
+    outputMetricLabel,
     queryExecution,
     sqlQueryText,
     startDate,
     syncUniqueSelection,
+    txTransformInputs,
     txUpstreamNodeId,
     workspaceId,
   ])
@@ -3460,6 +3959,7 @@ export function useAnalyticsWorkspace() {
     handleRequestRemoveNode,
     handleCancelRemoveNode,
     handleConfirmRemoveNode,
+    handlePersistNodePosition,
     inspectedNodeConfig,
     inspectedNodeLineageChain,
     inspectedNodeResolvedData,
@@ -3521,17 +4021,43 @@ export function useAnalyticsWorkspace() {
     setOutputReferenceLineMode,
     outputReferenceLineTarget,
     setOutputReferenceLineTarget,
+    outputSubtitle,
+    setOutputSubtitle,
+    outputCategoryLabel,
+    setOutputCategoryLabel,
+    outputMetricLabel,
+    setOutputMetricLabel,
+    outputSecondaryMetricLabel,
+    setOutputSecondaryMetricLabel,
+    outputShowAllRows,
+    setOutputShowAllRows,
+    outputMaxRows,
+    setOutputMaxRows,
+    outputValueDisplayMode,
+    setOutputValueDisplayMode,
+    outputTooltipEnabled,
+    setOutputTooltipEnabled,
+    outputTooltipFields,
+    setOutputTooltipFields,
     connectionDisplayOptions,
     availableProjects,
     upstreamAvailableColumns,
     transformPreviewBeforePayload,
     transformPreviewAfterPayload,
+    transformInputSources,
     txUpstreamNodeId,
     setTxUpstreamNodeId,
+    txTransformInputs,
+    setTxTransformInputs,
     sqlQueryText,
     setSqlQueryText,
     newNodeFilterValues,
     handleSetNodeFilterValue,
+    newNodeFilterBindings,
+    setNewNodeFilterBindings,
+    resolvedCrossSourceValues,
+    crossSourceStatusByNodeId,
+    crossSourceErrorsByKey,
     dynamicFilterOptions,
     handleSaveEditedNode,
     handleAddWorkflowNode,

@@ -199,6 +199,9 @@ describe('NodeInspectionDialog', () => {
     })
 
     const dialog = screen.getByRole('dialog')
+    const dadosTab = within(dialog).getByRole('tab', { name: /^Dados/ })
+    fireEvent.mouseDown(dadosTab, { button: 0, ctrlKey: false })
+    fireEvent.click(dadosTab)
     const tablePanel = screen.getByRole('tabpanel')
     expect(within(tablePanel).getByRole('status')).toHaveTextContent(
       'Mostrando 101–200 de 450 registros. Os gráficos consultam o conjunto publicado completo.',
@@ -208,16 +211,7 @@ describe('NodeInspectionDialog', () => {
       within(tablePanel).getByText('Linhas por página'),
     ).toBeInTheDocument()
 
-    const footer = dialog.querySelector<HTMLElement>(
-      '[data-slot="dialog-footer"]',
-    )
-    expect(footer).not.toBeNull()
-    if (footer !== null) {
-      expect(within(footer).getAllByRole('button')).toHaveLength(1)
-      expect(
-        within(footer).getByRole('button', { name: 'Fechar Inspeção' }),
-      ).toBeInTheDocument()
-    }
+    expect(dialog.querySelector('[data-slot="dialog-footer"]')).toBeNull()
 
     fireEvent.click(
       within(tablePanel).getByRole('button', {

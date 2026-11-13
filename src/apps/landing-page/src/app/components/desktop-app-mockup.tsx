@@ -185,6 +185,11 @@ const mockBridgeClient: IHostBridge = {
       statusCode: 501,
       error: 'DIAGNOSTICS_NOT_SUPPORTED_IN_WEB_DEMO',
     }),
+    removeOrphanAnalyticsStorage: async () => ({
+      isSuccess: false,
+      statusCode: 501,
+      error: 'DIAGNOSTICS_NOT_SUPPORTED_IN_WEB_DEMO',
+    }),
   },
   workspaces: {
     getById: async () => mockSuccess(mockWorkspace),

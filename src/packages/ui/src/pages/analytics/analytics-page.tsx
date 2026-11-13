@@ -153,21 +153,35 @@ export function Analytics() {
       outputStackColumn={vm.outputStackColumn}
       outputReferenceLineMode={vm.outputReferenceLineMode}
       outputReferenceLineTarget={vm.outputReferenceLineTarget}
+      outputSubtitle={vm.outputSubtitle}
+      outputCategoryLabel={vm.outputCategoryLabel}
+      outputMetricLabel={vm.outputMetricLabel}
+      outputSecondaryMetricLabel={vm.outputSecondaryMetricLabel}
+      outputShowAllRows={vm.outputShowAllRows}
+      outputMaxRows={vm.outputMaxRows}
+      outputValueDisplayMode={vm.outputValueDisplayMode}
+      outputTooltipEnabled={vm.outputTooltipEnabled}
+      outputTooltipFields={vm.outputTooltipFields}
       connectionDisplayOptions={vm.connectionDisplayOptions}
       upstreamAvailableColumns={vm.upstreamAvailableColumns}
       transformPreviewError={vm.previewError}
       transformPreviewDetails={vm.previewDetails}
       transformPreviewBeforePayload={vm.transformPreviewBeforePayload}
       transformPreviewAfterPayload={vm.transformPreviewAfterPayload}
+      transformInputSources={vm.transformInputSources}
       txUpstreamNodeId={vm.txUpstreamNodeId}
+      txTransformInputs={vm.txTransformInputs}
       sqlQueryText={vm.sqlQueryText}
       nodeFilterValues={vm.newNodeFilterValues}
+      nodeFilterBindings={vm.newNodeFilterBindings}
+      resolvedCrossSourceValues={vm.resolvedCrossSourceValues}
       dynamicFilterOptions={vm.dynamicFilterOptions}
       globalStartDate={vm.startDate}
       globalEndDate={vm.endDate}
       nodeCustomDateRange={vm.newNodeCustomDateRange}
       onSetNodeCustomDateRange={vm.setNewNodeCustomDateRange}
       onSetNodeFilterValue={vm.handleSetNodeFilterValue}
+      onSetNodeFilterBindings={vm.setNewNodeFilterBindings}
       onOpenChange={(isOpen) => {
         vm.setIsAddNodeModalOpen(isOpen)
 
@@ -188,7 +202,17 @@ export function Analytics() {
       onSetOutputStackColumn={vm.setOutputStackColumn}
       onSetOutputReferenceLineMode={vm.setOutputReferenceLineMode}
       onSetOutputReferenceLineTarget={vm.setOutputReferenceLineTarget}
+      onSetOutputSubtitle={vm.setOutputSubtitle}
+      onSetOutputCategoryLabel={vm.setOutputCategoryLabel}
+      onSetOutputMetricLabel={vm.setOutputMetricLabel}
+      onSetOutputSecondaryMetricLabel={vm.setOutputSecondaryMetricLabel}
+      onSetOutputShowAllRows={vm.setOutputShowAllRows}
+      onSetOutputMaxRows={vm.setOutputMaxRows}
+      onSetOutputValueDisplayMode={vm.setOutputValueDisplayMode}
+      onSetOutputTooltipEnabled={vm.setOutputTooltipEnabled}
+      onSetOutputTooltipFields={vm.setOutputTooltipFields}
       onSetTxUpstreamNodeId={vm.setTxUpstreamNodeId}
+      onSetTxTransformInputs={vm.setTxTransformInputs}
       onSetSqlQueryText={vm.setSqlQueryText}
       onSaveEditedNode={vm.handleSaveEditedNode}
       onAddWorkflowNode={vm.handleAddWorkflowNode}
@@ -396,6 +420,7 @@ export function Analytics() {
           selectedNodeId={vm.selectedPipelineNodeId}
           onPipelineNodesChange={vm.onPipelineNodesChange}
           onPipelineEdgesChange={vm.onPipelineEdgesChange}
+          onPersistNodePosition={vm.handlePersistNodePosition}
           onOpenAddNode={vm.handleOpenAddNode}
           onRequestRemoveNode={vm.handleRequestRemoveNode}
           onSetLayerMode={vm.setLayerMode}
