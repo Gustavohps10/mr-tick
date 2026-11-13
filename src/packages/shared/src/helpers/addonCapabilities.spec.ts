@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   hasCapability,
   isAddonCapability,
+  isAnalytics,
   isDataSource,
   isTheme,
   isWatcher,
@@ -13,9 +14,13 @@ describe('canonical addon capabilities', () => {
     expect(isAddonCapability('watcher')).toBe(true)
     expect(isAddonCapability('Watcher')).toBe(false)
     expect(isAddonCapability('auth')).toBe(true)
+    expect(isAddonCapability('analytics')).toBe(true)
     expect(isAddonCapability('custom')).toBe(false)
   })
   it('selects declared capabilities independently', () => {
+    expect(isAnalytics(['auth', 'analytics'])).toBe(true)
+    expect(isDataSource(['auth', 'analytics'])).toBe(false)
+    expect(isAnalytics(['dataSource'])).toBe(false)
     expect(isDataSource(['watcher'])).toBe(false)
     expect(isDataSource(['theme', 'dataSource'])).toBe(true)
     expect(isWatcher(['watcher', 'theme'])).toBe(true)

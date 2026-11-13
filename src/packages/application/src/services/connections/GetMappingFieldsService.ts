@@ -16,6 +16,7 @@ export class GetMappingFieldsService implements IGetMappingFieldsUseCase {
     if (!isNonEmptyString(input.workspaceId)) {
       return Either.failure(AppError.ValidationError('WORKSPACE_ID_REQUIRED'))
     }
+
     if (!isNonEmptyString(input.connectionInstanceId)) {
       return Either.failure(
         AppError.ValidationError('CONNECTION_INSTANCE_ID_REQUIRED'),
@@ -30,11 +31,13 @@ export class GetMappingFieldsService implements IGetMappingFieldsUseCase {
 
     const adapter = adapterResult.success
     const provider = adapter.metadataProvider
+
     if (provider === undefined) {
       return Either.failure(
         AppError.NotFound('METADATA_PROVIDER_NOT_AVAILABLE'),
       )
     }
+
     if (provider.getMappingFields === undefined) {
       return Either.failure(AppError.NotFound('MAPPING_FIELDS_NOT_SUPPORTED'))
     }

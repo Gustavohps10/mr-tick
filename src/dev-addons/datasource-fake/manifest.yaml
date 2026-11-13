@@ -1,10 +1,11 @@
 id: mr-tick-datasource-fake
 name: DataSource Fake (Testes)
-version: 1.2.3
+version: 1.2.4
 requiredApiVersion: '-1'
 capabilities:
   - auth
   - dataSource
+  - analytics
   - theme
   - watcher
 author: Mr-tick
@@ -14,5 +15,6 @@ tags:
   - teste
   - mock
   - dataSource
+  - analytics
   - desenvolvimento
   - theme

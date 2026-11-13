@@ -25,6 +25,7 @@ import {
   UpdaterHandler,
 } from '@/main/handlers'
 import { AddonsHandler } from '@/main/handlers/AddonsHandler'
+import { AnalyticsWarehouseHandler } from '@/main/handlers/AnalyticsWarehouseHandler'
 import { MetadataHandler } from '@/main/handlers/MetadataHandler'
 import { WorkspacesHandler } from '@/main/handlers/WorkspacesHandler'
 import { getSettings, saveSettings } from '@/main/settings'
@@ -58,6 +59,10 @@ export function openIpcRoutes(
   const timeEntriesHandler =
     serviceProvider.resolve<TimeEntriesHandler>('timeEntriesHandler')
   const addonsHandler = serviceProvider.resolve<AddonsHandler>('addonsHandler')
+  const analyticsWarehouseHandler =
+    serviceProvider.resolve<AnalyticsWarehouseHandler>(
+      'analyticsWarehouseHandler',
+    )
   const licensingHandler =
     serviceProvider.resolve<LicensingHandler>('licensingHandler')
   const dataSourceResolver =
@@ -289,6 +294,30 @@ export function openIpcRoutes(
   )
   IpcHandler.register('ADDON_GET_MAPPING_FIELDS', (e, req) =>
     addonsHandler.getMappingFields(e, req),
+  )
+  IpcHandler.register('ADDON_LIST_ANALYTICS_DATASETS', (e, req) =>
+    addonsHandler.listAnalyticsDatasets(e, req),
+  )
+  IpcHandler.register('ADDON_GET_ANALYTICS_FILTER_OPTIONS', (e, req) =>
+    addonsHandler.getAnalyticsFilterOptions(e, req),
+  )
+  IpcHandler.register('ADDON_FETCH_ANALYTICS_DATASET', (e, req) =>
+    addonsHandler.fetchAnalyticsDataset(e, req),
+  )
+  IpcHandler.register('ANALYTICS_LOAD_DATASET', (event, request) =>
+    analyticsWarehouseHandler.load(event, request),
+  )
+  IpcHandler.register('ANALYTICS_QUERY', (event, request) =>
+    analyticsWarehouseHandler.query(event, request),
+  )
+  IpcHandler.register('ANALYTICS_HYDRATE', (event, request) =>
+    analyticsWarehouseHandler.hydrate(event, request),
+  )
+  IpcHandler.register('ANALYTICS_SAVE_WORKSPACE_STATE', (event, request) =>
+    analyticsWarehouseHandler.saveWorkspaceState(event, request),
+  )
+  IpcHandler.register('ANALYTICS_RESET_STORAGE', (event, request) =>
+    analyticsWarehouseHandler.resetStorage(event, request),
   )
   IpcHandler.register('ADDON_GET_SETTINGS', (e, req) =>
     addonsHandler.getSettings(e, req),

@@ -45,6 +45,21 @@ export const addonsInvoker: IAddonsAPI = {
     IpcInvoker.invoke('ADDON_GET_CONNECTION_PROFILES', payload),
   getMappingFields: (payload: Parameters<IAddonsAPI['getMappingFields']>[0]) =>
     IpcInvoker.invoke('ADDON_GET_MAPPING_FIELDS', payload),
+  listAnalyticsDatasets: (payload) =>
+    IpcInvoker.invoke('ADDON_LIST_ANALYTICS_DATASETS', payload),
+  getAnalyticsFilterOptions: (payload) =>
+    IpcInvoker.invoke('ADDON_GET_ANALYTICS_FILTER_OPTIONS', payload),
+  fetchAnalyticsDataset: (payload) =>
+    IpcInvoker.invoke('ADDON_FETCH_ANALYTICS_DATASET', payload),
+  loadAnalyticsDataset: (payload) =>
+    IpcInvoker.invoke('ANALYTICS_LOAD_DATASET', payload),
+  queryAnalytics: (payload) => IpcInvoker.invoke('ANALYTICS_QUERY', payload),
+  hydrateAnalytics: (payload) =>
+    IpcInvoker.invoke('ANALYTICS_HYDRATE', payload),
+  saveAnalyticsWorkspaceState: (payload) =>
+    IpcInvoker.invoke('ANALYTICS_SAVE_WORKSPACE_STATE', payload),
+  resetAnalyticsStorage: (payload) =>
+    IpcInvoker.invoke('ANALYTICS_RESET_STORAGE', payload),
   getSettings: (payload: Parameters<IAddonsAPI['getSettings']>[0]) =>
     IpcInvoker.invoke('ADDON_GET_SETTINGS', payload),
   saveSettings: (payload: Parameters<IAddonsAPI['saveSettings']>[0]) =>

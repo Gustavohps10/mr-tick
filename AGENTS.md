@@ -183,3 +183,9 @@ Exemplo: alterar o avatar não autoriza `workspaceRepository.uploadAvatar(...)`.
       }
       ```
     - Erros devem ser modelados, tipados e tratados canonicamente nas camadas de infraestrutura/transporte/serviço através de `Either<AppError, T>`, com `AppError` carregando semanticamente seu `statusCode`, `messageKey` e estrutura tipada em `details` (como mapeamentos por campo). A UI deve consumir os erros estruturados da camada de aplicação sem adivinhações manuais por string.
+
+41. **Proibição Absoluta de Dicionários Hardcoded de Idiomas e Heurísticas de Custom Fields em Conectores**:
+    - NUNCA crie listas manuais de sinônimos/idiomas (como `['user', 'usuário', 'usuario', 'colaborador']`) para tentar cobrir variações de localização em conectores de DataSource. Em outros idiomas (ex: Russo, Japonês, Alemão), o conector falhará.
+    - O cliente HTTP do conector DEVE explicitar os headers universais de contrato (ex: `Accept-Language: en-US,en;q=0.9` e `Accept: text/csv, application/json`) para garantir que servidores com internacionalização dinâmica (como Ruby on Rails/Redmine) sempre retornem o schema padronizado em inglês oficial e com delimitadores canônicos.
+    - NUNCA crie heurísticas ad-hoc tentando adivinhar campos customizados de empresas específicas (ex: `cf.name.includes('story')`, `demandType = valStr`, `ambiente`). Cada addon/conector deve expor estritamente o domínio público e oficial do provedor.
+    - Mantenha a arquitetura de conectores totalmente desacoplada, genérica e canônica conforme o SDK do Mr. Tick (`@mr-tick/sdk`).

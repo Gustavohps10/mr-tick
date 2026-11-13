@@ -246,9 +246,23 @@ export function SystemLifecycleCard({
                     </p>
                   )}
                   {check.status !== 'pass' && (
-                    <p className="text-destructive text-[11px] leading-relaxed">
-                      {check.reason}
-                    </p>
+                    <div className="space-y-0.5">
+                      <p className="text-destructive text-[11px] leading-relaxed">
+                        {check.reason}
+                      </p>
+                      {check.details !== undefined && (
+                        <div className="text-muted-foreground font-mono text-[10px] break-all">
+                          {Object.entries(check.details).map(
+                            ([field, messages]) => (
+                              <div key={field}>
+                                <span>{field}: </span>
+                                <span>{messages.join(', ')}</span>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 

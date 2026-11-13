@@ -50,3 +50,7 @@ As mudanças abaixo ainda dependem da próxima publicação minor do SDK e do de
 Schemas customizados da área de autenticação podem incluir campos editáveis e ações OAuth. O renderer oferece salvar/cancelar apenas quando o schema contém campos editáveis, mantendo o escopo do workspace escolhido.
 
 A apresentação `kind: 'auth'` declarada pelo addon governa a autenticação também quando há um datasource. O formulário genérico aparece apenas na ausência dessa apresentação; a área Fonte de dados mantém os mapeamentos e orienta contas pendentes para Autenticação.
+
+## Analytics
+
+A capacidade analytics possui contribuição própria e é independente de dataSource. Consulte [contratos, reaproveitamento e limites](sdk-analytics.md) e a [documentação pública](../src/apps/landing-page/content/docs/capabilities/analytics.pt-br.mdx).

@@ -15,6 +15,7 @@ import {
   Scale,
   Timer,
   User,
+  Workflow,
 } from 'lucide-react'
 import * as React from 'react'
 import { useEffect, useState } from 'react'
@@ -73,6 +74,12 @@ const personalItems: NavItem[] = [
     title: 'Métricas',
     path: 'my-metric',
     icon: ChartColumnBig,
+  },
+  {
+    title: 'Analytics',
+    path: 'analytics',
+    icon: Workflow,
+    isPro: false,
   },
   {
     title: 'Minhas Tarefas',

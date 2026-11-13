@@ -1,0 +1,31 @@
+name: Analytics native runtime
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/analytics-native.yml'
+      - 'src/apps/desktop/src/main/adapters/analytics/**'
+      - 'src/apps/desktop/src/main/validation/analytics*'
+      - 'src/packages/application/src/services/analytics/**'
+      - 'src/packages/application/src/contracts/data/providers/IAnalytics*'
+      - 'src/apps/desktop/package.json'
+      - 'yarn.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-workspace
+      - name: Persistence, operators, isolation, HTTP contract and publication
+        run: yarn exec vitest run --project unit src/apps/desktop/src/main/adapters/analytics/DuckDBAnalyticsEngine.spec.ts src/apps/desktop/src/main/adapters/analytics/AnalyticsWarehouseService.spec.ts src/apps/desktop/src/main/adapters/analytics/AnalyticsWarehouse.contract.spec.ts

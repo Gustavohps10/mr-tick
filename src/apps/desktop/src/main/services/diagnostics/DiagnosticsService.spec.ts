@@ -4,6 +4,7 @@ import path from 'node:path'
 import type {
   DiagnosticCheckResult,
   DiagnosticStorageItem,
+  IAnalyticsDiagnosticAdapter,
   IMetadataDiagnosticAdapter,
 } from '@mr-tick/application'
 import { AppError, Either } from '@mr-tick/shared/helpers'
@@ -27,6 +28,7 @@ vi.mock('electron', () => ({
 describe('DiagnosticsService', () => {
   let mockDispatcher: LocalRuntimeDispatcher
   let mockMetadataAdapter: IMetadataDiagnosticAdapter
+  let mockAnalyticsAdapter: IAnalyticsDiagnosticAdapter
   let eventsBuffer: DiagnosticEventsBuffer
   let bootJournal: BootJournal
   const userDataPath = path.join(os.homedir(), '.mr-tick-test')
@@ -116,6 +118,15 @@ describe('DiagnosticsService', () => {
       ),
     }
 
+    mockAnalyticsAdapter = {
+      checkStorages: vi.fn(async () =>
+        Either.success<DiagnosticStorageItem[]>([]),
+      ),
+      readProbes: vi.fn(async () =>
+        Either.success<DiagnosticCheckResult[]>([]),
+      ),
+    }
+
     eventsBuffer = new DiagnosticEventsBuffer(sessionId)
     bootJournal = {
       initialize: vi.fn(async () => undefined),
@@ -142,6 +153,7 @@ describe('DiagnosticsService', () => {
     const service = new DiagnosticsService(
       mockDispatcher,
       mockMetadataAdapter,
+      mockAnalyticsAdapter,
       eventsBuffer,
       bootJournal,
       userDataPath,
@@ -173,6 +185,7 @@ describe('DiagnosticsService', () => {
     const service = new DiagnosticsService(
       mockDispatcher,
       mockMetadataAdapter,
+      mockAnalyticsAdapter,
       eventsBuffer,
       bootJournal,
       userDataPath,
@@ -220,6 +233,7 @@ describe('DiagnosticsService', () => {
     const service = new DiagnosticsService(
       mockDispatcher,
       mockMetadataAdapter,
+      mockAnalyticsAdapter,
       eventsBuffer,
       bootJournal,
       userDataPath,
@@ -249,6 +263,7 @@ describe('DiagnosticsService', () => {
     const service = new DiagnosticsService(
       mockDispatcher,
       mockMetadataAdapter,
+      mockAnalyticsAdapter,
       eventsBuffer,
       bootJournal,
       userDataPath,
@@ -293,6 +308,7 @@ describe('DiagnosticsService', () => {
     const service = new DiagnosticsService(
       mockDispatcher,
       mockMetadataAdapter,
+      mockAnalyticsAdapter,
       eventsBuffer,
       failingBootJournal,
       userDataPath,
@@ -332,6 +348,7 @@ describe('DiagnosticsService', () => {
     const service = new DiagnosticsService(
       mockDispatcher,
       mockMetadataAdapter,
+      mockAnalyticsAdapter,
       eventsBuffer,
       bootJournal,
       userDataPath,
@@ -393,6 +410,7 @@ describe('DiagnosticsService', () => {
     const service = new DiagnosticsService(
       mockDispatcher,
       mockMetadataAdapter,
+      mockAnalyticsAdapter,
       eventsBuffer,
       bootJournal,
       userDataPath,
@@ -442,6 +460,7 @@ describe('DiagnosticsService', () => {
     const service = new DiagnosticsService(
       mockDispatcher,
       mockMetadataAdapter,
+      mockAnalyticsAdapter,
       eventsBuffer,
       bootJournal,
       userDataPath,
@@ -505,6 +524,7 @@ describe('DiagnosticsService', () => {
     const service = new DiagnosticsService(
       mockDispatcher,
       mockMetadataAdapter,
+      mockAnalyticsAdapter,
       eventsBuffer,
       bootJournal,
       userDataPath,
@@ -579,5 +599,195 @@ describe('DiagnosticsService', () => {
         expect(execC.reason).toBe('STALE_GENERATION')
       }
     }
+  })
+
+  it('surfaces analytics storage errors and probes immediately, sanitizes storagePath, and clears runtime errors cleanly', async () => {
+    const fakeWin = {
+      isDestroyed: vi.fn(() => false),
+      windowType: 'main',
+      webContents: { send: vi.fn() },
+    }
+    const { BrowserWindow } = await import('electron')
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      fakeWin as unknown as Electron.BrowserWindow,
+    ])
+
+    const homeStoragePath = path.join(
+      os.homedir(),
+      '.mr-tick-test',
+      'analytics',
+      'ws-1.duckdb',
+    )
+    let isFixedOnDisk = false
+    mockAnalyticsAdapter.checkStorages = vi.fn(async () => {
+      if (isFixedOnDisk)
+        return Either.success<DiagnosticStorageItem[]>([
+          {
+            id: 'analytics-ws-1',
+            name: 'Analytics (Workspace 1)',
+            role: 'analytics',
+            technology: 'duckdb',
+            location: homeStoragePath,
+            workspaceId: 'ws-1',
+            workspaceName: 'Workspace 1',
+            canReset: true,
+            measurement: {
+              status: 'available',
+              bytes: 1024,
+              precision: 'exact',
+              coverage: 'file',
+              unit: 'bytes',
+              collectedAt: new Date().toISOString(),
+            },
+          },
+        ])
+
+      return Either.success<DiagnosticStorageItem[]>([
+        {
+          id: 'analytics-ws-1',
+          name: 'Analytics (Workspace 1)',
+          role: 'analytics',
+          technology: 'duckdb',
+          location: homeStoragePath,
+          workspaceId: 'ws-1',
+          workspaceName: 'Workspace 1',
+          canReset: true,
+          measurement: {
+            status: 'error',
+            reason: 'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+            details: {
+              storagePath: [homeStoragePath],
+              storedFormatVersion: ['1'],
+              supportedFormatVersion: ['2'],
+            },
+            collectedAt: new Date().toISOString(),
+          },
+        },
+      ])
+    })
+    mockAnalyticsAdapter.readProbes = vi.fn(async () => {
+      if (isFixedOnDisk) return Either.success<DiagnosticCheckResult[]>([])
+
+      return Either.success<DiagnosticCheckResult[]>([
+        {
+          id: 'probe-analytics-storage-ws-1',
+          name: 'Analytics Storage (Workspace 1)',
+          capability: 'analytics.storage.read',
+          source: 'analytics',
+          scope: { type: 'workspace', workspaceId: 'ws-1' },
+          status: 'fail',
+          reason: 'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+          details: {
+            storagePath: [homeStoragePath],
+            storedFormatVersion: ['1'],
+          },
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          durationMs: 2,
+        },
+      ])
+    })
+
+    const service = new DiagnosticsService(
+      mockDispatcher,
+      mockMetadataAdapter,
+      mockAnalyticsAdapter,
+      eventsBuffer,
+      bootJournal,
+      userDataPath,
+      sessionId,
+      '1.0.0',
+    )
+
+    const initial = await service.getSnapshot()
+    expect(initial.isSuccess()).toBe(true)
+    if (initial.isSuccess()) {
+      const storage = initial.success.storages.find(
+        (s) => s.id === 'analytics-ws-1',
+      )
+      expect(storage?.measurement.status).toBe('error')
+      if (storage?.measurement.status === 'error') {
+        expect(storage.measurement.reason).toBe(
+          'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+        )
+        expect(storage.measurement.details?.storagePath).toEqual([
+          homeStoragePath,
+        ])
+      }
+
+      const check = initial.success.checks.find(
+        (c) => c.id === 'probe-analytics-storage-ws-1',
+      )
+      expect(check?.status).toBe('fail')
+    }
+
+    const report = await service.generateReport()
+    expect(report.isSuccess()).toBe(true)
+    if (report.isSuccess()) {
+      const storage = report.success.snapshot.storages.find(
+        (s) => s.id === 'analytics-ws-1',
+      )
+      if (storage?.measurement.status === 'error') {
+        expect(storage.measurement.details?.storagePath?.[0]).not.toContain(
+          os.homedir(),
+        )
+        expect(storage.measurement.details?.storagePath?.[0]).toContain(
+          '<USER_HOME>',
+        )
+      }
+
+      const check = report.success.snapshot.checks.find(
+        (c) => c.id === 'probe-analytics-storage-ws-1',
+      )
+      if (check && check.status !== 'pass') {
+        expect(check.details?.storagePath?.[0]).not.toContain(os.homedir())
+        expect(check.details?.storagePath?.[0]).toContain('<USER_HOME>')
+      }
+    }
+
+    await service.recordAnalyticsStorageError({
+      workspaceId: 'ws-1',
+      operation: 'hydrate',
+      messageKey: 'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+      details: {
+        storagePath: [homeStoragePath],
+        storedFormatVersion: ['1'],
+      },
+    })
+    expect(fakeWin.webContents.send).toHaveBeenCalledWith(
+      'diagnostics:snapshot-updated',
+      expect.objectContaining({
+        storages: expect.arrayContaining([
+          expect.objectContaining({ id: 'analytics-ws-1' }),
+        ]),
+      }),
+    )
+
+    isFixedOnDisk = true
+    const cleared = await service.getSnapshot()
+    expect(cleared.isSuccess()).toBe(true)
+    if (cleared.isSuccess()) {
+      const storage = cleared.success.storages.find(
+        (s) => s.id === 'analytics-ws-1',
+      )
+      expect(storage?.measurement.status).toBe('available')
+    }
+
+    await service.recordAnalyticsStorageError({
+      workspaceId: 'ws-2',
+      operation: 'query',
+      messageKey: 'ANALYTICS_ENGINE_FAILURE',
+    })
+    const withRuntime = await service.getSnapshot()
+    expect(
+      withRuntime.success?.storages.find((s) => s.id === 'analytics-ws-2')
+        ?.measurement.status,
+    ).toBe('error')
+
+    await service.clearAnalyticsStorageError('ws-2')
+    const afterReset = await service.getSnapshot()
+    expect(
+      afterReset.success?.storages.find((s) => s.id === 'analytics-ws-2'),
+    ).toBeUndefined()
   })
 })

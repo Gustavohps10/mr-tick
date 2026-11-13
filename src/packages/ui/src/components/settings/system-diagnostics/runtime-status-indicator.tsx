@@ -35,11 +35,17 @@ export function RuntimeStatusIndicator() {
   const unavailableWorkspace = snapshot?.workspaces.find(
     (workspace) => workspace.status === 'unavailable',
   )
+  const errorStorage = snapshot?.storages.find(
+    (storage) => storage.measurement.status === 'error',
+  )
+  const failedCheck = snapshot?.checks.find((check) => check.status === 'fail')
 
   if (
     !isRuntimeUnavailable &&
     initializationError === null &&
-    unavailableWorkspace === undefined
+    unavailableWorkspace === undefined &&
+    errorStorage === undefined &&
+    failedCheck === undefined
   )
     return null
 
@@ -48,7 +54,16 @@ export function RuntimeStatusIndicator() {
     if (initializationError !== null)
       return `Workspace indisponível: ${initializationError} — clique para abrir diagnóstico`
 
-    if (!isRuntimeUnavailable)
+    if (
+      errorStorage !== undefined &&
+      errorStorage.measurement.status === 'error'
+    )
+      return `Erro de armazenamento (${errorStorage.name}): ${errorStorage.measurement.reason} — clique para abrir diagnóstico`
+
+    if (failedCheck !== undefined && failedCheck.status !== 'pass')
+      return `Falha de diagnóstico (${failedCheck.name}): ${failedCheck.reason} — clique para abrir diagnóstico`
+
+    if (unavailableWorkspace !== undefined)
       return 'Workspace indisponível — clique para abrir diagnóstico'
 
     if (failure)

@@ -565,20 +565,25 @@ export class GuardedMetadataProvider implements IMetadataProvider {
             AppError.ValidationError('CONNECTION_SCOPE_REQUIRED'),
           )
         }
+
         if (!this.isOperationSupported('getMappingFields')) {
           return Either.failure(AppError.Http(403, 'OPERATION_NOT_SUPPORTED'))
         }
+
         if (!this.binding.isCurrentGeneration(this.capturedGen)) {
           return Either.failure(
             AppError.Unauthorized('CONNECTION_DISCONNECTED_OR_CHANGED'),
           )
         }
+
         const result = await innerGetMappingFields()
+
         if (!this.binding.isCurrentGeneration(this.capturedGen)) {
           return Either.failure(
             AppError.Unauthorized('CONNECTION_DISCONNECTED_OR_CHANGED'),
           )
         }
+
         return result
       }
     }

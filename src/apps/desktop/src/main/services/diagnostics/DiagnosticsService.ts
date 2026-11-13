@@ -7,10 +7,12 @@ import type {
   DiagnosticSnapshot,
   DiagnosticStorageAvailability,
   DiagnosticStorageItem,
+  IAnalyticsDiagnosticAdapter,
   IMetadataDiagnosticAdapter,
   SanitizedDiagnosticReport,
 } from '@mr-tick/application'
-import { AppError, Either } from '@mr-tick/shared/helpers'
+import { AppError, Either, type FieldErrors } from '@mr-tick/shared/helpers'
+import type { AnalyticsStorageErrorEvent } from '@mr-tick/shared/transport'
 import { BrowserWindow, shell } from 'electron'
 
 import type { LocalRuntimeDispatcher } from '../local-runtime/LocalRuntimeDispatcher'
@@ -22,6 +24,21 @@ interface BrowserStorageMeasurementRecord {
   observedGeneration: string
 }
 
+interface AnalyticsRuntimeErrorRecord {
+  workspaceId: string
+  operation: AnalyticsStorageErrorEvent['operation']
+  messageKey: string
+  details?: FieldErrors
+  recordedAt: string
+}
+
+const PERSISTENT_ANALYTICS_STORAGE_ERRORS = new Set([
+  'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+  'ANALYTICS_SPACES_STATE_INVALID',
+  'ANALYTICS_STORAGE_WAL_ORPHAN',
+  'ANALYTICS_STORAGE_METADATA_INVALID',
+])
+
 export class DiagnosticsService {
   private revision = 0
   private lastChecks: DiagnosticCheckResult[] = []
@@ -32,11 +49,16 @@ export class DiagnosticsService {
   private inflightRunChecks: Promise<
     Either<AppError, DiagnosticSnapshot>
   > | null = null
+  private readonly analyticsRuntimeErrors = new Map<
+    string,
+    AnalyticsRuntimeErrorRecord
+  >()
   private readonly unsubscribeDiagnosticEvents: () => void
 
   constructor(
     private readonly dispatcher: LocalRuntimeDispatcher,
     private readonly metadataAdapter: IMetadataDiagnosticAdapter,
+    private readonly analyticsAdapter: IAnalyticsDiagnosticAdapter,
     private readonly eventsBuffer: DiagnosticEventsBuffer,
     private readonly bootJournal: BootJournal,
     private readonly userDataPath: string,
@@ -53,6 +75,43 @@ export class DiagnosticsService {
 
   dispose(): void {
     this.unsubscribeDiagnosticEvents()
+  }
+
+  async recordAnalyticsStorageError(
+    payload: AnalyticsStorageErrorEvent,
+  ): Promise<void> {
+    this.analyticsRuntimeErrors.set(payload.workspaceId, {
+      workspaceId: payload.workspaceId,
+      operation: payload.operation,
+      messageKey: payload.messageKey,
+      details: payload.details,
+      recordedAt: new Date().toISOString(),
+    })
+
+    this.eventsBuffer.record({
+      origin: 'main',
+      level: 'error',
+      stage: `analytics:${payload.operation}`,
+      code: payload.messageKey,
+      message: `Analytics storage error (${payload.workspaceId}): ${payload.messageKey}`,
+      scope: { type: 'workspace', workspaceId: payload.workspaceId },
+    })
+
+    await this.publishUpdatedSnapshot()
+  }
+
+  async clearAnalyticsStorageError(workspaceId: string): Promise<void> {
+    this.analyticsRuntimeErrors.delete(workspaceId)
+
+    this.eventsBuffer.record({
+      origin: 'main',
+      level: 'info',
+      stage: 'analytics:resetStorage',
+      message: `Analytics storage reset (${workspaceId})`,
+      scope: { type: 'workspace', workspaceId },
+    })
+
+    await this.publishUpdatedSnapshot()
   }
 
   async getSnapshot(): Promise<Either<AppError, DiagnosticSnapshot>> {
@@ -76,6 +135,87 @@ export class DiagnosticsService {
           status: 'unavailable',
           reason: metadataResult.failure.messageKey,
           collectedAt: emittedAt,
+        },
+      })
+    }
+
+    const analyticsStoragesResult = await this.analyticsAdapter.checkStorages()
+    const analyticsStoragesByWorkspace = new Map<
+      string,
+      DiagnosticStorageItem
+    >()
+
+    if (analyticsStoragesResult.isSuccess()) {
+      for (const item of analyticsStoragesResult.success) {
+        if (item.workspaceId !== undefined) {
+          const runtimeErr = this.analyticsRuntimeErrors.get(item.workspaceId)
+
+          if (
+            runtimeErr !== undefined &&
+            item.measurement.status === 'available' &&
+            PERSISTENT_ANALYTICS_STORAGE_ERRORS.has(runtimeErr.messageKey)
+          ) {
+            this.analyticsRuntimeErrors.delete(item.workspaceId)
+          }
+
+          const remainingErr = this.analyticsRuntimeErrors.get(item.workspaceId)
+          let mergedItem = item
+
+          if (
+            remainingErr !== undefined &&
+            item.measurement.status === 'available'
+          ) {
+            mergedItem = {
+              ...item,
+              measurement: {
+                status: 'error',
+                reason: remainingErr.messageKey,
+                details: remainingErr.details,
+                collectedAt: remainingErr.recordedAt,
+              },
+            }
+          }
+
+          analyticsStoragesByWorkspace.set(item.workspaceId, mergedItem)
+          storages.push(mergedItem)
+          continue
+        }
+
+        storages.push(item)
+      }
+    }
+
+    if (analyticsStoragesResult.isFailure()) {
+      storages.push({
+        id: 'analytics-duckdb',
+        name: 'Analytics (DuckDB)',
+        role: 'analytics',
+        technology: 'duckdb',
+        canReset: false,
+        measurement: {
+          status: 'error',
+          reason: analyticsStoragesResult.failure.messageKey,
+          details: analyticsStoragesResult.failure.details,
+          collectedAt: emittedAt,
+        },
+      })
+    }
+
+    for (const runtimeErr of this.analyticsRuntimeErrors.values()) {
+      if (analyticsStoragesByWorkspace.has(runtimeErr.workspaceId)) continue
+
+      storages.push({
+        id: `analytics-${runtimeErr.workspaceId}`,
+        name: `Analytics (${runtimeErr.workspaceId})`,
+        role: 'analytics',
+        technology: 'duckdb',
+        workspaceId: runtimeErr.workspaceId,
+        canReset: true,
+        measurement: {
+          status: 'error',
+          reason: runtimeErr.messageKey,
+          details: runtimeErr.details,
+          collectedAt: runtimeErr.recordedAt,
         },
       })
     }
@@ -110,14 +250,17 @@ export class DiagnosticsService {
       }
     }
 
-    let checks = this.lastChecks
+    const baseChecks = this.lastChecks.filter(
+      (check) => check.source !== 'analytics',
+    )
+    let checks = baseChecks
     let workspaces = this.lastWorkspaces
 
     if (
       this.lastChecksGeneration !== undefined &&
       this.lastChecksGeneration !== dispatcherState.generation
     ) {
-      checks = this.lastChecks.map((check) => {
+      checks = baseChecks.map((check) => {
         if (
           check.source === 'executor' ||
           check.id === 'probe-dispatcher-lifecycle'
@@ -142,6 +285,9 @@ export class DiagnosticsService {
       })
     }
 
+    const analyticsChecks = await this.collectLiveAnalyticsChecks(emittedAt)
+    checks = [...checks, ...analyticsChecks]
+
     const snapshot: DiagnosticSnapshot = {
       formatVersion: '1.0',
       sessionId: this.sessionId,
@@ -157,6 +303,80 @@ export class DiagnosticsService {
     }
 
     return Either.success(snapshot)
+  }
+
+  private async collectLiveAnalyticsChecks(
+    emittedAt: string,
+  ): Promise<DiagnosticCheckResult[]> {
+    const probesResult = await this.analyticsAdapter.readProbes()
+    const analyticsChecks: DiagnosticCheckResult[] = []
+    const checksByWorkspace = new Set<string>()
+
+    if (probesResult.isSuccess()) {
+      for (const check of probesResult.success) {
+        if (check.scope.type === 'workspace') {
+          checksByWorkspace.add(check.scope.workspaceId)
+          const runtimeErr = this.analyticsRuntimeErrors.get(
+            check.scope.workspaceId,
+          )
+
+          if (runtimeErr !== undefined && check.status === 'pass') {
+            analyticsChecks.push({
+              id: check.id,
+              name: check.name,
+              capability: check.capability,
+              source: 'analytics',
+              scope: check.scope,
+              status: 'fail',
+              reason: runtimeErr.messageKey,
+              details: runtimeErr.details,
+              startedAt: runtimeErr.recordedAt,
+              finishedAt: runtimeErr.recordedAt,
+              durationMs: 0,
+            })
+            continue
+          }
+        }
+
+        analyticsChecks.push(check)
+      }
+    }
+
+    if (probesResult.isFailure()) {
+      analyticsChecks.push({
+        id: 'probe-analytics-storage',
+        name: 'Analytics Storage Probe',
+        capability: 'analytics.storage.read',
+        source: 'analytics',
+        scope: { type: 'application' },
+        status: 'fail',
+        reason: probesResult.failure.messageKey,
+        details: probesResult.failure.details,
+        startedAt: emittedAt,
+        finishedAt: emittedAt,
+        durationMs: 0,
+      })
+    }
+
+    for (const runtimeErr of this.analyticsRuntimeErrors.values()) {
+      if (checksByWorkspace.has(runtimeErr.workspaceId)) continue
+
+      analyticsChecks.push({
+        id: `probe-analytics-storage-${runtimeErr.workspaceId}`,
+        name: `Analytics Storage (${runtimeErr.workspaceId})`,
+        capability: 'analytics.storage.read',
+        source: 'analytics',
+        scope: { type: 'workspace', workspaceId: runtimeErr.workspaceId },
+        status: 'fail',
+        reason: runtimeErr.messageKey,
+        details: runtimeErr.details,
+        startedAt: runtimeErr.recordedAt,
+        finishedAt: runtimeErr.recordedAt,
+        durationMs: 0,
+      })
+    }
+
+    return analyticsChecks
   }
 
   async runChecks(): Promise<Either<AppError, DiagnosticSnapshot>> {
@@ -458,6 +678,7 @@ export class DiagnosticsService {
           ...check,
           name: this.sanitizeString(check.name),
           reason: this.sanitizeString(check.reason),
+          details: this.sanitizeDetails(check.details),
         }
       }),
       storages: snapshot.storages.map((storage) => {
@@ -476,7 +697,17 @@ export class DiagnosticsService {
             ),
           }
         }
-        if (measurement.status !== 'available') {
+        if (measurement.status === 'error') {
+          measurement = {
+            ...measurement,
+            reason: this.sanitizeString(measurement.reason),
+            details: this.sanitizeDetails(measurement.details),
+          }
+        }
+        if (
+          measurement.status !== 'available' &&
+          measurement.status !== 'error'
+        ) {
           measurement = {
             ...measurement,
             reason: this.sanitizeString(measurement.reason),
@@ -525,6 +756,20 @@ export class DiagnosticsService {
         message: this.sanitizeString(event.message),
       })),
     }
+  }
+
+  private sanitizeDetails(
+    details: FieldErrors | undefined,
+  ): FieldErrors | undefined {
+    if (details === undefined) return undefined
+
+    const sanitized: FieldErrors = {}
+
+    for (const [key, values] of Object.entries(details)) {
+      sanitized[key] = values.map((value) => this.sanitizeString(value))
+    }
+
+    return sanitized
   }
 
   private sanitizeString(input: string): string {

@@ -21,11 +21,13 @@ export function SystemDataSettingsTab() {
     errorMessage,
     actionError,
     clearActionError,
+    resettingWorkspaceId,
     selectedWorkspaceId,
     setSelectedWorkspaceId,
     runManualChecks,
     copySanitizedReport,
     openDataDirectory,
+    resetAnalyticsStorage,
   } = useSystemDiagnostics()
 
   const handleCopyReport = async () => {
@@ -55,6 +57,16 @@ export function SystemDataSettingsTab() {
     if (!result.success) {
       toast.error(result.error)
     }
+  }
+
+  const handleResetStorage = async (workspaceId: string) => {
+    const result = await resetAnalyticsStorage(workspaceId)
+    if (result.success) {
+      toast.success('Dados locais do Analytics resetados com sucesso.')
+      return
+    }
+
+    toast.error(result.error)
   }
 
   if (isLoading) {
@@ -201,7 +213,11 @@ export function SystemDataSettingsTab() {
       />
 
       {/* 2. Armazenamentos por Capacidade Funcional */}
-      <SystemStorageCard storages={snapshot.storages} />
+      <SystemStorageCard
+        storages={snapshot.storages}
+        resettingWorkspaceId={resettingWorkspaceId}
+        onResetStorage={(workspaceId) => void handleResetStorage(workspaceId)}
+      />
 
       {/* 3. Armazenamento Operacional por Workspace */}
       <SystemWorkspaceStatusCard

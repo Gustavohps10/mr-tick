@@ -12,6 +12,7 @@ import {
 } from '@mr-tick/sdk'
 import { z } from 'zod'
 
+import { FakeAnalyticsProvider } from './FakeAnalyticsProvider'
 import { FAKE_MEMBER, FAKE_METADATA, FAKE_TASKS } from './fakeData'
 import { FakeDatabaseStore } from './FakeDatabaseStore'
 import { FakeMemberProvider } from './FakeMemberProvider'
@@ -64,7 +65,7 @@ export const FakeDataSource: IDataSource = {
     tasksProvider: new FakeTaskProvider(context),
     timeEntriesProvider: new FakeTimeEntryProvider(context),
     membersProvider: new FakeMemberProvider(context),
-    metadataProvider: new FakeMetadataProvider(context),
+    metadataProvider: new FakeMetadataProvider(),
   }),
 }
 
@@ -154,6 +155,13 @@ export default class FakeDataSourceAddon implements IAddon {
       return
     }
 
+    const analytics = context.contributions.analytics.register({
+      createInstance: () => new FakeAnalyticsProvider(),
+    })
+    if (analytics.isFailure()) {
+      void context.host.notifications.error(analytics.failure.messageKey)
+      return
+    }
     context.contributions.dataSources.register(FakeDataSource)
 
     context.contributions.themes.register({
@@ -378,6 +386,95 @@ export default class FakeDataSourceAddon implements IAddon {
     const store = FakeDatabaseStore.getInstance()
 
     if (process.env.PLAYWRIGHT_TEST === '1') {
+      context.contributions.commands.register(
+        'fake-db:analytics-mutate-issues',
+        (rawArg?: CommandArgument) => {
+          const parsed = z
+            .object({
+              upserts: z
+                .array(
+                  z.object({
+                    id: z.string().min(1),
+                    title: z.string().min(1),
+                    projectName: z.string().optional(),
+                    statusId: z.string().optional(),
+                    statusName: z.string().optional(),
+                    doneRatio: z.number().min(0).max(100).optional(),
+                    assigneeId: z.string().optional(),
+                    assigneeName: z.string().optional(),
+                    createdAt: z.string().optional(),
+                  }),
+                )
+                .optional(),
+              deletes: z.array(z.string().min(1)).optional(),
+            })
+            .safeParse(rawArg)
+
+          if (!parsed.success)
+            return { ok: false, error: 'ANALYTICS_MUTATION_PAYLOAD_INVALID' }
+
+          const upsertedIds: string[] = []
+          const deletedIds: string[] = []
+
+          if (parsed.data.upserts !== undefined) {
+            for (const item of parsed.data.upserts) {
+              const existing = store.findTaskById(item.id)
+              let createdAt = new Date()
+              if (existing !== undefined) createdAt = existing.createdAt
+
+              if (
+                item.createdAt !== undefined &&
+                Number.isFinite(Date.parse(item.createdAt))
+              )
+                createdAt = new Date(item.createdAt)
+
+              let status = { id: 'progress', name: 'In Progress' }
+              if (existing !== undefined) status = existing.status
+
+              if (item.statusId !== undefined && item.statusName !== undefined)
+                status = { id: item.statusId, name: item.statusName }
+
+              let projectName = existing?.projectName
+              if (item.projectName !== undefined) projectName = item.projectName
+
+              let assignedTo = existing?.assignedTo
+              if (
+                item.assigneeId !== undefined &&
+                item.assigneeName !== undefined
+              )
+                assignedTo = {
+                  id: item.assigneeId,
+                  name: item.assigneeName,
+                }
+
+              let doneRatio = existing?.doneRatio
+              if (item.doneRatio !== undefined) doneRatio = item.doneRatio
+
+              store.saveTask({
+                id: item.id,
+                title: item.title,
+                description: existing?.description,
+                projectName,
+                status,
+                assignedTo,
+                createdAt,
+                updatedAt: new Date(),
+                doneRatio,
+              })
+              upsertedIds.push(item.id)
+            }
+          }
+
+          if (parsed.data.deletes !== undefined) {
+            for (const id of parsed.data.deletes) {
+              if (store.deleteTask(id)) deletedIds.push(id)
+            }
+          }
+
+          return { ok: true, upsertedIds, deletedIds }
+        },
+      )
+
       context.core.runtime.onStateChanged((state) =>
         this.runtimeStates.push(state),
       )
@@ -710,6 +807,29 @@ export default class FakeDataSourceAddon implements IAddon {
           store.pauseTimeEntryPulls(1)
           return { configured: true }
         },
+      )
+      context.contributions.commands.register(
+        'fake-db:pause-analytics-after-first-page',
+        () => {
+          store.pauseAnalyticsAfterFirstPage()
+          return { configured: true }
+        },
+      )
+      context.contributions.commands.register(
+        'fake-db:release-analytics-page',
+        () => ({ released: store.releaseAnalyticsPage(0) }),
+      )
+      context.contributions.commands.register(
+        'fake-db:fail-analytics-page',
+        () => ({ released: store.releaseAnalyticsPage(503) }),
+      )
+      context.contributions.commands.register(
+        'fake-db:cancel-analytics-page',
+        () => ({ released: store.releaseAnalyticsPage(499) }),
+      )
+      context.contributions.commands.register(
+        'fake-db:get-analytics-page-diagnostics',
+        () => store.getAnalyticsPageDiagnostics(),
       )
       context.contributions.commands.register(
         'fake-db:pause-two-time-entry-pulls',

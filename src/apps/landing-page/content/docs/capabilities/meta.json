@@ -5,6 +5,7 @@
     "index",
     "auth",
     "datasources",
+    "analytics",
     "watchers",
     "calendars",
     "themes",
