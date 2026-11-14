@@ -24,6 +24,7 @@ export function chartInputRequirements(visual: WidgetId) {
     series:
       visual === 'pivot_matrix' ||
       visual === 'bar_stacked' ||
+      visual === 'bar_horizontal_stacked' ||
       visual === 'area_stacked',
     hierarchy: visual === 'tree_grid',
   }
@@ -88,7 +89,11 @@ export function chartInputIssues(
       mapping.referenceLineMode === 'weighted_ratio',
     true,
   )
-  check('Série', mapping.stackColumn, requirements.series && !remote)
+  const needsSeriesColumn =
+    requirements.series &&
+    !remote &&
+    (visual === 'pivot_matrix' || mapping.secondaryMetricColumn === undefined)
+  check('Série', mapping.stackColumn, needsSeriesColumn)
   if (
     requirements.series &&
     mapping.stackColumn &&

@@ -266,6 +266,7 @@ export function GenericWidgetRenderer({
     if (
       ((visual === 'pivot_matrix' ||
         visual === 'bar_stacked' ||
+        visual === 'bar_horizontal_stacked' ||
         visual === 'area_stacked') &&
         widget.categoryColumn !== undefined &&
         hasStackColumn &&
@@ -621,8 +622,25 @@ export function GenericWidgetRenderer({
       </>
     )
 
+  let coverageLabel = 'Cobertura parcial'
+  let coverageTitle =
+    'A cobertura completa ainda não foi confirmada pela fonte; os totais podem estar parciais.'
+
+  if (data.coverage === 'complete') {
+    coverageLabel = 'Dados completos'
+    coverageTitle = 'Cobertura completa confirmada pela fonte.'
+  }
+
+  let loadedAtLabel = data.loadedAt
+  if (Number.isFinite(Date.parse(data.loadedAt))) {
+    loadedAtLabel = new Date(data.loadedAt).toLocaleString('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    })
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-1">
       {feedback}
 
       {!data.remoteAggregate && widget.metricColumn !== '' && (
@@ -635,7 +653,7 @@ export function GenericWidgetRenderer({
         >
           <SelectTrigger
             aria-label="Agregação da visualização"
-            className="w-40"
+            className="h-7 w-28 text-xs"
           >
             <SelectValue />
           </SelectTrigger>
@@ -695,7 +713,20 @@ export function GenericWidgetRenderer({
         metric={metric}
         secondaryMetric={secondaryMetric}
         series={series}
-        stacked={visual === 'bar_stacked' || input?.pivot !== undefined}
+        stacked={
+          visual === 'bar_stacked' ||
+          visual === 'bar_horizontal_stacked' ||
+          input?.pivot !== undefined
+        }
+        showAllRows={widget.showAllRows === true}
+        categoryLabel={widget.categoryLabel}
+        metricLabel={widget.metricLabel}
+        secondaryMetricLabel={widget.secondaryMetricLabel}
+        metricColumnName={widget.metricColumn}
+        secondaryMetricColumnName={widget.secondaryMetricColumn}
+        valueDisplayMode={widget.valueDisplayMode}
+        tooltipEnabled={widget.tooltipEnabled}
+        tooltipFields={widget.tooltipFields}
         hierarchyColumns={widget.hierarchyColumns}
         reference={reference}
         ratio={ratio}
@@ -709,7 +740,8 @@ export function GenericWidgetRenderer({
           {!isTable && data.hasMore && (
             <>Gráfico exibe os primeiros {data.rows.length} de </>
           )}
-          {data.totalRows} grupos · {data.coverage} · {data.loadedAt}
+          {data.totalRows} grupos ·{' '}
+          <span title={coverageTitle}>{coverageLabel}</span> · {loadedAtLabel}
         </span>
         {isTable && pagination}
       </div>

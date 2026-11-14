@@ -66,7 +66,12 @@ const space: AnalyticsSpaceConfig = {
     },
   ],
 }
-const visuals: WidgetId[] = ['pivot_matrix', 'bar_stacked', 'area_stacked']
+const visuals: WidgetId[] = [
+  'pivot_matrix',
+  'bar_stacked',
+  'bar_horizontal_stacked',
+  'area_stacked',
+]
 
 function queryData(body: AnalyticsQueryInput): AnalyticsQueryResult {
   return {
@@ -715,5 +720,346 @@ describe('Native widget query contract', () => {
     ).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }))
     expect(onRetrySource).toHaveBeenCalledTimes(1)
+  })
+
+  it('displays Portuguese coverage labels and localized timestamp instead of raw unverified or ISO text', async () => {
+    const testPlan = [
+      {
+        id: 'source',
+        kind: 'source' as const,
+        connectionInstanceId: 'connection',
+        selectionKey: 'selection',
+      },
+    ]
+
+    calls.query.mockImplementation(async ({ body }) => ({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        ...queryData(body),
+        coverage: 'unverified',
+        loadedAt: '2026-11-14T06:18:29.592Z',
+      },
+    }))
+
+    render(
+      <GenericWidgetRenderer
+        widget={{
+          id: 'widget-coverage',
+          widgetType: 'bar_vertical',
+          chartVisualType: 'bar_vertical',
+          title: 'Coverage Chart',
+          subtitle: '',
+          datasetBadge: '',
+          sourceNodeId: 'source',
+          span: 1,
+          visible: true,
+          categoryColumn: 'category',
+          metricColumn: 'hours',
+        }}
+        activeSpace={space}
+        warehousePlan={testPlan}
+        publicationVersion="gen-1"
+        upstreamStatus={{
+          hasPublication: true,
+          isInitialLoading: false,
+          isRefreshing: false,
+        }}
+        onRetrySource={vi.fn()}
+        onUnauthorized={calls.unauthorized}
+        resolveRowsForWorkflowNode={() => ({ columns: [], rows: [] })}
+        onGenericDrillDown={vi.fn()}
+        overloadTolerancePct={10}
+        onSetOverloadTolerancePct={vi.fn()}
+        idleTolerancePct={10}
+        onSetIdleTolerancePct={vi.fn()}
+        estimationTolerancePct={10}
+        onSetEstimationTolerancePct={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Cobertura parcial')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/unverified/i)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('2026-11-14T06:18:29.592Z'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('never emits analytics_metric_secondary as a series label when secondaryMetricLabel is omitted', async () => {
+    const testPlan = [
+      {
+        id: 'source',
+        kind: 'source' as const,
+        connectionInstanceId: 'connection',
+        selectionKey: 'selection',
+      },
+    ]
+
+    calls.query.mockImplementation(async ({ body }) => ({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        columns: [
+          { name: 'category', label: 'Category', type: 'string' },
+          { name: 'hours', label: 'Hours', type: 'number' },
+          {
+            name: 'estimated_hours',
+            label: 'Estimated Hours',
+            type: 'number',
+          },
+        ],
+        rows: [{ category: 'Dev', hours: 10, estimated_hours: 12 }],
+        totalRows: 1,
+        offset: body.offset,
+        limit: body.limit,
+        hasMore: false,
+        version: 'v1',
+        coverage: 'complete',
+        loadedAt: '2026-11-14T06:18:29.592Z',
+        remoteAggregate: false,
+      },
+    }))
+
+    render(
+      <GenericWidgetRenderer
+        widget={{
+          id: 'widget-labels',
+          widgetType: 'bar_horizontal',
+          chartVisualType: 'bar_horizontal',
+          title: 'Dual Metric Chart',
+          subtitle: '',
+          datasetBadge: '',
+          sourceNodeId: 'source',
+          span: 1,
+          visible: true,
+          categoryColumn: 'category',
+          metricColumn: 'hours',
+          secondaryMetricColumn: 'estimated_hours',
+        }}
+        activeSpace={space}
+        warehousePlan={testPlan}
+        publicationVersion="gen-1"
+        upstreamStatus={{
+          hasPublication: true,
+          isInitialLoading: false,
+          isRefreshing: false,
+        }}
+        onRetrySource={vi.fn()}
+        onUnauthorized={calls.unauthorized}
+        resolveRowsForWorkflowNode={() => ({ columns: [], rows: [] })}
+        onGenericDrillDown={vi.fn()}
+        overloadTolerancePct={10}
+        onSetOverloadTolerancePct={vi.fn()}
+        idleTolerancePct={10}
+        onSetIdleTolerancePct={vi.fn()}
+        estimationTolerancePct={10}
+        onSetEstimationTolerancePct={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(calls.charts).toHaveBeenCalled()
+    })
+
+    const hasInternalKey = (node: ReactNode): boolean => {
+      if (typeof node === 'string') {
+        return node.includes('analytics_metric_secondary')
+      }
+
+      if (!isValidElement(node)) {
+        return false
+      }
+
+      const props = node.props as Record<string, unknown>
+
+      if (
+        typeof props.name === 'string' &&
+        props.name.includes('analytics_metric_secondary')
+      ) {
+        return true
+      }
+
+      if (Array.isArray(props.children)) {
+        return props.children.some((child) => hasInternalKey(child))
+      }
+
+      return hasInternalKey(props.children as ReactNode)
+    }
+
+    const latestCall = calls.charts.mock.calls.at(-1)
+    expect(latestCall).toBeDefined()
+
+    if (latestCall) {
+      expect(hasInternalKey(latestCall[0])).toBe(false)
+    }
+  })
+
+  it('renders scrollable container when showAllRows is enabled with 35 rows and formats percentage mode', async () => {
+    const testPlan = [
+      {
+        id: 'source',
+        kind: 'source' as const,
+        connectionInstanceId: 'connection',
+        selectionKey: 'selection',
+      },
+    ]
+
+    const manyRows = Array.from({ length: 35 }, (_, idx) => ({
+      category: `Membro ${idx + 1}`,
+      hours: 10 + idx,
+    }))
+
+    calls.query.mockImplementation(async ({ body }) => ({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        ...queryData(body),
+        rows: manyRows,
+        totalRows: 35,
+      },
+    }))
+
+    const { container } = render(
+      <GenericWidgetRenderer
+        widget={{
+          id: 'widget-scroll-pct',
+          widgetType: 'bar_horizontal',
+          chartVisualType: 'bar_horizontal',
+          title: 'Membros Scroll Percentage',
+          subtitle: '',
+          datasetBadge: '',
+          sourceNodeId: 'source',
+          span: 2,
+          visible: true,
+          categoryColumn: 'category',
+          metricColumn: 'hours',
+          showAllRows: true,
+          valueDisplayMode: 'percentage',
+        }}
+        activeSpace={space}
+        warehousePlan={testPlan}
+        publicationVersion="gen-1"
+        upstreamStatus={{
+          hasPublication: true,
+          isInitialLoading: false,
+          isRefreshing: false,
+        }}
+        onRetrySource={vi.fn()}
+        onUnauthorized={calls.unauthorized}
+        resolveRowsForWorkflowNode={() => ({ columns: [], rows: [] })}
+        onGenericDrillDown={vi.fn()}
+        overloadTolerancePct={10}
+        onSetOverloadTolerancePct={vi.fn()}
+        idleTolerancePct={10}
+        onSetIdleTolerancePct={vi.fn()}
+        estimationTolerancePct={10}
+        onSetEstimationTolerancePct={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(calls.charts).toHaveBeenCalled()
+    })
+
+    expect(container.querySelector('.overflow-y-auto')).not.toBeNull()
+  })
+
+  it('uses column label metadata instead of hashed pivot column name for stacked series', async () => {
+    const testPlan = [
+      {
+        id: 'source',
+        kind: 'source' as const,
+        connectionInstanceId: 'connection',
+        selectionKey: 'selection',
+      },
+    ]
+
+    calls.query.mockImplementation(async ({ body }) => ({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        columns: [
+          { name: 'category', label: 'Colaborador', type: 'string' },
+          { name: 'pivot_abc123', label: 'Desenvolvimento', type: 'number' },
+        ],
+        rows: [{ category: 'Ana Oliveira', pivot_abc123: 12 }],
+        totalRows: 1,
+        offset: body.offset,
+        limit: body.limit,
+        hasMore: false,
+        version: 'version',
+        coverage: 'complete',
+        loadedAt: '2026-11-09T00:00:00Z',
+        remoteAggregate: false,
+      },
+    }))
+
+    render(
+      <GenericWidgetRenderer
+        widget={{
+          id: 'widget-pivot-labels',
+          widgetType: 'bar_horizontal_stacked',
+          chartVisualType: 'bar_horizontal_stacked',
+          title: 'Horas por Colaborador x Atividade',
+          subtitle: '',
+          datasetBadge: '',
+          sourceNodeId: 'source',
+          span: 2,
+          visible: true,
+          categoryColumn: 'category',
+          metricColumn: 'hours',
+          stackColumn: 'series',
+        }}
+        activeSpace={space}
+        warehousePlan={testPlan}
+        publicationVersion="gen-1"
+        upstreamStatus={{
+          hasPublication: true,
+          isInitialLoading: false,
+          isRefreshing: false,
+        }}
+        onRetrySource={vi.fn()}
+        onUnauthorized={calls.unauthorized}
+        resolveRowsForWorkflowNode={() => ({ columns: [], rows: [] })}
+        onGenericDrillDown={vi.fn()}
+        overloadTolerancePct={10}
+        onSetOverloadTolerancePct={vi.fn()}
+        idleTolerancePct={10}
+        onSetIdleTolerancePct={vi.fn()}
+        estimationTolerancePct={10}
+        onSetEstimationTolerancePct={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(calls.charts).toHaveBeenCalled()
+    })
+
+    const hasSeriesName = (node: ReactNode, expectedName: string): boolean => {
+      if (Array.isArray(node))
+        return node.some((item) => hasSeriesName(item, expectedName))
+      if (typeof node === 'string') return node.includes(expectedName)
+      if (!isValidElement(node)) return false
+
+      const props = node.props as Record<string, unknown>
+
+      if (props.name === expectedName) return true
+      if (Array.isArray(props.children))
+        return props.children.some((child) =>
+          hasSeriesName(child, expectedName),
+        )
+
+      return hasSeriesName(props.children as ReactNode, expectedName)
+    }
+
+    const latestCall = calls.charts.mock.calls.at(-1)
+    expect(latestCall).toBeDefined()
+
+    if (latestCall) {
+      expect(hasSeriesName(latestCall[0], 'Desenvolvimento')).toBe(true)
+      expect(hasSeriesName(latestCall[0], 'Pivot Abc123')).toBe(false)
+    }
   })
 })
