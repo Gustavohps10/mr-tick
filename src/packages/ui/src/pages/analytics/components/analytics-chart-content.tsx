@@ -340,26 +340,41 @@ export function AnalyticsChartContent({
           <TableRow>
             {tableData.columns.map((column) => {
               let headLabel = column.label
-              if (
-                column.name === category &&
-                categoryLabel !== undefined &&
-                categoryLabel !== ''
-              ) {
-                headLabel = categoryLabel
+              if (column.name === category) {
+                if (categoryLabel !== undefined && categoryLabel !== '') {
+                  headLabel = categoryLabel
+                }
               }
-              if (
-                column.name === metric &&
-                metricLabel !== undefined &&
-                metricLabel !== ''
-              ) {
-                headLabel = metricLabel
+              if (column.name === metric) {
+                if (metricLabel !== undefined && metricLabel !== '') {
+                  headLabel = metricLabel
+                }
+                if (
+                  (metricLabel === undefined || metricLabel === '') &&
+                  metricColumnName !== undefined &&
+                  metricColumnName !== ''
+                ) {
+                  headLabel = metricColumnName
+                }
               }
-              if (
-                column.name === secondaryMetric &&
-                secondaryMetricLabel !== undefined &&
-                secondaryMetricLabel !== ''
-              ) {
-                headLabel = secondaryMetricLabel
+              if (column.name === secondaryMetric) {
+                if (
+                  secondaryMetricLabel !== undefined &&
+                  secondaryMetricLabel !== ''
+                ) {
+                  headLabel = secondaryMetricLabel
+                }
+                if (
+                  (secondaryMetricLabel === undefined ||
+                    secondaryMetricLabel === '') &&
+                  secondaryMetricColumnName !== undefined &&
+                  secondaryMetricColumnName !== ''
+                ) {
+                  headLabel = secondaryMetricColumnName
+                }
+              }
+              if (column.name === ratio) {
+                headLabel = 'Referência'
               }
 
               return <TableHead key={column.name}>{headLabel}</TableHead>
@@ -373,11 +388,17 @@ export function AnalyticsChartContent({
               style={rowStyle(row)}
               onClick={clickRow && (() => clickRow(row))}
             >
-              {tableData.columns.map((column) => (
-                <TableCell key={column.name}>
-                  {String(row[column.name])}
-                </TableCell>
-              ))}
+              {tableData.columns.map((column) => {
+                const rawCell = row[column.name]
+                let cellText = String(rawCell)
+                if (typeof rawCell === 'number' && Number.isFinite(rawCell)) {
+                  cellText = new Intl.NumberFormat('pt-BR', {
+                    maximumFractionDigits: 2,
+                  }).format(rawCell)
+                }
+
+                return <TableCell key={column.name}>{cellText}</TableCell>
+              })}
             </TableRow>
           ))}
         </TableBody>
@@ -452,13 +473,13 @@ export function AnalyticsChartContent({
     isHorizontalBar &&
     chartRows.length > 8
   const isHorizontallyScrollable =
-    (showAllRows === true || chartRows.length > 10) &&
+    (showAllRows === true || chartRows.length > 16) &&
     !isHorizontalBar &&
     !isTable &&
     visual !== 'pie_donut' &&
     visual !== 'radar' &&
     visual !== 'kpi_card' &&
-    chartRows.length > 10
+    chartRows.length > 16
 
   const measureKeys =
     visual === 'combo_multiaxis' ? [metric, secondaryMetric] : series
@@ -491,18 +512,10 @@ export function AnalyticsChartContent({
     scrollableDomain = [0, measureDomainMax]
   }
 
-  let xAxisLabelConfig:
-    { value: string; position: 'insideBottom'; offset: number } | undefined =
-    undefined
-  if (categoryLabel !== undefined && categoryLabel !== '') {
-    xAxisLabelConfig = {
-      value: categoryLabel,
-      position: 'insideBottom',
-      offset: -4,
-    }
-  }
-
-  const shouldRotateXAxis = chartRows.length > 5
+  const hasLongCategoryLabel = chartRows.some(
+    (row) => String(row[category]).length > 10,
+  )
+  const shouldRotateXAxis = chartRows.length > 5 || hasLongCategoryLabel
   let xAxisAngle = 0
   let xAxisTextAnchor: 'end' | 'middle' = 'middle'
   let xAxisHeight = 32
@@ -511,8 +524,21 @@ export function AnalyticsChartContent({
     xAxisTextAnchor = 'end'
     xAxisHeight = 88
   }
-  const verticalChartMargin = { top: 8, right: 16, left: 16, bottom: 8 }
+  let verticalLeftMargin = 16
+  if (isHorizontallyScrollable && shouldRotateXAxis) verticalLeftMargin = 48
+  const verticalChartMargin = {
+    top: 8,
+    right: 16,
+    left: verticalLeftMargin,
+    bottom: 8,
+  }
   const horizontalChartMargin = { top: 4, right: 16, left: 8, bottom: 4 }
+
+  const formatCategoryTick = (val: string | number) => {
+    const text = String(val)
+    if (shouldRotateXAxis && text.length > 18) return `${text.slice(0, 17)}…`
+    return text
+  }
 
   const axes: ReactNode[] = [
     <CartesianGrid key="cartesian-grid" strokeDasharray="3 3" />,
@@ -523,8 +549,8 @@ export function AnalyticsChartContent({
       angle={xAxisAngle}
       textAnchor={xAxisTextAnchor}
       height={xAxisHeight}
+      tickFormatter={formatCategoryTick}
       tick={{ fontSize: 11 }}
-      label={xAxisLabelConfig}
     />,
     <YAxis
       key="cartesian-yaxis"
@@ -578,9 +604,6 @@ export function AnalyticsChartContent({
         }}
       />,
     )
-  }
-  if (!isHorizontallyScrollable) {
-    axes.push(<Legend key="cartesian-legend" />)
   }
   if (reference !== undefined) {
     axes.push(
@@ -636,7 +659,6 @@ export function AnalyticsChartContent({
           tick={{ fontSize: 11 }}
         />
         {tooltipNode}
-        {!isVerticallyScrollable && <Legend />}
         {reference !== undefined && (
           <ReferenceLine x={reference} stroke="var(--destructive)" />
         )}
@@ -777,24 +799,40 @@ export function AnalyticsChartContent({
   }
 
   const fixedLegend = (
-    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 pt-1 text-xs">
-      {fixedLegendItems.map((item) => (
-        <span key={item.key} className="inline-flex items-center gap-1.5">
-          <span
-            className="size-2.5 shrink-0 rounded-[2px]"
-            style={{ backgroundColor: item.color }}
-          />
-          <span className="text-muted-foreground">{item.label}</span>
+    <div className="flex flex-col items-center gap-1 pt-2">
+      {catLabelText !== '' && (
+        <span className="text-muted-foreground text-[11px]">
+          {catLabelText}
         </span>
-      ))}
+      )}
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs">
+        {fixedLegendItems.map((item) => (
+          <span key={item.key} className="inline-flex items-center gap-1.5">
+            <span
+              className="size-2.5 shrink-0 rounded-[2px]"
+              style={{ backgroundColor: item.color }}
+            />
+            <span className="text-muted-foreground">{item.label}</span>
+          </span>
+        ))}
+      </div>
     </div>
   )
 
+  const usesExternalLegend =
+    !isTable &&
+    visual !== 'kpi_card' &&
+    visual !== 'pie_donut' &&
+    visual !== 'radar'
+
   let content = (
-    <div className="h-72 min-w-0">
-      <ResponsiveContainer width="100%" height="100%" debounce={120}>
-        {chart}
-      </ResponsiveContainer>
+    <div className="flex min-w-0 flex-col">
+      <div className="h-72 min-w-0">
+        <ResponsiveContainer width="100%" height="100%" debounce={120}>
+          {chart}
+        </ResponsiveContainer>
+      </div>
+      {usesExternalLegend && fixedLegend}
     </div>
   )
 
@@ -866,7 +904,7 @@ export function AnalyticsChartContent({
             </ResponsiveContainer>
           </div>
           <div className="min-w-0 flex-1 overflow-x-auto pb-1">
-            <div style={{ width: dynamicWidth, height: 288 }}>
+            <div style={{ minWidth: dynamicWidth, width: '100%', height: 288 }}>
               <ResponsiveContainer width="100%" height="100%" debounce={120}>
                 {chart}
               </ResponsiveContainer>
@@ -898,7 +936,7 @@ export function AnalyticsChartContent({
     )
   if (visual === 'kpi_card')
     content = (
-      <div className="p-6 text-3xl font-semibold tabular-nums">
+      <div className="px-1 py-2 text-3xl font-semibold tabular-nums">
         {data.rows.map((row, index) => {
           const rawValue = row[metric]
           let formatted = String(rawValue)

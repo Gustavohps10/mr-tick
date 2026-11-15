@@ -620,9 +620,10 @@ describe('Native widget query contract', () => {
 
     await waitFor(() => expect(calls.charts).toHaveBeenCalled())
     const initialChartCalls = calls.charts.mock.calls.length
-    const aggregation = screen.getByRole('combobox', {
-      name: 'Agregação da visualização',
-    })
+    expect(
+      screen.queryByRole('combobox', { name: 'Agregação da visualização' }),
+    ).not.toBeInTheDocument()
+    const summaryText = screen.getByText(/grupos/)
 
     rendered.rerender(
       <GenericWidgetRenderer
@@ -666,9 +667,7 @@ describe('Native widget query contract', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'Atualizando em segundo plano...',
     )
-    expect(
-      screen.getByRole('combobox', { name: 'Agregação da visualização' }),
-    ).toBe(aggregation)
+    expect(screen.getByText(/grupos/)).toBe(summaryText)
 
     rendered.rerender(
       <GenericWidgetRenderer
@@ -708,9 +707,7 @@ describe('Native widget query contract', () => {
     )
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(
-      screen.getByRole('combobox', { name: 'Agregação da visualização' }),
-    ).toBe(aggregation)
+    expect(screen.getByText(/grupos/)).toBe(summaryText)
     fireEvent.click(
       screen.getByRole('button', { name: 'Ver avisos do gráfico' }),
     )

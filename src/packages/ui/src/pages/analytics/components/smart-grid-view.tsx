@@ -114,7 +114,7 @@ export function SmartGridView({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
       {visibleWidgets.map((widget, index, arr) => {
         let spanClass = 'lg:col-span-1'
         if (widget.span === 2) spanClass = 'lg:col-span-2'
@@ -133,11 +133,11 @@ export function SmartGridView({
           <Card
             key={widget.id}
             className={cn(
-              'border-border/70 flex flex-col justify-start gap-1.5 py-2.5 shadow-xs transition-all',
+              'border-border/70 flex flex-col justify-start gap-2 p-4 shadow-xs transition-all',
               spanClass,
             )}
           >
-            <CardHeader className="px-4 pb-0">
+            <CardHeader className="p-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <CardTitle className="truncate text-sm font-semibold">
@@ -198,7 +198,7 @@ export function SmartGridView({
               </div>
             </CardHeader>
 
-            <CardContent className="px-4 pt-0">
+            <CardContent className="p-0">
               {inputError !== undefined && (
                 <p role="alert" className="text-destructive text-sm">
                   {inputError} Ajuste o gráfico no Background.

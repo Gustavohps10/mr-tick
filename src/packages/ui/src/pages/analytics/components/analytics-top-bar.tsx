@@ -1,6 +1,8 @@
 import {
   Activity,
   BarChart3,
+  Check,
+  ChevronsUpDown,
   CircleAlert,
   Info,
   LayoutGrid,
@@ -14,6 +16,15 @@ import type { DateRange } from 'react-day-picker'
 import { DatePickerWithRange } from '@/components'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import {
   Popover,
@@ -105,6 +116,7 @@ export function AnalyticsTopBar({
   onSyncAllSources,
   onSetLayerMode,
 }: AnalyticsTopBarProps) {
+  const [spaceMenuOpen, setSpaceMenuOpen] = useState<boolean>(false)
   const [isCustomPollingSelected, setIsCustomPollingSelected] =
     useState<boolean>(false)
 
@@ -150,45 +162,103 @@ export function AnalyticsTopBar({
 
   return (
     <>
-      <div className="bg-card/90 border-border/70 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-2.5 shadow-xs">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {spaces.map((spaceItem) => {
-            let itemVariant: 'default' | 'outline' = 'outline'
-
-            if (spaceItem.id === activeSpace.id) itemVariant = 'default'
-
-            return (
+      <div className="bg-card/90 border-border/70 flex flex-nowrap items-center justify-between gap-2 overflow-x-auto rounded-lg border px-2.5 py-2 shadow-xs">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <Popover open={spaceMenuOpen} onOpenChange={setSpaceMenuOpen}>
+            <PopoverTrigger asChild>
               <Button
-                key={spaceItem.id}
+                type="button"
                 size="sm"
-                variant={itemVariant}
-                className="h-8 gap-1.5 text-xs font-medium"
-                onClick={() => onSelectSpace(spaceItem.id)}
+                variant="outline"
+                role="combobox"
+                aria-expanded={spaceMenuOpen}
+                aria-label="Selecionar espaço analítico"
+                className="h-8 w-full max-w-[190px] min-w-[110px] justify-between gap-1.5 text-xs font-medium"
               >
-                <LayoutGrid className="size-3.5" />
-                {spaceItem.title}
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <LayoutGrid className="text-muted-foreground size-3.5 shrink-0" />
+                  <span className="truncate">{activeSpace.title}</span>
+                </span>
+                <ChevronsUpDown className="text-muted-foreground size-3.5 shrink-0 opacity-60" />
               </Button>
-            )
-          })}
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-[280px] p-0">
+              <Command>
+                <CommandInput
+                  placeholder="Buscar espaço..."
+                  className="h-8 text-xs"
+                />
+                <CommandList>
+                  <CommandEmpty>Nenhum espaço encontrado.</CommandEmpty>
+                  <CommandGroup heading="Espaços">
+                    {spaces.map((spaceItem) => {
+                      const isSelected = spaceItem.id === activeSpace.id
+
+                      return (
+                        <CommandItem
+                          key={spaceItem.id}
+                          value={spaceItem.title}
+                          onSelect={() => {
+                            onSelectSpace(spaceItem.id)
+                            setSpaceMenuOpen(false)
+                          }}
+                          className="gap-2 text-xs"
+                        >
+                          <Check
+                            className={cn(
+                              'size-3.5 shrink-0',
+                              isSelected && 'opacity-100',
+                              !isSelected && 'opacity-0',
+                            )}
+                          />
+                          <span className="truncate">{spaceItem.title}</span>
+                          <span className="text-muted-foreground ml-auto text-[10px]">
+                            {spaceItem.widgets.length}
+                          </span>
+                        </CommandItem>
+                      )
+                    })}
+                  </CommandGroup>
+                  <CommandSeparator />
+                  <CommandGroup>
+                    <CommandItem
+                      value="__new_space__"
+                      onSelect={() => {
+                        setSpaceMenuOpen(false)
+                        onOpenNewSpaceModal()
+                      }}
+                      className="gap-2 text-xs font-medium"
+                    >
+                      <Plus className="size-3.5 shrink-0" />
+                      <span>Novo Espaço</span>
+                    </CommandItem>
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+
           <Button
-            size="sm"
-            variant="ghost"
-            className="border-border/70 h-8 gap-1 border border-dashed text-xs"
+            type="button"
+            size="icon"
+            variant="outline"
+            className="size-8 shrink-0"
+            aria-label="Novo Espaço"
+            title="Novo Espaço"
             onClick={onOpenNewSpaceModal}
           >
             <Plus className="size-3.5" />
-            Novo Espaço
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 flex-nowrap items-center gap-1.5">
           <DatePickerWithRange
             date={dateRange}
             setDate={onDateRangeChange}
-            className="w-auto"
+            className="w-auto shrink-0"
           />
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1">
             <Select
               value={pollingSelectValue}
               onValueChange={(val) => {
@@ -206,7 +276,7 @@ export function AnalyticsTopBar({
             >
               <SelectTrigger
                 aria-label="Frequência de atualização"
-                className="h-8 w-[160px] text-xs"
+                className="h-8 w-[112px] shrink-0 text-xs"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -257,14 +327,16 @@ export function AnalyticsTopBar({
           <Button
             size="sm"
             variant="outline"
-            className="h-8 gap-1.5 text-xs"
+            className="h-8 shrink-0 gap-1.5 text-xs"
+            aria-label="Sincronizar"
+            title="Sincronizar"
             onClick={onSyncAllSources}
             disabled={syncStatusSummary.isManualSyncing}
           >
             <RefreshCw
               className={cn('size-3.5', isFetchingLive && 'animate-spin')}
             />
-            Sincronizar
+            <span className="hidden xl:inline">Sincronizar</span>
           </Button>
 
           <Popover>
@@ -339,7 +411,7 @@ export function AnalyticsTopBar({
             </PopoverContent>
           </Popover>
 
-          <div className="bg-muted flex items-center rounded-lg p-0.5">
+          <div className="bg-muted flex shrink-0 items-center rounded-lg p-0.5">
             <Button
               size="sm"
               variant={frontVariant}
@@ -347,7 +419,7 @@ export function AnalyticsTopBar({
               onClick={() => onSetLayerMode('front')}
             >
               <BarChart3 className="size-3.5" />
-              View Final (Grade Inteligente)
+              View
             </Button>
             <Button
               size="sm"
@@ -356,7 +428,10 @@ export function AnalyticsTopBar({
               onClick={() => onSetLayerMode('background')}
             >
               <Workflow className="size-3.5" />
-              Background ({activeSpace.workflowNodes.length} Nodes)
+              <span>Background</span>
+              <span className="text-muted-foreground hidden xl:inline">
+                ({activeSpace.workflowNodes.length})
+              </span>
             </Button>
           </div>
         </div>

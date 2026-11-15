@@ -242,7 +242,7 @@ test('analytics extracts a selected dataset, edits its source and publishes a ch
   await page.keyboard.press('Escape')
   await page
     .getByRole('button', {
-      name: 'View Final (Grade Inteligente)',
+      name: 'View ',
       exact: true,
     })
     .click()
@@ -348,7 +348,7 @@ test('analytics publishes a declared remote aggregate without selecting raw colu
   await expect(dialog).not.toBeVisible()
   await page
     .getByRole('button', {
-      name: 'View Final (Grade Inteligente)',
+      name: 'View',
       exact: true,
     })
     .click()

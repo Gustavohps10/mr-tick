@@ -16,13 +16,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Slider } from '@/components/ui/slider'
 
@@ -182,13 +175,6 @@ export function GenericWidgetRenderer({
   estimationTolerancePct,
   onSetEstimationTolerancePct,
 }: GenericWidgetRendererProps) {
-  const operators: AnalyticsAggregationOperator[] = [
-    'sum',
-    'count',
-    'count_distinct',
-    'avg',
-  ]
-  const [operator, setOperator] = useState<AnalyticsAggregationOperator>('sum')
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const [page, setPage] = useState<{
     signature: string
@@ -228,7 +214,7 @@ export function GenericWidgetRenderer({
     measures.push({
       name: primary,
       column: widget.metricColumn,
-      operator,
+      operator: 'sum',
     })
   if (
     widget.secondaryMetricColumn !== undefined &&
@@ -237,7 +223,7 @@ export function GenericWidgetRenderer({
     measures.push({
       name: secondary,
       column: widget.secondaryMetricColumn,
-      operator,
+      operator: 'sum',
     })
   if (widget.metricColumn === '')
     measures.push({ name: primary, operator: 'count' })
@@ -273,7 +259,7 @@ export function GenericWidgetRenderer({
         widget.metricColumn !== undefined) ||
       (base.data.remoteAggregate && visual === 'pivot_matrix')
     ) {
-      let pivotOperator = operator
+      let pivotOperator: AnalyticsAggregationOperator = 'sum'
       let valueColumn: string | undefined = widget.metricColumn
 
       if (valueColumn === '') {
@@ -643,29 +629,6 @@ export function GenericWidgetRenderer({
     <div className="space-y-1">
       {feedback}
 
-      {!data.remoteAggregate && widget.metricColumn !== '' && (
-        <Select
-          value={operator}
-          onValueChange={(next) => {
-            const selected = operators.find((item) => item === next)
-            if (selected !== undefined) setOperator(selected)
-          }}
-        >
-          <SelectTrigger
-            aria-label="Agregação da visualização"
-            className="h-7 w-28 text-xs"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {operators.map((item) => (
-              <SelectItem key={item} value={item}>
-                {item}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
       {visual === 'conditional_table' && (
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
