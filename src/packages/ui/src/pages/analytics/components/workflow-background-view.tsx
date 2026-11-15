@@ -162,8 +162,12 @@ export function WorkflowBackgroundView({
             proOptions={{ hideAttribution: true }}
           >
             <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
-            <Controls />
-            <MiniMap zoomable pannable className="!bg-card/80" />
+            <Controls className="border-border overflow-hidden rounded-lg border shadow-sm [--xy-controls-button-background-color-hover:var(--accent)] [--xy-controls-button-background-color:var(--card)] [--xy-controls-button-border-color:var(--border)] [--xy-controls-button-color-hover:var(--accent-foreground)] [--xy-controls-button-color:var(--card-foreground)]" />
+            <MiniMap
+              zoomable
+              pannable
+              className="!bg-card/80 border-border overflow-hidden rounded-lg border"
+            />
           </ReactFlow>
         </div>
       </CardContent>
