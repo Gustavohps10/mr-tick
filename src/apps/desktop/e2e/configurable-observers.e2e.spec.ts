@@ -1151,6 +1151,18 @@ test.describe('E2E - Observers Configuráveis por Contratos do SDK (Fixture Neut
       )
       await expect(taskTrigger).toBeVisible({ timeout: 5000 })
       await taskTrigger.click()
+      const connectionSelect = win.getByRole('combobox', { name: 'Conexão' })
+      await expect(connectionSelect).toBeVisible({ timeout: 5000 })
+      await connectionSelect.click()
+      await win
+        .getByRole('option', { name: /Alpha DataSource/ })
+        .first()
+        .click()
+      const taskSearchInput = win.getByRole('combobox', {
+        name: 'Buscar tarefa',
+      })
+      await expect(taskSearchInput).toBeVisible({ timeout: 5000 })
+      await taskSearchInput.fill('ALPHA-101')
       const alphaTask101Opt = win.locator(
         '[data-testid="addon-task-option-ALPHA-101"]',
       )
