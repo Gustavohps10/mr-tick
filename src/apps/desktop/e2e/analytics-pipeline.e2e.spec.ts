@@ -219,7 +219,7 @@ test('analytics extracts a selected dataset, edits its source and publishes a ch
   await expect(
     dialog.getByRole('tab', { name: 'Visualização', selected: true }),
   ).toBeVisible()
-  await expect(dialog.getByText(/\d+ grupos · unverified/)).toBeVisible()
+  await expect(dialog.getByText(/\d+ grupos · Cobertura parcial/)).toBeVisible()
   const lineage = dialog.getByRole('navigation', { name: 'Linhagem completa' })
   await lineage.getByRole('button', { name: /Horas consultadas/ }).click()
   await dialog.getByRole('tab', { name: /^Dados/ }).click()
@@ -249,11 +249,11 @@ test('analytics extracts a selected dataset, edits its source and publishes a ch
   await expect(
     page.getByText('Horas consolidadas', { exact: true }),
   ).toBeVisible()
-  await expect(page.getByText(/\d+ grupos · unverified/)).toBeVisible()
+  await expect(page.getByText(/\d+ grupos · Cobertura parcial/)).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Modelo visual da visualização' }),
   ).toHaveCount(0)
-  await expect(page.getByTitle('Largura Total (3/3)')).toBeVisible()
+  await expect(page.getByTitle('Largura Total (12/12)')).toBeVisible()
 })
 
 test('analytics publishes a declared remote aggregate without selecting raw columns', async ({
@@ -353,7 +353,7 @@ test('analytics publishes a declared remote aggregate without selecting raw colu
     })
     .click()
   await expect(page.getByText('Remote chart', { exact: true })).toBeVisible()
-  await expect(page.getByText(/\d+ grupos · complete/)).toBeVisible()
+  await expect(page.getByText(/\d+ grupos · Dados completos/)).toBeVisible()
 })
 
 test('hydrates offline analytics state, runs incremental changes upsert/delete and full reconcile without blocking personal flows', async ({
