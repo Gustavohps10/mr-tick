@@ -792,7 +792,7 @@ export function AnalyticsChartContent({
 
   let content = (
     <div className="h-72 min-w-0">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" debounce={120}>
         {chart}
       </ResponsiveContainer>
     </div>
@@ -804,13 +804,13 @@ export function AnalyticsChartContent({
       <div className="flex min-w-0 flex-col">
         <div className="max-h-[380px] min-w-0 overflow-y-auto pr-1">
           <div style={{ height: dynamicHeight, width: '100%' }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" debounce={120}>
               {chart}
             </ResponsiveContainer>
           </div>
         </div>
         <div className="h-7 min-w-0 pr-2">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" debounce={120}>
             <BarChart
               data={chartRows}
               layout="vertical"
@@ -844,7 +844,7 @@ export function AnalyticsChartContent({
       <div className="flex min-w-0 flex-col">
         <div className="flex min-w-0 items-start">
           <div className="h-72 w-14 shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" debounce={120}>
               <BarChart
                 data={chartRows}
                 margin={{ top: 8, right: 0, left: 0, bottom: 8 }}
@@ -867,7 +867,7 @@ export function AnalyticsChartContent({
           </div>
           <div className="min-w-0 flex-1 overflow-x-auto pb-1">
             <div style={{ width: dynamicWidth, height: 288 }}>
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" debounce={120}>
                 {chart}
               </ResponsiveContainer>
             </div>
@@ -898,13 +898,26 @@ export function AnalyticsChartContent({
     )
   if (visual === 'kpi_card')
     content = (
-      <div className="p-6 text-3xl font-semibold">
-        {data.rows.map((row, index) => (
-          <div key={index}>{String(row[metric])}</div>
-        ))}
+      <div className="p-6 text-3xl font-semibold tabular-nums">
+        {data.rows.map((row, index) => {
+          const rawValue = row[metric]
+          let formatted = String(rawValue)
+          if (typeof rawValue === 'number' && Number.isFinite(rawValue))
+            formatted = new Intl.NumberFormat('pt-BR', {
+              maximumFractionDigits: 2,
+            }).format(rawValue)
+          return (
+            <div key={index} className="truncate">
+              {formatted}
+            </div>
+          )
+        })}
         {reference !== undefined && (
           <p className="text-muted-foreground text-sm">
-            Referência: {reference}
+            Referência:{' '}
+            {new Intl.NumberFormat('pt-BR', {
+              maximumFractionDigits: 2,
+            }).format(reference)}
           </p>
         )}
       </div>

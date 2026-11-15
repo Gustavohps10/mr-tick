@@ -1237,8 +1237,10 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
         )
       })
 
-      if (outcome.isSuccess())
+      if (outcome.isSuccess()) {
         this.activeGenerations.delete(generation.generationId)
+        await db.connection.run('CHECKPOINT')
+      }
 
       return outcome
     })
@@ -2489,8 +2491,10 @@ export class DuckDBAnalyticsEngine implements IAnalyticsEngine {
           return Either.success(undefined)
         })
 
-        if (outcome.isSuccess())
+        if (outcome.isSuccess()) {
           this.activeGenerations.delete(generation.generationId)
+          await db.connection.run('CHECKPOINT')
+        }
 
         return outcome
       },
