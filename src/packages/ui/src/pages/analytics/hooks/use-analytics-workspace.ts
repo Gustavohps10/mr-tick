@@ -86,8 +86,9 @@ import {
   type SpaceWidgetConfig,
   type SpaceWorkflowNodeConfig,
   type TransformInputBinding,
+  type WidgetColSpan,
   type WidgetId,
-  type WidgetSpan,
+  type WidgetRowSpan,
   type WorkflowNodeKind,
 } from '../lib/analytics-types'
 import { chartInputIssues } from '../lib/chart-input'
@@ -330,7 +331,8 @@ export function useAnalyticsWorkspace() {
 
   const [newNodeWidgetType, setNewNodeWidgetType] =
     useState<WidgetId>('bar_vertical')
-  const [newNodeSpan, setNewNodeSpan] = useState<WidgetSpan>(2)
+  const [newNodeColSpan, setNewNodeColSpan] = useState<WidgetColSpan>(8)
+  const [newNodeRowSpan, setNewNodeRowSpan] = useState<WidgetRowSpan>(2)
   const [outputSourceNodeId, setOutputSourceNodeId] = useState<string>('')
   const [outputCategoryColumn, setOutputCategoryColumn] = useState<string>('')
   const [outputMetricColumn, setOutputMetricColumn] = useState<string>('')
@@ -2385,7 +2387,8 @@ export function useAnalyticsWorkspace() {
       setSqlQueryText(nextSqlQueryText)
 
       let nextWidgetType: WidgetId = 'bar_vertical'
-      let nextSpan: WidgetSpan = 2
+      let nextColSpan: WidgetColSpan = 8
+      let nextRowSpan: WidgetRowSpan = 2
       let nextCategoryColumn = ''
       let nextMetricColumn = ''
       let nextSecondaryMetricColumn = ''
@@ -2412,7 +2415,8 @@ export function useAnalyticsWorkspace() {
           nextWidgetType = linkedWidget.widgetType
           if (linkedWidget.chartVisualType)
             nextWidgetType = linkedWidget.chartVisualType
-          nextSpan = linkedWidget.span
+          nextColSpan = linkedWidget.colSpan
+          nextRowSpan = linkedWidget.rowSpan
           nextSubtitle = linkedWidget.subtitle
           if (!nextOutputSource && linkedWidget.sourceNodeId)
             nextOutputSource = linkedWidget.sourceNodeId
@@ -2452,7 +2456,8 @@ export function useAnalyticsWorkspace() {
       setTxUpstreamNodeId(nextTxUpstream)
       setOutputSourceNodeId(nextOutputSource)
       setNewNodeWidgetType(nextWidgetType)
-      setNewNodeSpan(nextSpan)
+      setNewNodeColSpan(nextColSpan)
+      setNewNodeRowSpan(nextRowSpan)
       setOutputCategoryColumn(nextCategoryColumn)
       setOutputMetricColumn(nextMetricColumn)
       setOutputSecondaryMetricColumn(nextSecondaryMetricColumn)
@@ -2502,7 +2507,8 @@ export function useAnalyticsWorkspace() {
       setSqlQueryText('')
       setOutputSourceNodeId('')
       setNewNodeWidgetType('bar_vertical')
-      setNewNodeSpan(2)
+      setNewNodeColSpan(8)
+      setNewNodeRowSpan(2)
       setOutputCategoryColumn('')
       setOutputMetricColumn('')
       setOutputSecondaryMetricColumn('')
@@ -2747,8 +2753,11 @@ export function useAnalyticsWorkspace() {
     [activeSpace.id],
   )
 
-  const updateWidgetSpan = useCallback(
-    (widgetId: string, nextSpan: WidgetSpan) => {
+  const updateWidgetLayout = useCallback(
+    (
+      widgetId: string,
+      layout: { colSpan?: WidgetColSpan; rowSpan?: WidgetRowSpan },
+    ) => {
       userMutatedStateRef.current = true
       setSpaces((prev) =>
         prev.map((space) => {
@@ -2756,7 +2765,15 @@ export function useAnalyticsWorkspace() {
           return {
             ...space,
             widgets: space.widgets.map((w) => {
-              if (w.id === widgetId) return { ...w, span: nextSpan }
+              if (w.id === widgetId) {
+                return {
+                  ...w,
+                  colSpan:
+                    layout.colSpan !== undefined ? layout.colSpan : w.colSpan,
+                  rowSpan:
+                    layout.rowSpan !== undefined ? layout.rowSpan : w.rowSpan,
+                }
+              }
 
               return w
             }),
@@ -2767,25 +2784,22 @@ export function useAnalyticsWorkspace() {
     [activeSpace.id],
   )
 
-  const moveWidgetOrder = useCallback(
-    (widgetId: string, direction: -1 | 1) => {
+  const reorderWidgets = useCallback(
+    (orderedVisibleIds: string[]) => {
       userMutatedStateRef.current = true
       setSpaces((prev) =>
         prev.map((space) => {
           if (space.id !== activeSpace.id) return space
-          const idx = space.widgets.findIndex((w) => w.id === widgetId)
-          if (idx < 0) return space
-          const targetIdx = idx + direction
-          if (targetIdx < 0 || targetIdx >= space.widgets.length) return space
-
-          const copy = [...space.widgets]
-          const currentItem = copy[idx]
-          const targetItem = copy[targetIdx]
-          if (!currentItem || !targetItem) return space
-
-          copy[idx] = targetItem
-          copy[targetIdx] = currentItem
-          return { ...space, widgets: copy }
+          const byId = new Map(space.widgets.map((w) => [w.id, w]))
+          const reorderedVisible: SpaceWidgetConfig[] = []
+          for (const id of orderedVisibleIds) {
+            const found = byId.get(id)
+            if (found !== undefined && found.visible) {
+              reorderedVisible.push(found)
+            }
+          }
+          const hiddenWidgets = space.widgets.filter((w) => !w.visible)
+          return { ...space, widgets: [...reorderedVisible, ...hiddenWidgets] }
         }),
       )
     },
@@ -2835,7 +2849,8 @@ export function useAnalyticsWorkspace() {
           datasetBadge: 'Pipeline ETL',
           sourceNodeId: '',
           chartVisualType: wType,
-          span: 2,
+          colSpan: wType === 'kpi_card' ? 4 : 8,
+          rowSpan: wType === 'kpi_card' ? 1 : 2,
           visible: true,
         }
       },
@@ -3139,7 +3154,8 @@ export function useAnalyticsWorkspace() {
             sourceNodeId: sourceId,
             outputNodeId: generatedId,
             chartVisualType: newNodeWidgetType,
-            span: newNodeSpan,
+            colSpan: newNodeColSpan,
+            rowSpan: newNodeRowSpan,
             visible: true,
             categoryColumn: catCol,
             metricColumn: metCol,
@@ -3209,7 +3225,8 @@ export function useAnalyticsWorkspace() {
     newNodeFilterValues,
     newNodeLabel,
     newNodeSelectedConnectionId,
-    newNodeSpan,
+    newNodeColSpan,
+    newNodeRowSpan,
     newNodeWidgetType,
     nodeCustomFieldTypes,
     nodeSelectedColumns,
@@ -3477,7 +3494,8 @@ export function useAnalyticsWorkspace() {
                 subtitle: resolvedSubtitle,
                 widgetType: newNodeWidgetType,
                 chartVisualType: newNodeWidgetType,
-                span: newNodeSpan,
+                colSpan: newNodeColSpan,
+                rowSpan: newNodeRowSpan,
                 sourceNodeId: outputSourceNodeId,
                 outputNodeId: editingNodeId,
                 categoryColumn: catCol,
@@ -3556,7 +3574,8 @@ export function useAnalyticsWorkspace() {
     newNodeFilterValues,
     newNodeLabel,
     newNodeSelectedConnectionId,
-    newNodeSpan,
+    newNodeColSpan,
+    newNodeRowSpan,
     newNodeWidgetType,
     nodeCustomFieldTypes,
     nodeSelectedColumns,
@@ -3939,8 +3958,8 @@ export function useAnalyticsWorkspace() {
     handleSyncAllSources,
     resolveRowsForWorkflowNode,
     handleGenericChartDrillDown,
-    updateWidgetSpan,
-    moveWidgetOrder,
+    updateWidgetLayout,
+    reorderWidgets,
     overloadTolerancePct,
     setOverloadTolerancePct,
     idleTolerancePct,
@@ -4003,8 +4022,10 @@ export function useAnalyticsWorkspace() {
     handleChangeNodeColumnType,
     newNodeWidgetType,
     setNewNodeWidgetType,
-    newNodeSpan,
-    setNewNodeSpan,
+    newNodeColSpan,
+    setNewNodeColSpan,
+    newNodeRowSpan,
+    setNewNodeRowSpan,
     outputSourceNodeId,
     setOutputSourceNodeId,
     outputCategoryColumn,

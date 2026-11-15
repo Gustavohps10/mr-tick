@@ -335,7 +335,23 @@ function isValidWidget(value: JsonValue): boolean {
     !WIDGET_ID_SET.has(value.chartVisualType)
   )
     return false
-  if (value.span !== 1 && value.span !== 2 && value.span !== 3) return false
+  if (
+    !isJsonFiniteNumber(value.colSpan) ||
+    !Number.isInteger(value.colSpan) ||
+    value.colSpan < 1 ||
+    value.colSpan > 12
+  ) {
+    return false
+  }
+
+  if (
+    !isJsonFiniteNumber(value.rowSpan) ||
+    !Number.isInteger(value.rowSpan) ||
+    value.rowSpan < 1 ||
+    value.rowSpan > 6
+  ) {
+    return false
+  }
   if (typeof value.visible !== 'boolean') return false
   if (!isOptionalJsonString(value.categoryColumn)) return false
   if (!isOptionalJsonString(value.metricColumn)) return false

@@ -1,3 +1,5 @@
+import { useCallback } from 'react'
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +35,10 @@ import { useAnalyticsWorkspace } from './hooks/use-analytics-workspace'
 
 export function Analytics() {
   const vm = useAnalyticsWorkspace()
+  const handleRetrySourceNode = useCallback(
+    (nodeId: string) => void vm.retrySourceNode(nodeId),
+    [vm.retrySourceNode],
+  )
 
   if (vm.hydrateError !== undefined)
     return (
@@ -143,7 +149,8 @@ export function Analytics() {
       isLoadingNodeDatasets={vm.isLoadingNodeDatasets}
       nodeSelectedColumns={vm.nodeSelectedColumns}
       newNodeWidgetType={vm.newNodeWidgetType}
-      newNodeSpan={vm.newNodeSpan}
+      newNodeColSpan={vm.newNodeColSpan}
+      newNodeRowSpan={vm.newNodeRowSpan}
       outputSourceNodeId={vm.outputSourceNodeId}
       outputCategoryColumn={vm.outputCategoryColumn}
       outputMetricColumn={vm.outputMetricColumn}
@@ -194,7 +201,8 @@ export function Analytics() {
       onSelectAllColumns={vm.handleSelectAllNodeColumns}
       onClearAllColumns={vm.handleClearAllNodeColumns}
       onSelectWidgetType={vm.setNewNodeWidgetType}
-      onSelectSpan={vm.setNewNodeSpan}
+      onSelectColSpan={vm.setNewNodeColSpan}
+      onSelectRowSpan={vm.setNewNodeRowSpan}
       onSetOutputSourceNodeId={vm.setOutputSourceNodeId}
       onSetOutputCategoryColumn={vm.setOutputCategoryColumn}
       onSetOutputMetricColumn={vm.setOutputMetricColumn}
@@ -397,12 +405,12 @@ export function Analytics() {
           publicationVersion={vm.publicationVersion}
           activeSpace={vm.activeSpace}
           upstreamStatusByNodeId={vm.upstreamStatusByNodeId}
-          onRetrySourceNode={(nodeId) => void vm.retrySourceNode(nodeId)}
+          onRetrySourceNode={handleRetrySourceNode}
           resolveRowsForWorkflowNode={vm.resolveRowsForWorkflowNode}
           onGenericDrillDown={vm.handleGenericChartDrillDown}
           onSetLayerMode={vm.setLayerMode}
-          onUpdateWidgetSpan={vm.updateWidgetSpan}
-          onMoveWidgetOrder={vm.moveWidgetOrder}
+          onUpdateWidgetLayout={vm.updateWidgetLayout}
+          onReorderWidgets={vm.reorderWidgets}
           overloadTolerancePct={vm.overloadTolerancePct}
           onSetOverloadTolerancePct={vm.setOverloadTolerancePct}
           idleTolerancePct={vm.idleTolerancePct}

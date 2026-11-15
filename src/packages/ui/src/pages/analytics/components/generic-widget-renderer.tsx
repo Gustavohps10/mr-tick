@@ -6,7 +6,7 @@ import type {
   AnalyticsQueryInput,
 } from '@mr-tick/application'
 import { CircleAlert, LoaderCircle } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { memo, type ReactNode, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -159,7 +159,7 @@ export interface GenericWidgetRendererProps {
 
 /** Rendering consumes server aggregates. It never groups the preview rows. */
 
-export function GenericWidgetRenderer({
+function GenericWidgetRendererInner({
   onUnauthorized,
   widget,
   activeSpace,
@@ -626,11 +626,11 @@ export function GenericWidgetRenderer({
   }
 
   return (
-    <div className="space-y-1">
+    <div className="flex min-h-0 flex-1 flex-col gap-1">
       {feedback}
 
       {visual === 'conditional_table' && (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid shrink-0 gap-3 sm:grid-cols-3">
           <div>
             <Label>Sobrecarga: {overloadTolerancePct}%</Label>
             <Slider
@@ -698,7 +698,7 @@ export function GenericWidgetRenderer({
         estimationTolerancePct={estimationTolerancePct}
         clickRow={clickRow}
       />
-      <div className="text-muted-foreground flex items-center justify-between gap-2 text-xs">
+      <div className="text-muted-foreground flex shrink-0 items-center justify-between gap-2 text-xs">
         <span>
           {!isTable && data.hasMore && (
             <>Gráfico exibe os primeiros {data.rows.length} de </>
@@ -711,3 +711,26 @@ export function GenericWidgetRenderer({
     </div>
   )
 }
+
+function areGenericWidgetPropsEqual(
+  prev: GenericWidgetRendererProps,
+  next: GenericWidgetRendererProps,
+): boolean {
+  if (prev.widget !== next.widget) return false
+  if (prev.publicationVersion !== next.publicationVersion) return false
+  if (prev.warehousePlan !== next.warehousePlan) return false
+  if (prev.upstreamStatus !== next.upstreamStatus) return false
+  if (prev.activeSpace.workflowNodes !== next.activeSpace.workflowNodes)
+    return false
+  if (prev.overloadTolerancePct !== next.overloadTolerancePct) return false
+  if (prev.idleTolerancePct !== next.idleTolerancePct) return false
+  if (prev.estimationTolerancePct !== next.estimationTolerancePct) return false
+  if (prev.onUnauthorized !== next.onUnauthorized) return false
+  if (prev.onGenericDrillDown !== next.onGenericDrillDown) return false
+  return true
+}
+
+export const GenericWidgetRenderer = memo(
+  GenericWidgetRendererInner,
+  areGenericWidgetPropsEqual,
+)

@@ -22,7 +22,9 @@ export type {
 
 export type CanvasLayerMode = 'front' | 'background'
 
-export type WidgetSpan = 1 | 2 | 3
+export type WidgetColSpan = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
+
+export type WidgetRowSpan = 1 | 2 | 3 | 4 | 5 | 6
 
 export type WidgetId =
   | 'bar_vertical'
@@ -181,7 +183,8 @@ export interface SpaceWidgetConfig {
   sourceNodeId: string
   outputNodeId?: string
   chartVisualType: ChartVisualType
-  span: WidgetSpan
+  colSpan: WidgetColSpan
+  rowSpan: WidgetRowSpan
   visible: boolean
   categoryColumn?: string
   metricColumn?: string

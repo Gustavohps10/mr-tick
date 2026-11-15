@@ -334,7 +334,7 @@ export function AnalyticsChartContent({
   if (sideTableData !== undefined) tableData = sideTableData
 
   const table = (
-    <div className="overflow-auto">
+    <div className="min-h-0 flex-1 overflow-auto">
       <Table>
         <TableHeader>
           <TableRow>
@@ -826,8 +826,8 @@ export function AnalyticsChartContent({
     visual !== 'radar'
 
   let content = (
-    <div className="flex min-w-0 flex-col">
-      <div className="h-72 min-w-0">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="min-h-[110px] min-w-0 flex-1">
         <ResponsiveContainer width="100%" height="100%" debounce={120}>
           {chart}
         </ResponsiveContainer>
@@ -837,17 +837,17 @@ export function AnalyticsChartContent({
   )
 
   if (isVerticallyScrollable) {
-    const dynamicHeight = Math.max(288, chartRows.length * 32)
+    const dynamicHeight = Math.max(240, chartRows.length * 32)
     content = (
-      <div className="flex min-w-0 flex-col">
-        <div className="max-h-[380px] min-w-0 overflow-y-auto pr-1">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pr-1">
           <div style={{ height: dynamicHeight, width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%" debounce={120}>
               {chart}
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="h-7 min-w-0 pr-2">
+        <div className="h-7 min-w-0 shrink-0 pr-2">
           <ResponsiveContainer width="100%" height="100%" debounce={120}>
             <BarChart
               data={chartRows}
@@ -879,9 +879,9 @@ export function AnalyticsChartContent({
   if (isHorizontallyScrollable) {
     const dynamicWidth = Math.max(560, chartRows.length * 56)
     content = (
-      <div className="flex min-w-0 flex-col">
-        <div className="flex min-w-0 items-start">
-          <div className="h-72 w-14 shrink-0">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 items-stretch">
+          <div className="min-h-0 w-14 shrink-0">
             <ResponsiveContainer width="100%" height="100%" debounce={120}>
               <BarChart
                 data={chartRows}
@@ -903,8 +903,11 @@ export function AnalyticsChartContent({
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="min-w-0 flex-1 overflow-x-auto pb-1">
-            <div style={{ minWidth: dynamicWidth, width: '100%', height: 288 }}>
+          <div className="min-h-0 min-w-0 flex-1 overflow-x-auto pb-1">
+            <div
+              className="h-full min-h-[110px]"
+              style={{ minWidth: dynamicWidth, width: '100%' }}
+            >
               <ResponsiveContainer width="100%" height="100%" debounce={120}>
                 {chart}
               </ResponsiveContainer>
@@ -926,9 +929,9 @@ export function AnalyticsChartContent({
     )
   if (visual === 'split_pane_chart')
     content = (
-      <div className="grid min-w-0 gap-3 lg:grid-cols-[7fr_3fr]">
+      <div className="grid min-h-0 min-w-0 flex-1 gap-3 lg:grid-cols-[7fr_3fr]">
         {content}
-        <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex min-h-0 min-w-0 flex-col gap-2">
           {table}
           {sideTableFooter}
         </div>
@@ -936,7 +939,7 @@ export function AnalyticsChartContent({
     )
   if (visual === 'kpi_card')
     content = (
-      <div className="px-1 py-2 text-3xl font-semibold tabular-nums">
+      <div className="flex min-h-0 flex-1 flex-col justify-center px-1 py-0 text-2xl leading-none font-semibold tabular-nums">
         {data.rows.map((row, index) => {
           const rawValue = row[metric]
           let formatted = String(rawValue)
@@ -962,7 +965,7 @@ export function AnalyticsChartContent({
     )
 
   return (
-    <div className="[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border min-w-0 [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden">
+    <div className="[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border flex min-h-0 min-w-0 flex-1 flex-col [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden">
       {content}
     </div>
   )

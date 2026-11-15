@@ -103,8 +103,9 @@ import {
   type SourceFilterBinding,
   type SpaceWorkflowNodeConfig,
   type TransformInputBinding,
+  type WidgetColSpan,
   type WidgetId,
-  type WidgetSpan,
+  type WidgetRowSpan,
 } from '../lib/analytics-types'
 import { chartInputIssues, chartInputRequirements } from '../lib/chart-input'
 import { AnalyticsError } from './analytics-error'
@@ -130,7 +131,8 @@ export interface WorkflowNodeConfigDialogProps {
   isLoadingNodeDatasets: boolean
   nodeSelectedColumns: string[]
   newNodeWidgetType: WidgetId
-  newNodeSpan: WidgetSpan
+  newNodeColSpan: WidgetColSpan
+  newNodeRowSpan: WidgetRowSpan
   outputSourceNodeId: string
   outputCategoryColumn: string
   outputMetricColumn: string
@@ -185,7 +187,8 @@ export interface WorkflowNodeConfigDialogProps {
   onSelectAllColumns: (allColNames: string[]) => void
   onClearAllColumns: () => void
   onSelectWidgetType: (val: WidgetId) => void
-  onSelectSpan: (val: WidgetSpan) => void
+  onSelectColSpan: (val: WidgetColSpan) => void
+  onSelectRowSpan: (val: WidgetRowSpan) => void
   onSetOutputSourceNodeId: (val: string) => void
   onSetOutputCategoryColumn: (val: string) => void
   onSetOutputMetricColumn: (val: string) => void
@@ -637,7 +640,8 @@ export function WorkflowNodeConfigDialog({
   isLoadingNodeDatasets,
   nodeSelectedColumns,
   newNodeWidgetType,
-  newNodeSpan,
+  newNodeColSpan,
+  newNodeRowSpan,
   outputSourceNodeId,
   outputCategoryColumn,
   outputMetricColumn,
@@ -684,7 +688,8 @@ export function WorkflowNodeConfigDialog({
   onSelectAllColumns,
   onClearAllColumns,
   onSelectWidgetType,
-  onSelectSpan,
+  onSelectColSpan,
+  onSelectRowSpan,
   onSetOutputSourceNodeId,
   onSetOutputCategoryColumn,
   onSetOutputMetricColumn,
@@ -2386,29 +2391,99 @@ export function WorkflowNodeConfigDialog({
                 )}
               </div>
 
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <Label className="text-xs font-semibold">
-                  Largura na Grade Inteligente
-                </Label>
-                <Select
-                  value={String(newNodeSpan)}
-                  onValueChange={(val) => {
-                    if (val === '1') onSelectSpan(1)
-                    if (val === '2') onSelectSpan(2)
-                    if (val === '3') onSelectSpan(3)
-                  }}
-                >
-                  <SelectTrigger className="w-full text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="1">1 Coluna (1/3)</SelectItem>
-                      <SelectItem value="2">2 Colunas (2/3)</SelectItem>
-                      <SelectItem value="3">Largura Total (3/3)</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-3 sm:col-span-2">
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <Label className="text-xs font-semibold">
+                    Largura na Grade (12 colunas)
+                  </Label>
+                  <Select
+                    value={String(newNodeColSpan)}
+                    onValueChange={(val) => {
+                      const colMap: Record<string, WidgetColSpan> = {
+                        '1': 1,
+                        '2': 2,
+                        '3': 3,
+                        '4': 4,
+                        '5': 5,
+                        '6': 6,
+                        '7': 7,
+                        '8': 8,
+                        '9': 9,
+                        '10': 10,
+                        '11': 11,
+                        '12': 12,
+                      }
+                      const parsed = colMap[val]
+                      if (parsed !== undefined) onSelectColSpan(parsed)
+                    }}
+                  >
+                    <SelectTrigger className="w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="1">1/12</SelectItem>
+                        <SelectItem value="2">2/12</SelectItem>
+                        <SelectItem value="3">3/12 (1/4)</SelectItem>
+                        <SelectItem value="4">4/12 (1/3)</SelectItem>
+                        <SelectItem value="5">5/12</SelectItem>
+                        <SelectItem value="6">6/12 (1/2)</SelectItem>
+                        <SelectItem value="7">7/12</SelectItem>
+                        <SelectItem value="8">8/12 (2/3)</SelectItem>
+                        <SelectItem value="9">9/12 (3/4)</SelectItem>
+                        <SelectItem value="10">10/12</SelectItem>
+                        <SelectItem value="11">11/12</SelectItem>
+                        <SelectItem value="12">12/12 (Total)</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <Label className="text-xs font-semibold">
+                    Altura na Grade (Linhas)
+                  </Label>
+                  <Select
+                    value={String(newNodeRowSpan)}
+                    onValueChange={(val) => {
+                      const rowMap: Record<string, WidgetRowSpan> = {
+                        '1': 1,
+                        '2': 2,
+                        '3': 3,
+                        '4': 4,
+                        '5': 5,
+                        '6': 6,
+                      }
+                      const parsed = rowMap[val]
+                      if (parsed !== undefined) onSelectRowSpan(parsed)
+                    }}
+                  >
+                    <SelectTrigger className="w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="1">
+                          1 linha (160px · Compacto)
+                        </SelectItem>
+                        <SelectItem value="2">
+                          2 linhas (332px · Padrão)
+                        </SelectItem>
+                        <SelectItem value="3">
+                          3 linhas (504px · Médio)
+                        </SelectItem>
+                        <SelectItem value="4">
+                          4 linhas (676px · Grande)
+                        </SelectItem>
+                        <SelectItem value="5">
+                          5 linhas (848px · Alto)
+                        </SelectItem>
+                        <SelectItem value="6">
+                          6 linhas (1020px · Máximo)
+                        </SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">

@@ -13,7 +13,29 @@ import type { AnalyticsSpaceConfig } from './analytics-types'
 
 const widgetIdSchema = z.enum(ANALYTICS_WIDGET_IDS)
 
-const widgetSpanSchema = z.union([z.literal(1), z.literal(2), z.literal(3)])
+const widgetColSpanSchema = z.union([
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5),
+  z.literal(6),
+  z.literal(7),
+  z.literal(8),
+  z.literal(9),
+  z.literal(10),
+  z.literal(11),
+  z.literal(12),
+])
+
+const widgetRowSpanSchema = z.union([
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5),
+  z.literal(6),
+])
 
 const referenceLineModeSchema = z.enum(ANALYTICS_REFERENCE_LINE_MODES)
 
@@ -146,7 +168,8 @@ const spaceWidgetSchema = z.object({
   sourceNodeId: z.string(),
   outputNodeId: z.string().optional(),
   chartVisualType: widgetIdSchema,
-  span: widgetSpanSchema,
+  colSpan: widgetColSpanSchema,
+  rowSpan: widgetRowSpanSchema,
   visible: z.boolean(),
   categoryColumn: z.string().optional(),
   metricColumn: z.string().optional(),
