@@ -1089,101 +1089,109 @@ describe('Phase 3 offline hydration, polling, deduplication and progress UI hook
 
   it('polls on mount interval only while mounted and sends full reconcile policy on manual sync', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const setIntervalSpy = vi.spyOn(window, 'setInterval')
 
-    const nowIso = new Date().toISOString()
-    const hydratedReply = reply(
-      'gen-recent',
-      'reader',
-      'hash-recent',
-      'incremental_changes',
-      nowIso,
-    )
-    const space = {
-      ...createDefaultBlankSpace(),
-      workflowNodes: [
-        {
-          id: 'src-poll',
-          positionX: 80,
-          positionY: 80,
-          label: 'Polled Source',
-          subtitle: 'Analytics Reader • Telemetry',
-          badge: 'E • EXTRACT',
-          kind: 'source' as const,
-          connectionId: 'reader',
-          dataSourceName: 'Analytics Reader',
-          datasetId: 'telemetry',
-          ruleSummary: '',
-          sqlPreview: '',
-          upstreamNodeIds: [],
-        },
-      ],
-    }
-
-    calls.hydrateAnalytics.mockResolvedValue({
-      isSuccess: true,
-      statusCode: 200,
-      data: {
-        settings: {
-          workspaceId: 'workspace',
-          pollingIntervalMinutes: 5,
-          startDate: '2026-08-01',
-          endDate: '2026-10-31',
-          spacesJson: JSON.stringify([space]),
-          updatedAt: nowIso,
-        },
-        publications: [
+    try {
+      const nowIso = new Date().toISOString()
+      const hydratedReply = reply(
+        'gen-recent',
+        'reader',
+        'hash-recent',
+        'incremental_changes',
+        nowIso,
+      )
+      const space = {
+        ...createDefaultBlankSpace(),
+        workflowNodes: [
           {
-            publication: hydratedReply.data.publication,
-            syncState: hydratedReply.data.syncState,
+            id: 'src-poll',
+            positionX: 80,
+            positionY: 80,
+            label: 'Polled Source',
+            subtitle: 'Analytics Reader • Telemetry',
+            badge: 'E • EXTRACT',
+            kind: 'source' as const,
+            connectionId: 'reader',
+            dataSourceName: 'Analytics Reader',
+            datasetId: 'telemetry',
+            ruleSummary: '',
+            sqlPreview: '',
+            upstreamNodeIds: [],
           },
         ],
-      },
-    })
+      }
 
-    const { result, unmount } = renderHook(() => useAnalyticsWorkspace())
+      calls.hydrateAnalytics.mockResolvedValue({
+        isSuccess: true,
+        statusCode: 200,
+        data: {
+          settings: {
+            workspaceId: 'workspace',
+            pollingIntervalMinutes: 5,
+            startDate: '2026-08-01',
+            endDate: '2026-10-31',
+            spacesJson: JSON.stringify([space]),
+            updatedAt: nowIso,
+          },
+          publications: [
+            {
+              publication: hydratedReply.data.publication,
+              syncState: hydratedReply.data.syncState,
+            },
+          ],
+        },
+      })
 
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+      const { result, unmount } = renderHook(() => useAnalyticsWorkspace())
 
-    expect(result.current.isHydrated).toBe(true)
-    expect(result.current.syncStatusSummary.hasIncrementalChanges).toBe(true)
-    expect(calls.loadAnalyticsDataset).not.toHaveBeenCalled()
+      await vi.waitFor(() => expect(result.current.isHydrated).toBe(true))
+      await vi.waitFor(() =>
+        expect(setIntervalSpy).toHaveBeenCalledWith(
+          expect.any(Function),
+          5 * 60_000,
+        ),
+      )
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5 * 60_000)
-    })
+      expect(result.current.syncStatusSummary.hasIncrementalChanges).toBe(true)
+      expect(calls.loadAnalyticsDataset).not.toHaveBeenCalled()
 
-    await waitFor(() =>
-      expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(1),
-    )
-    expect(calls.loadAnalyticsDataset).toHaveBeenLastCalledWith({
-      body: expect.objectContaining({
-        connectionInstanceId: 'reader',
-        policy: { mode: 'auto' },
-      }),
-    })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000)
+      })
 
-    await act(async () => {
-      await result.current.handleSyncAllSources()
-    })
+      await vi.waitFor(() =>
+        expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(1),
+      )
+      expect(calls.loadAnalyticsDataset).toHaveBeenLastCalledWith({
+        body: expect.objectContaining({
+          connectionInstanceId: 'reader',
+          policy: { mode: 'auto' },
+        }),
+      })
 
-    expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(2)
-    expect(calls.loadAnalyticsDataset).toHaveBeenLastCalledWith({
-      body: expect.objectContaining({
-        connectionInstanceId: 'reader',
-        policy: { mode: 'full' },
-      }),
-    })
+      await act(async () => {
+        await result.current.handleSyncAllSources()
+      })
 
-    unmount()
+      expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(2)
+      expect(calls.loadAnalyticsDataset).toHaveBeenLastCalledWith({
+        body: expect.objectContaining({
+          connectionInstanceId: 'reader',
+          policy: { mode: 'full' },
+        }),
+      })
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10 * 60_000)
-    })
+      unmount()
 
-    expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(2)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10 * 60_000)
+      })
+
+      expect(calls.loadAnalyticsDataset).toHaveBeenCalledTimes(2)
+    } finally {
+      setIntervalSpy.mockRestore()
+      vi.useRealTimers()
+    }
   })
 
   it('deduplicates shared source selections while separating distinct customDateRange and normalized filters', async () => {
