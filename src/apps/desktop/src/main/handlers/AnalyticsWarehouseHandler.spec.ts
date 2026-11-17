@@ -54,7 +54,7 @@ describe('Analytical warehouse IPC boundary', () => {
       400,
     )
     expect(
-      (await f.handler.query(event, { body: { ...query, limit: 501 } }))
+      (await f.handler.query(event, { body: { ...query, limit: 2001 } }))
         .statusCode,
     ).toBe(400)
     expect(f.service.query).not.toHaveBeenCalled()
