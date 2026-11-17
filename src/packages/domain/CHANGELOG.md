@@ -1,5 +1,14 @@
 # @mr-tick/domain
 
+## 2.0.2
+
+### Patch Changes
+
+- Updated dependencies [b744b04]
+- Updated dependencies [6485090]
+- Updated dependencies [9463fa9]
+  - @mr-tick/shared@1.7.0
+
 ## 2.0.1
 
 ### Patch Changes

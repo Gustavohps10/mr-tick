@@ -1,5 +1,21 @@
 # @mr-tick/adapters
 
+## 1.5.1
+
+### Patch Changes
+
+- Updated dependencies [9463fa9]
+- Updated dependencies [6c421d1]
+- Updated dependencies [b744b04]
+- Updated dependencies [6485090]
+- Updated dependencies [9463fa9]
+- Updated dependencies [9463fa9]
+- Updated dependencies [9463fa9]
+  - @mr-tick/application@2.4.0
+  - @mr-tick/sdk@0.15.0
+  - @mr-tick/shared@1.7.0
+  - @mr-tick/domain@2.0.2
+
 ## 1.5.0
 
 ### Minor Changes
