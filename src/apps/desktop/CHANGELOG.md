@@ -1,5 +1,63 @@
 ﻿# @mr-tick/desktop
 
+## 0.16.0
+
+### Minor Changes
+
+- 9463fa9: Implementa pushdown de filtros agnósticos (`supportedFilters`) em datasets de Analytics, permitindo filtragem server-side direta no provedor para múltiplos usuários, projetos, períodos e atividades, eliminando download massivo de dados in-memory, além de simplificar radicalmente a seleção de datasets na interface para exibir apenas nome canônico em negrito e rota direta (`/rota.json`), expurgando qualquer acoplamento de regra de negócio das labels.
+- 6c421d1: Reconcilia a faixa recente de fontes que permitem releitura por data, preserva o histórico fora dela e mostra o período reconciliado no painel de status.
+- 6485090: Implement Phase 3 analytical synchronization, durable sync state, offline DuckDB hydration, selection coalescing, and batch progress UX while keeping core and UI strictly provider-agnostic.
+
+  - Extend `AnalyticsExtractionDescriptor` and execution contracts (`changes` with explicit `deletions: 'none' | 'explicit'`, `windowRescan: { dateColumn }`, server checkpoints on completed snapshots, and `AnalyticsRefreshPolicy`) and remove legacy `filters.date_range` in favor of explicit `selection: { dateRange, project }` and node `customDateRange`.
+  - Bump canonical DuckDB analytics format to v2 with atomic `analytics_sync_states` and `analytics_workspace_settings`, transactionally promoting `publishWindowMerge` and `publishChangesMerge`, queuing manual `full` reconciliations cleanly behind in-flight fast refreshes, revoking only affected `401`/`403` connections, and preserving remote `aggregate` schemas cleanly without retaining incompatible row descriptors.
+  - Hydrate offline analytics spaces, settings, and publications directly from DuckDB without automatic HTTP calls when manual polling is active, configure polling cadence directly in `AnalyticsTopBar`, deduplicate identical `(connectionId, selectionKey)` loads across workflow nodes/charts, emit throttled `analytics:load-progress` events, and prove `changes` upserts/deletes plus non-blocking personal runtime behavior in unit and Electron E2E tests.
+  - Recheck authorization after offline hydration reads, scope multi-source authorization errors to the rejected connections, and acknowledge serialized settings writes only after success with visible errors and explicit retry.
+
+- 9463fa9: Add analytics batch metadata separating traversal completion from remote snapshot coverage. Validate untrusted analytical queries at IPC and expose explicit next-batch previews, loading state and provider errors. A failed continuation preserves the previous preview for retry; successful navigation replaces the preview rather than accumulating the dataset in the renderer.
+
+  Dataset selection metadata explicitly declares built-in date/project support. The renderer applies only declared selections and keeps catalog/cache ownership scoped to workspace and connection.
+
+  Exercise continuation and scope isolation with the development fixture. Global analytical storage, complete snapshot publication and reconciliation remain subsequent phases.
+
+- 9463fa9: Promote analytics to an independent addon capability with its own contribution, provider, connection resolver and application service. Move analytical methods and types out of personal metadata contracts, require explicit extraction/coverage semantics, and migrate bridge, IPC, UI and the development addon.
+
+  Breaking SDK contract: addons must declare analytics and register IAnalyticsSource through contributions.analytics; IMetadataProvider no longer contains analytical methods. Dataset manifests require extraction descriptors and results require execution metadata. Hosts implement mandatory analytical bridge methods, including filter option discovery. Update addons and hosts together; no legacy adapter is retained.
+
+  Isolate analytical results by source node, workspace, connection and selection, reject superseded asynchronous results, and show unverified coverage explicitly. This phase does not implement analytical storage, background synchronization or reconciliation.
+
+- 9463fa9: Add the desktop analytical warehouse backed by DuckDB, with bounded batch ingestion, atomic publication, authorization and workspace isolation, explicit schema evolution and versioned local queries.
+
+  Run analytical operators and real SQL against complete published generations. Deliver bounded pages to inspection, previews and charts, preserve previous publications after failed refreshes, and validate declared remote aggregation without regrouping arbitrary totals. Remove the renderer's simulated analytical executor and add a remote aggregation development fixture.
+
+  Package the native binding outside ASAR where required and update electron-builder within major 26 to handle platform-specific optional dependencies. Add native runtime regression checks and document representative Redmine extraction, ingestion, query and memory measurements.
+
+### Patch Changes
+
+- b744b04: Surface Analytics DuckDB storage errors in Diagnostics and allow explicit destructive reset with confirmation AlertDialog on both Analytics and Diagnostics screens.
+
+  - Add passive `AnalyticsDiagnosticAdapter` and read-only DuckDB storage inspection (`inspectWorkspaceStorage`) reporting unsupported format versions, corrupt/unreadable files, WAL orphans, invalid persisted spaces, and orphan storage files in `DiagnosticsService` and `RuntimeStatusIndicator`.
+  - Emit `analytics:storage-error` and `analytics:storage-reset` system events from `AnalyticsWarehouseService`, guarding `resetStorage` against active loads (409 `ANALYTICS_RESET_ACTIVE_LOAD`).
+  - Expose `resetAnalyticsStorage` across IPC (`analytics:reset-storage`) and `IHostBridge`, adding explicit destructive reset actions gated by Shadcn `AlertDialog` confirmation in both `Analytics` (`analytics-page.tsx`) and Settings `Dados e Diagnóstico` (`SystemStorageCard`).
+
+- b744b04: Block analytical editing until workspace storage and saved spaces load successfully, expose original hydration error details with explicit retry, and preserve invalid saved state instead of replacing it with a blank canvas. Report incompatible storage file/version details without migrating or deleting databases, and register the missing root desktop debug task.
+- 6c421d1: Compartilha o orçamento preventivo de chamadas e o prazo de espera após HTTP 429 entre clientes da mesma origem, incluindo os fluxos pessoal e analítico.
+- Updated dependencies [6c421d1]
+- Updated dependencies [9463fa9]
+- Updated dependencies [6c421d1]
+- Updated dependencies [6c421d1]
+- Updated dependencies [6c421d1]
+- Updated dependencies [b744b04]
+- Updated dependencies [b744b04]
+- Updated dependencies [6c421d1]
+- Updated dependencies [6485090]
+- Updated dependencies [9463fa9]
+- Updated dependencies [9463fa9]
+- Updated dependencies [9463fa9]
+  - @mr-tick/ui@1.15.0
+  - @mr-tick/application@2.4.0
+  - @mr-tick/shared@1.7.0
+  - @mr-tick/adapters@1.5.1
+
 ## 0.15.0
 
 ### Minor Changes
