@@ -893,7 +893,8 @@ describe('Native widget query contract', () => {
       return hasInternalKey(props.children as ReactNode)
     }
 
-    const latestCall = calls.charts.mock.calls.at(-1)
+    const latestCall =
+      calls.charts.mock.calls[calls.charts.mock.calls.length - 1]
     expect(latestCall).toBeDefined()
 
     if (latestCall) {
@@ -1061,7 +1062,8 @@ describe('Native widget query contract', () => {
       return hasSeriesName(props.children as ReactNode, expectedName)
     }
 
-    const latestCall = calls.charts.mock.calls.at(-1)
+    const latestCall =
+      calls.charts.mock.calls[calls.charts.mock.calls.length - 1]
     expect(latestCall).toBeDefined()
 
     if (latestCall) {

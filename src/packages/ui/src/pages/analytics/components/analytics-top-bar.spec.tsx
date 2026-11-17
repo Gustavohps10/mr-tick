@@ -53,6 +53,8 @@ describe('AnalyticsTopBar', () => {
           hasRollingWindow: false,
           hasIncrementalChanges: false,
           activeProgress: [],
+          strategies: [],
+          coverageReasons: [],
         }}
         hasErrors={false}
         hasCoverageWarning={false}
