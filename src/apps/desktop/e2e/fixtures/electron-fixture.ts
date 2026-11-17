@@ -57,6 +57,7 @@ function cleanTestStorage(userDataPath: string): void {
   cleanDirectoryIfExists(join(userDataPath, 'addons'))
   cleanDirectoryIfExists(join(userDataPath, 'linked-audit-source'))
   cleanDirectoryIfExists(join(userDataPath, 'addon-settings'))
+  rmSync(join(userDataPath, 'analytics'), { recursive: true, force: true })
   const addonSettingsFile = join(userDataPath, 'addon-settings.json')
   if (existsSync(addonSettingsFile)) rmSync(addonSettingsFile)
 

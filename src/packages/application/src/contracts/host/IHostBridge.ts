@@ -17,6 +17,23 @@ import type {
 import type { AddonSettingsView } from '../addons/settings/IAddonSettingsRepository'
 import type { AddonVaultScope } from '../addons/vault/IAddonVaultAPI'
 import type { AddonSettingValue } from '../addons/vault/IAddonVaultAPI'
+import type {
+  AnalyticsHydrateInput,
+  AnalyticsHydrateResult,
+  AnalyticsLoadInput,
+  AnalyticsLoadResult,
+  AnalyticsQueryInput,
+  AnalyticsQueryResult,
+  AnalyticsResetStorageInput,
+  AnalyticsResetStorageResult,
+  AnalyticsWorkspaceState,
+  SaveAnalyticsWorkspaceStateInput,
+} from '../data/providers/IAnalyticsEngine'
+import type {
+  AnalyticsFilterDynamicSource,
+  AnalyticsFilterOption,
+} from '../data/providers/IAnalyticsProvider'
+import type { MappingFieldDefinition } from '../data/providers/IMetadataProvider'
 export type { IHeaders, IJobResult, IRequest } from '@mr-tick/shared/transport'
 export type {
   AddonInstallerViewModel,
@@ -71,8 +88,28 @@ export type {
   CoreTaskPage,
   CoreTaskReference,
 } from '../core/CoreContext'
-import type { MappingFieldDefinition } from '../data/providers/IMetadataProvider'
-export type { MappingFieldDefinition } from '../data/providers/IMetadataProvider'
+import type {
+  AnalyticsDatasetManifest,
+  AnalyticsDatasetQueryInput,
+  AnalyticsDatasetResult,
+} from '../data/providers/IAnalyticsProvider'
+export type {
+  AnalyticsCanonicalEntity,
+  AnalyticsColumnOrigin,
+  AnalyticsColumnSchema,
+  AnalyticsColumnType,
+  AnalyticsColumnUnit,
+  AnalyticsDatasetCellValue,
+  AnalyticsDatasetManifest,
+  AnalyticsDatasetQueryInput,
+  AnalyticsDatasetResult,
+  AnalyticsDatasetRow,
+  AnalyticsFilterDefinition,
+  AnalyticsFilterDynamicSource,
+  AnalyticsFilterOption,
+  AnalyticsFilterType,
+  AnalyticsFilterValue,
+} from '../data/providers/IAnalyticsProvider'
 import type { IDiagnosticsAPI } from '../diagnostics/IDiagnosticsAPI'
 export type { IDiagnosticsAPI } from '../diagnostics/IDiagnosticsAPI'
 import { FileData } from '../infra'
@@ -400,6 +437,21 @@ export interface AddonThemeViewModel {
 }
 
 export interface IAddonsAPI {
+  loadAnalyticsDataset(
+    payload: IRequest<AnalyticsLoadInput>,
+  ): Promise<ViewModel<AnalyticsLoadResult>>
+  queryAnalytics(
+    payload: IRequest<AnalyticsQueryInput>,
+  ): Promise<ViewModel<AnalyticsQueryResult>>
+  hydrateAnalytics(
+    payload: IRequest<AnalyticsHydrateInput>,
+  ): Promise<ViewModel<AnalyticsHydrateResult>>
+  saveAnalyticsWorkspaceState(
+    payload: IRequest<SaveAnalyticsWorkspaceStateInput>,
+  ): Promise<ViewModel<AnalyticsWorkspaceState>>
+  resetAnalyticsStorage(
+    payload: IRequest<AnalyticsResetStorageInput>,
+  ): Promise<ViewModel<AnalyticsResetStorageResult>>
   listAvailable(): Promise<PaginatedViewModel<AddonManifestViewModel[]>>
 
   listInstalled(): Promise<PaginatedViewModel<AddonManifestViewModel[]>>
@@ -476,6 +528,26 @@ export interface IAddonsAPI {
       connectionInstanceId?: string
     }>,
   ): Promise<ViewModel<MappingFieldDefinition[]>>
+  listAnalyticsDatasets(
+    payload: IRequest<{
+      workspaceId: string
+      connectionInstanceId: string
+    }>,
+  ): Promise<ViewModel<AnalyticsDatasetManifest[]>>
+  fetchAnalyticsDataset(
+    payload: IRequest<{
+      workspaceId: string
+      connectionInstanceId: string
+      query: AnalyticsDatasetQueryInput
+    }>,
+  ): Promise<ViewModel<AnalyticsDatasetResult>>
+  getAnalyticsFilterOptions(
+    payload: IRequest<{
+      workspaceId: string
+      connectionInstanceId: string
+      source: AnalyticsFilterDynamicSource
+    }>,
+  ): Promise<ViewModel<AnalyticsFilterOption[]>>
   getSettings(
     payload: IRequest<{ addonId: string; scope: AddonVaultScope }>,
   ): Promise<ViewModel<AddonSettingsView>>

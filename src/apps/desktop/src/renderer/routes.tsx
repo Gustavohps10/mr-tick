@@ -9,6 +9,7 @@ import {
 } from '@mr-tick/ui/layouts'
 import {
   Activities,
+  Analytics,
   Backlog,
   Error,
   Metrics,
@@ -111,6 +112,8 @@ export const router = createHashRouter([
                     ],
                   },
                   { path: 'my-metric', element: <Metrics /> },
+                  { path: 'analytics', element: <Analytics /> },
+                  { path: 'analytics/:pageId', element: <Analytics /> },
                   {
                     path: 'activities',
                     element: <ActivitiesLayout />,

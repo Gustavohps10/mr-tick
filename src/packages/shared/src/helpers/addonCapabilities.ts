@@ -1,9 +1,16 @@
 export type AddonCapability =
-  'auth' | 'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme'
+  | 'auth'
+  | 'dataSource'
+  | 'analytics'
+  | 'watcher'
+  | 'calendar'
+  | 'punch'
+  | 'theme'
 
 export const VALID_ADDON_CAPABILITIES: readonly AddonCapability[] = [
   'auth',
   'dataSource',
+  'analytics',
   'watcher',
   'calendar',
   'punch',
@@ -38,4 +45,10 @@ export function isTheme(
   capabilities: readonly AddonCapability[] | undefined | null,
 ): boolean {
   return hasCapability(capabilities, 'theme')
+}
+
+export function isAnalytics(
+  capabilities: readonly AddonCapability[] | undefined | null,
+): boolean {
+  return hasCapability(capabilities, 'analytics')
 }

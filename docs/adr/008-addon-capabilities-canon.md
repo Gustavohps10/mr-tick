@@ -19,7 +19,7 @@ Historicamente, o ecossistema Mr. Tick utilizava conceitos duplicados e ambíguo
    - A união de capacidades canônicas é definida como:
      ```ts
      export type AddonCapability =
-       'auth' | 'dataSource' | 'watcher' | 'calendar' | 'punch' | 'theme'
+       'auth' | 'dataSource' | 'analytics' | 'watcher' | 'calendar' | 'punch' | 'theme'
      ```
    - A compatibilidade de cada addon com o Core passa a ser regida estritamente por `requiredApiVersion`, dispensando `contractVersion` por item de capacidade.
 
@@ -92,3 +92,7 @@ As provas desta refatoração cobrem registry/lifetime/handler, escopo explícit
 Redmine, Discord e Dracula passaram a consumir `@mr-tick/sdk@^0.12.0` do npm com locks atualizados pelo Yarn e instalações imutáveis verificadas, sem resolução portal/local nesses três repositórios. A migração das contribuições de schema dos dois addons autenticados foi validada novamente contra esse pacote publicado: Redmine 91 testes, Discord 32 e Dracula 1, além de typecheck e build de cada addon. A fixture versionada datasource-fake continua usando o SDK pelo workspace, recompilada com sucesso e com 3 testes de registro aprovados.
 
 A CLI oficial 0.12 gerou os três pacotes em diretórios temporários; o manifesto dentro de cada arquivo `.tladdon` foi conferido com API mínima `>=0.12.0`, e os três manifestos passaram em `mr-tick validate`. Metadados das versões já publicadas permanecem preservados nos repositórios; as pipelines regeneram os manifestos das novas versões após os changesets minor. Esta rodada não executou autenticação OAuth real, a matriz Docker Redmine nem nova jornada Electron; não substitui essas provas por builds ou validação de manifesto.
+
+## Analytics como capacidade independente
+
+Analytics registra IAnalyticsSource por contributions.analytics. A resolução usa a conexão autenticada diretamente e possui binding/lifecycle próprios. IMetadataProvider e GetMappingFieldsService deixam de transportar datasets analíticos. A UI seleciona conexões com analytics e pede opções de filtros ao provider, sem IDs ou condições específicos de Redmine. Consulte [contratos e limites da Fase 0](../sdk-analytics.md).

@@ -1,4 +1,5 @@
 export * from './AddonConfig'
+export * from './analytics'
 export * from './contracts'
 export {
   type DataSourceContext,

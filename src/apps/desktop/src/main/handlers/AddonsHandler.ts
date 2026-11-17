@@ -12,9 +12,16 @@ import type {
 } from '@mr-tick/application'
 import {
   AddonManifest,
+  ANALYTICS_FILTER_DYNAMIC_SOURCES,
+  type AnalyticsDatasetManifest,
+  type AnalyticsDatasetQueryInput,
+  type AnalyticsDatasetResult,
+  AnalyticsFilterDynamicSource,
+  AnalyticsFilterOption,
   FileData,
   IAddonConnectionProfilesResolver,
   IAddonsFacade,
+  IAnalyticsUseCase,
   IGetMappingFieldsUseCase,
   IImportAddonUseCase,
   IUpdateAddonUseCase,
@@ -29,7 +36,10 @@ import {
   type SidebarMenuItem,
   type TimerbarMenuItem,
 } from '@mr-tick/sdk'
-import { createResponseViewModel } from '@mr-tick/shared/helpers'
+import {
+  createResponseViewModel,
+  isNonEmptyString,
+} from '@mr-tick/shared/helpers'
 import {
   IEventEmitter,
   IJobEvents,
@@ -51,6 +61,8 @@ import { IpcChannels } from '@/main/IpcChannels'
 import { AddonLoader } from '@/main/services/addons/loader/AddonLoader'
 import { getSettings, saveSettings } from '@/main/settings'
 
+import { analyticsDatasetQuerySchema } from '../validation/analyticsQuery'
+
 export class AddonsHandler implements HandlerBase<AddonsHandler> {
   private readonly updatingAddonIds = new Set<string>()
   constructor(
@@ -61,6 +73,7 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
     private readonly getMappingFieldsService: IGetMappingFieldsUseCase,
     private readonly addonLoader: AddonLoader,
     private readonly profilesResolver: IAddonConnectionProfilesResolver,
+    private readonly analyticsService: IAnalyticsUseCase,
   ) {}
 
   public async getSidebarMenus(): Promise<ViewModel<SidebarMenuItem[]>> {
@@ -290,6 +303,110 @@ export class AddonsHandler implements HandlerBase<AddonsHandler> {
       workspaceId: body.workspaceId,
       connectionInstanceId: body.connectionInstanceId,
     })
+    return createResponseViewModel(result)
+  }
+
+  public async listAnalyticsDatasets(
+    event: IpcMainInvokeEvent,
+    {
+      body,
+    }: IRequest<{
+      workspaceId: string
+      connectionInstanceId: string
+    }>,
+  ): Promise<ViewModel<AnalyticsDatasetManifest[]>> {
+    if (
+      !event ||
+      !isNonEmptyString(body?.workspaceId) ||
+      !isNonEmptyString(body?.connectionInstanceId)
+    ) {
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'CONNECTION_SCOPE_REQUIRED',
+      }
+    }
+
+    const result = await this.analyticsService.listAnalyticsDatasets({
+      workspaceId: body.workspaceId,
+      connectionInstanceId: body.connectionInstanceId,
+    })
+    return createResponseViewModel(result)
+  }
+
+  public async fetchAnalyticsDataset(
+    event: IpcMainInvokeEvent,
+    {
+      body,
+    }: IRequest<{
+      workspaceId: string
+      connectionInstanceId: string
+      query: AnalyticsDatasetQueryInput
+    }>,
+  ): Promise<ViewModel<AnalyticsDatasetResult>> {
+    if (
+      !event ||
+      !isNonEmptyString(body?.workspaceId) ||
+      !isNonEmptyString(body?.connectionInstanceId)
+    ) {
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'CONNECTION_SCOPE_REQUIRED',
+      }
+    }
+
+    if (!body.query || !isNonEmptyString(body.query.datasetId)) {
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'DATASET_ID_REQUIRED',
+      }
+    }
+
+    const query = analyticsDatasetQuerySchema.safeParse(body.query)
+    if (!query.success)
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'ANALYTICS_QUERY_INVALID',
+      }
+
+    const result = await this.analyticsService.fetchAnalyticsDataset({
+      workspaceId: body.workspaceId,
+      connectionInstanceId: body.connectionInstanceId,
+      query: query.data,
+    })
+    return createResponseViewModel(result)
+  }
+
+  public async getAnalyticsFilterOptions(
+    event: IpcMainInvokeEvent,
+    {
+      body,
+    }: IRequest<{
+      workspaceId: string
+      connectionInstanceId: string
+      source: AnalyticsFilterDynamicSource
+    }>,
+  ): Promise<ViewModel<AnalyticsFilterOption[]>> {
+    if (
+      !event ||
+      !isNonEmptyString(body?.workspaceId) ||
+      !isNonEmptyString(body?.connectionInstanceId)
+    )
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'CONNECTION_SCOPE_REQUIRED',
+      }
+    if (!ANALYTICS_FILTER_DYNAMIC_SOURCES.includes(body.source))
+      return {
+        isSuccess: false,
+        statusCode: 400,
+        error: 'ANALYTICS_FILTER_SOURCE_INVALID',
+      }
+    const result = await this.analyticsService.getFilterOptions(body)
     return createResponseViewModel(result)
   }
 

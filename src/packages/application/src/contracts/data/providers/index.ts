@@ -1,3 +1,5 @@
+export * from './IAnalyticsEngine'
+export * from './IAnalyticsProvider'
 export * from './IMemberProvider'
 export * from './IMetadataProvider'
 export * from './ITaskProvider'

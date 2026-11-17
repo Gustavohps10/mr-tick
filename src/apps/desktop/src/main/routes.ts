@@ -12,6 +12,7 @@ import { isBoolean } from '@mr-tick/shared/helpers'
 import { IRequest } from '@mr-tick/shared/transport'
 import type { ViewModel } from '@mr-tick/shared/view-models'
 import { app, BrowserWindow, screen } from 'electron'
+import { z } from 'zod'
 
 import { NativeOverlay } from '@/main'
 import { IpcHandler } from '@/main/adapters/IpcHandler'
@@ -25,6 +26,7 @@ import {
   UpdaterHandler,
 } from '@/main/handlers'
 import { AddonsHandler } from '@/main/handlers/AddonsHandler'
+import { AnalyticsWarehouseHandler } from '@/main/handlers/AnalyticsWarehouseHandler'
 import { MetadataHandler } from '@/main/handlers/MetadataHandler'
 import { WorkspacesHandler } from '@/main/handlers/WorkspacesHandler'
 import { getSettings, saveSettings } from '@/main/settings'
@@ -58,6 +60,10 @@ export function openIpcRoutes(
   const timeEntriesHandler =
     serviceProvider.resolve<TimeEntriesHandler>('timeEntriesHandler')
   const addonsHandler = serviceProvider.resolve<AddonsHandler>('addonsHandler')
+  const analyticsWarehouseHandler =
+    serviceProvider.resolve<AnalyticsWarehouseHandler>(
+      'analyticsWarehouseHandler',
+    )
   const licensingHandler =
     serviceProvider.resolve<LicensingHandler>('licensingHandler')
   const dataSourceResolver =
@@ -136,6 +142,39 @@ export function openIpcRoutes(
         })
       }
       return diagnosticsHandler.openDataDirectory()
+    },
+  )
+
+  const removeOrphanSchema = z.object({
+    body: z.object({ hash: z.string().min(1) }),
+  })
+
+  IpcHandler.register(
+    'DIAGNOSTICS_REMOVE_ORPHAN_ANALYTICS_STORAGE',
+    (
+      event,
+      payload,
+    ): Promise<ViewModel<{ hash: string; removed: boolean }>> => {
+      if (!isAuthorizedDiagnosticsClient(event)) {
+        return Promise.resolve({
+          isSuccess: false,
+          statusCode: 403,
+          error: 'UNAUTHORIZED_DIAGNOSTICS_CLIENT',
+        })
+      }
+
+      const parsed = removeOrphanSchema.safeParse(payload)
+      if (!parsed.success) {
+        return Promise.resolve({
+          isSuccess: false,
+          statusCode: 400,
+          error: 'ANALYTICS_ORPHAN_HASH_INVALID',
+        })
+      }
+
+      return diagnosticsHandler.removeOrphanAnalyticsStorage(
+        parsed.data.body.hash,
+      )
     },
   )
 
@@ -289,6 +328,30 @@ export function openIpcRoutes(
   )
   IpcHandler.register('ADDON_GET_MAPPING_FIELDS', (e, req) =>
     addonsHandler.getMappingFields(e, req),
+  )
+  IpcHandler.register('ADDON_LIST_ANALYTICS_DATASETS', (e, req) =>
+    addonsHandler.listAnalyticsDatasets(e, req),
+  )
+  IpcHandler.register('ADDON_GET_ANALYTICS_FILTER_OPTIONS', (e, req) =>
+    addonsHandler.getAnalyticsFilterOptions(e, req),
+  )
+  IpcHandler.register('ADDON_FETCH_ANALYTICS_DATASET', (e, req) =>
+    addonsHandler.fetchAnalyticsDataset(e, req),
+  )
+  IpcHandler.register('ANALYTICS_LOAD_DATASET', (event, request) =>
+    analyticsWarehouseHandler.load(event, request),
+  )
+  IpcHandler.register('ANALYTICS_QUERY', (event, request) =>
+    analyticsWarehouseHandler.query(event, request),
+  )
+  IpcHandler.register('ANALYTICS_HYDRATE', (event, request) =>
+    analyticsWarehouseHandler.hydrate(event, request),
+  )
+  IpcHandler.register('ANALYTICS_SAVE_WORKSPACE_STATE', (event, request) =>
+    analyticsWarehouseHandler.saveWorkspaceState(event, request),
+  )
+  IpcHandler.register('ANALYTICS_RESET_STORAGE', (event, request) =>
+    analyticsWarehouseHandler.resetStorage(event, request),
   )
   IpcHandler.register('ADDON_GET_SETTINGS', (e, req) =>
     addonsHandler.getSettings(e, req),

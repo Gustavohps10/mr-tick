@@ -7,4 +7,8 @@ export const diagnosticsInvoker: IDiagnosticsAPI = {
   runChecks: () => IpcInvoker.invoke('DIAGNOSTICS_RUN_CHECKS'),
   generateReport: () => IpcInvoker.invoke('DIAGNOSTICS_GENERATE_REPORT'),
   openDataDirectory: () => IpcInvoker.invoke('DIAGNOSTICS_OPEN_DATA_DIRECTORY'),
+  removeOrphanAnalyticsStorage: (hash: string) =>
+    IpcInvoker.invoke('DIAGNOSTICS_REMOVE_ORPHAN_ANALYTICS_STORAGE', {
+      body: { hash },
+    }),
 }

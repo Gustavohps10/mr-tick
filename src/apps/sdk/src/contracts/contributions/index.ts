@@ -1,3 +1,4 @@
+export * from './analytics'
 export * from './commands'
 export * from './connections'
 export * from './data-sources'

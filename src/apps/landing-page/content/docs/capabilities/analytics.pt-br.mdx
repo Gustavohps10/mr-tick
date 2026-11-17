@@ -1,0 +1,67 @@
+---
+title: Analytics
+description: Ofereça datasets independentemente da sincronização pessoal.
+icon: ChartNoAxesCombined
+---
+
+Declare `analytics` no manifesto e registre um `IAnalyticsSource` por `contributions.analytics`. Para conectar contas externas, declare também `auth` e registre os perfis/autenticadores conforme [autenticação](/pt-br/docs/capabilities/auth). Não é necessário oferecer `dataSource`.
+
+Cada conexão autorizada recebe contexto próprio com identidade, credenciais, configuração e cliente HTTP. O host controla o registro e o ciclo de vida dos bindings. Trate o `Either` retornado pelo registro e desregistre na desativação quando necessário.
+
+O provider oferece datasets e opções dinâmicas de filtros. Declara modos de extração, identidade nativa por linha ou identidade de escopo, cobertura e continuidade. A ausência de pedido de execução significa o snapshot inicial. Rejeite pedidos não suportados. Dados parciais ou não verificados não podem ser declarados completos, nem permitir inferir exclusões a partir de uma página incompleta. Mudanças e agregação remota têm contratos explícitos; seu suporte depende do addon.
+
+O exemplo oferece um dataset pequeno em memória. Providers externos devem validar os pedidos e implementar somente os modos/filtros que anunciam.
+
+```ts
+import {
+  type AddonContext,
+  type AnalyticsDatasetManifest,
+  type IAnalyticsSource,
+  createAnalyticsDatasetScope,
+  Either,
+} from '@mr-tick/sdk'
+
+const dataset: AnalyticsDatasetManifest = {
+  id: 'readings',
+  name: 'Readings',
+  description: 'An in-memory example',
+  sourceFormat: 'json',
+  endpoint: '/readings',
+  extraction: { modes: ['snapshot'], identity: { kind: 'row', columns: ['id'] } },
+  columns: [{ name: 'id', label: 'ID', type: 'string' }],
+}
+
+const source: IAnalyticsSource = {
+  createInstance: () => ({
+    listAnalyticsDatasets: async () => Either.success([dataset]),
+    getFilterOptions: async () => Either.success([]),
+    fetchAnalyticsDataset: async (input) => Either.success({
+      dataset,
+      rows: [{ id: 'reading-1' }],
+      fetchedAt: new Date().toISOString(),
+      execution: {
+        kind: 'snapshot',
+        coverage: 'complete',
+        scope: createAnalyticsDatasetScope(input),
+      },
+    }),
+  }),
+}
+
+export function registerAnalytics(context: AddonContext) {
+  return context.contributions.analytics.register(source)
+}
+```
+
+Páginas de snapshot podem incluir `batch: { index, offset, finished, totalRows }`, continuação e motivo de cobertura. Siga a continuação mantendo escopo e tamanho do lote. `finished` descreve o percurso, sem garantir consistência do snapshot: leituras Redmine com várias páginas permanecem não verificadas. Uma página de prévia nunca representa o total global, mesmo quando encerra o percurso. Falhas não avançam o cursor.
+
+Declare `selection: { dateRange, project }` para suportar os parâmetros comuns de período/projeto. Omissão significa não suportados; o host envia somente as seleções declaradas, e filtros próprios do provedor mantêm seus identificadores.
+
+Redmine usa páginas JSON limitadas e IDs nativos. A descoberta Atom continua sendo um feed limitado. O desktop ingere os lotes em gerações DuckDB e publica a seleção atomicamente ao concluir o percurso. Gráficos consultam o conjunto publicado completo; a interface recebe páginas locais. Falhas preservam a publicação anterior, e a cobertura não verificada continua explícita.
+
+Declare `extraction.changes: { deletions: 'none' | 'explicit' }` junto ao modo `changes` para atualização por checkpoint, ou `extraction.windowRescan: { dateColumn }` para releitura de uma subjanela por data. O checkpoint só avança com a publicação atômica. Deltas sem tombstones não removem registros por ausência. Tarefas Redmine usam `updated_on`; apontamentos usam uma subjanela de `spent_on`, pois sua API ignora `updated_on`.
+
+O Analytics restaura espaços e publicações locais ao reabrir. A frequência padrão é de cinco minutos enquanto a tela está aberta, com opção manual; a reconciliação completa ocorre quando devida após seis horas ou pelo botão Sincronizar. Atualizações mantêm os gráficos visíveis e exibem progresso por lote. Exclusões e alterações antigas sem feed dependem da reconciliação completa; não há garantia de tempo real remoto.
+
+
+Para agregação remota, declare também `extraction.aggregation` com dimensões, operadores aceitos e `postProcessing: 'projection-only'`. O host valida a projeção das medidas e a conclusão da carga. Totais remotos permitem projeção e filtro local; não são reagrupados como registros brutos. O Redmine não anuncia esse modo.

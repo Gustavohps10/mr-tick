@@ -185,6 +185,11 @@ const mockBridgeClient: IHostBridge = {
       statusCode: 501,
       error: 'DIAGNOSTICS_NOT_SUPPORTED_IN_WEB_DEMO',
     }),
+    removeOrphanAnalyticsStorage: async () => ({
+      isSuccess: false,
+      statusCode: 501,
+      error: 'DIAGNOSTICS_NOT_SUPPORTED_IN_WEB_DEMO',
+    }),
   },
   workspaces: {
     getById: async () => mockSuccess(mockWorkspace),
@@ -233,6 +238,32 @@ const mockBridgeClient: IHostBridge = {
         },
       ]),
     getMappingFields: async () => mockSuccess([]),
+    listAnalyticsDatasets: async () => mockSuccess([]),
+    loadAnalyticsDataset: async () => ({
+      isSuccess: false,
+      statusCode: 404,
+      error: 'ANALYTICS_PROVIDER_NOT_AVAILABLE',
+    }),
+    queryAnalytics: async () => ({
+      isSuccess: false,
+      statusCode: 404,
+      error: 'ANALYTICS_PUBLICATION_NOT_AVAILABLE',
+    }),
+    getAnalyticsFilterOptions: async () => mockSuccess([]),
+    hydrateAnalytics: async () => mockSuccess({ publications: [] }),
+    saveAnalyticsWorkspaceState: async () =>
+      mockSuccess({
+        workspaceId: 'mock-workspace',
+        pollingIntervalMinutes: 5,
+        updatedAt: '2026-11-10T00:00:00Z',
+      }),
+    resetAnalyticsStorage: async () =>
+      mockSuccess({ workspaceId: 'mock-workspace', removed: false }),
+    fetchAnalyticsDataset: async () => ({
+      isSuccess: false,
+      statusCode: 404,
+      error: 'ANALYTICS_PROVIDER_NOT_AVAILABLE',
+    }),
     getSettings: async () =>
       mockSuccess({
         schemaVersion: 1,

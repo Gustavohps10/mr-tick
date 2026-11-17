@@ -15,6 +15,7 @@ import {
   Scale,
   Timer,
   User,
+  Workflow,
 } from 'lucide-react'
 import * as React from 'react'
 import { useEffect, useState } from 'react'
@@ -41,6 +42,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   useSidebar,
 } from '@/components/ui/sidebar'
 import {
@@ -73,6 +77,12 @@ const personalItems: NavItem[] = [
     title: 'Métricas',
     path: 'my-metric',
     icon: ChartColumnBig,
+  },
+  {
+    title: 'Analytics',
+    path: 'analytics',
+    icon: Workflow,
+    isPro: false,
   },
   {
     title: 'Minhas Tarefas',
@@ -579,12 +589,12 @@ function SidebarAddonSection({
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <div className="mt-0.5 flex flex-col space-y-0.5">
+                    <SidebarMenuSub>
                       {menu.children?.map((sub) => {
                         const SubIcon = resolveIcon(sub.icon)
                         return (
-                          <SidebarMenuItem key={sub.id} className="ml-2">
-                            <SidebarMenuButton asChild>
+                          <SidebarMenuSubItem key={sub.id}>
+                            <SidebarMenuSubButton asChild>
                               <NavLink
                                 to={{
                                   pathname: `/workspaces/${workspaceId}${sub.href}`,
@@ -602,11 +612,11 @@ function SidebarAddonSection({
                                 <SubIcon className="size-3.5 opacity-60" />
                                 <span>{sub.label}</span>
                               </NavLink>
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
                         )
                       })}
-                    </div>
+                    </SidebarMenuSub>
                   </CollapsibleContent>
                 </SidebarMenuItem>
               </Collapsible>

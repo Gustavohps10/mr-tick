@@ -226,7 +226,43 @@ export class NodeFetchTransport implements IFetchTransport {
   }
 }
 
+interface OriginRateLimit {
+  until: number
+  attempts: number
+}
+
+interface PacingWaiter {
+  resolve: () => void
+  reject: (error: Error) => void
+  signal: AbortSignal
+  onAbort: () => void
+}
+
+interface OriginPacingState {
+  nextSlot: number
+  manualWaiters: PacingWaiter[]
+  backgroundWaiters: PacingWaiter[]
+  consecutiveManualServed: number
+  timer: ReturnType<typeof setTimeout> | undefined
+}
+
+const REQUEST_SPACING_MS = 250
+const BURST_ALLOWANCE_MS = REQUEST_SPACING_MS * 4
+const MAX_SLOT_WAIT_MS = 5000
+const MAX_CONSECUTIVE_MANUAL_DISPATCHES = 3
+const requestPacingByTransport = new WeakMap<
+  IFetchTransport,
+  Map<string, OriginPacingState>
+>()
+
+const rateLimitsByTransport = new WeakMap<
+  IFetchTransport,
+  Map<string, OriginRateLimit>
+>()
+
 export class ElectronHttpClient implements IHttpClient {
+  private readonly originPacing: Map<string, OriginPacingState>
+  private readonly originRateLimits: Map<string, OriginRateLimit>
   private readonly baseURL: string
   private readonly defaultParams: Record<string, string>
   private readonly defaultHeaders: Record<string, string>
@@ -241,6 +277,14 @@ export class ElectronHttpClient implements IHttpClient {
     config: IHttpClientConfig,
     private readonly transport: IFetchTransport,
   ) {
+    const originRateLimits = rateLimitsByTransport.get(transport)
+    this.originRateLimits = new Map()
+    if (originRateLimits !== undefined) this.originRateLimits = originRateLimits
+    rateLimitsByTransport.set(transport, this.originRateLimits)
+    const requestPacing = requestPacingByTransport.get(transport)
+    this.originPacing = new Map()
+    if (requestPacing !== undefined) this.originPacing = requestPacing
+    requestPacingByTransport.set(transport, this.originPacing)
     let baseURL = ''
     if (config.baseURL) {
       baseURL = config.baseURL.replace(/\/+$/, '')
@@ -579,6 +623,161 @@ export class ElectronHttpClient implements IHttpClient {
     return this.transport.fetch(url, options)
   }
 
+  private getOrCreatePacingState(
+    origin: string,
+    now: number,
+  ): OriginPacingState {
+    const existing = this.originPacing.get(origin)
+    if (existing !== undefined) return existing
+
+    const created: OriginPacingState = {
+      nextSlot: now - BURST_ALLOWANCE_MS,
+      manualWaiters: [],
+      backgroundWaiters: [],
+      consecutiveManualServed: 0,
+      timer: undefined,
+    }
+    this.originPacing.set(origin, created)
+    return created
+  }
+
+  private scheduleOriginDrain(state: OriginPacingState): void {
+    if (state.timer !== undefined) return
+    if (
+      state.manualWaiters.length === 0 &&
+      state.backgroundWaiters.length === 0
+    )
+      return
+
+    const now = Date.now()
+    const slot = Math.max(state.nextSlot, now - BURST_ALLOWANCE_MS)
+    const delay = Math.max(0, slot - now)
+
+    state.timer = setTimeout(() => {
+      state.timer = undefined
+      this.drainOriginWaiter(state)
+    }, delay)
+  }
+
+  private drainOriginWaiter(state: OriginPacingState): void {
+    let waiter: PacingWaiter | undefined
+
+    if (
+      state.manualWaiters.length > 0 &&
+      (state.consecutiveManualServed < MAX_CONSECUTIVE_MANUAL_DISPATCHES ||
+        state.backgroundWaiters.length === 0)
+    ) {
+      waiter = state.manualWaiters.shift()
+      if (waiter !== undefined) state.consecutiveManualServed += 1
+    }
+
+    if (waiter === undefined && state.backgroundWaiters.length > 0) {
+      waiter = state.backgroundWaiters.shift()
+      if (waiter !== undefined) state.consecutiveManualServed = 0
+    }
+
+    if (waiter !== undefined) {
+      const now = Date.now()
+      const slot = Math.max(state.nextSlot, now - BURST_ALLOWANCE_MS)
+      state.nextSlot = slot + REQUEST_SPACING_MS
+      waiter.signal.removeEventListener('abort', waiter.onAbort)
+      waiter.resolve()
+    }
+
+    this.scheduleOriginDrain(state)
+  }
+
+  private tryAcquireOriginSlotSync(
+    origin: string,
+    now: number,
+  ): Either<AppError, void> | undefined {
+    const rateLimit = this.originRateLimits.get(origin)
+    if (rateLimit !== undefined && now < rateLimit.until)
+      return Either.failure(
+        AppError.Http(429, 'HTTP_RATE_LIMIT_DEFERRED', {
+          retryAfter: [String(Math.ceil((rateLimit.until - now) / 1000))],
+        }),
+      )
+
+    const state = this.getOrCreatePacingState(origin, now)
+    const hasQueuedWaiters =
+      state.manualWaiters.length > 0 ||
+      state.backgroundWaiters.length > 0 ||
+      state.timer !== undefined
+
+    if (!hasQueuedWaiters) {
+      const slot = Math.max(state.nextSlot, now - BURST_ALLOWANCE_MS)
+
+      if (slot <= now) {
+        state.nextSlot = slot + REQUEST_SPACING_MS
+        return Either.success(undefined)
+      }
+    }
+
+    return undefined
+  }
+
+  private async waitForOriginSlot(
+    origin: string,
+    priority: 'manual' | 'background',
+    signal: AbortSignal,
+  ): Promise<Either<AppError, void>> {
+    const now = Date.now()
+    const state = this.getOrCreatePacingState(origin, now)
+
+    let queuedAhead =
+      state.manualWaiters.length + state.backgroundWaiters.length
+    if (priority === 'manual') queuedAhead = state.manualWaiters.length
+
+    const baseDelay = Math.max(0, state.nextSlot - now)
+    const estimatedWaitMs = baseDelay + queuedAhead * REQUEST_SPACING_MS
+
+    if (estimatedWaitMs > MAX_SLOT_WAIT_MS)
+      return Either.failure(
+        AppError.Http(429, 'HTTP_REQUEST_BUDGET_LIMIT', {
+          retryAfter: [String(Math.ceil(estimatedWaitMs / 1000))],
+        }),
+      )
+
+    await new Promise<void>((resolve, reject) => {
+      let targetQueue = state.backgroundWaiters
+      if (priority === 'manual') targetQueue = state.manualWaiters
+
+      const waiter: PacingWaiter = {
+        resolve,
+        reject,
+        signal,
+        onAbort: () => {
+          const index = targetQueue.indexOf(waiter)
+          if (index >= 0) targetQueue.splice(index, 1)
+          reject(new Error('HTTP_REQUEST_ABORTED'))
+        },
+      }
+
+      if (signal.aborted) {
+        reject(new Error('HTTP_REQUEST_ABORTED'))
+        return
+      }
+
+      signal.addEventListener('abort', waiter.onAbort, { once: true })
+      targetQueue.push(waiter)
+      this.scheduleOriginDrain(state)
+    })
+
+    const resumedAt = Date.now()
+    const updatedLimit = this.originRateLimits.get(origin)
+    if (updatedLimit !== undefined && resumedAt < updatedLimit.until)
+      return Either.failure(
+        AppError.Http(429, 'HTTP_RATE_LIMIT_DEFERRED', {
+          retryAfter: [
+            String(Math.ceil((updatedLimit.until - resumedAt) / 1000)),
+          ],
+        }),
+      )
+
+    return Either.success(undefined)
+  }
+
   private async request<T extends JsonValue>(
     method: string,
     url: string,
@@ -632,6 +831,25 @@ export class ElectronHttpClient implements IHttpClient {
       let response: Response | null = null
 
       while (true) {
+        const origin = new URL(currentUrl).origin
+        let priority: 'manual' | 'background' = 'background'
+        if (config.priority === 'manual') priority = 'manual'
+
+        const immediateSlot = this.tryAcquireOriginSlotSync(origin, Date.now())
+        if (immediateSlot !== undefined && immediateSlot.isFailure())
+          return immediateSlot.forwardFailure()
+
+        if (immediateSlot === undefined) {
+          const waited = await this.waitForOriginSlot(
+            origin,
+            priority,
+            controller.signal,
+          )
+          if (waited.isFailure()) return waited.forwardFailure()
+        }
+
+        const rateLimit = this.originRateLimits.get(origin)
+
         const currentResponse = await this.executeFetch(currentUrl, {
           method: currentMethod,
           headers: currentHeaders,
@@ -640,6 +858,34 @@ export class ElectronHttpClient implements IHttpClient {
           redirect: 'manual',
           credentials: 'omit',
         })
+
+        if (currentResponse.status === 429) {
+          const receivedAt = Date.now()
+          const previous = this.originRateLimits.get(origin)
+          let attempts = 0
+          if (previous !== undefined && receivedAt - previous.until < 60_000)
+            attempts = Math.min(previous.attempts + 1, 6)
+
+          const header = currentResponse.headers.get('retry-after')?.trim()
+          let until = receivedAt + Math.min(60_000, 1000 * 2 ** attempts)
+          if (header !== undefined && /^\d+$/.test(header)) {
+            const secondsDeadline = receivedAt + Number(header) * 1000
+            if (Number.isSafeInteger(secondsDeadline)) until = secondsDeadline
+          }
+          if (header !== undefined && !/^\d+$/.test(header)) {
+            const date = Date.parse(header)
+            if (Number.isFinite(date)) until = Math.max(receivedAt, date)
+          }
+          if (previous !== undefined) until = Math.max(until, previous.until)
+          this.originRateLimits.set(origin, { until, attempts })
+        }
+
+        if (
+          currentResponse.ok &&
+          rateLimit !== undefined &&
+          this.originRateLimits.get(origin) === rateLimit
+        )
+          this.originRateLimits.delete(origin)
 
         const isRedirect =
           currentResponse.status === 301 ||

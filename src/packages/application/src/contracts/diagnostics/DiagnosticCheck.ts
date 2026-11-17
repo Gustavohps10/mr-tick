@@ -1,7 +1,9 @@
+import type { FieldErrors } from '@mr-tick/shared/helpers'
+
 import type { DiagnosticScope } from './DiagnosticScope'
 
 export type DiagnosticCheckSource =
-  'main' | 'metadata' | 'executor' | 'sync' | 'ui'
+  'main' | 'metadata' | 'executor' | 'sync' | 'ui' | 'analytics'
 
 interface DiagnosticCheckBase {
   id: string
@@ -22,4 +24,5 @@ export type DiagnosticCheckResult =
   | (DiagnosticCheckBase & {
       status: 'fail' | 'unavailable' | 'not-run' | 'not-supported'
       reason: string
+      details?: FieldErrors
     })

@@ -24,6 +24,7 @@ extraResources:
     to: native-prebuilds/better_sqlite3_electron.node
 asarUnpack:
   - resources/**
+  - node_modules/@duckdb/node-bindings*/**
 protocols:
   name: Mr-tick Auth Protocol
   schemes:

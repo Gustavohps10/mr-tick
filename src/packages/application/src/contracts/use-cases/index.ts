@@ -1,4 +1,5 @@
 export * from './IAddonAccessService'
+export * from './IAnalyticsUseCase'
 export * from './IConnectAddonConnectionUseCase'
 export * from './ICreateWorkspaceUseCase'
 export * from './IDeleteWorkspaceUseCase'

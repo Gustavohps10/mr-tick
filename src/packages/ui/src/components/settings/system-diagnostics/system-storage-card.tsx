@@ -7,10 +7,26 @@ import type {
 import { Database, HardDrive } from 'lucide-react'
 import React from 'react'
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
+import { Button, buttonVariants } from '@/components/ui/button'
 
 interface SystemStorageCardProps {
   storages: DiagnosticStorageItem[]
+  resettingWorkspaceId: string | null
+  removingOrphanHash?: string | null
+  onResetStorage: (workspaceId: string) => void
+  onRemoveOrphanStorage?: (hash: string) => void
 }
 
 function formatBytes(bytes: number): string {
@@ -28,6 +44,8 @@ function formatRole(role: DiagnosticStorageRole): string {
       return 'Metadados Globais'
     case 'operational':
       return 'Dados Operacionais'
+    case 'analytics':
+      return 'Analytics'
     case 'browser':
       return 'Origem / Navegador'
     default:
@@ -88,6 +106,39 @@ function renderMeasurement(measurement: DiagnosticStorageAvailability) {
     )
   }
 
+  if (measurement.status === 'error') {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <Badge
+          data-testid="storage-error-badge"
+          variant="destructive"
+          className="text-[10px]"
+        >
+          Erro
+        </Badge>
+        <span
+          data-testid="storage-error-reason"
+          className="text-destructive text-right text-[10px] font-medium"
+        >
+          {measurement.reason}
+        </span>
+        {measurement.details !== undefined && (
+          <div
+            data-testid="storage-error-details"
+            className="text-muted-foreground max-w-xs space-y-0.5 text-right font-mono text-[10px] break-all"
+          >
+            {Object.entries(measurement.details).map(([field, messages]) => (
+              <div key={field}>
+                <span className="font-medium">{field}:</span>{' '}
+                <span>{messages.join(', ')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col items-end gap-1">
       <Badge
@@ -109,7 +160,73 @@ function renderMeasurement(measurement: DiagnosticStorageAvailability) {
   )
 }
 
-export function SystemStorageCard({ storages }: SystemStorageCardProps) {
+function ConfirmDestructiveStorageAction({
+  itemId,
+  triggerLabel,
+  busyLabel,
+  dialogTitle,
+  dialogDescription,
+  confirmLabel,
+  isBusy,
+  onConfirm,
+}: {
+  itemId: string
+  triggerLabel: string
+  busyLabel: string
+  dialogTitle: string
+  dialogDescription: string
+  confirmLabel: string
+  isBusy: boolean
+  onConfirm: () => void
+}) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          type="button"
+          size="sm"
+          variant="destructive"
+          data-testid={`reset-storage-${itemId}`}
+          disabled={isBusy}
+          className="h-7 px-2.5 text-[11px]"
+        >
+          {isBusy && busyLabel}
+          {!isBusy && triggerLabel}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent data-testid={`reset-storage-dialog-${itemId}`}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>
+          <AlertDialogDescription>{dialogDescription}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            data-testid={`cancel-reset-storage-${itemId}`}
+            disabled={isBusy}
+          >
+            Cancelar
+          </AlertDialogCancel>
+          <AlertDialogAction
+            data-testid={`confirm-reset-storage-${itemId}`}
+            className={buttonVariants({ variant: 'destructive' })}
+            disabled={isBusy}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+export function SystemStorageCard({
+  storages,
+  resettingWorkspaceId,
+  removingOrphanHash = null,
+  onResetStorage,
+  onRemoveOrphanStorage,
+}: SystemStorageCardProps) {
   return (
     <div
       data-testid="system-storage-card"
@@ -143,7 +260,7 @@ export function SystemStorageCard({ storages }: SystemStorageCardProps) {
             <div
               key={item.id}
               data-testid={`storage-item-${item.id}`}
-              className="flex flex-wrap items-center justify-between gap-3 p-3"
+              className="flex flex-wrap items-start justify-between gap-3 p-3"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -172,8 +289,40 @@ export function SystemStorageCard({ storages }: SystemStorageCardProps) {
                 </div>
               </div>
 
-              <div className="shrink-0">
+              <div className="flex shrink-0 flex-col items-end gap-2">
                 {renderMeasurement(item.measurement)}
+                {item.canReset === true && item.workspaceId !== undefined && (
+                  <ConfirmDestructiveStorageAction
+                    itemId={item.id}
+                    triggerLabel="Resetar dados"
+                    busyLabel="Resetando..."
+                    dialogTitle="Resetar dados do Analytics?"
+                    dialogDescription={`Esta ação removerá permanentemente o arquivo local do Analytics (${item.name}) neste dispositivo, incluindo espaços salvos e caches de consulta deste workspace. Seus dados na fonte remota não serão alterados.`}
+                    confirmLabel="Confirmar reset"
+                    isBusy={resettingWorkspaceId === item.workspaceId}
+                    onConfirm={() => {
+                      if (item.workspaceId !== undefined)
+                        onResetStorage(item.workspaceId)
+                    }}
+                  />
+                )}
+                {item.canReset === true &&
+                  item.orphanHash !== undefined &&
+                  onRemoveOrphanStorage !== undefined && (
+                    <ConfirmDestructiveStorageAction
+                      itemId={item.id}
+                      triggerLabel="Limpar órfão"
+                      busyLabel="Removendo..."
+                      dialogTitle="Remover arquivo órfão do Analytics?"
+                      dialogDescription={`O arquivo (${item.name}) não pertence a nenhum workspace ativo neste dispositivo. Removê-lo libera espaço em disco e elimina o erro local sem afetar seus workspaces ativos.`}
+                      confirmLabel="Remover arquivo"
+                      isBusy={removingOrphanHash === item.orphanHash}
+                      onConfirm={() => {
+                        if (item.orphanHash !== undefined)
+                          onRemoveOrphanStorage(item.orphanHash)
+                      }}
+                    />
+                  )}
               </div>
             </div>
           ))

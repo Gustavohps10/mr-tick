@@ -227,6 +227,14 @@ export class AddonLifetime {
     }
   }
 
+  public stopCapabilityBindings(capabilityId: string): void {
+    for (const [key, binding] of this.bindings.entries()) {
+      if (!key.endsWith(`:${capabilityId}`)) continue
+      binding.dispose()
+      this.bindings.delete(key)
+    }
+  }
+
   public stopWorkspaceCapabilityBindings(
     workspaceId: string,
     capabilityId: string,

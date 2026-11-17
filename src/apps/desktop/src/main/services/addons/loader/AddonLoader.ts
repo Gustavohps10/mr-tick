@@ -30,6 +30,7 @@ import {
   IWorkspaceCredentialReferenceRegistry,
 } from '@mr-tick/application'
 import { isValidConnectionProfileDescriptors } from '@mr-tick/domain'
+import type { IAddonAnalyticsAPI, IAnalyticsSource } from '@mr-tick/sdk'
 import {
   AddonActionResponse,
   AddonCapability,
@@ -103,6 +104,7 @@ import yaml from 'js-yaml'
 import { getSettings, saveSettings } from '@/main/settings'
 
 import sdkPkg from '../../../../../../sdk/package.json'
+import { GuardedAnalyticsProvider } from '../analytics/GuardedAnalyticsProvider'
 import {
   GuardedMemberProvider,
   GuardedMetadataProvider,
@@ -327,6 +329,8 @@ export class AddonLoader implements IAddonReloader {
   public readonly dataSourceRegistry = new MemoryRegistry<
     IDataSource & { id?: string }
   >()
+  private readonly analyticsSources = new Map<string, IAnalyticsSource>()
+
   public readonly themesRegistry = new MemoryRegistry<AddonTheme>()
   private activeThemeId: string | null = null
   public readonly commandRegistry = new CommandRegistry()
@@ -1132,6 +1136,49 @@ export class AddonLoader implements IAddonReloader {
       getItems: () => this.dataSourceRegistry.getItems(),
     }
 
+    const analyticsContributions: IAddonAnalyticsAPI = {
+      register: (source) => {
+        if (!lifetime.isActive())
+          return Either.failure(AppError.Unauthorized('ADDON_INACTIVE'))
+        if (!this.isOperationSupported(addonId, 'analytics', 'register'))
+          return Either.failure(
+            AppError.Http(403, 'ANALYTICS_CAPABILITY_REQUIRED'),
+          )
+        if (this.analyticsSources.has(addonId))
+          return Either.failure(
+            AppError.ValidationError('ANALYTICS_PROVIDER_ALREADY_REGISTERED'),
+          )
+        const registered: IAnalyticsSource = {
+          createInstance: (context) => {
+            const binding = lifetime.binding(
+              context.scope.workspaceId,
+              context.scope.connectionInstanceId,
+              'analytics',
+            )
+            return new GuardedAnalyticsProvider(
+              source.createInstance(context),
+              binding,
+              binding.getGeneration(),
+              (operation) =>
+                this.isOperationSupported(addonId, 'analytics', operation),
+              context.scope,
+            )
+          },
+        }
+        this.analyticsSources.set(addonId, registered)
+        lifetime.track(() => {
+          if (this.analyticsSources.get(addonId) === registered)
+            this.analyticsSources.delete(addonId)
+        })
+        return Either.success()
+      },
+      unregister: () => {
+        if (!lifetime.isActive()) return
+        this.analyticsSources.delete(addonId)
+        lifetime.stopCapabilityBindings('analytics')
+      },
+    }
+
     const connectionContributions: IAddonConnectionsContributionAPI = {
       registerProfiles: (profiles) => {
         if (!lifetime.isActive())
@@ -1263,6 +1310,7 @@ export class AddonLoader implements IAddonReloader {
         menus: menusRegistry,
         settings: settingsRegistry,
         dataSources: dataSourceRegistryProxy,
+        analytics: analyticsContributions,
         connections: connectionContributions,
         themes: lifetime.registry(addonId, this.themesRegistry),
       },
@@ -2426,6 +2474,12 @@ export class AddonLoader implements IAddonReloader {
 
   public getTimerbarMenus(): TimerbarMenuItem[] {
     return Array.from(this.addonTimerbarItems.values())
+  }
+
+  public getAnalytics(addonId: string): IAnalyticsSource | undefined {
+    if (!this.isOperationSupported(addonId, 'analytics', 'resolve'))
+      return undefined
+    return this.analyticsSources.get(addonId)
   }
 
   public getDataSource(dataSourceId: string): IDataSource | undefined {

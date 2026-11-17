@@ -121,6 +121,10 @@
       "types": "./dist/components/ui/label.d.ts",
       "import": "./dist/components/ui/label.js"
     },
+    "./multi-select-combobox": {
+      "types": "./dist/components/ui/multi-select-combobox.d.ts",
+      "import": "./dist/components/ui/multi-select-combobox.js"
+    },
     "./navigation-menu": {
       "types": "./dist/components/ui/navigation-menu.d.ts",
       "import": "./dist/components/ui/navigation-menu.js"
@@ -261,6 +265,7 @@
     "@tiptap/pm": "^2.11.5",
     "@tiptap/react": "^2.11.5",
     "@tiptap/starter-kit": "^2.11.5",
+    "@xyflow/react": "^12.12.1",
     "awilix": "^12.0.5",
     "axios": "^1.7.9",
     "class-variance-authority": "^0.7.1",

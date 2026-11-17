@@ -1,4 +1,5 @@
 export * from './activities'
+export * from './analytics'
 export * from './error'
 export * from './home'
 export * from './metrics'

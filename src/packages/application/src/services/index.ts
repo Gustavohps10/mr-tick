@@ -1,4 +1,6 @@
 export * from './addons'
+export * from './analytics/AnalyticsService'
+export * from './analytics/AnalyticsWarehouseService'
 export * from './connections'
 export * from './local-runtime'
 export * from './sync'

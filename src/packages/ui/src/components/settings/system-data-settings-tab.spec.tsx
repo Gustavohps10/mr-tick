@@ -14,6 +14,11 @@ const hostBridgeMocks = vi.hoisted(() => ({
   runChecks: vi.fn<() => Promise<ViewModel<DiagnosticSnapshot>>>(),
   generateReport: vi.fn<() => Promise<ViewModel<SanitizedDiagnosticReport>>>(),
   openDataDirectory: vi.fn<() => Promise<ViewModel<void>>>(),
+  removeOrphanAnalyticsStorage:
+    vi.fn<
+      (hash: string) => Promise<ViewModel<{ hash: string; removed: boolean }>>
+    >(),
+  resetAnalyticsStorage: vi.fn(),
   eventsOn: vi.fn(),
 }))
 
@@ -33,12 +38,17 @@ function createMockBridge(overrides?: Partial<IHostBridge>): IHostBridge {
       runChecks: hostBridgeMocks.runChecks,
       generateReport: hostBridgeMocks.generateReport,
       openDataDirectory: hostBridgeMocks.openDataDirectory,
+      removeOrphanAnalyticsStorage:
+        hostBridgeMocks.removeOrphanAnalyticsStorage,
     },
     events: {
       on: hostBridgeMocks.eventsOn,
       off: vi.fn(),
       emit: vi.fn(),
     },
+    addons: {
+      resetAnalyticsStorage: hostBridgeMocks.resetAnalyticsStorage,
+    } as unknown as IHostBridge['addons'],
     ...overrides,
   } as unknown as IHostBridge
 }
@@ -1496,5 +1506,163 @@ describe('SystemDataSettingsTab', () => {
     unmount()
 
     expect(unsubMock).toHaveBeenCalled()
+  })
+
+  it('displays analytics storage errors and confirms reset via AlertDialog before resetting storage', async () => {
+    const errorSnapshot = createSampleSnapshot({
+      storages: [
+        {
+          id: 'analytics-ws-1',
+          name: 'Analytics (Workspace Legacy)',
+          role: 'analytics',
+          technology: 'duckdb',
+          location: '<USER_HOME>/.mr-tick/analytics/ws-1.duckdb',
+          workspaceId: 'ws-1',
+          workspaceName: 'Workspace Legacy',
+          canReset: true,
+          measurement: {
+            status: 'error',
+            reason: 'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+            details: {
+              storedFormatVersion: ['1'],
+              supportedFormatVersion: ['2'],
+            },
+            collectedAt: '2026-11-10T12:00:00.000Z',
+          },
+        },
+      ],
+    })
+    const cleanSnapshot = createSampleSnapshot({ storages: [] })
+    hostBridgeMocks.getSnapshot.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: errorSnapshot,
+    })
+    hostBridgeMocks.runChecks.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: cleanSnapshot,
+    })
+    hostBridgeMocks.resetAnalyticsStorage.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: { workspaceId: 'ws-1', removed: true },
+    })
+
+    renderTab()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('storage-error-badge')).toBeTruthy()
+    })
+
+    expect(screen.getByTestId('storage-error-reason').textContent).toBe(
+      'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+    )
+    expect(screen.getByTestId('storage-error-details').textContent).toContain(
+      'storedFormatVersion: 1',
+    )
+
+    // Cancel flow in AlertDialog does not invoke resetAnalyticsStorage
+    fireEvent.click(screen.getByTestId('reset-storage-analytics-ws-1'))
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('reset-storage-dialog-analytics-ws-1'),
+      ).toBeTruthy()
+    })
+    fireEvent.click(screen.getByTestId('cancel-reset-storage-analytics-ws-1'))
+    expect(hostBridgeMocks.resetAnalyticsStorage).not.toHaveBeenCalled()
+
+    // Confirm flow in AlertDialog executes resetAnalyticsStorage and refreshes diagnostics
+    fireEvent.click(screen.getByTestId('reset-storage-analytics-ws-1'))
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('confirm-reset-storage-analytics-ws-1'),
+      ).toBeTruthy()
+    })
+    fireEvent.click(screen.getByTestId('confirm-reset-storage-analytics-ws-1'))
+
+    await waitFor(() => {
+      expect(hostBridgeMocks.resetAnalyticsStorage).toHaveBeenCalledWith({
+        body: { workspaceId: 'ws-1' },
+      })
+    })
+    await waitFor(() => {
+      expect(hostBridgeMocks.runChecks).toHaveBeenCalled()
+      expect(toast.success).toHaveBeenCalled()
+    })
+  })
+
+  it('permite limpar arquivo órfão do Analytics pelo diagnóstico com confirmação', async () => {
+    const orphanHash = 'a'.repeat(64)
+    const snapshotWithOrphan = createSampleSnapshot({
+      storages: [
+        {
+          id: `analytics-orphan-${orphanHash}`,
+          name: `Analytics (Arquivo órfão ${orphanHash.slice(0, 8)})`,
+          role: 'analytics',
+          technology: 'duckdb',
+          orphanHash,
+          canReset: true,
+          measurement: {
+            status: 'error',
+            reason: 'ANALYTICS_STORAGE_ORPHAN_FILE',
+            details: {
+              storagePath: [`/tmp/analytics/${orphanHash}.duckdb`],
+            },
+            collectedAt: new Date().toISOString(),
+          },
+        },
+      ],
+    })
+
+    hostBridgeMocks.getSnapshot.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: snapshotWithOrphan,
+    })
+    hostBridgeMocks.runChecks.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: createSampleSnapshot({ storages: [] }),
+    })
+    hostBridgeMocks.removeOrphanAnalyticsStorage.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: { hash: orphanHash, removed: true },
+    })
+
+    renderTab()
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(`reset-storage-analytics-orphan-${orphanHash}`),
+      ).toBeTruthy()
+    })
+
+    fireEvent.click(
+      screen.getByTestId(`reset-storage-analytics-orphan-${orphanHash}`),
+    )
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(
+          `confirm-reset-storage-analytics-orphan-${orphanHash}`,
+        ),
+      ).toBeTruthy()
+    })
+    fireEvent.click(
+      screen.getByTestId(
+        `confirm-reset-storage-analytics-orphan-${orphanHash}`,
+      ),
+    )
+
+    await waitFor(() => {
+      expect(hostBridgeMocks.removeOrphanAnalyticsStorage).toHaveBeenCalledWith(
+        orphanHash,
+      )
+    })
+    await waitFor(() => {
+      expect(hostBridgeMocks.runChecks).toHaveBeenCalled()
+      expect(toast.success).toHaveBeenCalled()
+    })
   })
 })

@@ -2,6 +2,7 @@
 @plugin "tailwindcss-animate";
 @plugin "@tailwindcss/typography";
 @import '@mr-tick/ui/globals.css';
+@import '@xyflow/react/dist/style.css';
 
 /* Firefox */
 * {

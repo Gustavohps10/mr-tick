@@ -64,7 +64,7 @@ describe('validateAddon', () => {
     const result = validateAddon('mock-dir')
     expect(result.valid).toBe(false)
     expect(result.errors).toContain(
-      'Capacidade inválida "invalidCapability". Capacidades válidas são: auth, dataSource, watcher, calendar, punch, theme',
+      'Capacidade inválida "invalidCapability". Capacidades válidas são: auth, dataSource, analytics, watcher, calendar, punch, theme',
     )
   })
 })

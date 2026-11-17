@@ -225,4 +225,62 @@ describe('RuntimeStatusIndicator', () => {
     expect(useSettingsModalStore.getState().isOpen).toBe(true)
     expect(useSettingsModalStore.getState().activeTab).toBe('system-data')
   })
+
+  it('renders warning indicator when an analytics storage error or failed check is present in snapshot', async () => {
+    hostBridgeMocks.getSnapshot.mockResolvedValue({
+      isSuccess: true,
+      statusCode: 200,
+      data: {
+        formatVersion: '1.0',
+        sessionId: 'sess-analytics-err',
+        revision: 1,
+        emittedAt: new Date().toISOString(),
+        observedGeneration: 'gen-1',
+        dispatcher: {
+          state: 'ready',
+          generation: 'gen-1',
+          startupStage: 'ready',
+          pendingRequestsByChannel: {},
+        },
+        checks: [
+          {
+            id: 'probe-analytics-storage-ws-1',
+            name: 'Analytics Storage (ws-1)',
+            capability: 'analytics.storage.read',
+            source: 'analytics',
+            scope: { type: 'workspace', workspaceId: 'ws-1' },
+            status: 'fail',
+            reason: 'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+            startedAt: new Date().toISOString(),
+            finishedAt: new Date().toISOString(),
+            durationMs: 1,
+          },
+        ],
+        storages: [
+          {
+            id: 'analytics-ws-1',
+            name: 'Analytics (ws-1)',
+            role: 'analytics',
+            technology: 'duckdb',
+            workspaceId: 'ws-1',
+            canReset: true,
+            measurement: {
+              status: 'error',
+              reason: 'ANALYTICS_STORAGE_FORMAT_UNSUPPORTED',
+              collectedAt: new Date().toISOString(),
+            },
+          },
+        ],
+        workspaces: [],
+        recentEvents: [],
+        discardedEventsCount: 0,
+      },
+    })
+
+    renderIndicator()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-status-indicator-btn')).toBeTruthy()
+    })
+  })
 })

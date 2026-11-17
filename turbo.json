@@ -23,6 +23,12 @@
       "persistent": true,
       "interruptible": true
     },
+    "dev:debug": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true,
+      "interruptible": true
+    },
     "clean": {
       "cache": false,
       "outputs": []

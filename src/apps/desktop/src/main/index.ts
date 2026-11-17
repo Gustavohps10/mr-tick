@@ -55,6 +55,8 @@ import installExtension, {
   REACT_DEVELOPER_TOOLS,
 } from 'electron-devtools-installer'
 
+import { AnalyticsDiagnosticAdapter } from '@/main/adapters/analytics/AnalyticsDiagnosticAdapter'
+import { DuckDBAnalyticsEngine } from '@/main/adapters/analytics/DuckDBAnalyticsEngine'
 import {
   DefaultElectronFetchTransport,
   ElectronHttpClientFactory,
@@ -71,6 +73,7 @@ import {
 } from '@/main/handlers'
 import { DiagnosticsHandler } from '@/main/handlers'
 import { AddonsHandler } from '@/main/handlers/AddonsHandler'
+import { AnalyticsWarehouseHandler } from '@/main/handlers/AnalyticsWarehouseHandler'
 import { MetadataHandler } from '@/main/handlers/MetadataHandler'
 import { WorkspacesHandler } from '@/main/handlers/WorkspacesHandler'
 import { DataSourceResolver } from '@/main/resolvers/data-source-resolver'
@@ -84,6 +87,7 @@ import { getSettings } from '@/main/settings'
 import { createTray } from '@/main/tray'
 
 import sdkPackage from '../../../sdk/package.json'
+import { AnalyticsResolver } from './resolvers/analytics-resolver'
 import {
   addonPackageVerificationConfiguration,
   licensingApiConfiguration,
@@ -116,6 +120,7 @@ export type IHandlersScope = {
   tokenHandler: typeof TokenHandler
   workspacesHandler: typeof WorkspacesHandler
   addonsHandler: typeof AddonsHandler
+  analyticsWarehouseHandler: typeof AnalyticsWarehouseHandler
   licensingHandler: typeof LicensingHandler
   metadataHandler: typeof MetadataHandler
   updaterHandler: typeof UpdaterHandler
@@ -676,6 +681,13 @@ if (gotTheLock) {
       })
       runtimeWindow.windowType = 'runtime'
       const localRuntime = new LocalRuntimeDispatcher(runtimeWindow)
+      const analyticsEngine = new DuckDBAnalyticsEngine(
+        join(userDataPath, 'analytics'),
+      )
+      const analyticsDiagnosticAdapter = new AnalyticsDiagnosticAdapter(
+        analyticsEngine,
+        workspacesRepository,
+      )
       const metadataDiagnosticAdapter = new SqliteMetadataDiagnosticAdapter(
         workspacesRepository.db,
         userDataPath,
@@ -683,6 +695,7 @@ if (gotTheLock) {
       const diagnosticsService = new DiagnosticsService(
         localRuntime,
         metadataDiagnosticAdapter,
+        analyticsDiagnosticAdapter,
         eventsBuffer,
         bootJournal,
         userDataPath,
@@ -820,7 +833,10 @@ if (gotTheLock) {
         electronHttpClientFactory,
       )
 
+      let analyticsClosing = false
+      let analyticsClosed = false
       const platformDeps: PlatformDependencies = {
+        analyticsEngine,
         jobEmitter: eventEmitter,
         credentialsVault,
         workspacesRepository,
@@ -829,6 +845,12 @@ if (gotTheLock) {
         credentialRegistry,
         fileStorage: nodeFileStorage,
         dataSourceResolver: localDataSourceResolver,
+        analyticsResolver: new AnalyticsResolver(
+          workspacesRepository,
+          credentialsVault,
+          electronHttpClientFactory,
+          addonLoader,
+        ),
         httpClient: electronHttpClient,
         httpClientFactory: electronHttpClientFactory,
         addonReloader: addonLoader,
@@ -845,6 +867,7 @@ if (gotTheLock) {
           tokenHandler: TokenHandler,
           workspacesHandler: WorkspacesHandler,
           addonsHandler: AddonsHandler,
+          analyticsWarehouseHandler: AnalyticsWarehouseHandler,
           licensingHandler: LicensingHandler,
           metadataHandler: MetadataHandler,
           updaterHandler: UpdaterHandler,
@@ -900,6 +923,62 @@ if (gotTheLock) {
       }
 
       openIpcRoutes(serviceProvider, nativeOverlay)
+
+      addonLoader.systemEventEmitter.on(
+        'analytics:load-progress',
+        (payload) => {
+          for (const win of BrowserWindow.getAllWindows())
+            if (!win.isDestroyed())
+              win.webContents.send('analytics:load-progress', payload)
+        },
+      )
+
+      addonLoader.systemEventEmitter.on(
+        'analytics:storage-error',
+        (payload) => {
+          void diagnosticsService.recordAnalyticsStorageError(payload)
+        },
+      )
+
+      addonLoader.systemEventEmitter.on(
+        'analytics:storage-reset',
+        (payload) => {
+          void diagnosticsService.clearAnalyticsStorageError(
+            payload.workspaceId,
+          )
+
+          for (const win of BrowserWindow.getAllWindows())
+            if (!win.isDestroyed())
+              win.webContents.send('analytics:storage-reset', payload)
+        },
+      )
+
+      addonLoader.systemEventEmitter.on(
+        'connection:disconnected',
+        (payload) => {
+          if (payload.workspaceId && payload.connectionInstanceId)
+            void analyticsEngine.revokeConnection(
+              payload.workspaceId,
+              payload.connectionInstanceId,
+            )
+        },
+      )
+
+      addonLoader.systemEventEmitter.on('connection:archived', (payload) => {
+        if (payload.workspaceId && payload.connectionInstanceId)
+          void analyticsEngine.revokeConnection(
+            payload.workspaceId,
+            payload.connectionInstanceId,
+          )
+      })
+
+      addonLoader.systemEventEmitter.on('connection:removed', (payload) => {
+        if (payload.workspaceId && payload.connectionInstanceId)
+          void analyticsEngine.revokeConnection(
+            payload.workspaceId,
+            payload.connectionInstanceId,
+          )
+      })
 
       electronApp.setAppUserModelId('com.electron')
 
@@ -1036,7 +1115,24 @@ if (gotTheLock) {
         if (!mainWindow || mainWindow.isDestroyed()) createWindow()
       })
 
-      app.on('before-quit', () => {
+      app.on('before-quit', (event) => {
+        if (!analyticsClosed) {
+          event.preventDefault()
+          if (analyticsClosing) return
+          analyticsClosing = true
+          void analyticsEngine.close().then(
+            () => {
+              analyticsClosed = true
+              app.quit()
+            },
+            (error: Error) => {
+              console.error('[Analytics] Database close failed', error.message)
+              analyticsClosed = true
+              app.quit()
+            },
+          )
+          return
+        }
         diagnosticsService.dispose()
         timerRuntime.dispose()
         updaterService.stopAutoCheck()

@@ -33,6 +33,7 @@ function createHandlerWithLoader(
     {} as ConstructorParameters<typeof AddonsHandler>[4],
     fullLoader as unknown as AddonLoader,
     {} as ConstructorParameters<typeof AddonsHandler>[6],
+    {} as ConstructorParameters<typeof AddonsHandler>[7],
   )
 }
 
@@ -262,6 +263,7 @@ describe('AddonsHandler Settings & Operational Routes', () => {
         hasActiveAddon,
       } as unknown as AddonLoader,
       {} as ConstructorParameters<typeof AddonsHandler>[6],
+      {} as ConstructorParameters<typeof AddonsHandler>[7],
     )
 
     const successRes = await handlerSuccess.uninstall(event, {
@@ -295,6 +297,7 @@ describe('AddonsHandler Settings & Operational Routes', () => {
         hasActiveAddon,
       } as unknown as AddonLoader,
       {} as ConstructorParameters<typeof AddonsHandler>[6],
+      {} as ConstructorParameters<typeof AddonsHandler>[7],
     )
 
     const failureRes = await handlerFailure.uninstall(event, {
